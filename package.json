@@ -99,6 +99,7 @@
     "@astronautlabs/amf": "^0.0.6",
     "@babel/polyfill": "^7.12.1",
     "@blu3r4y/lzma": "^2.3.3",
+    "@modelcontextprotocol/sdk": "^1.22.0",
     "@wavesenterprise/crypto-gost-js": "^2.1.0-RC1",
     "@xmldom/xmldom": "^0.8.10",
     "argon2-browser": "^1.18.0",
@@ -187,7 +188,9 @@
     "vkbeautify": "^0.99.3",
     "xpath": "0.0.34",
     "xregexp": "^5.1.1",
-    "zlibjs": "^0.3.1"
+    "zlibjs": "^0.3.1",
+    "zod": "^4.1.12",
+    "zod-to-json-schema": "^3.25.0"
   },
   "scripts": {
     "start": "npx grunt dev",
@@ -204,6 +207,7 @@
     "newop": "node --experimental-modules --experimental-json-modules src/core/config/scripts/newOperation.mjs",
     "minor": "node --experimental-modules --experimental-json-modules src/core/config/scripts/newMinorVersion.mjs",
     "getheapsize": "node -e 'console.log(`node heap limit = ${require(\"v8\").getHeapStatistics().heap_size_limit / (1024 * 1024)} Mb`)'",
-    "setheapsize": "export NODE_OPTIONS=--max_old_space_size=2048"
+    "setheapsize": "export NODE_OPTIONS=--max_old_space_size=2048",
+    "mcp": "node src/node/mcp-server.mjs"
   }
 }

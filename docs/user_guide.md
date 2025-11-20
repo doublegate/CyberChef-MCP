@@ -1,0 +1,112 @@
+# CyberChef MCP Server User Guide
+
+This guide provides instructions for installing and using the CyberChef MCP server with various MCP-compliant clients.
+
+## Prerequisites
+
+*   **Docker:** Ensure Docker is installed and running on your system.
+*   **Docker Image:** You need to have the `cyberchef-mcp` image built.
+    ```bash
+    docker build -f Dockerfile.mcp -t cyberchef-mcp .
+    ```
+
+## General Usage Concept
+
+The CyberChef MCP server is designed to run as a Docker container that communicates via standard input/output (stdio). To use it with any client, you generally configure the client to run the following command:
+
+```bash
+docker run -i --rm cyberchef-mcp
+```
+
+*   `-i`: Keeps standard input open (required for the server to receive messages).
+*   `--rm`: Automatically removes the container when the client disconnects.
+*   `cyberchef-mcp`: The name of the image you built.
+
+---
+
+## Client Configuration
+
+### 1. Cursor AI IDE
+
+Cursor supports MCP servers to enhance its AI capabilities.
+
+1.  Open **Cursor Settings** (Cmd/Ctrl + ,).
+2.  Navigate to the **Features** > **MCP** section.
+3.  Click **Add New MCP Server**.
+4.  Fill in the details:
+    *   **Name:** `CyberChef` (or any name you prefer)
+    *   **Type:** `command` (or "stdio")
+    *   **Command:** `docker`
+    *   **Args:** `run -i --rm cyberchef-mcp`
+5.  Click **Add**.
+
+Once added, the "Green Light" indicator should show that Cursor has successfully connected to the server. You can now ask the AI questions like "Decode this base64 string" or "Calculate the MD5 hash of 'hello'".
+
+### 2. Claude Code (CLI)
+
+To use the server with Anthropic's `claude` CLI tool, you need to configure it in your Claude configuration file.
+
+1.  Locate or create your configuration file (usually at `~/.claude/config.json` or similar, refer to Claude Code documentation).
+2.  Add the CyberChef server to the `mcpServers` object:
+
+```json
+{
+  "mcpServers": {
+    "cyberchef": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "cyberchef-mcp"
+      ]
+    }
+  }
+}
+```
+
+3.  Restart the `claude` tool. It should now have access to CyberChef tools.
+
+### 3. Gemini CLI (or similar generic MCP clients)
+
+For command-line based MCP clients that accept a configuration file or command-line arguments to start servers:
+
+**Configuration File (example `mcp_config.json`):**
+
+```json
+{
+  "mcpServers": {
+    "cyberchef": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "cyberchef-mcp"]
+    }
+  }
+}
+```
+
+**Direct Invocation:**
+
+If the client allows specifying the command directly:
+
+```bash
+mcp-client --server-command "docker run -i --rm cyberchef-mcp"
+```
+
+---
+
+## Troubleshooting
+
+*   **"Container not found" or "Image not found":** Ensure you have built the image using `docker build -f Dockerfile.mcp -t cyberchef-mcp .`.
+*   **Permissions:** On Linux, you might need to add `sudo` before `docker` if your user isn't in the `docker` group. However, this can complicate configuration in GUI apps like Cursor. It is recommended to configure Docker for [rootless mode](https://docs.docker.com/engine/security/rootless/) or add your user to the docker group.
+*   **Performance:** The first request might take a split second to start the container. Subsequent requests within the same session should be fast.
+*   **Environment Variables:** If you need to pass environment variables to the server, add `-e VAR_NAME=value` to the `args` list in your configuration (e.g., `args: ["run", "-i", "--rm", "-e", "MY_VAR=foo", "cyberchef-mcp"]`).
+
+## Examples of Prompts
+
+Once connected, you can try prompts like these with your AI assistant:
+
+*   "Decode this Base64 string: `SGVsbG8gV29ybGQ=`"
+*   "I have a hex string `48656c6c6f`. Convert it to text."
+*   "Use CyberChef to gunzip this data."
+*   "Analyze this string and tell me what kind of hash it might be."
+*   "Convert the current time to a UNIX timestamp."
