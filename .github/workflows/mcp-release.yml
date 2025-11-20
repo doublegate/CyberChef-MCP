@@ -8,7 +8,8 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }} # This will be user/repo, e.g., parobek/CyberChef
+  # Using 'cyberchef-mcp_v1' as requested for the package name
+  IMAGE_NAME: ${{ github.repository_owner }}/cyberchef-mcp_v1
 
 jobs:
   build-and-push:
@@ -35,7 +36,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-mcp
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=semver,pattern={{major}}
             type=semver,pattern={{major}}.{{minor}}
@@ -50,3 +51,5 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64
+          provenance: false # Removes the "unknown/unknown" attestation manifest
