@@ -2,6 +2,7 @@
 
 [![](https://img.shields.io/badge/MCP-Enabled-blue)](https://modelcontextprotocol.io/)
 [![](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![Build and Test MCP Server](https://github.com/parobek/CyberChef/actions/workflows/mcp-docker-build.yml/badge.svg)](https://github.com/parobek/CyberChef/actions/workflows/mcp-docker-build.yml)
 
 This project provides a **Model Context Protocol (MCP)** server interface for **CyberChef**, the "Cyber Swiss Army Knife".
 
@@ -28,9 +29,10 @@ The server exposes CyberChef operations as MCP tools:
 *   **`cyberchef_search`**: A utility tool to help the AI discover available operations and their descriptions.
 
 ### Technical Highlights
-*   **Dockerized**: Runs as a lightweight, self-contained Docker container.
+*   **Dockerized**: Runs as a lightweight, self-contained Docker container based on Alpine Linux.
 *   **Stdio Transport**: Communicates via standard input/output, making it easy to integrate with CLI-based MCP clients.
-*   **Schema Validation**: All inputs are validated against schemas derived from CyberChef's internal type system.
+*   **Schema Validation**: All inputs are validated against schemas derived from CyberChef's internal type system using `zod`.
+*   **Modern Node.js**: Patched and configured to run on Node.js v22+.
 
 ## Quick Start
 
@@ -98,10 +100,11 @@ If you want to modify the server code without Docker:
     npm run mcp
     ```
 
-### Building the Original Web App
-This repository still contains the source for the CyberChef web application.
-*   `npm start`: Start the dev server.
-*   `npm run build`: Build the production web app.
+### CI/CD
+This project uses GitHub Actions to ensure stability:
+*   **Core CI:** Tests the underlying CyberChef logic and configuration generation on Node.js v22.
+*   **Docker Build:** Builds and verifies the `cyberchef-mcp` Docker image on every push.
+*   **Release:** Automatically publishes the Docker image to GHCR on version tags (`v*`).
 
 ## Contributing
 

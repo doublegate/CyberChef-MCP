@@ -11,13 +11,18 @@ This repository has been converted into a **Model Context Protocol (MCP) Server*
     -   Exposed `cyberchef_bake` meta-tool for executing arbitrary recipes.
     -   Exposed 300+ individual CyberChef operations as MCP tools (`cyberchef_*`).
     -   Added `cyberchef_search` tool.
-    -   Added `Dockerfile.mcp` for containerized deployment.
-    -   Added detailed documentation in `docs/`.
+    -   Added `Dockerfile.mcp` for containerized deployment (Alpine based).
+    -   Added detailed documentation in `docs/` (Architecture, Commands, User Guide).
+    -   Added `mcp` script to `package.json`.
+
+-   **CI/CD & Automation:**
+    -   Added `.github/workflows/mcp-docker-build.yml` to verify Docker builds on push.
+    -   Added `.github/workflows/mcp-release.yml` to publish images to GHCR on version tags.
+    -   Refactored legacy workflows (`core-ci.yml`) to support Node.js v22.
 
 -   **Modifications:**
     -   Patched `avsc` and `buffer-equal-constant-time` dependencies for Node.js v22+ compatibility.
-    -   Updated ES Module import syntax from `assert` to `with` for JSON files.
-    -   Added `mcp` script to `package.json`.
+    -   Updated ES Module import syntax from `assert` to `with` for JSON files across the codebase.
 
 ---
 
