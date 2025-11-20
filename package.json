@@ -25,14 +25,14 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/gchq/CyberChef/"
+    "url": "https://github.com/doublegate/CyberChef-MCP/"
   },
   "main": "src/node/wrapper.js",
   "exports": {
     "import": "./src/node/index.mjs",
     "require": "./src/node/wrapper.js"
   },
-  "bugs": "https://github.com/gchq/CyberChef/issues",
+  "bugs": "https://github.com/doublegate/CyberChef-MCP/issues",
   "browserslist": [
     "Chrome >= 50",
     "Firefox >= 38",
