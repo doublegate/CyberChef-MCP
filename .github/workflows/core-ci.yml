@@ -1,12 +1,17 @@
-name: "Pull Request Checks"
+name: "Core Logic CI"
 
 on:
   workflow_dispatch:
-  pull_request:
-    types: [synchronize, opened, reopened]
+  push:
+    branches:
+    - master
+    paths:
+      - 'src/core/**'
+      - 'src/node/**'
+      - 'package.json'
 
 jobs:
-  core-test:
+  test:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
@@ -21,6 +26,8 @@ jobs:
         npm install
         npm run setheapsize
 
+    # We need to patch the node_modules for Node 22 compatibility here as well
+    # because npm install might overwrite them or they might not be patched in the repo
     - name: Patch Dependencies for Node 22
       run: |
         sed -i 's/new SlowBuffer/Buffer.alloc/g' node_modules/avsc/lib/types.js
@@ -29,7 +36,7 @@ jobs:
     - name: Lint
       run: npx grunt lint
 
-    - name: Config Tests
+    - name: Config Tests (Generate Configs)
       run: npx grunt configTests
 
     - name: Unit Tests
