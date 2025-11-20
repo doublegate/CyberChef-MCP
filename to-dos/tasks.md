@@ -26,6 +26,9 @@
 - [x] Create `Dockerfile.mcp` with `node:22-alpine` base.
 - [x] Ensure `src/` structure is copied correctly.
 
+## CI/CD
+- [x] Create GitHub Action workflow (`.github/workflows/mcp-docker-build.yml`) to build and test the Docker image on push.
+
 ## Verification
 - [x] Test "To Base64".
 - [x] Test "Gunzip" (Implicitly via bake or tool availability).

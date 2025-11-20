@@ -26,3 +26,10 @@
 - [x] Create `README_MCP.md` with usage instructions.
 - [x] Clean up code and add comments.
 - [x] Add `mcp` script to `package.json`.
+
+## Phase 5: Deployment & Automation
+**Goal:** Automate distribution and ensure long-term reliability.
+- [x] **CI/CD Pipeline:** Create GitHub Actions to automatically build the `cyberchef-mcp` Docker image on commit.
+- [ ] **Publishing:** Push the container image to GitHub Container Registry (GHCR) or Docker Hub so users don't have to build it locally.
+- [ ] **Automated Testing:** Create a proper integration test suite using an MCP client mock to verify the server without manual `echo | docker` commands.
+- [ ] **Upstream Sync:** Establish a workflow to merge changes from the original `gchq/CyberChef` repository.

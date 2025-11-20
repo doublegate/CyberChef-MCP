@@ -1,0 +1,62 @@
+name: Build and Test MCP Server
+
+on:
+  push:
+    branches: [ "master" ]
+    paths:
+      - 'src/node/**'
+      - 'src/core/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'Dockerfile.mcp'
+      - '.github/workflows/mcp-docker-build.yml'
+  pull_request:
+    branches: [ "master" ]
+    paths:
+      - 'src/node/**'
+      - 'src/core/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'Dockerfile.mcp'
+      - '.github/workflows/mcp-docker-build.yml'
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.mcp
+          push: false
+          tags: cyberchef-mcp:latest
+          load: true # Load into local Docker daemon for testing
+
+      - name: Test MCP Server (List Tools)
+        run: |
+          # Run the container detached but interactive
+          docker run -d -i --name test-mcp cyberchef-mcp:latest
+          
+          # Send a listTools request and check for "cyberchef_bake" in the output
+          RESPONSE=$(echo '{"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}' | docker exec -i test-mcp node src/node/mcp-server.mjs)
+          
+          echo "Response: $RESPONSE"
+          
+          if echo "$RESPONSE" | grep -q "cyberchef_bake"; then
+            echo "✅ MCP Server is running and responding correctly."
+          else
+            echo "❌ MCP Server failed to return expected tools."
+            exit 1
+          fi
+          
+          # Clean up
+          docker stop test-mcp
+          docker rm test-mcp
