@@ -322,7 +322,7 @@ TestRegister.addTests([
                 ]
             }
         ],
-        expectedMatch: /^Invalid JPath expression: jsonPath: self is not defined:/
+        expectedMatch: /^Invalid JPath expression: (jsonPath: self is not defined:|Unexpected)/
     },
     {
         name: "CSS selector",

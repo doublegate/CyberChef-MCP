@@ -15,25 +15,52 @@ const inputObject = JSON.stringify({
 }, null, 4);
 
 const hsKey = "secret_cat";
-const rsKey = `-----BEGIN RSA PRIVATE KEY-----
-MIICWwIBAAKBgQDdlatRjRjogo3WojgGHFHYLugdUWAY9iR3fy4arWNA1KoS8kVw
-33cJibXr8bvwUAUparCwlvdbH6dvEOfou0/gCFQsHUfQrSDv+MuSUMAe8jzKE4qW
-+jK+xQU9a03GUnKHkkle+Q0pX/g6jXZ7r1/xAK5Do2kQ+X5xK9cipRgEKwIDAQAB
-AoGAD+onAtVye4ic7VR7V50DF9bOnwRwNXrARcDhq9LWNRrRGElESYYTQ6EbatXS
-3MCyjjX2eMhu/aF5YhXBwkppwxg+EOmXeh+MzL7Zh284OuPbkglAaGhV9bb6/5Cp
-uGb1esyPbYW+Ty2PC0GSZfIXkXs76jXAu9TOBvD0ybc2YlkCQQDywg2R/7t3Q2OE
-2+yo382CLJdrlSLVROWKwb4tb2PjhY4XAwV8d1vy0RenxTB+K5Mu57uVSTHtrMK0
-GAtFr833AkEA6avx20OHo61Yela/4k5kQDtjEf1N0LfI+BcWZtxsS3jDM3i1Hp0K
-Su5rsCPb8acJo5RO26gGVrfAsDcIXKC+bQJAZZ2XIpsitLyPpuiMOvBbzPavd4gY
-6Z8KWrfYzJoI/Q9FuBo6rKwl4BFoToD7WIUS+hpkagwWiz+6zLoX1dbOZwJACmH5
-fSSjAkLRi54PKJ8TFUeOP15h9sQzydI8zJU+upvDEKZsZc/UhT/SySDOxQ4G/523
-Y0sz/OZtSWcol/UMgQJALesy++GdvoIDLfJX5GBQpuFgFenRiRDabxrE9MNUZ2aP
-FaFp+DyAe+b4nDwuJaW2LURbr8AEZga7oQj0uYxcYw==
------END RSA PRIVATE KEY-----`;
+const rsKey = `-----BEGIN PRIVATE KEY-----
+MIIEuwIBADANBgkqhkiG9w0BAQEFAASCBKUwggShAgEAAoIBAQCtbDhqlAqNrsUI
+aQnBr/uhCfx9s9/NS8VY3dNVGZ/QGQt66VEfUyyqKY9dkxs6GVr/rF2KyW6+YE2B
+KZ3RMoQ1Sj3RYuAeulrE7txLNvtGxCYNCQ8BGjzT/PwNJuD1femHg7r4Asj8aAMH
+2Soe/ItFz6QddSj12PKv+apFk/NiLHAcmVvnK2w54PMpLBZVyN4nvOkj4THnLv4b
+mpahIe95oS5fFLobMmJM0cR/GhuXg2UzlHZeRzkGZI8JEZwKFvZbCHS2GqD/4RSj
+NLGjpds4uizCDSO5j8ifPOHZUZT2iicGvzs7SgHVoY+naab16RFaaSoe4lMe89Qc
+T6QvrgIxAgMBAAECgf8sXwQQQNByb8T54eYdKGm5SlTP1LXuUPStSBRKMcQx+jZ1
+vDyFR0KmRvvndTwCIXqm7/L/D4rGKt2prnwyijpJaDVo3WN6eTPAL10t4WNpN8aE
+j0zHe28UziWvN8NXDGAzzACKdCv4aKRd3bJpOzRnKDlVUCSqwldVrwthwfkDpO7B
+RxBWLC9wV+j3tYBSNEGEJRTvvj08ie6SOSCjYimiryqJ5KVS6OfD3dpTQZwu1jvz
+EuUHCYeaYSDUSwcBAwJaiLc5dZYzC3r8184cLaTYT6cuS1175oiedbFpF1GjBM/f
+52ktXtBJCUgzi8rIpKIc9Zhy3rdNIniryxUnBGkCgYEA5y/tdeSEAJpCVkz97Tp9
+/KadyOdHtzQPtvziQ/UvAVmfIIkqxs0Lvp/V2S54spdOpMx8JjTmbnXSMxVwsKIt
+4EPPcBcwHlwHtZ0lVa3RuunW8omBceBsF0RjhAtrJ+Jed8m06KUCAZHUMXyWKskG
+/7N0rXR/ItrJkcnKMm5+9v0CgYEAwAkprORqwSw1rTt4irLq0vbC5Ur2mBenad2g
+GJZo9d4p6cn09GlK35KEQIzIvzkVzurG2I9DQTj876e47idE4dp5PEg/R2TM8XYj
+tglveCf6r4EOcjnPl9/Cpp3jk0Wo9A1LpkzgdtzRA1hxzPZrL+r9cUy4h4klSPG7
+K52eMEUCgYEA0cK7uvcPChjsza7nyoIC4+UtTqcCe+iBxa8ngS+KabguWG/8XwqW
+eGw/tOGkY65DjeV3U5c16M2AXhc6+xj7dPsx0OtJHpKz8AXYZSfkHqqi+8blqzRL
+/sRvYtSVckfDHP7n5RoqetAc7pWzDrj9X64s1GDaJf7LWzry+dUl3+UCgYATLNcM
+fIJsZ420jouqzdLE3f74BlQ5O6Nr3sVtrxcr9dMZlSDwhtMDIA40o9onvft/fdH9
+LdD5YkdfZtAAd8tZAge5DT3EUzxjn/hQ5QBMbzGI9MoMfdlMwPseyAVBX2NPe0Ri
+hqqjM8lrHBnA7ZomXsCP36lNX1RpxDl8UXDKQQKBgAG9LIFcKz7KCeGUlofcU5vo
+6yRykHUFd2InhGzvGEIn5eXhnQgqVsW7rkNeR8LVdNmrI4dYDb0aBFnb79IMMZtp
+dbgUFn52OghTSamwaazd8M+iKLLBJTqDNZWaG+rw/wh0Gvt1jStpwKMz28AXECHd
+k/0Pm7R4v1u0GYZ+VBZi
+-----END PRIVATE KEY-----`;
 const esKey = `-----BEGIN PRIVATE KEY-----
 MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgevZzL1gdAFr88hb2
 OF/2NxApJCzGCEDdfSp6VQO30hyhRANCAAQRWz+jn65BtOMvdyHKcvjBeBSDZH2r
 1RTwjmYSi9R/zpBnuQ4EiMnCqfMPWiZqB4QdbAd0E7oH50VpuZ1P087G
+-----END PRIVATE KEY-----`;
+const es384Key = `-----BEGIN PRIVATE KEY-----
+MIG2AgEAMBAGByqGSM49AgEGBSuBBAAiBIGeMIGbAgEBBDBxNOX3ru5/MwotXisD
+P7l/sAJVYN5s1/aFRC8W+MNiZS12RLFEk5QHkCbvry2Vsw+hZANiAARrW07nrRxQ
+KpAJoaKtt8QKc2Uvd52KaGTifu2VhY0umO+Mw9wnDNCnVSIg9QxYMsIhKv35uBJH
+nl0scoW2o9AbHrTq2eTbh97xJeFB8VAPXBZZTVgiRjEfFpLzEiwZMEE=
+-----END PRIVATE KEY-----`;
+const es512Key = `-----BEGIN PRIVATE KEY-----
+MIHuAgEAMBAGByqGSM49AgEGBSuBBAAjBIHWMIHTAgEBBEIB9NouOseFJkJdhFXQ
+O4hKuqIOePpDY93Oa3w90MhPpbm+xOYWIlUaoRXymbDi0Ls7pzAXBDlxxmOKVKp9
+4lK4uAChgYkDgYYABAH1KKkilLhZaT1a17LUR5X0cWbWpS98rKyb6BdBvMhgz3zn
+jSA6KsMo/kjJnhgnttEAwZirfCkLQooxJYYG0bOpAQDhzAZdzlicwrMugJY4sz+U
+Gv1Qnb70m+oX0zGctWdPT8N3lGVdMKRubgQB155H3nRVyPVlJCYcbb8ZExH5AuwF
+mg==
 -----END PRIVATE KEY-----`;
 
 TestRegister.addTests([
@@ -103,7 +130,7 @@ TestRegister.addTests([
         recipeConfig: [
             {
                 op: "JWT Sign",
-                args: [esKey, "ES384", "{}"],
+                args: [es384Key, "ES384", "{}"],
             },
             {
                 op: "JWT Decode",
@@ -118,7 +145,7 @@ TestRegister.addTests([
         recipeConfig: [
             {
                 op: "JWT Sign",
-                args: [esKey, "ES512", "{}"],
+                args: [es512Key, "ES512", "{}"],
             },
             {
                 op: "JWT Decode",
@@ -163,7 +190,7 @@ TestRegister.addTests([
         recipeConfig: [
             {
                 op: "JWT Sign",
-                args: [esKey, "RS512", "{}"],
+                args: [rsKey, "RS512", "{}"],
             },
             {
                 op: "JWT Decode",
