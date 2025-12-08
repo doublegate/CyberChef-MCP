@@ -127,9 +127,10 @@ babel-plugin-transform-builtin-extend (1.1.2)
 - Evaluate migration to Babel 7+ configuration
 - Review Gruntfile.js and webpack.config.js to confirm necessity
 
-### 2. shelljs (2 high vulnerabilities)
+### 2. shelljs (1 high vulnerability with 2 CVEs)
 
 **Package:** grunt-chmod  
+**Severity:** High (reported as 1 vulnerability affecting shelljs package)  
 **Issues:**
 - Improper Privilege Management (CVE-2022-0144)
 - Improper Privilege Management (CVE-2023-27282)
@@ -225,8 +226,9 @@ All fixes were validated with:
 
 This security audit successfully addressed **76% of identified vulnerabilities** (16 out of 21), reducing the project from a high-risk state to a manageable security posture. The remaining 5 vulnerabilities are:
 
-- **3 critical** (babel-traverse) - Development only, mitigated by controlled build environment
-- **2 high** (shelljs) - Development only, mitigated by limited scope
+- **3 critical** (babel-traverse, babel-template, babel-plugin-transform-builtin-extend) - Development only, mitigated by controlled build environment
+- **1 high** (shelljs with 2 CVEs) - Development only, mitigated by limited scope
+- **1 moderate** (grunt-chmod) - Development only, depends on vulnerable shelljs
 
 All remaining vulnerabilities are in development dependencies and do not affect the production MCP server runtime. The documented mitigation strategies provide adequate protection for the current risk profile.
 
