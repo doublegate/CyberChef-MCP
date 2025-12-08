@@ -129,7 +129,7 @@
     "escodegen": "^2.1.0",
     "esprima": "^4.0.1",
     "exif-parser": "^0.1.12",
-    "fernet": "^0.4.0",
+    "fernet": "^0.3.3",
     "file-saver": "^2.0.5",
     "flat": "^6.0.1",
     "geodesy": "1.1.3",
@@ -209,5 +209,10 @@
     "getheapsize": "node -e 'console.log(`node heap limit = ${require(\"v8\").getHeapStatistics().heap_size_limit / (1024 * 1024)} Mb`)'",
     "setheapsize": "export NODE_OPTIONS=--max_old_space_size=2048",
     "mcp": "node src/node/mcp-server.mjs"
+  },
+  "overrides": {
+    "ws": ">=5.2.4",
+    "js-yaml": ">=4.1.1",
+    "serialize-javascript": ">=6.0.2"
   }
 }
