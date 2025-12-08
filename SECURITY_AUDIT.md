@@ -71,22 +71,25 @@ This document details the security vulnerabilities addressed in this project and
 #### 11. ws - High
 - **Issue:** DoS vulnerability when handling requests with many HTTP headers
 - **Advisory:** [GHSA-3h5v-q93c-6h6q](https://github.com/advisories/GHSA-3h5v-q93c-6h6q)
-- **Fix:** Applied npm override to force ws >=5.2.4
+- **Fix:** Applied npm override to enforce minimum version >=5.2.4 (updated to 8.18.3)
 - **Path:** grunt-contrib-connect → node-http2 → websocket-stream → ws
+- **Note:** The override ensures minimum security baseline; npm installed secure version 8.18.3
 
 #### 12-13. js-yaml - Moderate
 - **Issue:** Prototype pollution in merge (<<) operator
 - **Advisory:** [GHSA-mh29-5h37-fv8m](https://github.com/advisories/GHSA-mh29-5h37-fv8m)
-- **Fix:** Applied npm override to force js-yaml >=4.1.1
+- **Fix:** Applied npm override to enforce minimum version >=4.1.1 (confirmed at 4.1.1)
 - **Paths:** 
   - nightwatch → mocha → js-yaml
   - postcss-loader → cosmiconfig → js-yaml
+- **Note:** The override ensures the secure version 4.1.1 is used consistently
 
 #### 14-15. serialize-javascript - Moderate
 - **Issue:** Cross-site Scripting (XSS) vulnerability
 - **Advisory:** [GHSA-76p7-773f-r4q5](https://github.com/advisories/GHSA-76p7-773f-r4q5)
-- **Fix:** Applied npm override to force serialize-javascript >=6.0.2
+- **Fix:** Applied npm override to enforce minimum version >=6.0.2 (updated to 7.0.2)
 - **Path:** nightwatch → mocha → serialize-javascript
+- **Note:** The override ensures minimum security baseline; npm installed secure version 7.0.2
 
 ## Remaining Vulnerabilities
 
