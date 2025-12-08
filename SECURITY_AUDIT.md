@@ -93,24 +93,27 @@ This document details the security vulnerabilities addressed in this project and
 
 ## Remaining Vulnerabilities
 
-### 1. babel-traverse (3 critical vulnerabilities)
+### 1. babel-traverse - Single Vulnerability Affecting 3 Packages
 
-**Package:** babel-plugin-transform-builtin-extend  
+**Vulnerability:** GHSA-67hx-6x53-jw92  
 **Issue:** Arbitrary code execution when compiling crafted malicious code  
 **Advisory:** [GHSA-67hx-6x53-jw92](https://github.com/advisories/GHSA-67hx-6x53-jw92)  
-**CVSS Score:** 9.4 (Critical)
+**CVSS Score:** 9.4 (Critical)  
+**Affected Packages:** babel-traverse, babel-template, babel-plugin-transform-builtin-extend
 
 #### Why No Fix Available
 - `babel-plugin-transform-builtin-extend` is a legacy Babel 6 plugin
 - Package has not been maintained or updated to Babel 7+
-- The vulnerable `babel-traverse` is a core dependency
+- The vulnerable `babel-traverse` is a core dependency at the root of the chain
 
 #### Dependency Chain
 ```
-babel-plugin-transform-builtin-extend (1.1.2)
-  └─ babel-template (*)
-      └─ babel-traverse (*) [VULNERABLE]
+babel-plugin-transform-builtin-extend (1.1.2) [CRITICAL]
+  └─ babel-template (*) [CRITICAL - transitive]
+      └─ babel-traverse (*) [CRITICAL - source vulnerability]
 ```
+
+**Note:** npm audit counts this as 3 separate critical findings (one per affected package in the chain), but it represents a single underlying vulnerability in babel-traverse that propagates through the dependency tree.
 
 #### Usage in Project
 - **Scope:** Development dependency only
@@ -227,11 +230,18 @@ All fixes were validated with:
 
 ## Conclusion
 
-This security audit successfully addressed **76% of identified vulnerabilities** (16 out of 21), reducing the project from a high-risk state to a manageable security posture. The remaining 5 vulnerabilities are:
+This security audit successfully addressed **76% of identified vulnerabilities** (16 out of 21), reducing the project from a high-risk state to a manageable security posture. The remaining 5 npm audit findings represent 2 distinct vulnerabilities:
 
-- **3 critical** (babel-traverse, babel-template, babel-plugin-transform-builtin-extend) - Development only, mitigated by controlled build environment
-- **1 high** (shelljs with 2 CVEs) - Development only, mitigated by limited scope
-- **1 moderate** (grunt-chmod) - Development only, depends on vulnerable shelljs
+1. **babel-traverse vulnerability (GHSA-67hx-6x53-jw92)** - 1 critical vulnerability affecting 3 packages:
+   - babel-traverse (source)
+   - babel-template (transitive)
+   - babel-plugin-transform-builtin-extend (transitive)
+   - **Mitigation:** Development only, controlled build environment, no untrusted code compilation
+
+2. **shelljs vulnerabilities (2 CVEs)** - 1 high vulnerability with 2 CVEs affecting 2 packages:
+   - shelljs (source, CVE-2022-0144 and CVE-2023-27282)
+   - grunt-chmod (transitive, moderate)
+   - **Mitigation:** Development only, limited scope, no network exposure
 
 All remaining vulnerabilities are in development dependencies and do not affect the production MCP server runtime. The documented mitigation strategies provide adequate protection for the current risk profile.
 
