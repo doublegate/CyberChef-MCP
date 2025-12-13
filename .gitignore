@@ -13,3 +13,10 @@ src/node/index.mjs
 **/*.DS_Store
 tests/browser/output/*
 .node-version
+
+# Docker and build artifacts
+*.tar.gz
+*.tgz
+
+# Claude Code local files
+CLAUDE.local.md
