@@ -108,7 +108,7 @@ This project uses GitHub Actions to ensure stability:
 
 ## Contributing
 
-Contributions to the MCP adapter are welcome! Please refer to the `to-dos/` directory for planned features and tasks.
+Contributions to the MCP adapter are welcome! Please refer to the [`docs/planning/`](docs/planning/) directory for planned features and tasks.
 
 For contributions to the core CyberChef operations, please credit the original [GCHQ repository](https://github.com/gchq/CyberChef).
 

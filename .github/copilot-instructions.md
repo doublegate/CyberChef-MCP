@@ -111,9 +111,13 @@ npm run mcp  # Runs server on stdin/stdout
 ## Important Files Reference
 
 - **README.md** - User-facing documentation
-- **GEMINI.md** - Detailed project context for AI agents
+- **CLAUDE.md** - Detailed project context for AI agents
 - **docs/commands.md** - List of available MCP tools
 - **docs/architecture.md** - Technical architecture documentation
+- **docs/planning/roadmap.md** - Project roadmap and planned features
+- **docs/planning/tasks.md** - Specific implementation tasks
+- **docs/security/audit.md** - Security audit report
+- **docs/releases/v1.0.0.md** - v1.0.0 release notes
 - **src/node/mcp-server.mjs** - Main MCP server implementation
 - **Dockerfile.mcp** - Production Docker build with Node v22 patches
 
@@ -165,6 +169,6 @@ When reviewing or suggesting code changes:
 
 When updating documentation:
 - Keep README.md user-focused (installation, usage)
-- Keep GEMINI.md technical and comprehensive (architecture, troubleshooting)
+- Keep CLAUDE.md technical and comprehensive (architecture, troubleshooting)
 - Update docs/commands.md when operations change
 - Include code examples in markdown for clarity

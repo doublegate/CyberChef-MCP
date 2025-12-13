@@ -40,7 +40,7 @@ class DeriveEVPKey extends Operation {
             {
                 "name": "Iterations",
                 "type": "number",
-                "value": 1
+                "value": 10000
             },
             {
                 "name": "Hashing function",
@@ -68,14 +68,24 @@ class DeriveEVPKey extends Operation {
             iterations = args[2],
             hasher = args[3],
             salt = CryptoJS.enc.Latin1.parse(
-                Utils.convertToByteString(args[4].string, args[4].option)),
-            key = CryptoJS.EvpKDF(passphrase, salt, { // lgtm [js/insufficient-password-hash]
-                keySize: keySize,
-                hasher: CryptoJS.algo[hasher],
-                iterations: iterations,
-            });
+                Utils.convertToByteString(args[4].string, args[4].option));
 
-        return key.toString(CryptoJS.enc.Hex);
+        // Enforce minimum iteration count for security (NIST recommends 10,000+)
+        const minIterations = 1000;
+        const actualIterations = Math.max(iterations, minIterations);
+
+        let warning = "";
+        if (iterations < minIterations) {
+            warning = `Warning: Iteration count ${iterations} is below the minimum secure value of ${minIterations}. Using ${minIterations} iterations instead.\n\n`;
+        }
+
+        const key = CryptoJS.EvpKDF(passphrase, salt, {
+            keySize: keySize,
+            hasher: CryptoJS.algo[hasher],
+            iterations: actualIterations,
+        });
+
+        return warning + key.toString(CryptoJS.enc.Hex);
     }
 
 }

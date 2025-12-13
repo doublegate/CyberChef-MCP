@@ -86,7 +86,7 @@ Accept the risk if ALL of these are true:
 
 ### Tracking Unfixable Issues
 
-Document in `SECURITY_AUDIT.md`:
+Document in `docs/security/audit.md`:
 1. Detailed vulnerability description
 2. Why no fix is available
 3. Mitigation strategies
@@ -125,7 +125,7 @@ npx grunt configTests
 npm test
 node src/node/mcp-server.mjs # Test MCP server starts
 
-# 6. Document in SECURITY_AUDIT.md
+# 6. Document in docs/security/audit.md
 ```
 
 ## Dependency Update Strategy
@@ -199,7 +199,7 @@ Monitor these sources for security updates:
      - Deploy immediately
    
 3. **Follow-up**
-   - Update SECURITY_AUDIT.md
+   - Update docs/security/audit.md
    - Add to override if needed
    - Notify team/users if necessary
 
@@ -238,7 +238,7 @@ For major updates:
 
 After any security update:
 
-1. **Update SECURITY_AUDIT.md**
+1. **Update docs/security/audit.md**
    - Add fixed vulnerabilities
    - Update current state summary
    - Update date
@@ -262,7 +262,7 @@ Use this checklist for regular maintenance:
 - [ ] Check for updates to critical packages
 - [ ] Review and update npm overrides if needed
 - [ ] Test updates in development environment
-- [ ] Update SECURITY_AUDIT.md
+- [ ] Update docs/security/audit.md
 - [ ] Consider migrating away from unmaintained packages
 - [ ] Review CI/CD security scanning configuration
 
@@ -281,7 +281,7 @@ Use this checklist for regular maintenance:
 If you need help with security issues:
 
 1. **Check existing documentation**
-   - SECURITY_AUDIT.md
+   - docs/security/audit.md
    - This file
    - npm advisory details
 

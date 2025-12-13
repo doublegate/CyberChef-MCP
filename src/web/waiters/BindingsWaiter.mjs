@@ -290,15 +290,34 @@ class BindingsWaiter {
      */
     displayHelp(el) {
         const helpText = el.getAttribute("data-help");
-        let helpTitle = el.getAttribute("data-help-title");
+        const helpTitle = el.getAttribute("data-help-title");
 
-        if (helpTitle)
-            helpTitle = "<span class='text-muted'>Help topic:</span> " + helpTitle;
-        else
-            helpTitle = "<span class='text-muted'>Help topic</span>";
+        const modalBody = document.querySelector("#help-modal .modal-body");
+        const modalTitle = document.querySelector("#help-modal #help-title");
 
-        document.querySelector("#help-modal .modal-body").innerHTML = helpText;
-        document.querySelector("#help-modal #help-title").innerHTML = helpTitle;
+        // Use textContent to prevent XSS, then manually add trusted static HTML
+        if (helpText) {
+            modalBody.textContent = "";
+            const helpDiv = document.createElement("div");
+            helpDiv.textContent = helpText;
+            modalBody.appendChild(helpDiv);
+        }
+
+        if (helpTitle) {
+            modalTitle.textContent = "";
+            const mutedSpan = document.createElement("span");
+            mutedSpan.className = "text-muted";
+            mutedSpan.textContent = "Help topic: ";
+            const titleText = document.createTextNode(helpTitle);
+            modalTitle.appendChild(mutedSpan);
+            modalTitle.appendChild(titleText);
+        } else {
+            modalTitle.textContent = "";
+            const mutedSpan = document.createElement("span");
+            mutedSpan.className = "text-muted";
+            mutedSpan.textContent = "Help topic";
+            modalTitle.appendChild(mutedSpan);
+        }
 
         $("#help-modal").modal();
     }

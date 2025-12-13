@@ -98,8 +98,8 @@ Run these manually if developing locally on Node 22+.
 
 ### Release Process
 ```bash
-# Update RELEASE_NOTES.md
-git tag -a v1.x.x -F RELEASE_NOTES.md
+# Create release notes in docs/releases/vX.X.X.md
+git tag -a v1.x.x -F docs/releases/v1.x.x.md
 git push origin v1.x.x
 # mcp-release workflow publishes to ghcr.io/doublegate/cyberchef-mcp_v1
 ```
@@ -122,7 +122,17 @@ git push origin v1.x.x
 
 ## Documentation
 
+### Technical Documentation
 - `docs/architecture.md` - Technical design details
 - `docs/commands.md` - Full list of MCP tools and operations
 - `docs/user_guide.md` - Installation and client configuration
-- `to-dos/roadmap.md` - Project roadmap and planned features
+- `docs/technical_implementation.md` - Implementation details
+- `docs/project_summary.md` - Project overview
+
+### Project Management
+- `docs/planning/roadmap.md` - Project roadmap and planned features
+- `docs/planning/tasks.md` - Specific implementation tasks
+
+### Security & Releases
+- `docs/security/audit.md` - Security audit report
+- `docs/releases/v1.0.0.md` - v1.0.0 release notes
