@@ -47,6 +47,9 @@ import {eolCodeToSeq, eolCodeToName, renderSpecialChar} from "../utils/editorUti
   */
 class OutputWaiter {
 
+    // Security: Allowlist of safe script attributes (prevents XSS via attributes)
+    static SAFE_SCRIPT_ATTRIBUTES = ["id", "class", "type", "charset", "async", "defer"];
+
     /**
      * OutputWaiter constructor.
      *
@@ -379,20 +382,24 @@ class OutputWaiter {
         const outputHTML = document.getElementById("output-html");
         const scriptElements = outputHTML ? outputHTML.querySelectorAll("script") : [];
 
-        // Allowlist of safe attributes to copy (prevents XSS via attributes)
-        const SAFE_SCRIPT_ATTRIBUTES = ["id", "class", "type", "charset", "async", "defer"];
-
         for (let i = 0; i < scriptElements.length; i++) {
             try {
                 // Create a new script element instead of using eval()
                 const newScript = document.createElement("script");
                 newScript.type = scriptElements[i].type || "text/javascript";
 
-                // Copy only allowlisted safe attributes
+                // Copy only allowlisted safe attributes with value validation
                 for (let j = 0; j < scriptElements[i].attributes.length; j++) {
                     const attr = scriptElements[i].attributes[j];
-                    if (SAFE_SCRIPT_ATTRIBUTES.includes(attr.name)) {
-                        newScript.setAttribute(attr.name, attr.value);
+                    if (OutputWaiter.SAFE_SCRIPT_ATTRIBUTES.includes(attr.name)) {
+                        // Validate attribute values to prevent injection
+                        const attrValue = attr.value;
+                        // Block javascript: protocol and potential XSS vectors
+                        if (attrValue && !attrValue.toLowerCase().includes("javascript:") &&
+                            !attrValue.toLowerCase().includes("data:") &&
+                            !attrValue.toLowerCase().includes("vbscript:")) {
+                            newScript.setAttribute(attr.name, attrValue);
+                        }
                     }
                 }
 
