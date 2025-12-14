@@ -54,9 +54,18 @@ LABEL org.opencontainers.image.title="CyberChef Web Application" \
 
 COPY --from=builder /app/build/prod /usr/share/nginx/html/
 
-# Security: Set proper ownership for nginx user
+# Security: Set proper ownership for nginx user and cache directories
+# The alpine-slim variant requires explicit cache directory setup for non-root execution
 RUN chown -R nginx:nginx /usr/share/nginx/html && \
-    chmod -R 755 /usr/share/nginx/html
+    chmod -R 755 /usr/share/nginx/html && \
+    mkdir -p /var/cache/nginx/client_temp \
+             /var/cache/nginx/proxy_temp \
+             /var/cache/nginx/fastcgi_temp \
+             /var/cache/nginx/uwsgi_temp \
+             /var/cache/nginx/scgi_temp && \
+    chown -R nginx:nginx /var/cache/nginx && \
+    chown -R nginx:nginx /var/run && \
+    chown -R nginx:nginx /run
 
 # Security: Switch to non-root user (nginx user is built into nginx:alpine)
 USER nginx
