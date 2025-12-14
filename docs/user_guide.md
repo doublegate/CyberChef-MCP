@@ -5,7 +5,23 @@ This guide provides instructions for installing and using the CyberChef MCP serv
 ## Prerequisites
 
 *   **Docker:** Ensure Docker is installed and running on your system.
-*   **Docker Image:** You need to have the `cyberchef-mcp` image built.
+*   **Docker Image:** You need to have the `cyberchef-mcp` image available. Choose one of these options:
+
+    **Option 1: Pull from GitHub Container Registry (Recommended)**
+    ```bash
+    docker pull ghcr.io/doublegate/cyberchef-mcp_v1:latest
+    ```
+
+    **Option 2: Download Pre-built Tarball (Offline Installation)**
+    ```bash
+    # Download from GitHub Releases (approximately 270MB compressed)
+    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v1.1.0/cyberchef-mcp-v1.1.0-docker-image.tar.gz
+
+    # Load into Docker
+    docker load < cyberchef-mcp-v1.1.0-docker-image.tar.gz
+    ```
+
+    **Option 3: Build from Source**
     ```bash
     docker build -f Dockerfile.mcp -t cyberchef-mcp .
     ```

@@ -45,15 +45,35 @@ The server exposes CyberChef operations as MCP tools:
 ### Prerequisites
 *   **Docker** installed and running.
 
-### Installation & Usage
+### Installation Options
 
-**Option 1: Pull from GitHub Container Registry (Recommended)**
+**Option 1: Pull from GitHub Container Registry (Online, Recommended)**
 ```bash
 docker pull ghcr.io/doublegate/cyberchef-mcp_v1:latest
 docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v1:latest
 ```
 
-**Option 2: Build from Source**
+**Option 2: Download Pre-built Image (Offline Installation)**
+
+For environments without direct GHCR access, download the pre-built Docker image tarball from the [latest release](https://github.com/doublegate/CyberChef-MCP/releases/latest):
+
+1.  **Download the tarball** (approximately 270MB compressed):
+    ```bash
+    # Download from GitHub Releases
+    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v1.1.0/cyberchef-mcp-v1.1.0-docker-image.tar.gz
+    ```
+
+2.  **Load the image into Docker:**
+    ```bash
+    docker load < cyberchef-mcp-v1.1.0-docker-image.tar.gz
+    ```
+
+3.  **Run the server:**
+    ```bash
+    docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v1:v1.1.0
+    ```
+
+**Option 3: Build from Source**
 1.  **Clone the Repository:**
     ```bash
     git clone https://github.com/doublegate/CyberChef-MCP.git

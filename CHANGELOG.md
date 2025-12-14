@@ -26,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Production MCP server runtime**: Low Risk (5 remaining issues in dev dependencies only)
 
 ### Added
+- **Docker image tarball distribution** for offline installation (approximately 270MB compressed)
+  - Automated tarball export in `mcp-release.yml` workflow
+  - Pre-built images available as release assets on GitHub Releases
+  - Enables installation without GHCR access via `docker load`
 - Node.js version badge to README
 - Docker badge to README
 - Claude Desktop client configuration section in README
@@ -36,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Repository information section with GHCR and issue tracker links
 - Development workflow guidelines in Contributing section
 - Option to pull pre-built Docker images from GHCR in Quick Start
+- **Offline installation instructions** in README with tarball download steps
 - Created `CLAUDE.md` project guidance file for Claude Code AI assistant
 - Created `.github/SECURITY_MAINTENANCE.md` ongoing security procedures guide
 - Created `.github/copilot-instructions.md` for GitHub Copilot
