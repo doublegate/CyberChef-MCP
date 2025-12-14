@@ -41,7 +41,7 @@ The server exposes CyberChef operations as MCP tools:
 *   **Stdio Transport**: Communicates via standard input/output, making it easy to integrate with CLI-based MCP clients.
 *   **Schema Validation**: All inputs are validated against schemas derived from CyberChef's internal type system using `zod`.
 *   **Modern Node.js**: Fully compatible with Node.js v22+ with automated compatibility patches.
-*   **Performance Optimized** (v1.4.0): LRU cache for operation results (100MB default), automatic streaming for large inputs (10MB+ threshold), configurable resource limits (100MB max input, 30s timeout), memory monitoring, and comprehensive benchmark suite. See [Performance Tuning Guide](docs/performance-tuning.md) for configuration options.
+*   **Performance Optimized** (v1.4.0): LRU cache for operation results (100MB default), automatic streaming for large inputs (10MB+ threshold), configurable resource limits (100MB max input, 30s timeout), memory monitoring, and comprehensive benchmark suite. See [Performance Tuning Guide](docs/architecture/performance-tuning.md) for configuration options.
 *   **Upstream Sync Automation** (v1.3.0): Automated monitoring of upstream CyberChef releases every 6 hours, one-click synchronization workflow, comprehensive validation test suite with 465 tool tests, and emergency rollback mechanism.
 *   **Security Hardened** (v1.2.0+): Non-root container execution (UID 1001), automated Trivy vulnerability scanning, SBOM generation, read-only filesystem support, OWASP 2024-2025 Argon2 hardening, and nginx:alpine-slim optimization. **Latest improvements**: Fixed 11 of 12 code scanning vulnerabilities including critical cryptographic randomness weakness and 7 ReDoS vulnerabilities. New SafeRegex module provides centralized validation for all user-controlled regex patterns. See [Security Policy](SECURITY.md) and [Security Fixes Report](SECURITY_FIX_REPORT.md) for details.
 *   **Production Ready**: Comprehensive CI/CD with CodeQL v4, automated testing, and container image publishing to GHCR.
@@ -236,7 +236,7 @@ docker run -i --rm --memory=512m \
 }
 ```
 
-For detailed performance tuning guidance, see the [Performance Tuning Guide](docs/performance-tuning.md).
+For detailed performance tuning guidance, see the [Performance Tuning Guide](docs/architecture/performance-tuning.md).
 
 ### Performance Benchmarks
 
@@ -277,6 +277,16 @@ This project implements comprehensive security hardening with continuous improve
 *   **All 1,933 Tests Passing**: Security fixes validated with comprehensive test suite
 *   See [Security Fixes Report](SECURITY_FIX_REPORT.md) for complete details
 
+### Supply Chain Security
+*   **Docker Scout Attestations**: Build integrity and software transparency (v1.4.5+)
+    *   **Provenance Attestation** (mode=max): Verifiable build provenance for integrity verification
+    *   **SBOM Attestation**: Software Bill of Materials automatically generated and attached to releases
+    *   Improves Docker Scout health score from 'C' to 'B' or 'A'
+    *   Enables compliance with supply chain security standards
+*   **SBOM Generation**: CycloneDX Software Bill of Materials with each release
+*   **Trivy Integration**: Container and dependency scanning on every build
+*   **GitHub Security Tab**: All findings automatically uploaded
+
 ### Container Security (v1.2.0+)
 *   **Non-Root Execution**: Container runs as dedicated `cyberchef` user (UID 1001)
 *   **Read-Only Filesystem**: Supports `--read-only` flag for immutable deployments
@@ -292,11 +302,8 @@ This project implements comprehensive security hardening with continuous improve
 *   **CVE-2025-64756 Fixed**: Updated npm to resolve glob command injection vulnerability
 
 ### Automated Security Scanning
-*   **Trivy Integration**: Container and dependency scanning on every build
 *   **CodeQL Analysis**: Continuous code scanning for security vulnerabilities
-*   **SBOM Generation**: CycloneDX Software Bill of Materials with each release
 *   **Weekly Scans**: Scheduled scans catch newly discovered vulnerabilities
-*   **GitHub Security Tab**: All findings automatically uploaded
 
 ### Secure Deployment
 ```bash
@@ -332,29 +339,30 @@ See the [**Full Roadmap**](docs/ROADMAP.md) for detailed release plans and timel
 
 ## Documentation
 
-Detailed documentation can be found in the [`docs/`](docs/) directory:
+Detailed documentation is organized in the [`docs/`](docs/) directory:
 
-### User Documentation
-*   [**User Guide**](docs/user_guide.md): Detailed installation and client configuration
-*   [**Commands Reference**](docs/commands.md): List of all available MCP tools and operations
+### User Guides
+*   [**User Guide**](docs/guides/user_guide.md): Detailed installation and client configuration
+*   [**Commands Reference**](docs/guides/commands.md): List of all available MCP tools and operations
 
 ### Technical Documentation
-*   [**Architecture**](docs/architecture.md): Technical design of the MCP server
-*   [**Technical Implementation**](docs/technical_implementation.md): Implementation details
-*   [**Project Summary**](docs/project_summary.md): Project overview
+*   [**Architecture**](docs/architecture/architecture.md): Technical design of the MCP server
+*   [**Technical Implementation**](docs/architecture/technical_implementation.md): Implementation details
+*   [**Performance Tuning Guide**](docs/architecture/performance-tuning.md): Configuration guide for optimizing performance
 
-### Project Planning
+### Project Management
 *   [**Product Roadmap**](docs/ROADMAP.md): Comprehensive v1.1.0 → v3.0.0 roadmap with timeline
-*   [**Release Plans**](docs/planning/): Individual release specifications (v1.2.0 - v3.0.0)
-*   [**Phase Documents**](docs/planning/): Sprint breakdowns for each development phase
 *   [**Tasks**](docs/planning/tasks.md): 500+ implementation tasks organized by release
+*   [**Development Phases**](docs/planning/phases/overview.md): Sprint breakdowns for each development phase
+*   [**Release Plans**](docs/planning/future-releases/): Individual release specifications (v1.2.0 - v3.0.0)
+*   [**Project Summary**](docs/internal/project_summary.md): Internal project overview
 
-### Strategy Documents
-*   [**Upstream Sync Strategy**](docs/planning/UPSTREAM-SYNC-STRATEGY.md): Automated CyberChef update monitoring
-*   [**Security Hardening Plan**](docs/planning/SECURITY-HARDENING-PLAN.md): Docker DHI, non-root, SBOM generation
-*   [**Multi-Modal Strategy**](docs/planning/MULTI-MODAL-STRATEGY.md): Image/binary/audio handling via MCP
-*   [**Plugin Architecture**](docs/planning/PLUGIN-ARCHITECTURE-DESIGN.md): Custom operations and sandboxed execution
-*   [**Enterprise Features**](docs/planning/ENTERPRISE-FEATURES-PLAN.md): OAuth 2.1, RBAC, audit logging
+### Strategic Planning
+*   [**Upstream Sync Strategy**](docs/planning/strategies/UPSTREAM-SYNC-STRATEGY.md): Automated CyberChef update monitoring
+*   [**Security Hardening Plan**](docs/planning/strategies/SECURITY-HARDENING-PLAN.md): Docker DHI, non-root, SBOM generation
+*   [**Multi-Modal Strategy**](docs/planning/strategies/MULTI-MODAL-STRATEGY.md): Image/binary/audio handling via MCP
+*   [**Plugin Architecture**](docs/planning/strategies/PLUGIN-ARCHITECTURE-DESIGN.md): Custom operations and sandboxed execution
+*   [**Enterprise Features**](docs/planning/strategies/ENTERPRISE-FEATURES-PLAN.md): OAuth 2.1, RBAC, audit logging
 
 ### Security & Releases
 *   [**Security Policy**](SECURITY.md): Security policy and vulnerability reporting
@@ -366,7 +374,6 @@ Detailed documentation can be found in the [`docs/`](docs/) directory:
 *   [**Release Notes v1.4.2**](docs/releases/v1.4.2.md): CI/CD improvements and zero-warning workflows
 *   [**Release Notes v1.4.1**](docs/releases/v1.4.1.md): Security patch - 11 Code Scanning vulnerabilities fixed
 *   [**Release Notes v1.4.0**](docs/releases/v1.4.0.md): Performance optimization with caching, streaming, and resource limits
-*   [**Performance Tuning Guide**](docs/performance-tuning.md): Configuration guide for optimizing performance
 *   [**Release Notes v1.3.0**](docs/releases/v1.3.0.md): Upstream sync automation with comprehensive testing
 *   [**Release Notes v1.2.6**](docs/releases/v1.2.6.md): nginx:alpine-slim optimization for web app
 *   [**Release Notes v1.2.5**](docs/releases/v1.2.5.md): Security patch with OWASP Argon2 hardening

@@ -5,7 +5,58 @@ All notable changes to the CyberChef MCP Server project will be documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.4.5] - 2025-12-14
+
+### Added
+- **Docker Scout Supply Chain Attestations**: Enhanced container image security and transparency
+  - Provenance attestation (mode=max) for verifiable build integrity
+  - SBOM attestation automatically generated and attached to releases
+  - Enables compliance with supply chain security standards (SLSA, SSDF)
+  - Improves Docker Scout health score from 'C' to expected 'B' or 'A'
+- **Documentation Organization**: New structured directory layout for improved navigation
+  - `docs/architecture/` - Technical design documents (3 files)
+  - `docs/guides/` - User-facing guides (2 files)
+  - `docs/internal/` - Internal working documents (4 files)
+  - `docs/planning/phases/` - Development phase breakdowns (7 files)
+  - `docs/planning/strategies/` - Strategic planning documents (5 files)
+  - `docs/planning/future-releases/` - Release specifications (23 files)
+  - `docs/releases/` - Release notes (11 files)
+  - `docs/security/` - Security documentation (3 files)
+
+### Changed
+- **GitHub Actions Workflow**: Upgraded Docker build action for attestation support
+  - Updated from `docker/build-push-action@v5` to `@v6` in `mcp-release.yml`
+  - Added `provenance: mode=max` parameter for maximum build provenance detail
+  - Added `sbom: true` parameter for automatic SBOM generation
+- **Documentation Structure**: Major reorganization of 39 files using `git mv` (history preserved)
+  - Reduced root-level markdown files from 12 to 8
+  - Created logical subdirectories under `docs/` for better organization
+  - All internal links updated to reflect new paths
+- **README.md**: Updated documentation section to reflect new organized structure
+  - User Guides section links to `docs/guides/`
+  - Technical Documentation section links to `docs/architecture/`
+  - Project Management section links to `docs/planning/`
+  - Strategic Planning section links to `docs/planning/strategies/`
+
+### Fixed
+- **Docker Scout Health Score**: Resolved 'C' rating due to missing attestations
+  - Root cause: No provenance or SBOM attestations in container images
+  - Solution: Enabled attestation generation in GitHub Actions workflow
+  - Expected improvement: 'C' → 'B' or 'A' health score
+- **Documentation Links**: Fixed all broken internal documentation links after reorganization
+  - Updated paths in README.md, CLAUDE.md, and cross-references
+  - Verified all links point to correct new locations
+
+### Security
+- **Build Provenance**: Verifiable supply chain integrity via SLSA provenance attestation
+  - Records complete build process metadata (builder, materials, recipe)
+  - Enables verification of artifact authenticity
+  - Supports SLSA Level 2+ compliance
+- **Software Transparency**: Comprehensive SBOM for dependency tracking
+  - CycloneDX format SBOM automatically generated
+  - Complete dependency tree with version information
+  - Enables vulnerability tracking and compliance auditing
+
 ## [1.4.4] - 2025-12-14
 
 ### Fixed

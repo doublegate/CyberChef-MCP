@@ -75,9 +75,9 @@ This master PR successfully addresses all 12 Code Scanning vulnerability alerts 
 9. Error handling & logging
 
 ### 3. Comprehensive Documentation
-- **SECURITY_VULNERABILITY_FIX_MASTER_REPORT.md** - 500+ line detailed analysis
-- **SECURITY_FIXES_SUMMARY.md** - Quick reference
-- **MASTER_PR_SUMMARY.md** - This document
+- **docs/security/SECURITY_VULNERABILITY_FIX_MASTER_REPORT.md** - 500+ line detailed analysis
+- **SECURITY_FIXES_SUMMARY.md** - Quick reference (at root)
+- **docs/internal/MASTER_PR_SUMMARY.md** - This document
 
 ---
 
@@ -142,9 +142,9 @@ This master PR successfully addresses all 12 Code Scanning vulnerability alerts 
 9. src/core/lib/SafeRegex.mjs (NEW)
 
 ### Documentation (3 files)
-10. SECURITY_VULNERABILITY_FIX_MASTER_REPORT.md (NEW)
-11. SECURITY_FIXES_SUMMARY.md (UPDATED)
-12. MASTER_PR_SUMMARY.md (NEW - this file)
+10. docs/security/SECURITY_VULNERABILITY_FIX_MASTER_REPORT.md (NEW)
+11. SECURITY_FIXES_SUMMARY.md (UPDATED - at root)
+12. docs/internal/MASTER_PR_SUMMARY.md (NEW - this file)
 
 **Total:** 12 files (9 modified, 3 new)
 

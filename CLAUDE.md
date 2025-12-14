@@ -123,15 +123,17 @@ git push origin v1.x.x
 ## Documentation
 
 ### Technical Documentation
-- `docs/architecture.md` - Technical design details
-- `docs/commands.md` - Full list of MCP tools and operations
-- `docs/user_guide.md` - Installation and client configuration
-- `docs/technical_implementation.md` - Implementation details
-- `docs/project_summary.md` - Project overview
+- `docs/architecture/architecture.md` - Technical design details
+- `docs/architecture/technical_implementation.md` - Implementation details
+- `docs/architecture/performance-tuning.md` - Performance optimization guide
+- `docs/guides/commands.md` - Full list of MCP tools and operations
+- `docs/guides/user_guide.md` - Installation and client configuration
 
 ### Project Management
-- `docs/planning/roadmap.md` - Project roadmap and planned features
+- `docs/ROADMAP.md` - Product roadmap with timeline (v1.1.0 → v3.0.0)
+- `docs/planning/phases/overview.md` - Phase-based development overview
 - `docs/planning/tasks.md` - Specific implementation tasks
+- `docs/internal/project_summary.md` - Internal project overview
 
 ### Security & Releases
 - `docs/security/audit.md` - Security audit report

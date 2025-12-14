@@ -48,7 +48,7 @@ jobs:
             type=sha
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile.mcp
@@ -56,7 +56,9 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64
-          provenance: false # Removes the "unknown/unknown" attestation manifest
+          # Supply chain attestations for Docker Scout compliance
+          provenance: mode=max # Max-level provenance for build integrity
+          sbom: true # Generate and attach SBOM attestation
 
       # Export Docker image as tarball for offline distribution
       # Note: metadata-action generates tags without 'v' prefix (e.g., 1.2.0 not v1.2.0)

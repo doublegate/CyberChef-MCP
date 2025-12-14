@@ -106,4 +106,4 @@ npm test
 
 ## Full Report
 
-See `SECURITY_VULNERABILITY_FIX_MASTER_REPORT.md` for comprehensive analysis, solutions, and verification details.
+See `docs/security/SECURITY_VULNERABILITY_FIX_MASTER_REPORT.md` for comprehensive analysis, solutions, and verification details.
