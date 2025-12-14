@@ -366,11 +366,32 @@ class OutputWaiter {
         this.outputTextEl.classList.add("html-output");
 
         // Execute script sections
+        // Security Note: Instead of using eval(), we create new script elements and append them
+        // to the DOM. This is safer because:
+        // 1. Script elements respect Content Security Policy (CSP) directives
+        // 2. Modern browsers can apply additional security checks
+        // 3. It's the standard way to dynamically load scripts in the DOM
         const outputHTML = document.getElementById("output-html");
         const scriptElements = outputHTML ? outputHTML.querySelectorAll("script") : [];
         for (let i = 0; i < scriptElements.length; i++) {
             try {
-                eval(scriptElements[i].innerHTML); // eslint-disable-line no-eval
+                // Create a new script element instead of using eval()
+                const newScript = document.createElement("script");
+                newScript.type = scriptElements[i].type || "text/javascript";
+
+                // Copy attributes from the original script
+                for (let j = 0; j < scriptElements[i].attributes.length; j++) {
+                    const attr = scriptElements[i].attributes[j];
+                    if (attr.name !== "type") {
+                        newScript.setAttribute(attr.name, attr.value);
+                    }
+                }
+
+                // Set the script content
+                newScript.textContent = scriptElements[i].textContent;
+
+                // Replace the old script with the new one (which will execute it)
+                scriptElements[i].parentNode.replaceChild(newScript, scriptElements[i]);
             } catch (err) {
                 log.error(err);
             }
