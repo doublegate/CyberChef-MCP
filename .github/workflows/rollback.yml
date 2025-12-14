@@ -174,14 +174,15 @@ jobs:
           SHORT_SHA: ${{ steps.target.outputs.short_sha }}
         run: |
           git add .
-          git commit -m "revert: rollback to ${SHORT_SHA}
+          COMMIT_MSG="revert: rollback to ${SHORT_SHA}
 
-Rolled back to commit ${SHORT_SHA}
-- Regenerated OperationConfig.json
-- Updated baseline.json
-- Applied Node 22 compatibility patches
+          Rolled back to commit ${SHORT_SHA}
+          * Regenerated OperationConfig.json
+          * Updated baseline.json
+          * Applied Node 22 compatibility patches
 
-Generated with rollback workflow" || echo "No changes to commit"
+          Generated with rollback workflow"
+          git commit -m "$COMMIT_MSG" || echo "No changes to commit"
 
       - name: Push rollback branch
         env:
@@ -213,45 +214,44 @@ Generated with rollback workflow" || echo "No changes to commit"
             TEST_STATUS="**CRITICAL:** Both test suites failed"
           fi
 
+          PR_BODY="## Emergency Rollback
+
+          Reason: $SAFE_REASON
+
+          ### Rollback Details
+
+          * Target Commit: \`$SHORT_SHA\`
+          * Operations: $OPERATION_COUNT
+          * Test Status: $TEST_STATUS
+
+          ### Changes
+
+          * Rolled back codebase to commit \`$SHORT_SHA\`
+          * Regenerated \`OperationConfig.json\`
+          * Updated \`baseline.json\`
+          * Applied Node 22 compatibility patches
+
+          ### Verification Required
+
+          - [ ] Verify rollback addresses the issue
+          - [ ] Review test results
+          - [ ] Test critical functionality manually
+          - [ ] Update CHANGELOG.md
+          - [ ] Communicate rollback to users if needed
+
+          ### Next Steps
+
+          1. Review and merge this PR if rollback is successful
+          2. Investigate root cause of the issue
+          3. Plan proper fix before re-attempting upgrade
+
+          ---
+          Generated automatically by rollback workflow"
+
           gh pr create \
             --title "revert: rollback to $SHORT_SHA" \
             --label "rollback,urgent" \
-            --body "$(cat <<BODY
-## Emergency Rollback
-
-**Reason:** $SAFE_REASON
-
-### Rollback Details
-
-- **Target Commit:** \`$SHORT_SHA\`
-- **Operations:** $OPERATION_COUNT
-- **Test Status:** $TEST_STATUS
-
-### Changes
-
-- Rolled back codebase to commit \`$SHORT_SHA\`
-- Regenerated \`OperationConfig.json\`
-- Updated \`baseline.json\`
-- Applied Node 22 compatibility patches
-
-### Verification Required
-
-- [ ] Verify rollback addresses the issue
-- [ ] Review test results
-- [ ] Test critical functionality manually
-- [ ] Update CHANGELOG.md
-- [ ] Communicate rollback to users if needed
-
-### Next Steps
-
-1. Review and merge this PR if rollback is successful
-2. Investigate root cause of the issue
-3. Plan proper fix before re-attempting upgrade
-
----
-*Generated automatically by rollback workflow*
-BODY
-)" || echo "PR already exists"
+            --body "$PR_BODY" || echo "PR already exists"
 
       - name: Summary
         if: always()
