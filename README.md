@@ -4,7 +4,7 @@ This project provides a **Model Context Protocol (MCP)** server interface for **
 
 By running this server, you enable AI assistants (like Claude, Cursor AI, and others) to natively utilize CyberChef's extensive library of 300+ data manipulation operations—including encryption, encoding, compression, and forensic analysis—as executable tools.
 
-**Latest Release:** v1.1.0 | [Release Notes](docs/releases/v1.1.0.md) | [Security Audit](docs/security/audit.md)
+**Latest Release:** v1.2.0 | [Release Notes](docs/releases/v1.2.0.md) | [Security Policy](SECURITY.md)
 
 ![CyberChef MCP Banner](images/CyberChef-MCP_Banner-Logo.jpg)
 
@@ -12,6 +12,7 @@ By running this server, you enable AI assistants (like Claude, Cursor AI, and ot
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Docker Version](https://img.shields.io/github/v/release/doublegate/CyberChef-MCP?logo=docker&label=docker)](https://github.com/doublegate/CyberChef-MCP/releases)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](https://nodejs.org/)
+[![Security Scan](https://github.com/doublegate/CyberChef-MCP/actions/workflows/security-scan.yml/badge.svg)](https://github.com/doublegate/CyberChef-MCP/actions/workflows/security-scan.yml)
 
 ## Project Context
 
@@ -40,7 +41,7 @@ The server exposes CyberChef operations as MCP tools:
 *   **Stdio Transport**: Communicates via standard input/output, making it easy to integrate with CLI-based MCP clients.
 *   **Schema Validation**: All inputs are validated against schemas derived from CyberChef's internal type system using `zod`.
 *   **Modern Node.js**: Fully compatible with Node.js v22+ with automated compatibility patches.
-*   **Security Hardened**: 76% vulnerability reduction (16 of 21 vulnerabilities fixed), enhanced password hashing (10,000 iterations), and comprehensive XSS protection. See [Security Audit](docs/security/audit.md) for details.
+*   **Security Hardened**: Non-root container execution (UID 1001), automated Trivy vulnerability scanning, SBOM generation, and read-only filesystem support. See [Security Policy](SECURITY.md) for details.
 *   **Production Ready**: Includes comprehensive CI/CD pipelines, automated testing, and container image publishing to GHCR.
 
 ## Quick Start
@@ -63,17 +64,17 @@ For environments without direct GHCR access, download the pre-built Docker image
 1.  **Download the tarball** (approximately 270MB compressed):
     ```bash
     # Download from GitHub Releases
-    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v1.1.0/cyberchef-mcp-v1.1.0-docker-image.tar.gz
+    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v1.2.0/cyberchef-mcp-v1.2.0-docker-image.tar.gz
     ```
 
 2.  **Load the image into Docker:**
     ```bash
-    docker load < cyberchef-mcp-v1.1.0-docker-image.tar.gz
+    docker load < cyberchef-mcp-v1.2.0-docker-image.tar.gz
     ```
 
 3.  **Run the server:**
     ```bash
-    docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v1:v1.1.0
+    docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v1:v1.2.0
     ```
 
 **Option 3: Build from Source**
@@ -137,20 +138,32 @@ After adding the configuration, restart Claude Desktop. The CyberChef tools will
 
 ## Security
 
-This project has undergone comprehensive security hardening:
+This project implements comprehensive security hardening (v1.2.0+):
 
-*   **Vulnerability Reduction**: 76% of identified vulnerabilities fixed (16 out of 21)
-*   **Enhanced Password Hashing**: DeriveEVPKey now uses 10,000 iterations (NIST recommended minimum)
-*   **XSS Protection**: Comprehensive fixes for cross-site scripting vulnerabilities
-*   **String Escaping**: Proper two-step escaping pattern implemented across all operations
-*   **Dependency Security**: Automated overrides for vulnerable transitive dependencies
+### Container Security
+*   **Non-Root Execution**: Container runs as dedicated `cyberchef` user (UID 1001)
+*   **Read-Only Filesystem**: Supports `--read-only` flag for immutable deployments
+*   **Minimal Attack Surface**: Development files removed from production image
+*   **Health Checks**: Built-in container health monitoring
 
-**Current Status:**
-*   5 remaining vulnerabilities (all in development dependencies only)
-*   2 distinct issues affecting development build tools (not production MCP server)
-*   Production MCP server runtime: **Low Risk**
+### Automated Security Scanning
+*   **Trivy Integration**: Container and dependency scanning on every build
+*   **SBOM Generation**: CycloneDX Software Bill of Materials with each release
+*   **Weekly Scans**: Scheduled scans catch newly discovered vulnerabilities
+*   **GitHub Security Tab**: All findings automatically uploaded
 
-For detailed information, see the [Security Audit Report](docs/security/audit.md).
+### Secure Deployment
+```bash
+# Recommended: Run with maximum security options
+docker run -i --rm \
+  --read-only \
+  --tmpfs /tmp:size=100M \
+  --cap-drop=ALL \
+  --security-opt=no-new-privileges \
+  cyberchef-mcp
+```
+
+For detailed information, see the [Security Policy](SECURITY.md) and [Security Audit](docs/security/audit.md).
 
 ## Project Roadmap
 
@@ -194,9 +207,10 @@ Detailed documentation can be found in the [`docs/`](docs/) directory:
 *   [**Enterprise Features**](docs/planning/ENTERPRISE-FEATURES-PLAN.md): OAuth 2.1, RBAC, audit logging
 
 ### Security & Releases
+*   [**Security Policy**](SECURITY.md): Security policy and vulnerability reporting
 *   [**Security Audit**](docs/security/audit.md): Comprehensive security assessment
-*   [**Security Fixes Report**](docs/security/SECURITY_FIXES_REPORT.md): Detailed v1.1.0 security fixes
-*   [**Release Notes v1.1.0**](docs/releases/v1.1.0.md): Security hardening and Node.js 22 compatibility
+*   [**Release Notes v1.2.0**](docs/releases/v1.2.0.md): Security hardening release
+*   [**Release Notes v1.1.0**](docs/releases/v1.1.0.md): Security fixes and Node.js 22 compatibility
 *   [**Release Notes v1.0.0**](docs/releases/v1.0.0.md): Initial MCP server release
 
 ## Development
@@ -220,8 +234,9 @@ If you want to modify the server code without Docker:
 ### CI/CD
 This project uses GitHub Actions to ensure stability and security:
 *   **Core CI** ([`core-ci.yml`](.github/workflows/core-ci.yml)): Tests the underlying CyberChef logic and configuration generation on Node.js v22
-*   **Docker Build** ([`mcp-docker-build.yml`](.github/workflows/mcp-docker-build.yml)): Builds and verifies the `cyberchef-mcp` Docker image on every push to master
-*   **Release** ([`mcp-release.yml`](.github/workflows/mcp-release.yml)): Automatically publishes the Docker image to GHCR on version tags (`v*`)
+*   **Docker Build** ([`mcp-docker-build.yml`](.github/workflows/mcp-docker-build.yml)): Builds, verifies, and security scans the `cyberchef-mcp` Docker image
+*   **Security Scan** ([`security-scan.yml`](.github/workflows/security-scan.yml)): Trivy vulnerability scanning, SBOM generation, weekly scheduled scans
+*   **Release** ([`mcp-release.yml`](.github/workflows/mcp-release.yml)): Publishes Docker image to GHCR with SBOM attachment on version tags (`v*`)
 *   **CodeQL Analysis** ([`codeql.yml`](.github/workflows/codeql.yml)): Automated security scanning for code vulnerabilities
 *   **Pull Request Checks** ([`pull_requests.yml`](.github/workflows/pull_requests.yml)): Automated testing and validation for pull requests
 

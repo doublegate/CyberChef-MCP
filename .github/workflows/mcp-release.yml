@@ -17,6 +17,7 @@ jobs:
     permissions:
       contents: write
       packages: write
+      security-events: write
 
     steps:
       - name: Checkout repository
@@ -59,18 +60,53 @@ jobs:
         env:
           TAG_NAME: ${{ github.ref_name }}
         run: |
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${TAG_NAME}
+          docker pull "$REGISTRY/$IMAGE_NAME:$TAG_NAME"
 
       - name: Export Docker image as tarball
         env:
           TAG_NAME: ${{ github.ref_name }}
         run: |
-          docker save ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${TAG_NAME} | gzip > cyberchef-mcp-${TAG_NAME}-docker-image.tar.gz
+          docker save "$REGISTRY/$IMAGE_NAME:$TAG_NAME" | gzip > "cyberchef-mcp-${TAG_NAME}-docker-image.tar.gz"
           ls -lh cyberchef-mcp-*.tar.gz
+
+      # Security: Generate Software Bill of Materials (SBOM)
+      - name: Generate SBOM with Trivy
+        uses: aquasecurity/trivy-action@0.28.0
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        with:
+          image-ref: '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}'
+          format: 'cyclonedx'
+          output: 'sbom.cyclonedx.json'
+          vuln-type: 'os,library'
+
+      # Security: Run vulnerability scan on release image
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}'
+          format: 'sarif'
+          output: 'trivy-release-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          vuln-type: 'os,library'
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-release-results.sarif'
+          category: 'trivy-release-scan'
 
       - name: Attach tarball to release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ github.ref_name }}
         run: |
-          gh release upload ${TAG_NAME} cyberchef-mcp-${TAG_NAME}-docker-image.tar.gz --clobber
+          gh release upload "$TAG_NAME" "cyberchef-mcp-${TAG_NAME}-docker-image.tar.gz" --clobber
+
+      - name: Attach SBOM to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          gh release upload "$TAG_NAME" sbom.cyclonedx.json --clobber

@@ -1,0 +1,214 @@
+# =============================================================================
+# Security Scan Workflow - CyberChef MCP Server
+# =============================================================================
+# Automated security scanning using Trivy for container vulnerabilities.
+# Uploads results to GitHub Security tab via SARIF format.
+#
+# Triggers:
+# - Push to master branch
+# - Pull requests to master
+# - Weekly scheduled scan (Sundays at midnight UTC)
+# - Manual trigger via workflow_dispatch
+# =============================================================================
+
+name: Security Scan
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'src/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'Dockerfile.mcp'
+      - '.github/workflows/security-scan.yml'
+  pull_request:
+    branches: [master]
+    paths:
+      - 'src/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'Dockerfile.mcp'
+      - '.github/workflows/security-scan.yml'
+  schedule:
+    # Weekly scan every Sunday at midnight UTC
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+    inputs:
+      severity:
+        description: 'Minimum severity to report (CRITICAL, HIGH, MEDIUM, LOW)'
+        required: false
+        default: 'HIGH'
+        type: choice
+        options:
+          - CRITICAL
+          - HIGH
+          - MEDIUM
+          - LOW
+
+env:
+  # Use environment variables for any dynamic values
+  DEFAULT_SEVERITY: 'CRITICAL,HIGH'
+
+jobs:
+  trivy-scan:
+    name: Trivy Container Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image for scanning
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.mcp
+          push: false
+          tags: cyberchef-mcp:scan
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Determine severity level
+        id: severity
+        env:
+          INPUT_SEVERITY: ${{ inputs.severity }}
+        run: |
+          if [ -n "$INPUT_SEVERITY" ]; then
+            echo "level=$INPUT_SEVERITY" >> $GITHUB_OUTPUT
+          else
+            echo "level=CRITICAL,HIGH" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: 'cyberchef-mcp:scan'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: ${{ steps.severity.outputs.level }}
+          vuln-type: 'os,library'
+          scanners: 'vuln,secret,misconfig'
+          timeout: '10m'
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+          category: 'trivy-container-scan'
+
+      - name: Run Trivy in table format for logs
+        uses: aquasecurity/trivy-action@0.28.0
+        if: github.event_name == 'pull_request'
+        with:
+          image-ref: 'cyberchef-mcp:scan'
+          format: 'table'
+          severity: ${{ steps.severity.outputs.level }}
+          vuln-type: 'os,library'
+          exit-code: '0'
+
+  dependency-scan:
+    name: Dependency Vulnerability Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Run npm audit
+        id: npm_audit
+        continue-on-error: true
+        run: |
+          npm audit --json > npm-audit-results.json 2>&1 || true
+
+      - name: Determine severity level
+        id: severity
+        env:
+          INPUT_SEVERITY: ${{ inputs.severity }}
+        run: |
+          if [ -n "$INPUT_SEVERITY" ]; then
+            echo "level=$INPUT_SEVERITY" >> $GITHUB_OUTPUT
+          else
+            echo "level=CRITICAL,HIGH" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run Trivy filesystem scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-fs-results.sarif'
+          severity: ${{ steps.severity.outputs.level }}
+          vuln-type: 'library'
+          scanners: 'vuln'
+
+      - name: Upload filesystem scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-fs-results.sarif'
+          category: 'trivy-dependency-scan'
+
+      - name: Upload npm audit results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: npm-audit-results
+          path: npm-audit-results.json
+          retention-days: 30
+
+  sbom-generation:
+    name: Generate SBOM
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.mcp
+          push: false
+          tags: cyberchef-mcp:sbom
+          load: true
+
+      - name: Generate SBOM with Trivy
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: 'cyberchef-mcp:sbom'
+          format: 'cyclonedx'
+          output: 'sbom.cyclonedx.json'
+          vuln-type: 'os,library'
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-cyclonedx
+          path: sbom.cyclonedx.json
+          retention-days: 90

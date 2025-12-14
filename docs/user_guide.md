@@ -15,10 +15,10 @@ This guide provides instructions for installing and using the CyberChef MCP serv
     **Option 2: Download Pre-built Tarball (Offline Installation)**
     ```bash
     # Download from GitHub Releases (approximately 270MB compressed)
-    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v1.1.0/cyberchef-mcp-v1.1.0-docker-image.tar.gz
+    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v1.2.0/cyberchef-mcp-v1.2.0-docker-image.tar.gz
 
     # Load into Docker
-    docker load < cyberchef-mcp-v1.1.0-docker-image.tar.gz
+    docker load < cyberchef-mcp-v1.2.0-docker-image.tar.gz
     ```
 
     **Option 3: Build from Source**
@@ -116,6 +116,52 @@ mcp-client --server-command "docker run -i --rm cyberchef-mcp"
 *   **Permissions:** On Linux, you might need to add `sudo` before `docker` if your user isn't in the `docker` group. However, this can complicate configuration in GUI apps like Cursor. It is recommended to configure Docker for [rootless mode](https://docs.docker.com/engine/security/rootless/) or add your user to the docker group.
 *   **Performance:** The first request might take a split second to start the container. Subsequent requests within the same session should be fast.
 *   **Environment Variables:** If you need to pass environment variables to the server, add `-e VAR_NAME=value` to the `args` list in your configuration (e.g., `args: ["run", "-i", "--rm", "-e", "MY_VAR=foo", "cyberchef-mcp"]`).
+
+## Security Best Practices
+
+The CyberChef MCP server (v1.2.0+) includes several security hardening features:
+
+### Non-Root Execution
+The container runs as a non-root user (`cyberchef`, UID 1001) by default:
+```bash
+# Verify non-root execution
+docker run --rm cyberchef-mcp id
+# Output: uid=1001(cyberchef) gid=1001(cyberchef)
+```
+
+### Read-Only Filesystem
+For maximum security, run with a read-only root filesystem:
+```bash
+docker run -i --rm --read-only --tmpfs /tmp:size=100M cyberchef-mcp
+```
+
+### Recommended Security Options
+For production deployments, use all available security options:
+```bash
+docker run -i --rm \
+  --read-only \
+  --tmpfs /tmp:size=100M \
+  --cap-drop=ALL \
+  --security-opt=no-new-privileges \
+  cyberchef-mcp
+```
+
+### Security Features
+*   **Non-root execution**: Prevents privilege escalation
+*   **Read-only filesystem**: Immutable container state
+*   **Capability dropping**: Minimal kernel capabilities
+*   **No new privileges**: Prevents gaining additional privileges
+*   **Health checks**: Built-in monitoring for orchestration
+
+### Vulnerability Scanning
+Each release includes:
+*   Trivy vulnerability scan results
+*   SBOM (Software Bill of Materials) in CycloneDX format
+*   Automated weekly security scans
+
+For more information, see the [Security Policy](../SECURITY.md).
+
+---
 
 ## Examples of Prompts
 

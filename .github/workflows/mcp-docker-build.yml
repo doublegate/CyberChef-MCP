@@ -23,6 +23,9 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
 
     steps:
       - name: Checkout repository
@@ -44,19 +47,48 @@ jobs:
         run: |
           # Run the container detached but interactive
           docker run -d -i --name test-mcp cyberchef-mcp:latest
-          
+
           # Send a listTools request and check for "cyberchef_bake" in the output
           RESPONSE=$(echo '{"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}' | docker exec -i test-mcp node src/node/mcp-server.mjs)
-          
+
           echo "Response: $RESPONSE"
-          
+
           if echo "$RESPONSE" | grep -q "cyberchef_bake"; then
-            echo "✅ MCP Server is running and responding correctly."
+            echo "MCP Server is running and responding correctly."
           else
-            echo "❌ MCP Server failed to return expected tools."
+            echo "MCP Server failed to return expected tools."
             exit 1
           fi
-          
+
           # Clean up
           docker stop test-mcp
           docker rm test-mcp
+
+      - name: Verify non-root execution
+        run: |
+          # Check that the container runs as non-root user (UID 1001)
+          USER_ID=$(docker run --rm cyberchef-mcp:latest id -u)
+          echo "Container user ID: $USER_ID"
+          if [ "$USER_ID" = "1001" ]; then
+            echo "Container correctly runs as non-root user (UID 1001)"
+          else
+            echo "WARNING: Container is not running as expected user (got $USER_ID, expected 1001)"
+            exit 1
+          fi
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: 'cyberchef-mcp:latest'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          vuln-type: 'os,library'
+          exit-code: '0'  # Don't fail build, just report
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+          category: 'trivy-build-scan'

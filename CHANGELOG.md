@@ -8,7 +8,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **Comprehensive product roadmap v1.1.0 → v3.0.0** spanning 19 releases across 6 development phases
+- Placeholder for upcoming changes
+
+## [1.2.0] - 2025-12-14
+
+### Security
+- **Non-root container execution**: Container now runs as dedicated `cyberchef` user (UID 1001)
+  - Prevents privilege escalation attacks
+  - Reduces impact of container escape vulnerabilities
+- **Automated vulnerability scanning**: Integrated Trivy for container and dependency scanning
+  - Scans on every push, pull request, and release
+  - Weekly scheduled scans for newly discovered CVEs
+  - Results uploaded to GitHub Security tab (SARIF format)
+- **SBOM generation**: Software Bill of Materials (CycloneDX format) generated for each release
+  - Attached to GitHub releases for supply chain transparency
+  - Enables dependency tracking and compliance
+- **Read-only filesystem support**: Container compatible with `--read-only` flag
+  - Enables immutable deployments
+  - Reduces attack surface
+- **Security policy**: Added comprehensive `SECURITY.md` with vulnerability reporting guidelines
+
+### Added
+- **New CI workflow**: `.github/workflows/security-scan.yml` for automated security scanning
+  - Trivy container vulnerability scanning
+  - Trivy filesystem/dependency scanning
+  - npm audit results collection
+  - SBOM generation as artifact
+- **Container health check**: Built-in Docker HEALTHCHECK for orchestration
+- **OCI metadata labels**: Standard container labels for documentation and provenance
+- **Security documentation**: Enhanced user guide with security best practices section
+
+### Changed
+- **Dockerfile.mcp**: Complete security hardening overhaul
+  - Added non-root user creation (cyberchef:cyberchef, UID/GID 1001)
+  - Added OCI image labels for metadata
+  - Added security comments and documentation
+  - Removed unnecessary files from production image (tests, docs, config files)
+  - Added HEALTHCHECK instruction
+- **mcp-docker-build.yml**: Added Trivy scanning and non-root verification
+- **mcp-release.yml**: Added SBOM generation and attachment to releases
+- **README.md**: Updated security section with v1.2.0 hardening features
+- **user_guide.md**: Added comprehensive security best practices section
+- Updated all version references from v1.1.0 to v1.2.0
+
+### Documentation
+- **Comprehensive product roadmap v1.1.0 to v3.0.0** spanning 19 releases across 6 development phases
   - `docs/ROADMAP.md`: Master roadmap with Gantt timeline, release overview, and LTS strategy
   - 19 release plans (`docs/planning/release-v1.2.0.md` through `release-v3.0.0.md`)
   - 6 phase/sprint documents covering Q1 2026 through Q3 2027
@@ -19,15 +63,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `PLUGIN-ARCHITECTURE-DESIGN.md`: Custom operation registration with sandboxed execution
   - `ENTERPRISE-FEATURES-PLAN.md`: OAuth 2.1, RBAC, audit logging, multi-tenancy
 - **Extended task tracker** with 500+ tasks organized by release (v1.2.0 - v3.0.0)
-- **Security fixes report** (`docs/security/SECURITY_FIXES_REPORT.md`) documenting 11 fixes in v1.1.0
 - New "Project Roadmap" section in README with phase overview table
-- Expanded documentation section in README with Strategy Documents subsection
-
-### Changed
-- README documentation structure reorganized with new subsections:
-  - "Project Planning" (roadmap, release plans, phase documents, tasks)
-  - "Strategy Documents" (5 architectural strategy documents)
-- Updated documentation links throughout README to reference new planning structure
 
 ## [1.1.0] - 2025-12-13
 
