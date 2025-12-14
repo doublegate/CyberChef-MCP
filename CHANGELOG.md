@@ -8,11 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
-- **Fixed 4 GitHub Security code scanning alerts**:
+- **Fixed 5 GitHub Security code scanning alerts**:
   - **DS026**: Added HEALTHCHECK to original `Dockerfile` (web app) for container orchestration
   - **DS002**: Added non-root user (nginx) execution to original `Dockerfile` (web app)
   - **CVE-2025-64756**: Updated npm in `Dockerfile.mcp` to fix glob command injection vulnerability (glob 10.4.5 → 10.5.0+)
-  - **js/insufficient-password-hash**: Added CodeQL suppression for DeriveEVPKey (intentional OpenSSL EVP KDF implementation)
+  - **js/insufficient-password-hash** (x2): Dismissed as false positive - DeriveEVPKey intentionally implements OpenSSL EVP_BytesToKey for compatibility, NOT password storage. Users should use Argon2/bcrypt/scrypt operations for secure password hashing.
+- **Argon2 operation hardened to OWASP 2024-2025 recommendations**:
+  - Default type changed from Argon2i → **Argon2id** (hybrid side-channel + GPU resistance)
+  - Default memory increased from 4 MiB → **19 MiB** (OWASP minimum recommendation)
+  - Default iterations adjusted to **2** (OWASP recommended for 19 MiB memory)
+  - Added OWASP recommendation note to operation description
+  - Reference: [OWASP Password Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html)
 
 ### Changed
 - **Dockerfile** (web app): Security hardening overhaul
