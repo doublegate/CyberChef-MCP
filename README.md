@@ -2,7 +2,7 @@
 
 This project provides a **Model Context Protocol (MCP)** server interface for **CyberChef**, the "Cyber Swiss Army Knife" created by [GCHQ](https://github.com/gchq/CyberChef).
 
-By running this server, you enable AI assistants (like Claude, Cursor AI, and others) to natively utilize CyberChef's extensive library of 300+ data manipulation operations—including encryption, encoding, compression, and forensic analysis—as executable tools.
+By running this server, you enable AI assistants (like Claude, Cursor AI, and others) to natively utilize CyberChef's extensive library of 463+ data manipulation operations—including encryption, encoding, compression, and forensic analysis—as executable tools.
 
 **Latest Release:** v1.3.0 | [Release Notes](docs/releases/v1.3.0.md) | [Security Policy](SECURITY.md)
 
@@ -28,7 +28,7 @@ This fork wraps the core CyberChef Node.js API into an MCP server, bridging the 
 The server exposes CyberChef operations as MCP tools:
 
 *   **`cyberchef_bake`**: The "Omni-tool". Executes a full CyberChef recipe (a chain of operations) on an input. Ideal for complex, multi-step transformations (e.g., "Decode Base64, then Gunzip, then prettify JSON").
-*   **Atomic Operations**: Over 300 individual tools for specific tasks, dynamically generated from the CyberChef configuration.
+*   **Atomic Operations**: 463 individual tools for specific tasks, dynamically generated from the CyberChef configuration.
     *   `cyberchef_to_base64` / `cyberchef_from_base64`
     *   `cyberchef_aes_decrypt`
     *   `cyberchef_sha2`
@@ -41,7 +41,8 @@ The server exposes CyberChef operations as MCP tools:
 *   **Stdio Transport**: Communicates via standard input/output, making it easy to integrate with CLI-based MCP clients.
 *   **Schema Validation**: All inputs are validated against schemas derived from CyberChef's internal type system using `zod`.
 *   **Modern Node.js**: Fully compatible with Node.js v22+ with automated compatibility patches.
-*   **Security Hardened** (v1.3.0): Non-root container execution (UID 1001), automated Trivy vulnerability scanning, SBOM generation, read-only filesystem support, OWASP 2024-2025 Argon2 hardening, and nginx:alpine-slim optimization. See [Security Policy](SECURITY.md) for details.
+*   **Upstream Sync Automation** (v1.3.0): Automated monitoring of upstream CyberChef releases every 6 hours, one-click synchronization workflow, comprehensive validation test suite with 465 tool tests, and emergency rollback mechanism.
+*   **Security Hardened** (v1.2.0+): Non-root container execution (UID 1001), automated Trivy vulnerability scanning, SBOM generation, read-only filesystem support, OWASP 2024-2025 Argon2 hardening, and nginx:alpine-slim optimization. See [Security Policy](SECURITY.md) for details.
 *   **Production Ready**: Comprehensive CI/CD with CodeQL v4, automated testing, and container image publishing to GHCR.
 
 ## Quick Start
@@ -250,12 +251,21 @@ If you want to modify the server code without Docker:
 
 ### CI/CD
 This project uses GitHub Actions to ensure stability and security:
+
+**Core Development Workflows:**
 *   **Core CI** ([`core-ci.yml`](.github/workflows/core-ci.yml)): Tests the underlying CyberChef logic and configuration generation on Node.js v22
 *   **Docker Build** ([`mcp-docker-build.yml`](.github/workflows/mcp-docker-build.yml)): Builds, verifies, and security scans the `cyberchef-mcp` Docker image
-*   **Security Scan** ([`security-scan.yml`](.github/workflows/security-scan.yml)): Trivy vulnerability scanning, SBOM generation, weekly scheduled scans
-*   **Release** ([`mcp-release.yml`](.github/workflows/mcp-release.yml)): Publishes Docker image to GHCR with SBOM attachment on version tags (`v*`), automatically creates GitHub releases
-*   **CodeQL Analysis** ([`codeql.yml`](.github/workflows/codeql.yml)): Automated security scanning for code vulnerabilities (CodeQL v4)
 *   **Pull Request Checks** ([`pull_requests.yml`](.github/workflows/pull_requests.yml)): Automated testing and validation for pull requests
+
+**Security & Release Workflows:**
+*   **Security Scan** ([`security-scan.yml`](.github/workflows/security-scan.yml)): Trivy vulnerability scanning, SBOM generation, weekly scheduled scans
+*   **CodeQL Analysis** ([`codeql.yml`](.github/workflows/codeql.yml)): Automated security scanning for code vulnerabilities (CodeQL v4)
+*   **Release** ([`mcp-release.yml`](.github/workflows/mcp-release.yml)): Publishes Docker image to GHCR with SBOM attachment on version tags (`v*`), automatically creates GitHub releases
+
+**Upstream Sync Automation (v1.3.0):**
+*   **Upstream Monitor** ([`upstream-monitor.yml`](.github/workflows/upstream-monitor.yml)): Monitors GCHQ/CyberChef for new releases every 6 hours, creates GitHub issues for review
+*   **Upstream Sync** ([`upstream-sync.yml`](.github/workflows/upstream-sync.yml)): Automated synchronization workflow with merge, config regeneration, testing, and PR creation
+*   **Rollback** ([`rollback.yml`](.github/workflows/rollback.yml)): Emergency rollback mechanism for reverting problematic upstream merges
 
 All workflows use the latest CodeQL Action v4 for security scanning and SARIF upload.
 
@@ -263,6 +273,9 @@ All workflows use the latest CodeQL Action v4 for security scanning and SARIF up
 ```bash
 # Run all tests (requires Node.js 22+)
 npm test
+
+# Run MCP validation test suite (465 tool tests with Vitest)
+npm run test:mcp
 
 # Test Node.js consumer compatibility
 npm run testnodeconsumer
