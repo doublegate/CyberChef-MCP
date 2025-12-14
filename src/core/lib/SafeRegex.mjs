@@ -65,7 +65,7 @@ export function validateRegexPattern(pattern, flags = "") {
         // Use a timeout to detect catastrophic backtracking
         const testString = "a".repeat(100);
         // Filter to only standard RegExp flags for validation
-        const standardFlags = flags.replace(/[^gimsuvy]/g, '');
+        const standardFlags = flags.replace(/[^gimsuvy]/g, "");
         const regex = new RegExp(pattern, standardFlags);
 
         const startTime = Date.now();
