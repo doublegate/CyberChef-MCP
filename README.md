@@ -361,6 +361,8 @@ Detailed documentation can be found in the [`docs/`](docs/) directory:
 *   [**Security Audit**](docs/security/audit.md): Comprehensive security assessment
 *   [**Security Fixes Report**](SECURITY_FIX_REPORT.md): Detailed report of 11 vulnerability fixes (ReDoS and cryptographic weaknesses)
 *   [**Security Fixes Summary**](SECURITY_FIXES_SUMMARY.md): Quick reference for recent security improvements
+*   [**Release Notes v1.4.2**](docs/releases/v1.4.2.md): CI/CD improvements and zero-warning workflows
+*   [**Release Notes v1.4.1**](docs/releases/v1.4.1.md): Security patch - 11 Code Scanning vulnerabilities fixed
 *   [**Release Notes v1.4.0**](docs/releases/v1.4.0.md): Performance optimization with caching, streaming, and resource limits
 *   [**Performance Tuning Guide**](docs/performance-tuning.md): Configuration guide for optimizing performance
 *   [**Release Notes v1.3.0**](docs/releases/v1.3.0.md): Upstream sync automation with comprehensive testing

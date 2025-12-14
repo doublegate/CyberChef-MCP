@@ -5,6 +5,22 @@ All notable changes to the CyberChef MCP Server project will be documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Dependencies**: Resolved critical npm install failure caused by incompatible overrides
+  - Removed problematic `rimraf@>=5.0.0` override that broke `grunt-contrib-clean` (rimraf v5+ has incompatible API)
+  - Removed `inflight@>=2.0.0` override (version 2.0.0 does not exist)
+  - Removed `glob@>=10.0.0` override (was conflicting with transitive dependencies)
+- **Dependencies**: Removed unused `@babel/polyfill` dependency (not imported anywhere in source code)
+- **Dependencies**: Added `glob@^10.5.0` as direct devDependency (required by Gruntfile.js)
+- **Node.js**: Package-lock regenerated with Node.js 22 for full compatibility
+
+### Testing
+- All 1,933 unit tests passing (1,716 operation tests + 217 Node API tests)
+- CJS and ESM consumer tests passing
+- npm install succeeds without errors on Node.js 22
+
 ## [1.4.2] - 2025-12-14
 
 ### Changed
@@ -21,11 +37,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Applied to `core-ci.yml` and `performance-benchmarks.yml` workflows
 - **CI/CD**: Added git default branch configuration (`git config --global init.defaultBranch master`) to suppress Git 3.0 deprecation hints
   - Applied to all 5 workflow files (9 jobs total): `core-ci.yml`, `mcp-docker-build.yml`, `mcp-release.yml`, `performance-benchmarks.yml`, `security-scan.yml`
-- **Dependencies**: Added npm overrides to eliminate deprecation warnings:
-  - `glob@>=10.0.0` - Eliminates glob deprecation warnings
-  - `rimraf@>=5.0.0` - Eliminates rimraf deprecation warnings
-  - `inflight@>=2.0.0` - Eliminates inflight deprecation warnings
-- All GitHub Actions workflows now run with zero warnings
+
+### Known Issues
+- npm deprecation warnings remain for transitive dependencies that cannot be updated without breaking changes:
+  - `bootstrap@4.6.2`, `bootstrap-colorpicker@3.4.0`, `popper.js@1.16.1` (web UI dependencies)
+  - `glob@7.x/8.x`, `rimraf@2.7.1`, `inflight@1.0.6` (from grunt-contrib-clean and other build tools)
+  - `@astronautlabs/amf@0.0.6` (node ^14 engine warning - informational only, package works on Node 22)
 
 ## [1.4.1] - 2025-12-14
 
