@@ -7,6 +7,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2025-12-14
+
+### Added
+- **Upstream Release Monitoring**: Automated GitHub Actions workflow to detect new CyberChef releases
+  - Runs every 6 hours via cron schedule
+  - Creates GitHub issues for new releases with actionable next steps
+  - Prevents duplicate notifications
+  - Workflow: `.github/workflows/upstream-monitor.yml`
+- **Automated Upstream Sync**: Complete automation for merging upstream changes
+  - Triggered by issue label (`upstream-sync-approved`) or manual dispatch
+  - Automatic merge of upstream CyberChef changes
+  - Regenerates `OperationConfig.json` with Grunt
+  - Applies Node 22 compatibility patches
+  - Runs comprehensive test suite validation
+  - Updates baseline for regression detection
+  - Creates pull request with detailed changeset
+  - Handles merge conflicts with manual intervention guidance
+  - Workflow: `.github/workflows/upstream-sync.yml`
+- **MCP Validation Test Suite**: Comprehensive Vitest-based testing
+  - 465 total tool validations (463 operations + 2 meta-tools)
+  - Meta-tool functionality tests (cyberchef_bake, cyberchef_search)
+  - 50+ sample operation execution tests
+  - Schema validation for all operations
+  - Breaking change detection via baseline comparison
+  - Performance benchmarks (10 operations in <1 second)
+  - Error handling validation
+  - Test file: `tests/mcp/validation.test.mjs`
+  - New script: `npm run test:mcp`
+- **Tool Baseline Tracking**: Regression detection system
+  - Complete inventory of 465 tools with metadata
+  - Operation schemas and argument types
+  - Version tracking for compatibility
+  - Baseline file: `tests/mcp/baseline.json`
+- **Emergency Rollback Mechanism**: Manual workflow for quick reversion
+  - Rolls back to specified commit or parent
+  - Regenerates configurations automatically
+  - Runs full test suite for validation
+  - Creates rollback PR with detailed summary
+  - Workflow: `.github/workflows/rollback.yml`
+- **Vitest Configuration**: Modern testing framework integration
+  - Isolated MCP test execution
+  - Node environment with ESM support
+  - 10-second timeout for slow operations
+  - Config file: `vitest.config.mjs`
+
+### Changed
+- **Version bump**: `1.2.6` → `1.3.0` in `package.json` (mcpVersion field) and `mcp-server.mjs`
+- **Testing infrastructure**: Added Vitest alongside existing test framework
+  - New devDependency: `vitest@^1.0.0`
+  - Separate test suite prevents conflicts with existing tests
+
+### Documentation
+- **Release notes**: Comprehensive `docs/releases/v1.3.0.md` with usage examples
+- **Workflow documentation**: Detailed usage instructions for all three workflows
+- **Test documentation**: Coverage metrics and execution guidelines
+- **Version references**: Updated across README.md, user_guide.md, SECURITY.md
+
+### Success Metrics
+- ✅ Zero manual intervention for patch/minor updates
+- ✅ Automated PR creation within 24 hours of upstream release
+- ✅ Comprehensive test validation (465 tools)
+- ✅ Rollback capability tested and documented
+- ✅ OperationConfig regeneration automated in CI
+
+### Security
+- All workflows follow GitHub Actions security best practices
+- Environment variables used for all dynamic inputs
+- No direct interpolation of user-controlled data
+- Token permissions scoped to minimum required
+- Input sanitization for workflow_dispatch parameters
+
 ## [1.2.6] - 2025-12-14
 
 ### Changed

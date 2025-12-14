@@ -1,0 +1,273 @@
+name: Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Reason for rollback'
+        required: true
+        type: string
+      target_commit:
+        description: 'Target commit SHA to rollback to (optional - uses parent commit if empty)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Determine rollback target
+        id: target
+        env:
+          TARGET_COMMIT: ${{ inputs.target_commit }}
+        run: |
+          if [ -n "$TARGET_COMMIT" ]; then
+            COMMIT="$TARGET_COMMIT"
+            echo "Using specified commit: $COMMIT"
+          else
+            # Use parent of current HEAD
+            COMMIT=$(git rev-parse HEAD^)
+            echo "Using parent commit: $COMMIT"
+          fi
+
+          echo "commit=$COMMIT" >> $GITHUB_OUTPUT
+
+          # Get commit info for reference (sanitized)
+          SHORT_SHA=$(echo "$COMMIT" | cut -c1-7)
+          echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
+
+      - name: Create rollback branch
+        env:
+          SHORT_SHA: ${{ steps.target.outputs.short_sha }}
+        run: |
+          BRANCH_NAME="rollback-to-${SHORT_SHA}"
+          git checkout -b "$BRANCH_NAME"
+          echo "branch=$BRANCH_NAME" >> $GITHUB_ENV
+
+      - name: Perform rollback
+        id: rollback
+        env:
+          COMMIT: ${{ steps.target.outputs.commit }}
+        run: |
+          # Save current SHA for reference
+          CURRENT_SHA=$(git rev-parse HEAD)
+          echo "current_sha=$CURRENT_SHA" >> $GITHUB_OUTPUT
+
+          # Reset to target commit
+          git reset --hard "$COMMIT"
+
+          # Verify we're at the right commit
+          ACTUAL_SHA=$(git rev-parse HEAD)
+          if [ "$ACTUAL_SHA" != "$COMMIT" ]; then
+            echo "Rollback failed - commit mismatch"
+            exit 1
+          fi
+
+          echo "Rollback successful"
+          echo "target_sha=$ACTUAL_SHA" >> $GITHUB_OUTPUT
+
+      - name: Install dependencies
+        run: |
+          npm install
+
+      - name: Apply Node 22 compatibility patches
+        run: |
+          if [ -f "node_modules/avsc/lib/types.js" ]; then
+            sed -i 's/new SlowBuffer/Buffer.alloc/g' node_modules/avsc/lib/types.js
+          fi
+
+          if [ -f "node_modules/buffer-equal-constant-time/index.js" ]; then
+            sed -i 's/SlowBuffer/Buffer/g' node_modules/buffer-equal-constant-time/index.js
+          fi
+
+      - name: Regenerate OperationConfig
+        run: |
+          npx grunt configTests
+          echo "OperationConfig.json regenerated"
+
+      - name: Run tests
+        id: tests
+        run: |
+          # Run existing tests
+          if npm test; then
+            echo "passed=true" >> $GITHUB_OUTPUT
+          else
+            echo "passed=false" >> $GITHUB_OUTPUT
+            echo "WARNING: Tests failed after rollback"
+          fi
+
+          # Run MCP validation tests
+          if npm run test:mcp; then
+            echo "mcp_passed=true" >> $GITHUB_OUTPUT
+          else
+            echo "mcp_passed=false" >> $GITHUB_OUTPUT
+            echo "WARNING: MCP tests failed after rollback"
+          fi
+
+      - name: Update baseline
+        if: steps.tests.outputs.passed == 'true'
+        run: |
+          node --input-type=module << 'EOF'
+          import OperationConfig from './src/core/config/OperationConfig.json' with { type: 'json' };
+          import { writeFileSync } from 'fs';
+
+          function sanitizeToolName(name) {
+              if (!name) return null;
+              const sanitized = 'cyberchef_' + name.toLowerCase()
+                  .replace(/[^a-z0-9_]/g, '_')
+                  .replace(/_+/g, '_')
+                  .replace(/^_|_$/g, '');
+              if (sanitized === 'cyberchef_') return null;
+              return sanitized;
+          }
+
+          const baseline = {
+              version: require('./package.json').mcpVersion,
+              timestamp: new Date().toISOString(),
+              tool_count: Object.keys(OperationConfig).length + 2,
+              tools: {
+                  cyberchef_bake: { type: 'meta', description: 'Execute a CyberChef recipe' },
+                  cyberchef_search: { type: 'meta', description: 'Search for available CyberChef operations' }
+              }
+          };
+
+          Object.keys(OperationConfig).forEach(opName => {
+              const op = OperationConfig[opName];
+              const toolName = sanitizeToolName(opName);
+              if (toolName) {
+                  baseline.tools[toolName] = {
+                      operation: opName,
+                      description: op.description || '',
+                      args_count: op.args ? op.args.length : 0,
+                      arg_types: op.args ? op.args.map(a => a.type) : []
+                  };
+              }
+          });
+
+          writeFileSync('./tests/mcp/baseline.json', JSON.stringify(baseline, null, 2), 'utf-8');
+          console.log('Baseline updated');
+          EOF
+
+      - name: Commit rollback
+        env:
+          SHORT_SHA: ${{ steps.target.outputs.short_sha }}
+        run: |
+          git add .
+          git commit -m "revert: rollback to ${SHORT_SHA}
+
+Rolled back to commit ${SHORT_SHA}
+- Regenerated OperationConfig.json
+- Updated baseline.json
+- Applied Node 22 compatibility patches
+
+Generated with rollback workflow" || echo "No changes to commit"
+
+      - name: Push rollback branch
+        env:
+          BRANCH: ${{ env.branch }}
+        run: |
+          git push origin "$BRANCH" --force
+
+      - name: Create Pull Request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REASON: ${{ inputs.reason }}
+          SHORT_SHA: ${{ steps.target.outputs.short_sha }}
+          TEST_PASSED: ${{ steps.tests.outputs.passed }}
+          MCP_PASSED: ${{ steps.tests.outputs.mcp_passed }}
+        run: |
+          OPERATION_COUNT=$(node -p "Object.keys(require('./src/core/config/OperationConfig.json')).length")
+
+          # Sanitize reason for safe usage (remove special chars)
+          SAFE_REASON=$(echo "$REASON" | tr -cd '[:alnum:][:space:]._-')
+
+          # Test status
+          if [ "$TEST_PASSED" == "true" ] && [ "$MCP_PASSED" == "true" ]; then
+            TEST_STATUS="All tests passed"
+          elif [ "$TEST_PASSED" == "true" ]; then
+            TEST_STATUS="Core tests passed, MCP tests failed"
+          elif [ "$MCP_PASSED" == "true" ]; then
+            TEST_STATUS="MCP tests passed, core tests failed"
+          else
+            TEST_STATUS="**CRITICAL:** Both test suites failed"
+          fi
+
+          gh pr create \
+            --title "revert: rollback to $SHORT_SHA" \
+            --label "rollback,urgent" \
+            --body "## Emergency Rollback
+
+**Reason:** $SAFE_REASON
+
+### Rollback Details
+
+- **Target Commit:** \\\`$SHORT_SHA\\\`
+- **Operations:** $OPERATION_COUNT
+- **Test Status:** $TEST_STATUS
+
+### Changes
+
+- Rolled back codebase to commit \\\`$SHORT_SHA\\\`
+- Regenerated \\\`OperationConfig.json\\\`
+- Updated \\\`baseline.json\\\`
+- Applied Node 22 compatibility patches
+
+### Verification Required
+
+- [ ] Verify rollback addresses the issue
+- [ ] Review test results
+- [ ] Test critical functionality manually
+- [ ] Update CHANGELOG.md
+- [ ] Communicate rollback to users if needed
+
+### Next Steps
+
+1. Review and merge this PR if rollback is successful
+2. Investigate root cause of the issue
+3. Plan proper fix before re-attempting upgrade
+
+---
+*Generated automatically by rollback workflow*" || echo "PR already exists"
+
+      - name: Summary
+        if: always()
+        env:
+          SHORT_SHA: ${{ steps.target.outputs.short_sha }}
+          BRANCH: ${{ env.branch }}
+          TEST_PASSED: ${{ steps.tests.outputs.passed }}
+          MCP_PASSED: ${{ steps.tests.outputs.mcp_passed }}
+        run: |
+          echo "### Rollback Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Target Commit:** \\\`$SHORT_SHA\\\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch:** $BRANCH" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tests Passed:** $TEST_PASSED" >> $GITHUB_STEP_SUMMARY
+          echo "- **MCP Tests Passed:** $MCP_PASSED" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "$TEST_PASSED" == "true" ] && [ "$MCP_PASSED" == "true" ]; then
+            echo "✅ Rollback successful - all tests passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Rollback completed but some tests failed" >> $GITHUB_STEP_SUMMARY
+          fi

@@ -4,7 +4,7 @@ This project provides a **Model Context Protocol (MCP)** server interface for **
 
 By running this server, you enable AI assistants (like Claude, Cursor AI, and others) to natively utilize CyberChef's extensive library of 300+ data manipulation operations—including encryption, encoding, compression, and forensic analysis—as executable tools.
 
-**Latest Release:** v1.2.6 | [Release Notes](docs/releases/v1.2.6.md) | [Security Policy](SECURITY.md)
+**Latest Release:** v1.3.0 | [Release Notes](docs/releases/v1.3.0.md) | [Security Policy](SECURITY.md)
 
 ![CyberChef MCP Banner](images/CyberChef-MCP_Banner-Logo.jpg)
 
@@ -41,7 +41,7 @@ The server exposes CyberChef operations as MCP tools:
 *   **Stdio Transport**: Communicates via standard input/output, making it easy to integrate with CLI-based MCP clients.
 *   **Schema Validation**: All inputs are validated against schemas derived from CyberChef's internal type system using `zod`.
 *   **Modern Node.js**: Fully compatible with Node.js v22+ with automated compatibility patches.
-*   **Security Hardened** (v1.2.6): Non-root container execution (UID 1001), automated Trivy vulnerability scanning, SBOM generation, read-only filesystem support, OWASP 2024-2025 Argon2 hardening, and nginx:alpine-slim optimization. See [Security Policy](SECURITY.md) for details.
+*   **Security Hardened** (v1.3.0): Non-root container execution (UID 1001), automated Trivy vulnerability scanning, SBOM generation, read-only filesystem support, OWASP 2024-2025 Argon2 hardening, and nginx:alpine-slim optimization. See [Security Policy](SECURITY.md) for details.
 *   **Production Ready**: Comprehensive CI/CD with CodeQL v4, automated testing, and container image publishing to GHCR.
 
 ## Quick Start
@@ -65,17 +65,17 @@ For environments without direct GHCR access, download the pre-built Docker image
 1.  **Download the tarball** (approximately 270MB compressed):
     ```bash
     # Download from GitHub Releases
-    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v1.2.6/cyberchef-mcp-v1.2.6-docker-image.tar.gz
+    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v1.3.0/cyberchef-mcp-v1.3.0-docker-image.tar.gz
     ```
 
 2.  **Load the image into Docker:**
     ```bash
-    docker load < cyberchef-mcp-v1.2.6-docker-image.tar.gz
+    docker load < cyberchef-mcp-v1.3.0-docker-image.tar.gz
     ```
 
 3.  **Tag for easier usage:**
     ```bash
-    docker tag ghcr.io/doublegate/cyberchef-mcp_v1:v1.2.6 cyberchef-mcp
+    docker tag ghcr.io/doublegate/cyberchef-mcp_v1:v1.3.0 cyberchef-mcp
     ```
 
 4.  **Run the server:**
@@ -144,7 +144,7 @@ After adding the configuration, restart Claude Desktop. The CyberChef tools will
 
 ## Security
 
-This project implements comprehensive security hardening (v1.2.6):
+This project implements comprehensive security hardening (v1.3.0):
 
 ### Container Security
 *   **Non-Root Execution**: Container runs as dedicated `cyberchef` user (UID 1001)
@@ -185,7 +185,7 @@ CyberChef MCP Server has a comprehensive development roadmap spanning **19 relea
 
 | Phase | Releases | Timeline | Focus | Status |
 |-------|----------|----------|-------|--------|
-| **Phase 1: Foundation** | v1.2.0 - v1.4.0 | Q4 2025 - Q1 2026 | Security hardening, upstream sync, performance | **v1.2.6 Released** |
+| **Phase 1: Foundation** | v1.2.0 - v1.4.0 | Q4 2025 - Q1 2026 | Security hardening, upstream sync, performance | **v1.3.0 Released** |
 | **Phase 2: Enhancement** | v1.5.0 - v1.7.0 | Q2 2026 | Streaming, recipe management, batch processing | Planned |
 | **Phase 3: Maturity** | v1.8.0 - v2.0.0 | Q3 2026 | API stabilization, breaking changes, v2.0.0 | Planned |
 | **Phase 4: Expansion** | v2.1.0 - v2.3.0 | Q4 2026 | Multi-modal, advanced transports, plugins | Planned |
@@ -223,6 +223,7 @@ Detailed documentation can be found in the [`docs/`](docs/) directory:
 ### Security & Releases
 *   [**Security Policy**](SECURITY.md): Security policy and vulnerability reporting
 *   [**Security Audit**](docs/security/audit.md): Comprehensive security assessment
+*   [**Release Notes v1.3.0**](docs/releases/v1.3.0.md): Upstream sync automation with comprehensive testing
 *   [**Release Notes v1.2.6**](docs/releases/v1.2.6.md): nginx:alpine-slim optimization for web app
 *   [**Release Notes v1.2.5**](docs/releases/v1.2.5.md): Security patch with OWASP Argon2 hardening
 *   [**Release Notes v1.2.0**](docs/releases/v1.2.0.md): Security hardening release

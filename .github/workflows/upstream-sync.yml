@@ -1,0 +1,314 @@
+name: Upstream Sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_version:
+        description: 'Target CyberChef version (e.g., v10.19.5)'
+        required: false
+        type: string
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  sync:
+    # Only run if manually triggered OR if issue labeled with 'upstream-sync-approved'
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issues' && github.event.label.name == 'upstream-sync-approved')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Add upstream remote
+        run: |
+          git remote add upstream https://github.com/gchq/CyberChef.git || true
+          git fetch upstream --tags
+
+      - name: Determine target version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.target_version }}
+        run: |
+          if [ -n "$INPUT_VERSION" ]; then
+            TARGET="$INPUT_VERSION"
+            echo "Using manual target: $TARGET"
+          else
+            # Get latest upstream release
+            TARGET=$(git describe --tags --abbrev=0 upstream/master)
+            echo "Using latest upstream: $TARGET"
+          fi
+
+          echo "target=$TARGET" >> $GITHUB_OUTPUT
+          echo "Target version: $TARGET"
+
+      - name: Create sync branch
+        env:
+          TARGET: ${{ steps.version.outputs.target }}
+        run: |
+          BRANCH_NAME="upstream-sync-${TARGET}"
+          git checkout -b "$BRANCH_NAME"
+          echo "branch=$BRANCH_NAME" >> $GITHUB_ENV
+
+      - name: Merge upstream changes
+        id: merge
+        env:
+          TARGET: ${{ steps.version.outputs.target }}
+        run: |
+          # Attempt to merge upstream tag
+          if git merge "$TARGET" --no-edit -m "chore(upstream): merge CyberChef $TARGET"; then
+            echo "status=success" >> $GITHUB_OUTPUT
+            echo "Merge successful"
+          else
+            echo "status=conflict" >> $GITHUB_OUTPUT
+            echo "Merge conflicts detected"
+
+            # Create conflict report
+            git status > /tmp/merge-conflicts.txt
+            echo "conflicts=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Apply Node 22 compatibility patches
+        if: steps.merge.outputs.status == 'success'
+        run: |
+          # Apply SlowBuffer patches for Node 22 compatibility
+          npm install || true
+
+          if [ -f "node_modules/avsc/lib/types.js" ]; then
+            sed -i 's/new SlowBuffer/Buffer.alloc/g' node_modules/avsc/lib/types.js
+            echo "Applied avsc patch"
+          fi
+
+          if [ -f "node_modules/buffer-equal-constant-time/index.js" ]; then
+            sed -i 's/SlowBuffer/Buffer/g' node_modules/buffer-equal-constant-time/index.js
+            echo "Applied buffer-equal-constant-time patch"
+          fi
+
+      - name: Regenerate OperationConfig
+        if: steps.merge.outputs.status == 'success'
+        run: |
+          npx grunt configTests
+          echo "OperationConfig.json regenerated"
+
+          # Show stats
+          OPERATION_COUNT=$(node -p "Object.keys(require('./src/core/config/OperationConfig.json')).length")
+          echo "Total operations: $OPERATION_COUNT"
+
+      - name: Run tests
+        if: steps.merge.outputs.status == 'success'
+        id: tests
+        run: |
+          # Run existing tests
+          npm test || echo "test_failed=true" >> $GITHUB_OUTPUT
+
+          # Run MCP validation tests
+          npm run test:mcp || echo "mcp_test_failed=true" >> $GITHUB_OUTPUT
+
+      - name: Update baseline
+        if: steps.merge.outputs.status == 'success' && steps.tests.outputs.test_failed != 'true'
+        run: |
+          # Regenerate baseline with new tool inventory
+          node --input-type=module << 'EOF'
+          import OperationConfig from './src/core/config/OperationConfig.json' with { type: 'json' };
+          import { writeFileSync } from 'fs';
+
+          function sanitizeToolName(name) {
+              if (!name) return null;
+              const sanitized = 'cyberchef_' + name.toLowerCase()
+                  .replace(/[^a-z0-9_]/g, '_')
+                  .replace(/_+/g, '_')
+                  .replace(/^_|_$/g, '');
+              if (sanitized === 'cyberchef_') return null;
+              return sanitized;
+          }
+
+          const baseline = {
+              version: require('./package.json').mcpVersion,
+              timestamp: new Date().toISOString(),
+              tool_count: Object.keys(OperationConfig).length + 2,
+              tools: {
+                  cyberchef_bake: { type: 'meta', description: 'Execute a CyberChef recipe' },
+                  cyberchef_search: { type: 'meta', description: 'Search for available CyberChef operations' }
+              }
+          };
+
+          Object.keys(OperationConfig).forEach(opName => {
+              const op = OperationConfig[opName];
+              const toolName = sanitizeToolName(opName);
+              if (toolName) {
+                  baseline.tools[toolName] = {
+                      operation: opName,
+                      description: op.description || '',
+                      args_count: op.args ? op.args.length : 0,
+                      arg_types: op.args ? op.args.map(a => a.type) : []
+                  };
+              }
+          });
+
+          writeFileSync('./tests/mcp/baseline.json', JSON.stringify(baseline, null, 2), 'utf-8');
+          console.log('Baseline updated:', baseline.tool_count, 'tools');
+          EOF
+
+      - name: Commit changes
+        if: steps.merge.outputs.status == 'success'
+        env:
+          TARGET: ${{ steps.version.outputs.target }}
+        run: |
+          git add .
+          git commit -m "chore(upstream): sync with CyberChef $TARGET
+
+- Merged upstream changes from $TARGET
+- Regenerated OperationConfig.json
+- Updated baseline.json
+- Applied Node 22 compatibility patches
+
+Generated with upstream-sync workflow" || echo "No changes to commit"
+
+      - name: Push branch
+        if: steps.merge.outputs.status == 'success'
+        env:
+          BRANCH: ${{ env.branch }}
+        run: |
+          git push origin "$BRANCH" --force
+
+      - name: Create Pull Request
+        if: steps.merge.outputs.status == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET: ${{ steps.version.outputs.target }}
+          TEST_STATUS: ${{ steps.tests.outputs.test_failed }}
+          MCP_TEST_STATUS: ${{ steps.tests.outputs.mcp_test_failed }}
+        run: |
+          OPERATION_COUNT=$(node -p "Object.keys(require('./src/core/config/OperationConfig.json')).length")
+
+          # Determine test status message
+          if [ "$TEST_STATUS" == "true" ] || [ "$MCP_TEST_STATUS" == "true" ]; then
+            TEST_MSG="**WARNING:** Some tests failed. Review carefully before merging."
+          else
+            TEST_MSG="All tests passed successfully."
+          fi
+
+          gh pr create \
+            --title "chore(upstream): sync with CyberChef $TARGET" \
+            --label "upstream-sync,automated" \
+            --body "## Upstream Sync: $TARGET
+
+This PR synchronizes with upstream CyberChef release **$TARGET**.
+
+### Changes
+
+- Merged upstream changes from \\\`$TARGET\\\`
+- Regenerated \\\`OperationConfig.json\\\` ($OPERATION_COUNT operations)
+- Updated \\\`baseline.json\\\` for regression testing
+- Applied Node 22 compatibility patches
+
+### Test Results
+
+$TEST_MSG
+
+### Verification
+
+- [ ] Review upstream changelog for breaking changes
+- [ ] Verify all tests pass
+- [ ] Test critical MCP operations manually
+- [ ] Update CHANGELOG.md if needed
+- [ ] Update version in package.json if needed
+
+### Rollback
+
+If issues are found, use the rollback workflow:
+\\\`\\\`\\\`bash
+gh workflow run rollback.yml -f reason=\"Issues with $TARGET sync\"
+\\\`\\\`\\\`
+
+---
+*Generated automatically by upstream-sync workflow*" || echo "PR already exists"
+
+      - name: Handle merge conflicts
+        if: steps.merge.outputs.status == 'conflict'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET: ${{ steps.version.outputs.target }}
+          EVENT_NAME: ${{ github.event_name }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          BRANCH: ${{ env.branch }}
+        run: |
+          # Comment on the issue about conflicts
+          if [ "$EVENT_NAME" == "issues" ]; then
+            gh issue comment "$ISSUE_NUMBER" \
+              --body "## Merge Conflicts Detected
+
+Automatic sync with **$TARGET** failed due to merge conflicts.
+
+### Manual Intervention Required
+
+1. Checkout the branch:
+   \\\`\\\`\\\`bash
+   git fetch origin
+   git checkout $BRANCH
+   \\\`\\\`\\\`
+
+2. Resolve conflicts manually
+
+3. Complete the sync:
+   \\\`\\\`\\\`bash
+   npm install
+   npx grunt configTests
+   npm test
+   npm run test:mcp
+   git add .
+   git commit
+   git push origin $BRANCH
+   \\\`\\\`\\\`
+
+4. Create PR manually
+
+### Conflict Files
+
+See workflow logs for details.
+
+---
+*Generated by upstream-sync workflow*"
+          fi
+
+          echo "Merge conflicts require manual resolution"
+          exit 1
+
+      - name: Summary
+        if: always()
+        env:
+          STATUS: ${{ steps.merge.outputs.status }}
+          TARGET: ${{ steps.version.outputs.target }}
+          BRANCH: ${{ env.branch }}
+        run: |
+          echo "### Upstream Sync Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Target Version:** $TARGET" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch:** $BRANCH" >> $GITHUB_STEP_SUMMARY
+          echo "- **Merge Status:** $STATUS" >> $GITHUB_STEP_SUMMARY
+
+          if [ "$STATUS" == "success" ]; then
+            echo "- **Result:** Pull request created" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **Result:** Manual intervention required" >> $GITHUB_STEP_SUMMARY
+          fi

@@ -33,7 +33,7 @@ Report to the upstream project:
 - **Resolution**: Critical issues within 30 days
 - **Disclosure**: Coordinated after fix is available
 
-## Security Measures (v1.2.6)
+## Security Measures (v1.3.0)
 
 ### Container Security
 
@@ -71,6 +71,7 @@ Results are uploaded to the GitHub Security tab automatically.
 
 ### Security Audits
 
+- **v1.3.0**: Upstream sync automation, comprehensive MCP validation testing, GitHub Actions security best practices
 - **v1.2.6**: Web app Dockerfile nginx:alpine-slim optimization with non-root permission fixes
 - **v1.2.5**: 5 GitHub Security alerts resolved, Argon2 OWASP 2024-2025 hardening, CVE-2025-64756 fixed
 - **v1.2.0**: Non-root execution, Trivy integration, SBOM generation
