@@ -393,12 +393,19 @@ class OutputWaiter {
                     const attr = scriptElements[i].attributes[j];
                     if (OutputWaiter.SAFE_SCRIPT_ATTRIBUTES.includes(attr.name)) {
                         // Validate attribute values to prevent injection
-                        const attrValue = attr.value;
-                        // Block javascript: protocol and potential XSS vectors
-                        if (attrValue && !attrValue.toLowerCase().includes("javascript:") &&
-                            !attrValue.toLowerCase().includes("data:") &&
-                            !attrValue.toLowerCase().includes("vbscript:")) {
-                            newScript.setAttribute(attr.name, attrValue);
+                        const attrValue = attr.value ? attr.value.toLowerCase() : "";
+                        // Block dangerous protocols and URL-encoded variants
+                        const dangerousProtocols = ["javascript:", "data:", "vbscript:", "blob:", "file:", "ftp:"];
+                        const isDangerous = dangerousProtocols.some(proto => {
+                            // Check for direct protocol
+                            if (attrValue.startsWith(proto)) return true;
+                            // Check for URL-encoded variants (e.g., %6a%61%76%61 = java)
+                            if (attrValue.includes(encodeURIComponent(proto))) return true;
+                            return false;
+                        });
+
+                        if (!isDangerous && attr.value) {
+                            newScript.setAttribute(attr.name, attr.value);
                         }
                     }
                 }
