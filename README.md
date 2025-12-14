@@ -37,12 +37,12 @@ The server exposes CyberChef operations as MCP tools:
 *   **`cyberchef_search`**: A utility tool to help the AI discover available operations and their descriptions.
 
 ### Technical Highlights
-*   **Dockerized**: Runs as a lightweight, self-contained Docker container based on Alpine Linux with Node.js 22.
+*   **Dockerized**: Runs as a lightweight, self-contained Docker container based on Alpine Linux with Node.js 22 (~270MB compressed).
 *   **Stdio Transport**: Communicates via standard input/output, making it easy to integrate with CLI-based MCP clients.
 *   **Schema Validation**: All inputs are validated against schemas derived from CyberChef's internal type system using `zod`.
 *   **Modern Node.js**: Fully compatible with Node.js v22+ with automated compatibility patches.
-*   **Security Hardened**: Non-root container execution (UID 1001), automated Trivy vulnerability scanning, SBOM generation, and read-only filesystem support. See [Security Policy](SECURITY.md) for details.
-*   **Production Ready**: Includes comprehensive CI/CD pipelines, automated testing, and container image publishing to GHCR.
+*   **Security Hardened** (v1.2.0+): Non-root container execution (UID 1001), automated Trivy vulnerability scanning, SBOM generation, and read-only filesystem support. See [Security Policy](SECURITY.md) for details.
+*   **Production Ready**: Comprehensive CI/CD with CodeQL v4, automated testing, and container image publishing to GHCR.
 
 ## Quick Start
 
@@ -167,16 +167,16 @@ For detailed information, see the [Security Policy](SECURITY.md) and [Security A
 
 ## Project Roadmap
 
-CyberChef MCP Server has a comprehensive development roadmap spanning **19 releases** across **6 phases** from January 2026 through August 2027.
+CyberChef MCP Server has a comprehensive development roadmap spanning **19 releases** across **6 phases** through August 2027.
 
-| Phase | Releases | Timeline | Focus |
-|-------|----------|----------|-------|
-| **Phase 1: Foundation** | v1.2.0 - v1.4.0 | Q1 2026 | Security hardening, upstream sync, performance |
-| **Phase 2: Enhancement** | v1.5.0 - v1.7.0 | Q2 2026 | Streaming, recipe management, batch processing |
-| **Phase 3: Maturity** | v1.8.0 - v2.0.0 | Q3 2026 | API stabilization, breaking changes, v2.0.0 |
-| **Phase 4: Expansion** | v2.1.0 - v2.3.0 | Q4 2026 | Multi-modal, advanced transports, plugins |
-| **Phase 5: Enterprise** | v2.4.0 - v2.6.0 | Q1 2027 | OAuth 2.1, RBAC, Kubernetes, observability |
-| **Phase 6: Evolution** | v2.7.0 - v3.0.0 | Q2-Q3 2027 | Edge deployment, AI-native features, v3.0.0 |
+| Phase | Releases | Timeline | Focus | Status |
+|-------|----------|----------|-------|--------|
+| **Phase 1: Foundation** | v1.2.0 - v1.4.0 | Q4 2025 - Q1 2026 | Security hardening, upstream sync, performance | **v1.2.0 Released** |
+| **Phase 2: Enhancement** | v1.5.0 - v1.7.0 | Q2 2026 | Streaming, recipe management, batch processing | Planned |
+| **Phase 3: Maturity** | v1.8.0 - v2.0.0 | Q3 2026 | API stabilization, breaking changes, v2.0.0 | Planned |
+| **Phase 4: Expansion** | v2.1.0 - v2.3.0 | Q4 2026 | Multi-modal, advanced transports, plugins | Planned |
+| **Phase 5: Enterprise** | v2.4.0 - v2.6.0 | Q1 2027 | OAuth 2.1, RBAC, Kubernetes, observability | Planned |
+| **Phase 6: Evolution** | v2.7.0 - v3.0.0 | Q2-Q3 2027 | Edge deployment, AI-native features, v3.0.0 | Planned |
 
 See the [**Full Roadmap**](docs/ROADMAP.md) for detailed release plans and timelines.
 
@@ -236,9 +236,11 @@ This project uses GitHub Actions to ensure stability and security:
 *   **Core CI** ([`core-ci.yml`](.github/workflows/core-ci.yml)): Tests the underlying CyberChef logic and configuration generation on Node.js v22
 *   **Docker Build** ([`mcp-docker-build.yml`](.github/workflows/mcp-docker-build.yml)): Builds, verifies, and security scans the `cyberchef-mcp` Docker image
 *   **Security Scan** ([`security-scan.yml`](.github/workflows/security-scan.yml)): Trivy vulnerability scanning, SBOM generation, weekly scheduled scans
-*   **Release** ([`mcp-release.yml`](.github/workflows/mcp-release.yml)): Publishes Docker image to GHCR with SBOM attachment on version tags (`v*`)
-*   **CodeQL Analysis** ([`codeql.yml`](.github/workflows/codeql.yml)): Automated security scanning for code vulnerabilities
+*   **Release** ([`mcp-release.yml`](.github/workflows/mcp-release.yml)): Publishes Docker image to GHCR with SBOM attachment on version tags (`v*`), automatically creates GitHub releases
+*   **CodeQL Analysis** ([`codeql.yml`](.github/workflows/codeql.yml)): Automated security scanning for code vulnerabilities (CodeQL v4)
 *   **Pull Request Checks** ([`pull_requests.yml`](.github/workflows/pull_requests.yml)): Automated testing and validation for pull requests
+
+All workflows use the latest CodeQL Action v4 for security scanning and SARIF upload.
 
 ### Testing
 ```bash
@@ -280,6 +282,13 @@ For contributions to the core CyberChef operations, please credit the original [
 *   **MCP Fork**: [doublegate/CyberChef-MCP](https://github.com/doublegate/CyberChef-MCP)
 *   **Container Registry**: [ghcr.io/doublegate/cyberchef-mcp_v1](https://github.com/doublegate/CyberChef-MCP/pkgs/container/cyberchef-mcp_v1)
 *   **Issue Tracker**: [GitHub Issues](https://github.com/doublegate/CyberChef-MCP/issues)
+
+## Support
+
+If you find this project useful, consider supporting its development:
+
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-FFDD00?style=flat&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/doublegate)
+[![Thanks.dev](https://img.shields.io/badge/Thanks.dev-Support-blue)](https://thanks.dev/doublegate)
 
 ## Licensing
 

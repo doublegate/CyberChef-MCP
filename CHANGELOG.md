@@ -7,8 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-- Placeholder for upcoming changes
+*No unreleased changes.*
 
 ## [1.2.0] - 2025-12-14
 
@@ -47,9 +46,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added HEALTHCHECK instruction
 - **mcp-docker-build.yml**: Added Trivy scanning and non-root verification
 - **mcp-release.yml**: Added SBOM generation and attachment to releases
+  - Added automatic GitHub Release creation for version tags
+  - Fixed Docker image tag handling for tarball export (uses `latest` tag)
 - **README.md**: Updated security section with v1.2.0 hardening features
 - **user_guide.md**: Added comprehensive security best practices section
+- **CodeQL Action v3 → v4**: Migrated all workflows from deprecated CodeQL v3 to v4
+  - `codeql.yml`: `init@v4` and `analyze@v4`
+  - `security-scan.yml`: `upload-sarif@v4` (2 occurrences)
+  - `mcp-docker-build.yml`: `upload-sarif@v4`
+  - `mcp-release.yml`: `upload-sarif@v4`
 - Updated all version references from v1.1.0 to v1.2.0
+
+### Fixed
+- **mcp-release.yml**: Fixed Docker image tag mismatch preventing release asset generation
+  - `docker/metadata-action` generates tags without 'v' prefix (e.g., `1.2.0` not `v1.2.0`)
+  - Changed to use `latest` tag for docker pull, save, and Trivy scans
+- **mcp-release.yml**: Fixed missing GitHub Release creation before asset uploads
+  - Workflow now automatically creates release if it doesn't exist
+  - Uses `gh release create` with `--verify-tag` for safety
 
 ### Documentation
 - **Comprehensive product roadmap v1.1.0 to v3.0.0** spanning 19 releases across 6 development phases
