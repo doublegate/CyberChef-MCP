@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.5] - 2025-12-14
+
 ### Security
 - **Fixed 5 GitHub Security code scanning alerts**:
   - **DS026**: Added HEALTHCHECK to original `Dockerfile` (web app) for container orchestration
@@ -30,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **.dockerignore**: Expanded exclusions to prevent unnecessary files in MCP container
   - Excludes original `Dockerfile` to prevent Trivy alerts on web app Dockerfile in MCP container
   - Added IDE, test, and temporary file exclusions for smaller container image
+- Version bump: `1.2.0` → `1.2.5` in `package.json`, `mcp-server.mjs`, and documentation
 
 ## [1.2.0] - 2025-12-14
 

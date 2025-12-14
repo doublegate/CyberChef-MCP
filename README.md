@@ -4,7 +4,7 @@ This project provides a **Model Context Protocol (MCP)** server interface for **
 
 By running this server, you enable AI assistants (like Claude, Cursor AI, and others) to natively utilize CyberChef's extensive library of 300+ data manipulation operations—including encryption, encoding, compression, and forensic analysis—as executable tools.
 
-**Latest Release:** v1.2.0 | [Release Notes](docs/releases/v1.2.0.md) | [Security Policy](SECURITY.md)
+**Latest Release:** v1.2.5 | [Release Notes](docs/releases/v1.2.5.md) | [Security Policy](SECURITY.md)
 
 ![CyberChef MCP Banner](images/CyberChef-MCP_Banner-Logo.jpg)
 
@@ -64,17 +64,17 @@ For environments without direct GHCR access, download the pre-built Docker image
 1.  **Download the tarball** (approximately 270MB compressed):
     ```bash
     # Download from GitHub Releases
-    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v1.2.0/cyberchef-mcp-v1.2.0-docker-image.tar.gz
+    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v1.2.5/cyberchef-mcp-v1.2.5-docker-image.tar.gz
     ```
 
 2.  **Load the image into Docker:**
     ```bash
-    docker load < cyberchef-mcp-v1.2.0-docker-image.tar.gz
+    docker load < cyberchef-mcp-v1.2.5-docker-image.tar.gz
     ```
 
 3.  **Run the server:**
     ```bash
-    docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v1:v1.2.0
+    docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v1:v1.2.5
     ```
 
 **Option 3: Build from Source**
