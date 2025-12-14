@@ -11,7 +11,7 @@ module.exports = function(api) {
         ],
         "plugins": [
             "dynamic-import-node",
-            "@babel/plugin-syntax-import-assertions",
+            ["@babel/plugin-syntax-import-attributes", { "deprecatedAssertSyntax": true }],
             [
                 "@babel/plugin-transform-runtime", {
                     "regenerator": true

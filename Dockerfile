@@ -5,6 +5,7 @@
 # - Non-root user execution (nginx user)
 # - Health check for container orchestration
 # - Minimal attack surface with Alpine base
+# - Node.js 22 LTS for build stage (crypto global + ES module support)
 # =============================================================================
 
 #####################################
@@ -13,7 +14,7 @@
 # Modifier --platform=$BUILDPLATFORM limits the platform to "BUILDPLATFORM" during buildx multi-platform builds
 # This is because npm "chromedriver" package is not compatiable with all platforms
 # For more info see: https://docs.docker.com/build/building/multi-platform/#cross-compilation
-FROM --platform=$BUILDPLATFORM node:18-alpine AS builder
+FROM --platform=$BUILDPLATFORM node:22-alpine AS builder
 
 WORKDIR /app
 
@@ -27,6 +28,11 @@ RUN npm ci --ignore-scripts
 # Copy files needed for postinstall and build
 COPY . .
 
+# Apply patches for Node 22 compatibility (SlowBuffer deprecation)
+# These packages use the deprecated SlowBuffer which was removed/changed in newer Node versions
+RUN sed -i 's/new SlowBuffer/Buffer.alloc/g' node_modules/avsc/lib/types.js && \
+    sed -i 's/SlowBuffer/Buffer/g' node_modules/buffer-equal-constant-time/index.js
+
 # npm postinstall runs grunt, which depends on files other than package.json
 RUN npm run postinstall
 
@@ -36,10 +42,8 @@ RUN npm run build
 #########################################
 # Package static build files into nginx #
 #########################################
-# We are using Github Actions: redhat-actions/buildah-build@v2 which needs manual selection of arch in base image
-# Remove TARGETARCH if docker buildx is supported in the CI release as --platform=$TARGETPLATFORM will be automatically set
-ARG TARGETPLATFORM
-FROM --platform=${TARGETPLATFORM} nginx:stable-alpine AS cyberchef
+# Package into nginx for serving
+FROM nginx:stable-alpine AS cyberchef
 
 # Security: Add metadata labels
 LABEL org.opencontainers.image.title="CyberChef Web Application" \

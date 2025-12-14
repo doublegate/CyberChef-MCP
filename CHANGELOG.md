@@ -28,11 +28,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added non-root user execution (nginx user)
   - Added HEALTHCHECK instruction for container orchestration
   - Added EXPOSE 80 declaration
+  - **Upgraded Node.js 18 → Node.js 22** for build stage (crypto global + ES module support)
+  - Added SlowBuffer compatibility patches for Node.js 22
 - **Dockerfile.mcp**: Added npm update to fix bundled glob CVE-2025-64756
 - **.dockerignore**: Expanded exclusions to prevent unnecessary files in MCP container
   - Excludes original `Dockerfile` to prevent Trivy alerts on web app Dockerfile in MCP container
   - Added IDE, test, and temporary file exclusions for smaller container image
+- **babel.config.js**: Updated from `@babel/plugin-syntax-import-assertions` to `@babel/plugin-syntax-import-attributes`
+  - Fixes ES2024 import attributes syntax (`with { type: "json" }`)
+  - Enables proper Webpack parsing of JSON imports
 - Version bump: `1.2.0` → `1.2.5` in `package.json`, `mcp-server.mjs`, and documentation
+
+### Fixed
+- **Docker Hub build failure**: Fixed `ReferenceError: crypto is not defined` during web app Dockerfile build
+  - Root cause: Node.js 18 lacks global `crypto` object (added in Node.js 19+)
+  - Solution: Upgraded builder stage from `node:18-alpine` to `node:22-alpine`
+- **Webpack build failure**: Fixed `Module parse failed: Unexpected token` for JSON imports
+  - Root cause: Babel's `@babel/plugin-syntax-import-assertions` doesn't support ES2024 `with` syntax
+  - Solution: Switched to `@babel/plugin-syntax-import-attributes` with `deprecatedAssertSyntax` option
 
 ## [1.2.0] - 2025-12-14
 
