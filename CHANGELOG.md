@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.6] - 2025-12-14
+
+### Changed
+- **Dockerfile** (web app): Optimized nginx base image for smaller footprint and improved security
+  - Changed from `nginx:stable-alpine` to `nginx:1.29-alpine-slim`
+  - `alpine-slim` variant provides reduced image size with minimal attack surface
+  - Explicit nginx version pinning for reproducible builds
+- **Dockerfile** (web app): Enhanced non-root permission setup for alpine-slim variant
+  - Added explicit creation of nginx cache directories (`/var/cache/nginx/*`)
+  - Added proper ownership for `/var/run` and `/run` directories
+  - Fixed `permission denied` errors for nginx PID file and cache directories
+  - Ensures proper non-root execution with nginx user in alpine-slim environment
+
+### Fixed
+- **nginx:alpine-slim compatibility**: Resolved permission denied errors for non-root nginx execution
+  - Root cause: `alpine-slim` variant has stricter default permissions than standard `alpine`
+  - Fixed cache directory permissions: `mkdir -p` for client_temp, proxy_temp, fastcgi_temp, uwsgi_temp, scgi_temp
+  - Fixed PID file permissions: `chown -R nginx:nginx /var/run && chown -R nginx:nginx /run`
+
+### Documentation
+- Updated version references across all documentation files
+- Added v1.2.6 to release notes index
+- Updated download URLs and installation instructions
+
 ## [1.2.5] - 2025-12-14
 
 ### Security

@@ -79,6 +79,7 @@ gantt
 
 | Release | Theme | Key Features | Effort | Risk |
 |---------|-------|--------------|--------|------|
+| **v1.2.6** | Container Optimization | nginx:alpine-slim for web app, non-root permissions | S | Low |
 | **v1.2.5** | Security Patch | GitHub alerts, OWASP Argon2 hardening, build fixes | S | Low |
 | **v1.2.0** | Security Hardening | Docker DHI, non-root, security scanning | L | Medium |
 | **v1.3.0** | Upstream Sync | Automated CyberChef updates, Renovate/Dependabot | XL | Medium |

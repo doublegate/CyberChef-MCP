@@ -15,10 +15,10 @@ This guide provides instructions for installing and using the CyberChef MCP serv
     **Option 2: Download Pre-built Tarball (Offline Installation)**
     ```bash
     # Download from GitHub Releases (approximately 270MB compressed)
-    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v1.2.5/cyberchef-mcp-v1.2.5-docker-image.tar.gz
+    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v1.2.6/cyberchef-mcp-v1.2.6-docker-image.tar.gz
 
     # Load into Docker
-    docker load < cyberchef-mcp-v1.2.5-docker-image.tar.gz
+    docker load < cyberchef-mcp-v1.2.6-docker-image.tar.gz
     ```
 
     **Option 3: Build from Source**
@@ -119,7 +119,7 @@ mcp-client --server-command "docker run -i --rm cyberchef-mcp"
 
 ## Security Best Practices
 
-The CyberChef MCP server (v1.2.5) includes comprehensive security hardening features:
+The CyberChef MCP server (v1.2.6) includes comprehensive security hardening features:
 
 ### Non-Root Execution
 The container runs as a non-root user (`cyberchef`, UID 1001) by default:

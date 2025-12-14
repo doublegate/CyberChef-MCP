@@ -18,7 +18,7 @@ import OperationConfig from "../core/config/OperationConfig.json" with {type: "j
 const server = new Server(
     {
         name: "cyberchef-mcp",
-        version: "1.2.5",
+        version: "1.2.6",
     },
     {
         capabilities: {
