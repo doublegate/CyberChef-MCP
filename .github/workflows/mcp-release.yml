@@ -95,6 +95,23 @@ jobs:
           sarif_file: 'trivy-release-results.sarif'
           category: 'trivy-release-scan'
 
+      # Create GitHub Release if it doesn't exist
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          # Check if release exists, create if not
+          if ! gh release view "$TAG_NAME" &>/dev/null; then
+            echo "Creating release for $TAG_NAME"
+            gh release create "$TAG_NAME" \
+              --title "Release $TAG_NAME" \
+              --notes "See [CHANGELOG.md](CHANGELOG.md) for details." \
+              --verify-tag
+          else
+            echo "Release $TAG_NAME already exists"
+          fi
+
       - name: Attach tarball to release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
