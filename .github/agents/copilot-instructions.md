@@ -1,5 +1,34 @@
 # GitHub Copilot Custom Instructions for CyberChef MCP
 
+## Quick Start for Copilot
+
+When making changes to this repository, follow this workflow:
+
+1. **Setup/Config Generation** (always run first if modifying operations):
+   ```bash
+   npx grunt configTests
+   ```
+
+2. **Make Changes**: Edit files in `src/core/operations/` or `src/node/`
+
+3. **Test Changes**:
+   ```bash
+   npm run lint        # Check code style
+   npm run test        # Run tests
+   ```
+
+4. **Verify MCP Server** (if modifying MCP functionality):
+   ```bash
+   npm run mcp         # Run locally, or
+   docker build -f Dockerfile.mcp -t cyberchef-mcp . && docker run -i --rm cyberchef-mcp
+   ```
+
+**Key Reminders:**
+- Use `import ... with {type: "json"}` for JSON imports (NOT `assert`)
+- Always run `npx grunt configTests` after operation changes
+- 4 spaces for indentation, camelCase for functions, UPPER_CASE for constants
+- MCP tool names: `cyberchef_` prefix + snake_case
+
 ## Project Overview
 This repository hosts the **Model Context Protocol (MCP) Server** adaptation of CyberChef. The primary focus is to expose CyberChef's 300+ operations as executable tools for AI agents (Claude, Cursor AI, etc.) via the MCP protocol.
 
