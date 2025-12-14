@@ -54,7 +54,8 @@ The server exposes CyberChef operations as MCP tools:
 **Option 1: Pull from GitHub Container Registry (Online, Recommended)**
 ```bash
 docker pull ghcr.io/doublegate/cyberchef-mcp_v1:latest
-docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v1:latest
+docker tag ghcr.io/doublegate/cyberchef-mcp_v1:latest cyberchef-mcp
+docker run -i --rm cyberchef-mcp
 ```
 
 **Option 2: Download Pre-built Image (Offline Installation)**
@@ -72,9 +73,14 @@ For environments without direct GHCR access, download the pre-built Docker image
     docker load < cyberchef-mcp-v1.2.6-docker-image.tar.gz
     ```
 
-3.  **Run the server:**
+3.  **Tag for easier usage:**
     ```bash
-    docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v1:v1.2.6
+    docker tag ghcr.io/doublegate/cyberchef-mcp_v1:v1.2.6 cyberchef-mcp
+    ```
+
+4.  **Run the server:**
+    ```bash
+    docker run -i --rm cyberchef-mcp
     ```
 
 **Option 3: Build from Source**
@@ -145,7 +151,7 @@ This project implements comprehensive security hardening (v1.2.6):
 *   **Read-Only Filesystem**: Supports `--read-only` flag for immutable deployments
 *   **Minimal Attack Surface**: Development files removed from production image
 *   **Health Checks**: Built-in container health monitoring
-*   **Zero Critical Vulnerabilities**: All 5 GitHub Security code scanning alerts resolved (v1.2.6)
+*   **Zero Critical Vulnerabilities**: All 5 GitHub Security code scanning alerts resolved (v1.2.5)
 
 ### Cryptographic Hardening (v1.2.5)
 *   **Argon2 OWASP Compliance**: Default parameters follow OWASP 2024-2025 recommendations

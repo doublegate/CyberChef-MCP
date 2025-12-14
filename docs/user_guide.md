@@ -10,6 +10,7 @@ This guide provides instructions for installing and using the CyberChef MCP serv
     **Option 1: Pull from GitHub Container Registry (Recommended)**
     ```bash
     docker pull ghcr.io/doublegate/cyberchef-mcp_v1:latest
+    docker tag ghcr.io/doublegate/cyberchef-mcp_v1:latest cyberchef-mcp
     ```
 
     **Option 2: Download Pre-built Tarball (Offline Installation)**
@@ -19,6 +20,9 @@ This guide provides instructions for installing and using the CyberChef MCP serv
 
     # Load into Docker
     docker load < cyberchef-mcp-v1.2.6-docker-image.tar.gz
+
+    # Tag for easier usage
+    docker tag ghcr.io/doublegate/cyberchef-mcp_v1:v1.2.6 cyberchef-mcp
     ```
 
     **Option 3: Build from Source**
