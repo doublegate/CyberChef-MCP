@@ -10,7 +10,7 @@ import zip from "zlibjs/bin/zip.min.js";
 import Utils from "../../core/Utils.mjs";
 import Dish from "../../core/Dish.mjs";
 import {detectFileType} from "../../core/lib/FileType.mjs";
-import loglevelMessagePrefix from "loglevel-message-prefix";
+import loglevelMessagePrefix from "@natlibfi/loglevel-message-prefix";
 
 loglevelMessagePrefix(log, {
     prefixes: [],

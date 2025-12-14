@@ -5,6 +5,28 @@ All notable changes to the CyberChef MCP Server project will be documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.2] - 2025-12-14
+
+### Changed
+- Replaced deprecated `loglevel-message-prefix` package with `@natlibfi/loglevel-message-prefix@^3.0.1`
+- Updated all 5 worker files to use new logging package:
+  - `src/core/ChefWorker.js`
+  - `src/web/workers/DishWorker.mjs`
+  - `src/web/workers/InputWorker.mjs`
+  - `src/web/workers/LoaderWorker.js`
+  - `src/web/workers/ZipWorker.mjs`
+
+### Fixed
+- **CI/CD**: Added browserslist database auto-update (`npx update-browserslist-db@latest`) to prevent outdated caniuse-lite warnings
+  - Applied to `core-ci.yml` and `performance-benchmarks.yml` workflows
+- **CI/CD**: Added git default branch configuration (`git config --global init.defaultBranch master`) to suppress Git 3.0 deprecation hints
+  - Applied to all 5 workflow files (9 jobs total): `core-ci.yml`, `mcp-docker-build.yml`, `mcp-release.yml`, `performance-benchmarks.yml`, `security-scan.yml`
+- **Dependencies**: Added npm overrides to eliminate deprecation warnings:
+  - `glob@>=10.0.0` - Eliminates glob deprecation warnings
+  - `rimraf@>=5.0.0` - Eliminates rimraf deprecation warnings
+  - `inflight@>=2.0.0` - Eliminates inflight deprecation warnings
+- All GitHub Actions workflows now run with zero warnings
+
 ## [1.4.1] - 2025-12-14
 
 ### Security

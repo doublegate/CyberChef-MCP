@@ -9,7 +9,7 @@
 import Chef from "./Chef.mjs";
 import OperationConfig from "./config/OperationConfig.json" with {type: "json"};
 import OpModules from "./config/modules/OpModules.mjs";
-import loglevelMessagePrefix from "loglevel-message-prefix";
+import loglevelMessagePrefix from "@natlibfi/loglevel-message-prefix";
 
 
 // Set up Chef instance

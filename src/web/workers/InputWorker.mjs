@@ -9,7 +9,7 @@
  */
 
 import Utils from "../../core/Utils.mjs";
-import loglevelMessagePrefix from "loglevel-message-prefix";
+import loglevelMessagePrefix from "@natlibfi/loglevel-message-prefix";
 
 loglevelMessagePrefix(log, {
     prefixes: [],

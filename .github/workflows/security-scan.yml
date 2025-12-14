@@ -60,6 +60,9 @@ jobs:
       actions: read
 
     steps:
+      - name: Configure git
+        run: git config --global init.defaultBranch master
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -124,6 +127,9 @@ jobs:
       security-events: write
 
     steps:
+      - name: Configure git
+        run: git config --global init.defaultBranch master
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -183,6 +189,9 @@ jobs:
       contents: read
 
     steps:
+      - name: Configure git
+        run: git config --global init.defaultBranch master
+
       - name: Checkout repository
         uses: actions/checkout@v4
 

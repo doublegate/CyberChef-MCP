@@ -14,6 +14,9 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
+    - name: Configure git
+      run: git config --global init.defaultBranch master
+
     - uses: actions/checkout@v4
 
     - name: Set node version
@@ -25,6 +28,9 @@ jobs:
       run: |
         npm install
         npm run setheapsize
+
+    - name: Update browserslist database
+      run: npx update-browserslist-db@latest
 
     # We need to patch the node_modules for Node 22 compatibility here as well
     # because npm install might overwrite them or they might not be patched in the repo

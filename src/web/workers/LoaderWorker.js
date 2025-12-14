@@ -6,7 +6,7 @@
  * @license Apache-2.0
  */
 
-import loglevelMessagePrefix from "loglevel-message-prefix";
+import loglevelMessagePrefix from "@natlibfi/loglevel-message-prefix";
 
 loglevelMessagePrefix(log, {
     prefixes: [],

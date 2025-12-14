@@ -9,7 +9,7 @@
 import Dish from "../../core/Dish.mjs";
 import Utils from "../../core/Utils.mjs";
 import cptable from "codepage";
-import loglevelMessagePrefix from "loglevel-message-prefix";
+import loglevelMessagePrefix from "@natlibfi/loglevel-message-prefix";
 
 loglevelMessagePrefix(log, {
     prefixes: [],
