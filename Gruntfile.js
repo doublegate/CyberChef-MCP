@@ -443,6 +443,10 @@ module.exports = function (grunt) {
                     }
                 },
                 stdout: false
+            },
+            fixSerializeJavascript: {
+                command: "node scripts/fix-serialize-javascript.js",
+                stdout: false
             }
         },
     });
