@@ -70,8 +70,8 @@ class DeriveEVPKey extends Operation {
             salt = CryptoJS.enc.Latin1.parse(
                 Utils.convertToByteString(args[4].string, args[4].option));
 
-        // Enforce minimum iteration count for security (NIST recommends 10,000+)
-        const minIterations = 1000;
+        // Enforce minimum iteration count for security (NIST SP 800-63B recommends 10,000+)
+        const minIterations = 10000;
         const actualIterations = Math.max(iterations, minIterations);
 
         let warning = "";
@@ -121,8 +121,11 @@ CryptoJS.kdf.OpenSSL.execute = function (password, keySize, ivSize, salt) {
         salt = CryptoJS.lib.WordArray.random(64/8);
     }
 
-    // Derive key and IV
-    const key = CryptoJS.algo.EvpKDF.create({ keySize: keySize + ivSize }).compute(password, salt);
+    // Derive key and IV with sufficient iterations for security (NIST recommends 10,000+)
+    const key = CryptoJS.algo.EvpKDF.create({
+        keySize: keySize + ivSize,
+        iterations: 10000
+    }).compute(password, salt);
 
     // Separate key and IV
     const iv = CryptoJS.lib.WordArray.create(key.words.slice(keySize), ivSize * 4);
