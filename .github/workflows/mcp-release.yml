@@ -15,7 +15,7 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
 
     steps:
@@ -53,3 +53,24 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64
           provenance: false # Removes the "unknown/unknown" attestation manifest
+
+      # Export Docker image as tarball for offline distribution
+      - name: Pull Docker image for export
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${TAG_NAME}
+
+      - name: Export Docker image as tarball
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          docker save ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${TAG_NAME} | gzip > cyberchef-mcp-${TAG_NAME}-docker-image.tar.gz
+          ls -lh cyberchef-mcp-*.tar.gz
+
+      - name: Attach tarball to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          gh release upload ${TAG_NAME} cyberchef-mcp-${TAG_NAME}-docker-image.tar.gz --clobber
