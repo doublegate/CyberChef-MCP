@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.3] - 2025-12-14
+
 ### Fixed
 - **Dependencies**: Resolved critical npm install failure caused by incompatible overrides
   - Removed problematic `rimraf@>=5.0.0` override that broke `grunt-contrib-clean` (rimraf v5+ has incompatible API)
