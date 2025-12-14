@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Comprehensive product roadmap v1.1.0 → v3.0.0** spanning 19 releases across 6 development phases
+  - `docs/ROADMAP.md`: Master roadmap with Gantt timeline, release overview, and LTS strategy
+  - 19 release plans (`docs/planning/release-v1.2.0.md` through `release-v3.0.0.md`)
+  - 6 phase/sprint documents covering Q1 2026 through Q3 2027
+- **Strategy documents** for major architectural initiatives:
+  - `UPSTREAM-SYNC-STRATEGY.md`: Automated CyberChef update monitoring via Renovate/GitHub Actions
+  - `SECURITY-HARDENING-PLAN.md`: Docker Hardened Images, non-root execution, Trivy scanning, SBOM
+  - `MULTI-MODAL-STRATEGY.md`: Binary data, image, and audio handling through MCP protocol
+  - `PLUGIN-ARCHITECTURE-DESIGN.md`: Custom operation registration with sandboxed execution
+  - `ENTERPRISE-FEATURES-PLAN.md`: OAuth 2.1, RBAC, audit logging, multi-tenancy
+- **Extended task tracker** with 500+ tasks organized by release (v1.2.0 - v3.0.0)
+- **Security fixes report** (`docs/security/SECURITY_FIXES_REPORT.md`) documenting 11 fixes in v1.1.0
+- New "Project Roadmap" section in README with phase overview table
+- Expanded documentation section in README with Strategy Documents subsection
+
+### Changed
+- README documentation structure reorganized with new subsections:
+  - "Project Planning" (roadmap, release plans, phase documents, tasks)
+  - "Strategy Documents" (5 architectural strategy documents)
+- Updated documentation links throughout README to reference new planning structure
+
 ## [1.1.0] - 2025-12-13
 
 ### Security

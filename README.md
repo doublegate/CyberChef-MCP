@@ -152,6 +152,21 @@ This project has undergone comprehensive security hardening:
 
 For detailed information, see the [Security Audit Report](docs/security/audit.md).
 
+## Project Roadmap
+
+CyberChef MCP Server has a comprehensive development roadmap spanning **19 releases** across **6 phases** from January 2026 through August 2027.
+
+| Phase | Releases | Timeline | Focus |
+|-------|----------|----------|-------|
+| **Phase 1: Foundation** | v1.2.0 - v1.4.0 | Q1 2026 | Security hardening, upstream sync, performance |
+| **Phase 2: Enhancement** | v1.5.0 - v1.7.0 | Q2 2026 | Streaming, recipe management, batch processing |
+| **Phase 3: Maturity** | v1.8.0 - v2.0.0 | Q3 2026 | API stabilization, breaking changes, v2.0.0 |
+| **Phase 4: Expansion** | v2.1.0 - v2.3.0 | Q4 2026 | Multi-modal, advanced transports, plugins |
+| **Phase 5: Enterprise** | v2.4.0 - v2.6.0 | Q1 2027 | OAuth 2.1, RBAC, Kubernetes, observability |
+| **Phase 6: Evolution** | v2.7.0 - v3.0.0 | Q2-Q3 2027 | Edge deployment, AI-native features, v3.0.0 |
+
+See the [**Full Roadmap**](docs/ROADMAP.md) for detailed release plans and timelines.
+
 ## Documentation
 
 Detailed documentation can be found in the [`docs/`](docs/) directory:
@@ -165,12 +180,22 @@ Detailed documentation can be found in the [`docs/`](docs/) directory:
 *   [**Technical Implementation**](docs/technical_implementation.md): Implementation details
 *   [**Project Summary**](docs/project_summary.md): Project overview
 
-### Project Management
-*   [**Roadmap**](docs/planning/roadmap.md): Future features and planned enhancements
-*   [**Tasks**](docs/planning/tasks.md): Specific implementation tasks
+### Project Planning
+*   [**Product Roadmap**](docs/ROADMAP.md): Comprehensive v1.1.0 → v3.0.0 roadmap with timeline
+*   [**Release Plans**](docs/planning/): Individual release specifications (v1.2.0 - v3.0.0)
+*   [**Phase Documents**](docs/planning/): Sprint breakdowns for each development phase
+*   [**Tasks**](docs/planning/tasks.md): 500+ implementation tasks organized by release
+
+### Strategy Documents
+*   [**Upstream Sync Strategy**](docs/planning/UPSTREAM-SYNC-STRATEGY.md): Automated CyberChef update monitoring
+*   [**Security Hardening Plan**](docs/planning/SECURITY-HARDENING-PLAN.md): Docker DHI, non-root, SBOM generation
+*   [**Multi-Modal Strategy**](docs/planning/MULTI-MODAL-STRATEGY.md): Image/binary/audio handling via MCP
+*   [**Plugin Architecture**](docs/planning/PLUGIN-ARCHITECTURE-DESIGN.md): Custom operations and sandboxed execution
+*   [**Enterprise Features**](docs/planning/ENTERPRISE-FEATURES-PLAN.md): OAuth 2.1, RBAC, audit logging
 
 ### Security & Releases
 *   [**Security Audit**](docs/security/audit.md): Comprehensive security assessment
+*   [**Security Fixes Report**](docs/security/SECURITY_FIXES_REPORT.md): Detailed v1.1.0 security fixes
 *   [**Release Notes v1.1.0**](docs/releases/v1.1.0.md): Security hardening and Node.js 22 compatibility
 *   [**Release Notes v1.0.0**](docs/releases/v1.0.0.md): Initial MCP server release
 
