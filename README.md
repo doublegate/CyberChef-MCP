@@ -1,22 +1,25 @@
 # CyberChef MCP Server
 
-[![MCP Enabled](https://img.shields.io/badge/MCP-Enabled-blue)](https://modelcontextprotocol.io/)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![Build and Test](https://github.com/parobek/CyberChef/actions/workflows/mcp-docker-build.yml/badge.svg)](https://github.com/parobek/CyberChef/actions/workflows/mcp-docker-build.yml)
-[![Node.js Version](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](https://nodejs.org/)
-[![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](https://hub.docker.com/)
-
 This project provides a **Model Context Protocol (MCP)** server interface for **CyberChef**, the "Cyber Swiss Army Knife" created by [GCHQ](https://github.com/gchq/CyberChef).
 
 By running this server, you enable AI assistants (like Claude, Cursor AI, and others) to natively utilize CyberChef's extensive library of 300+ data manipulation operations—including encryption, encoding, compression, and forensic analysis—as executable tools.
 
 **Latest Release:** v1.1.0 | [Release Notes](docs/releases/v1.1.0.md) | [Security Audit](docs/security/audit.md)
 
+![CyberChef MCP Banner](images/CyberChef-MCP_Banner-Logo.jpg)
+
+[![MCP Enabled](https://img.shields.io/badge/MCP-Enabled-blue)](https://modelcontextprotocol.io/)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![Docker Version](https://img.shields.io/github/v/release/doublegate/CyberChef-MCP?logo=docker&label=docker)](https://github.com/doublegate/CyberChef-MCP/releases)
+[![Node.js Version](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](https://nodejs.org/)
+
 ## Project Context
 
 **CyberChef** is a simple, intuitive web app for carrying out all manner of "cyber" operations within a web browser. It was originally conceived and built by [GCHQ](https://github.com/gchq/CyberChef).
 
 This fork wraps the core CyberChef Node.js API into an MCP server, bridging the gap between natural language AI intent and deterministic data processing.
+
+![CyberChef MCP Blueprint](images/CyberChef-MCP_Blueprint.jpg)
 
 ## Features
 
