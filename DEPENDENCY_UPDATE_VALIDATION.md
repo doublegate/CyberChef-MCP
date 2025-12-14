@@ -185,6 +185,6 @@ The dependency update from Dependabot is **VALIDATED AND APPROVED** for merging.
 
 ---
 
-**Validated by:** GitHub Copilot  
+**Validated by:** GitHub Actions CI  
 **Environment:** Node.js v20.19.6, npm 10.8.2  
 **Test Date:** December 14, 2025
