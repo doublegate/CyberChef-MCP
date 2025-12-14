@@ -4,7 +4,7 @@ This project provides a **Model Context Protocol (MCP)** server interface for **
 
 By running this server, you enable AI assistants (like Claude, Cursor AI, and others) to natively utilize CyberChef's extensive library of 463+ data manipulation operations—including encryption, encoding, compression, and forensic analysis—as executable tools.
 
-**Latest Release:** v1.3.0 | [Release Notes](docs/releases/v1.3.0.md) | [Security Policy](SECURITY.md)
+**Latest Release:** v1.4.0 | [Release Notes](docs/releases/v1.4.0.md) | [Security Policy](SECURITY.md)
 
 ![CyberChef MCP Banner](images/CyberChef-MCP_Banner-Logo.jpg)
 
@@ -41,6 +41,7 @@ The server exposes CyberChef operations as MCP tools:
 *   **Stdio Transport**: Communicates via standard input/output, making it easy to integrate with CLI-based MCP clients.
 *   **Schema Validation**: All inputs are validated against schemas derived from CyberChef's internal type system using `zod`.
 *   **Modern Node.js**: Fully compatible with Node.js v22+ with automated compatibility patches.
+*   **Performance Optimized** (v1.4.0): LRU cache for operation results (100MB default), automatic streaming for large inputs (10MB+ threshold), configurable resource limits (100MB max input, 30s timeout), memory monitoring, and comprehensive benchmark suite. See [Performance Tuning Guide](docs/performance-tuning.md) for configuration options.
 *   **Upstream Sync Automation** (v1.3.0): Automated monitoring of upstream CyberChef releases every 6 hours, one-click synchronization workflow, comprehensive validation test suite with 465 tool tests, and emergency rollback mechanism.
 *   **Security Hardened** (v1.2.0+): Non-root container execution (UID 1001), automated Trivy vulnerability scanning, SBOM generation, read-only filesystem support, OWASP 2024-2025 Argon2 hardening, and nginx:alpine-slim optimization. See [Security Policy](SECURITY.md) for details.
 *   **Production Ready**: Comprehensive CI/CD with CodeQL v4, automated testing, and container image publishing to GHCR.
@@ -66,17 +67,17 @@ For environments without direct GHCR access, download the pre-built Docker image
 1.  **Download the tarball** (approximately 270MB compressed):
     ```bash
     # Download from GitHub Releases
-    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v1.3.0/cyberchef-mcp-v1.3.0-docker-image.tar.gz
+    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v1.4.0/cyberchef-mcp-v1.4.0-docker-image.tar.gz
     ```
 
 2.  **Load the image into Docker:**
     ```bash
-    docker load < cyberchef-mcp-v1.3.0-docker-image.tar.gz
+    docker load < cyberchef-mcp-v1.4.0-docker-image.tar.gz
     ```
 
 3.  **Tag for easier usage:**
     ```bash
-    docker tag ghcr.io/doublegate/cyberchef-mcp_v1:v1.3.0 cyberchef-mcp
+    docker tag ghcr.io/doublegate/cyberchef-mcp_v1:v1.4.0 cyberchef-mcp
     ```
 
 4.  **Run the server:**
@@ -143,6 +144,123 @@ Add to your Claude Desktop configuration file:
 
 After adding the configuration, restart Claude Desktop. The CyberChef tools will appear in the available tools panel.
 
+## Performance & Configuration
+
+Version 1.4.0 introduces comprehensive performance optimizations and configurable resource limits. All features can be tuned via environment variables for your deployment needs.
+
+### Performance Features
+
+**LRU Cache for Operation Results**
+- Automatically caches operation results to eliminate redundant computation
+- Configurable cache size (100MB default) and item count (1000 default)
+- Cache keys based on operation + input + arguments (SHA256 hash)
+
+**Automatic Streaming for Large Inputs**
+- Inputs exceeding 10MB automatically use chunked processing
+- Supports encoding, compression, and hashing operations
+- Memory-efficient handling of 100MB+ files
+- Transparent fallback for non-streaming operations
+
+**Resource Limits**
+- Maximum input size validation (100MB default)
+- Operation timeout enforcement (30 seconds default)
+- Prevents out-of-memory crashes and runaway operations
+
+**Memory Monitoring**
+- Periodic memory usage logging to stderr
+- Heap and RSS tracking for troubleshooting
+
+### Configuration Options
+
+All performance features are configurable via environment variables:
+
+```bash
+# Maximum input size (bytes)
+CYBERCHEF_MAX_INPUT_SIZE=104857600       # 100MB default
+
+# Operation timeout (milliseconds)
+CYBERCHEF_OPERATION_TIMEOUT=30000        # 30s default
+
+# Streaming threshold (bytes)
+CYBERCHEF_STREAMING_THRESHOLD=10485760   # 10MB default
+
+# Enable/disable streaming
+CYBERCHEF_ENABLE_STREAMING=true          # Enabled by default
+
+# Enable/disable worker threads (infrastructure only in v1.4.0)
+CYBERCHEF_ENABLE_WORKERS=true            # Enabled by default
+
+# Cache maximum size (bytes)
+CYBERCHEF_CACHE_MAX_SIZE=104857600       # 100MB default
+
+# Cache maximum items
+CYBERCHEF_CACHE_MAX_ITEMS=1000           # 1000 items default
+```
+
+### Example Configurations
+
+**High-Throughput Server (Large Files)**
+```bash
+docker run -i --rm --memory=4g \
+  -e CYBERCHEF_MAX_INPUT_SIZE=524288000 \
+  -e CYBERCHEF_STREAMING_THRESHOLD=52428800 \
+  -e CYBERCHEF_CACHE_MAX_SIZE=524288000 \
+  -e CYBERCHEF_OPERATION_TIMEOUT=120000 \
+  ghcr.io/doublegate/cyberchef-mcp_v1:latest
+```
+
+**Low-Memory Environment**
+```bash
+docker run -i --rm --memory=512m \
+  -e CYBERCHEF_MAX_INPUT_SIZE=10485760 \
+  -e CYBERCHEF_STREAMING_THRESHOLD=5242880 \
+  -e CYBERCHEF_CACHE_MAX_SIZE=10485760 \
+  -e CYBERCHEF_CACHE_MAX_ITEMS=100 \
+  ghcr.io/doublegate/cyberchef-mcp_v1:latest
+```
+
+**Claude Desktop with Custom Limits**
+```json
+{
+  "mcpServers": {
+    "cyberchef": {
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm",
+        "-e", "CYBERCHEF_MAX_INPUT_SIZE=209715200",
+        "-e", "CYBERCHEF_CACHE_MAX_SIZE=209715200",
+        "ghcr.io/doublegate/cyberchef-mcp_v1:latest"
+      ]
+    }
+  }
+}
+```
+
+For detailed performance tuning guidance, see the [Performance Tuning Guide](docs/performance-tuning.md).
+
+### Performance Benchmarks
+
+Run the benchmark suite to measure performance on your hardware:
+
+```bash
+# Install dependencies
+npm install
+
+# Generate required configuration
+npx grunt configTests
+
+# Run benchmarks
+npm run benchmark
+```
+
+The benchmark suite tests 20+ operations across multiple input sizes (1KB, 10KB, 100KB) in categories including:
+- Encoding operations (Base64, Hex)
+- Hashing operations (MD5, SHA256, SHA512)
+- Compression operations (Gzip)
+- Cryptographic operations (AES)
+- Text operations (Regex)
+- Analysis operations (Entropy, Frequency Distribution)
+
 ## Security
 
 This project implements comprehensive security hardening (v1.3.0):
@@ -186,7 +304,7 @@ CyberChef MCP Server has a comprehensive development roadmap spanning **19 relea
 
 | Phase | Releases | Timeline | Focus | Status |
 |-------|----------|----------|-------|--------|
-| **Phase 1: Foundation** | v1.2.0 - v1.4.0 | Q4 2025 - Q1 2026 | Security hardening, upstream sync, performance | **v1.3.0 Released** |
+| **Phase 1: Foundation** | v1.2.0 - v1.4.0 | Q4 2025 - Q1 2026 | Security hardening, upstream sync, performance | **v1.4.0 Released** |
 | **Phase 2: Enhancement** | v1.5.0 - v1.7.0 | Q2 2026 | Streaming, recipe management, batch processing | Planned |
 | **Phase 3: Maturity** | v1.8.0 - v2.0.0 | Q3 2026 | API stabilization, breaking changes, v2.0.0 | Planned |
 | **Phase 4: Expansion** | v2.1.0 - v2.3.0 | Q4 2026 | Multi-modal, advanced transports, plugins | Planned |
@@ -224,6 +342,8 @@ Detailed documentation can be found in the [`docs/`](docs/) directory:
 ### Security & Releases
 *   [**Security Policy**](SECURITY.md): Security policy and vulnerability reporting
 *   [**Security Audit**](docs/security/audit.md): Comprehensive security assessment
+*   [**Release Notes v1.4.0**](docs/releases/v1.4.0.md): Performance optimization with caching, streaming, and resource limits
+*   [**Performance Tuning Guide**](docs/performance-tuning.md): Configuration guide for optimizing performance
 *   [**Release Notes v1.3.0**](docs/releases/v1.3.0.md): Upstream sync automation with comprehensive testing
 *   [**Release Notes v1.2.6**](docs/releases/v1.2.6.md): nginx:alpine-slim optimization for web app
 *   [**Release Notes v1.2.5**](docs/releases/v1.2.5.md): Security patch with OWASP Argon2 hardening
@@ -256,6 +376,7 @@ This project uses GitHub Actions to ensure stability and security:
 *   **Core CI** ([`core-ci.yml`](.github/workflows/core-ci.yml)): Tests the underlying CyberChef logic and configuration generation on Node.js v22
 *   **Docker Build** ([`mcp-docker-build.yml`](.github/workflows/mcp-docker-build.yml)): Builds, verifies, and security scans the `cyberchef-mcp` Docker image
 *   **Pull Request Checks** ([`pull_requests.yml`](.github/workflows/pull_requests.yml)): Automated testing and validation for pull requests
+*   **Performance Benchmarks** ([`performance-benchmarks.yml`](.github/workflows/performance-benchmarks.yml)): Automated performance regression testing on code changes (v1.4.0+)
 
 **Security & Release Workflows:**
 *   **Security Scan** ([`security-scan.yml`](.github/workflows/security-scan.yml)): Trivy vulnerability scanning, SBOM generation, weekly scheduled scans
@@ -276,6 +397,9 @@ npm test
 
 # Run MCP validation test suite (465 tool tests with Vitest)
 npm run test:mcp
+
+# Run performance benchmarks (v1.4.0+)
+npm run benchmark
 
 # Test Node.js consumer compatibility
 npm run testnodeconsumer

@@ -7,6 +7,80 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2025-12-14
+
+### Added
+- **Performance Optimization Infrastructure**: Comprehensive performance improvements for handling large operations
+  - LRU cache for operation results (100MB default, configurable)
+  - Buffer pooling for memory optimization
+  - Memory monitoring with periodic logging
+  - Input size validation (100MB max default, configurable)
+  - Operation timeout enforcement (30s default, configurable)
+- **Streaming API**: Automatic streaming for large inputs (>10MB threshold)
+  - Chunked processing for memory efficiency
+  - Supports encoding, compression, and hashing operations
+  - Transparent fallback for non-streaming operations
+  - Configurable via `CYBERCHEF_STREAMING_THRESHOLD` environment variable
+- **Resource Limits**: Configurable limits for stability and security
+  - Max input size: `CYBERCHEF_MAX_INPUT_SIZE` (default: 100MB)
+  - Operation timeout: `CYBERCHEF_OPERATION_TIMEOUT` (default: 30s)
+  - Cache size: `CYBERCHEF_CACHE_MAX_SIZE` (default: 100MB)
+  - Cache items: `CYBERCHEF_CACHE_MAX_ITEMS` (default: 1000)
+- **Performance Benchmark Suite**: Comprehensive benchmarking infrastructure
+  - Tinybench-based benchmark suite with 20+ operations across 6 categories
+    - Encoding (Base64, Hex)
+    - Hashing (MD5, SHA256, SHA512)
+    - Compression (Gzip)
+    - Cryptographic (AES Encrypt)
+    - Text (Regular Expression)
+    - Analysis (Entropy, Frequency Distribution)
+  - Multiple input size testing (1KB, 10KB, 100KB)
+  - New script: `npm run benchmark`
+  - CI/CD integration via `performance-benchmarks.yml` workflow
+  - Automated benchmark execution on code changes
+- **Worker Thread Infrastructure**: Foundation for CPU-intensive operation offloading
+  - Identification of 25+ CPU-intensive operations including:
+    - Cryptographic: AES, DES, RSA, Bcrypt, Scrypt
+    - Hashing: SHA family, MD5, BLAKE2, Whirlpool
+    - Compression: Gzip, Bzip2
+    - Key generation: RSA, PGP
+  - Infrastructure for future worker pool implementation
+  - Configurable via `CYBERCHEF_ENABLE_WORKERS` environment variable
+
+### Changed
+- **Version bump**: `1.3.0` → `1.4.0` in `package.json` (mcpVersion field) and `mcp-server.mjs`
+- **Server startup**: Enhanced logging with performance configuration display
+  - Shows max input size, timeout, streaming threshold, cache settings
+  - Better visibility into server capabilities
+- **Operation execution**: All operations now benefit from caching and resource limits
+  - Cache hit logging for debugging
+  - Streaming detection and activation logging
+  - Memory usage monitoring
+
+### Performance
+- **Memory efficiency**: LRU cache reduces redundant computation for repeated operations
+- **Large input handling**: 100MB+ inputs processed via streaming without OOM errors
+- **Latency improvements**: Cached operations return instantly
+- **Resource protection**: Timeouts prevent runaway operations
+
+### Documentation
+- **Release notes**: Comprehensive `docs/releases/v1.4.0.md` with configuration examples and migration guide
+- **Performance tuning guide**: `docs/performance-tuning.md` with deployment scenarios and optimization strategies
+- **Benchmark documentation**: Usage instructions and CI integration details
+- **Environment variables**: Complete reference for all 7 configuration options
+- **README.md**: New "Performance & Configuration" section with examples for different deployment scenarios
+- **Updated version references**: All documentation updated from v1.3.0 to v1.4.0
+
+### Dependencies
+- **Added**: `tinybench@^4.1.0` for performance benchmarking
+
+### Success Metrics
+- ✅ Process 100MB inputs successfully via streaming
+- ✅ Memory monitoring and cache management operational
+- ✅ Operation timeout enforcement working
+- ✅ Benchmark suite integrated into CI/CD
+- ✅ All 465 MCP tools validated and functional
+
 ## [1.3.0] - 2025-12-14
 
 ### Added
