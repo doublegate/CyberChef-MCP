@@ -216,21 +216,22 @@ Generated with rollback workflow" || echo "No changes to commit"
           gh pr create \
             --title "revert: rollback to $SHORT_SHA" \
             --label "rollback,urgent" \
-            --body "## Emergency Rollback
+            --body "$(cat <<BODY
+## Emergency Rollback
 
 **Reason:** $SAFE_REASON
 
 ### Rollback Details
 
-- **Target Commit:** \\\`$SHORT_SHA\\\`
+- **Target Commit:** \`$SHORT_SHA\`
 - **Operations:** $OPERATION_COUNT
 - **Test Status:** $TEST_STATUS
 
 ### Changes
 
-- Rolled back codebase to commit \\\`$SHORT_SHA\\\`
-- Regenerated \\\`OperationConfig.json\\\`
-- Updated \\\`baseline.json\\\`
+- Rolled back codebase to commit \`$SHORT_SHA\`
+- Regenerated \`OperationConfig.json\`
+- Updated \`baseline.json\`
 - Applied Node 22 compatibility patches
 
 ### Verification Required
@@ -248,7 +249,9 @@ Generated with rollback workflow" || echo "No changes to commit"
 3. Plan proper fix before re-attempting upgrade
 
 ---
-*Generated automatically by rollback workflow*" || echo "PR already exists"
+*Generated automatically by rollback workflow*
+BODY
+)" || echo "PR already exists"
 
       - name: Summary
         if: always()
@@ -260,7 +263,7 @@ Generated with rollback workflow" || echo "No changes to commit"
         run: |
           echo "### Rollback Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Target Commit:** \\\`$SHORT_SHA\\\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Target Commit:** \`$SHORT_SHA\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Branch:** $BRANCH" >> $GITHUB_STEP_SUMMARY
           echo "- **Tests Passed:** $TEST_PASSED" >> $GITHUB_STEP_SUMMARY
           echo "- **MCP Tests Passed:** $MCP_PASSED" >> $GITHUB_STEP_SUMMARY

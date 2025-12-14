@@ -88,7 +88,8 @@ jobs:
           gh issue create \
             --title "New CyberChef release $LATEST available" \
             --label "upstream-release,needs-review" \
-            --body "## New Upstream Release Detected
+            --body "$(cat <<BODY
+## New Upstream Release Detected
 
 **CyberChef Version:** $LATEST
 **Current Version:** v$CYBERCHEF_VERSION
@@ -98,22 +99,22 @@ jobs:
 
 1. Review the [upstream release notes](https://github.com/gchq/CyberChef/releases/tag/$LATEST)
 2. Check for breaking changes or new operations
-3. If safe to proceed, add the \\\`upstream-sync-approved\\\` label to trigger automatic sync
+3. If safe to proceed, add the \`upstream-sync-approved\` label to trigger automatic sync
 4. If manual intervention needed, sync manually and close this issue
 
 ### Automatic Sync
 
 To trigger automatic synchronization:
-\\\`\\\`\\\`bash
+\`\`\`bash
 gh issue edit <issue-number> --add-label upstream-sync-approved
-\\\`\\\`\\\`
+\`\`\`
 
 Or use the GitHub web interface to add the label.
 
 ### Manual Sync
 
 If automatic sync is not suitable:
-\\\`\\\`\\\`bash
+\`\`\`bash
 # Add upstream remote
 git remote add upstream https://github.com/gchq/CyberChef.git
 
@@ -128,10 +129,12 @@ npx grunt configTests
 # Run tests
 npm test
 npm run test:mcp
-\\\`\\\`\\\`
+\`\`\`
 
 ---
-*This issue was created automatically by the Upstream Release Monitor workflow.*"
+*This issue was created automatically by the Upstream Release Monitor workflow.*
+BODY
+)"
 
       - name: Summary
         env:
