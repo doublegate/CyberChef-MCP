@@ -4,7 +4,7 @@ This project provides a **Model Context Protocol (MCP)** server interface for **
 
 By running this server, you enable AI assistants (like Claude, Cursor AI, and others) to natively utilize CyberChef's extensive library of 463+ data manipulation operations—including encryption, encoding, compression, and forensic analysis—as executable tools.
 
-**Latest Release:** v1.4.0 | [Release Notes](docs/releases/v1.4.0.md) | [Security Policy](SECURITY.md)
+**Latest Release:** v1.4.1 | [Release Notes](docs/releases/v1.4.1.md) | [Security Policy](SECURITY.md) | [Security Fixes Report](SECURITY_FIX_REPORT.md)
 
 ![CyberChef MCP Banner](images/CyberChef-MCP_Banner-Logo.jpg)
 
@@ -43,7 +43,7 @@ The server exposes CyberChef operations as MCP tools:
 *   **Modern Node.js**: Fully compatible with Node.js v22+ with automated compatibility patches.
 *   **Performance Optimized** (v1.4.0): LRU cache for operation results (100MB default), automatic streaming for large inputs (10MB+ threshold), configurable resource limits (100MB max input, 30s timeout), memory monitoring, and comprehensive benchmark suite. See [Performance Tuning Guide](docs/performance-tuning.md) for configuration options.
 *   **Upstream Sync Automation** (v1.3.0): Automated monitoring of upstream CyberChef releases every 6 hours, one-click synchronization workflow, comprehensive validation test suite with 465 tool tests, and emergency rollback mechanism.
-*   **Security Hardened** (v1.2.0+): Non-root container execution (UID 1001), automated Trivy vulnerability scanning, SBOM generation, read-only filesystem support, OWASP 2024-2025 Argon2 hardening, and nginx:alpine-slim optimization. See [Security Policy](SECURITY.md) for details.
+*   **Security Hardened** (v1.2.0+): Non-root container execution (UID 1001), automated Trivy vulnerability scanning, SBOM generation, read-only filesystem support, OWASP 2024-2025 Argon2 hardening, and nginx:alpine-slim optimization. **Latest improvements**: Fixed 11 of 12 code scanning vulnerabilities including critical cryptographic randomness weakness and 7 ReDoS vulnerabilities. New SafeRegex module provides centralized validation for all user-controlled regex patterns. See [Security Policy](SECURITY.md) and [Security Fixes Report](SECURITY_FIX_REPORT.md) for details.
 *   **Production Ready**: Comprehensive CI/CD with CodeQL v4, automated testing, and container image publishing to GHCR.
 
 ## Quick Start
@@ -67,17 +67,17 @@ For environments without direct GHCR access, download the pre-built Docker image
 1.  **Download the tarball** (approximately 270MB compressed):
     ```bash
     # Download from GitHub Releases
-    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v1.4.0/cyberchef-mcp-v1.4.0-docker-image.tar.gz
+    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v1.4.1/cyberchef-mcp-v1.4.1-docker-image.tar.gz
     ```
 
 2.  **Load the image into Docker:**
     ```bash
-    docker load < cyberchef-mcp-v1.4.0-docker-image.tar.gz
+    docker load < cyberchef-mcp-v1.4.1-docker-image.tar.gz
     ```
 
 3.  **Tag for easier usage:**
     ```bash
-    docker tag ghcr.io/doublegate/cyberchef-mcp_v1:v1.4.0 cyberchef-mcp
+    docker tag ghcr.io/doublegate/cyberchef-mcp_v1:v1.4.1 cyberchef-mcp
     ```
 
 4.  **Run the server:**
@@ -263,24 +263,37 @@ The benchmark suite tests 20+ operations across multiple input sizes (1KB, 10KB,
 
 ## Security
 
-This project implements comprehensive security hardening (v1.3.0):
+This project implements comprehensive security hardening with continuous improvements:
 
-### Container Security
+### Latest Security Enhancements (Post-v1.4.0)
+*   **11 of 12 Code Scanning Vulnerabilities Fixed**: Comprehensive security hardening completed
+    *   **CRITICAL**: Fixed insecure cryptographic randomness in GOST library - replaced `Math.random()` with `crypto.randomBytes()`
+    *   **HIGH**: Eliminated 7 ReDoS (Regular Expression Denial of Service) vulnerabilities across 6 operations
+    *   **NEW MODULE**: SafeRegex.mjs provides centralized validation for all user-controlled regex patterns
+        *   Pattern length limits (10,000 characters)
+        *   ReDoS pattern detection (nested quantifiers, overlapping alternations)
+        *   Timeout-based validation (100ms) to detect catastrophic backtracking
+        *   XRegExp and standard RegExp support
+*   **All 1,933 Tests Passing**: Security fixes validated with comprehensive test suite
+*   See [Security Fixes Report](SECURITY_FIX_REPORT.md) for complete details
+
+### Container Security (v1.2.0+)
 *   **Non-Root Execution**: Container runs as dedicated `cyberchef` user (UID 1001)
 *   **Read-Only Filesystem**: Supports `--read-only` flag for immutable deployments
 *   **Minimal Attack Surface**: Development files removed from production image
 *   **Health Checks**: Built-in container health monitoring
-*   **Zero Critical Vulnerabilities**: All 5 GitHub Security code scanning alerts resolved (v1.2.5)
 
 ### Cryptographic Hardening (v1.2.5)
 *   **Argon2 OWASP Compliance**: Default parameters follow OWASP 2024-2025 recommendations
     *   Type: Argon2id (hybrid side-channel + GPU resistance)
     *   Memory: 19 MiB (OWASP minimum)
     *   Iterations: 2 (OWASP recommended for 19 MiB)
+*   **Secure Random Number Generation**: All cryptographic operations use `crypto.randomBytes()` or `crypto.getRandomValues()`
 *   **CVE-2025-64756 Fixed**: Updated npm to resolve glob command injection vulnerability
 
 ### Automated Security Scanning
 *   **Trivy Integration**: Container and dependency scanning on every build
+*   **CodeQL Analysis**: Continuous code scanning for security vulnerabilities
 *   **SBOM Generation**: CycloneDX Software Bill of Materials with each release
 *   **Weekly Scans**: Scheduled scans catch newly discovered vulnerabilities
 *   **GitHub Security Tab**: All findings automatically uploaded
@@ -296,7 +309,11 @@ docker run -i --rm \
   cyberchef-mcp
 ```
 
-For detailed information, see the [Security Policy](SECURITY.md) and [Security Audit](docs/security/audit.md).
+For detailed information, see:
+*   [Security Policy](SECURITY.md) - Vulnerability reporting and security policies
+*   [Security Audit](docs/security/audit.md) - Comprehensive security assessment
+*   [Security Fixes Report](SECURITY_FIX_REPORT.md) - Latest vulnerability fixes
+*   [Security Fixes Summary](SECURITY_FIXES_SUMMARY.md) - Quick reference guide
 
 ## Project Roadmap
 
@@ -342,6 +359,8 @@ Detailed documentation can be found in the [`docs/`](docs/) directory:
 ### Security & Releases
 *   [**Security Policy**](SECURITY.md): Security policy and vulnerability reporting
 *   [**Security Audit**](docs/security/audit.md): Comprehensive security assessment
+*   [**Security Fixes Report**](SECURITY_FIX_REPORT.md): Detailed report of 11 vulnerability fixes (ReDoS and cryptographic weaknesses)
+*   [**Security Fixes Summary**](SECURITY_FIXES_SUMMARY.md): Quick reference for recent security improvements
 *   [**Release Notes v1.4.0**](docs/releases/v1.4.0.md): Performance optimization with caching, streaming, and resource limits
 *   [**Performance Tuning Guide**](docs/performance-tuning.md): Configuration guide for optimizing performance
 *   [**Release Notes v1.3.0**](docs/releases/v1.3.0.md): Upstream sync automation with comprehensive testing

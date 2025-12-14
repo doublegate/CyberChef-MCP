@@ -8,6 +8,7 @@ import Operation from "../Operation.mjs";
 import Dish from "../Dish.mjs";
 import XRegExp from "xregexp";
 import { isWorkerEnvironment } from "../Utils.mjs";
+import { createSafeXRegExp } from "../lib/SafeRegex.mjs";
 
 /**
  * Register operation
@@ -67,7 +68,7 @@ class Register extends Operation {
         if (m) modifiers += "m";
         if (s) modifiers += "s";
 
-        const extractor = new XRegExp(extractorStr, modifiers),
+        const extractor = createSafeXRegExp(XRegExp, extractorStr, modifiers),
             input = await state.dish.get(Dish.STRING),
             registers = input.match(extractor);
 

@@ -114,9 +114,21 @@ GostRandom.prototype.getRandomValues = function (array) // <editor-fold defaults
         // Native window cryptographic interface
         rootCrypto.getRandomValues(u8);
     } else {
-        // Standard Javascript method
-        for (var i = 0, n = u8.length; i < n; i++)
-            u8[i] = Math.floor(256 * Math.random()) & 255;
+        // Fallback: Use Node.js crypto module if available, otherwise throw error
+        // Math.random() is NOT cryptographically secure and should never be used for crypto
+        if (typeof require !== 'undefined') {
+            try {
+                const crypto = require('crypto');
+                const bytes = crypto.randomBytes(u8.length);
+                for (var i = 0; i < u8.length; i++) {
+                    u8[i] = bytes[i];
+                }
+            } catch (e) {
+                throw new Error('No cryptographically secure random number generator available. Cannot use Math.random() for cryptographic operations.');
+            }
+        } else {
+            throw new Error('No cryptographically secure random number generator available. crypto.getRandomValues() is required for browser environments.');
+        }
     }
 
     // Mix bio randomizator

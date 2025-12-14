@@ -7,6 +7,7 @@
 import Operation from "../Operation.mjs";
 import Recipe from "../Recipe.mjs";
 import Dish from "../Dish.mjs";
+import { createSafeRegExp } from "../lib/SafeRegex.mjs";
 
 /**
  * Subsection operation
@@ -95,7 +96,7 @@ class Subsection extends Operation {
             if (!caseSensitive) flags += "i";
             if (global) flags += "g";
 
-            const regex = new RegExp(section, flags),
+            const regex = createSafeRegExp(section, flags),
                 recipe = new Recipe();
 
             recipe.addOperations(subOpList);

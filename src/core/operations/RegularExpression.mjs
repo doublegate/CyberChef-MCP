@@ -8,6 +8,7 @@ import XRegExp from "xregexp";
 import Operation from "../Operation.mjs";
 import Utils from "../Utils.mjs";
 import OperationError from "../errors/OperationError.mjs";
+import { createSafeXRegExp } from "../lib/SafeRegex.mjs";
 
 /**
  * Regular expression operation
@@ -155,7 +156,7 @@ class RegularExpression extends Operation {
 
         if (userRegex && userRegex !== "^" && userRegex !== "$") {
             try {
-                const regex = new XRegExp(userRegex, modifiers);
+                const regex = createSafeXRegExp(XRegExp, userRegex, modifiers);
 
                 switch (outputFormat) {
                     case "Highlight matches":

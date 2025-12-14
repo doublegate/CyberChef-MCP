@@ -7,6 +7,7 @@
 import Operation from "../Operation.mjs";
 import Utils from "../Utils.mjs";
 import XRegExp from "xregexp";
+import { createSafeXRegExp } from "../lib/SafeRegex.mjs";
 
 /**
  * Find / Replace operation
@@ -76,7 +77,7 @@ class FindReplace extends Operation {
         if (s) modifiers += "s";
 
         if (type === "Regex") {
-            find = new XRegExp(find, modifiers);
+            find = createSafeXRegExp(XRegExp, find, modifiers);
             return input.replace(find, replace);
         }
 

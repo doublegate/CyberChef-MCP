@@ -9,6 +9,7 @@ import Utils from "../Utils.mjs";
 import {INPUT_DELIM_OPTIONS} from "../lib/Delim.mjs";
 import OperationError from "../errors/OperationError.mjs";
 import XRegExp from "xregexp";
+import { createSafeXRegExp } from "../lib/SafeRegex.mjs";
 
 /**
  * Filter operation
@@ -56,7 +57,7 @@ class Filter extends Operation {
         let regex;
 
         try {
-            regex = new XRegExp(args[1]);
+            regex = createSafeXRegExp(XRegExp, args[1]);
         } catch (err) {
             throw new OperationError(`Invalid regex. Details: ${err.message}`);
         }

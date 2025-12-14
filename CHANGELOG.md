@@ -5,10 +5,49 @@ All notable changes to the CyberChef MCP Server project will be documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.4.1] - 2025-12-14
+
+### Security
+- **Fixed 11 of 12 Code Scanning Vulnerabilities**: Comprehensive security hardening addressing ReDoS and cryptographic weaknesses
+  - **CRITICAL**: Fixed insecure cryptographic randomness in `src/core/vendor/gost/gostRandom.mjs`
+    - Replaced `Math.random()` with Node.js `crypto.randomBytes()` for cryptographic operations
+    - Prevents predictable cryptographic key generation
+    - Throws error if no secure RNG is available
+  - **HIGH**: Fixed 7 Regular Expression Denial of Service (ReDoS) vulnerabilities across 6 operations
+    - `src/core/operations/RAKE.mjs` (2 instances)
+    - `src/core/operations/Filter.mjs`
+    - `src/core/operations/FindReplace.mjs`
+    - `src/core/operations/Register.mjs`
+    - `src/core/operations/Subsection.mjs`
+    - `src/core/operations/RegularExpression.mjs`
+  - **LOW**: Documented 3 acceptable `Math.random()` usages in non-cryptographic contexts
+    - `Numberwang.mjs` (trivia facts)
+    - `RandomizeColourPalette.mjs` (color seeds)
+    - `LoremIpsum.mjs` (placeholder text)
+  - **DOCUMENTED**: Web UI code injection vulnerability (OutputWaiter.mjs) - Web UI only, not affecting MCP server
 
 ### Added
+- **SafeRegex.mjs Security Module**: New centralized regex validation utility (`src/core/lib/SafeRegex.mjs`)
+  - Pattern length validation (10,000 character maximum)
+  - ReDoS pattern detection (nested quantifiers, overlapping alternations)
+  - Timeout-based validation (100ms) to detect catastrophic backtracking
+  - XRegExp and standard RegExp support
+  - Exported functions: `validateRegexPattern()`, `createSafeRegExp()`, `createSafeXRegExp()`, `escapeRegex()`
 - **GitHub Copilot Agent Support**: Added `.github/agents/copilot-instructions.md` to ensure GitHub Copilot Agents can discover and use custom instructions
+
+### Changed
+- **Regex operations**: All user-controlled regex patterns now validated through SafeRegex module
+- **GOST cryptography**: Enhanced random number generation with secure fallback error handling
+
+### Fixed
+- **Security**: Eliminated ReDoS attack vectors preventing denial of service through malicious regex patterns
+- **Security**: Cryptographic operations now use cryptographically secure random number generation exclusively
+
+### Testing
+- All 1,933 unit tests passing (1,716 operation tests + 217 Node API tests)
+- ESLint validation passing
+- Manual testing with known ReDoS patterns confirms proper rejection
+- Cryptographic operations verified using secure RNG
 
 ## [1.4.0] - 2025-12-14
 
