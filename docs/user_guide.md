@@ -119,7 +119,7 @@ mcp-client --server-command "docker run -i --rm cyberchef-mcp"
 
 ## Security Best Practices
 
-The CyberChef MCP server (v1.2.0+) includes several security hardening features:
+The CyberChef MCP server (v1.2.5) includes comprehensive security hardening features:
 
 ### Non-Root Execution
 The container runs as a non-root user (`cyberchef`, UID 1001) by default:

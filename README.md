@@ -41,7 +41,7 @@ The server exposes CyberChef operations as MCP tools:
 *   **Stdio Transport**: Communicates via standard input/output, making it easy to integrate with CLI-based MCP clients.
 *   **Schema Validation**: All inputs are validated against schemas derived from CyberChef's internal type system using `zod`.
 *   **Modern Node.js**: Fully compatible with Node.js v22+ with automated compatibility patches.
-*   **Security Hardened** (v1.2.0+): Non-root container execution (UID 1001), automated Trivy vulnerability scanning, SBOM generation, and read-only filesystem support. See [Security Policy](SECURITY.md) for details.
+*   **Security Hardened** (v1.2.5): Non-root container execution (UID 1001), automated Trivy vulnerability scanning, SBOM generation, read-only filesystem support, and OWASP 2024-2025 Argon2 hardening. See [Security Policy](SECURITY.md) for details.
 *   **Production Ready**: Comprehensive CI/CD with CodeQL v4, automated testing, and container image publishing to GHCR.
 
 ## Quick Start
@@ -138,13 +138,21 @@ After adding the configuration, restart Claude Desktop. The CyberChef tools will
 
 ## Security
 
-This project implements comprehensive security hardening (v1.2.0+):
+This project implements comprehensive security hardening (v1.2.5):
 
 ### Container Security
 *   **Non-Root Execution**: Container runs as dedicated `cyberchef` user (UID 1001)
 *   **Read-Only Filesystem**: Supports `--read-only` flag for immutable deployments
 *   **Minimal Attack Surface**: Development files removed from production image
 *   **Health Checks**: Built-in container health monitoring
+*   **Zero Critical Vulnerabilities**: All 5 GitHub Security code scanning alerts resolved (v1.2.5)
+
+### Cryptographic Hardening (v1.2.5)
+*   **Argon2 OWASP Compliance**: Default parameters follow OWASP 2024-2025 recommendations
+    *   Type: Argon2id (hybrid side-channel + GPU resistance)
+    *   Memory: 19 MiB (OWASP minimum)
+    *   Iterations: 2 (OWASP recommended for 19 MiB)
+*   **CVE-2025-64756 Fixed**: Updated npm to resolve glob command injection vulnerability
 
 ### Automated Security Scanning
 *   **Trivy Integration**: Container and dependency scanning on every build
@@ -171,7 +179,7 @@ CyberChef MCP Server has a comprehensive development roadmap spanning **19 relea
 
 | Phase | Releases | Timeline | Focus | Status |
 |-------|----------|----------|-------|--------|
-| **Phase 1: Foundation** | v1.2.0 - v1.4.0 | Q4 2025 - Q1 2026 | Security hardening, upstream sync, performance | **v1.2.0 Released** |
+| **Phase 1: Foundation** | v1.2.0 - v1.4.0 | Q4 2025 - Q1 2026 | Security hardening, upstream sync, performance | **v1.2.5 Released** |
 | **Phase 2: Enhancement** | v1.5.0 - v1.7.0 | Q2 2026 | Streaming, recipe management, batch processing | Planned |
 | **Phase 3: Maturity** | v1.8.0 - v2.0.0 | Q3 2026 | API stabilization, breaking changes, v2.0.0 | Planned |
 | **Phase 4: Expansion** | v2.1.0 - v2.3.0 | Q4 2026 | Multi-modal, advanced transports, plugins | Planned |
@@ -209,6 +217,7 @@ Detailed documentation can be found in the [`docs/`](docs/) directory:
 ### Security & Releases
 *   [**Security Policy**](SECURITY.md): Security policy and vulnerability reporting
 *   [**Security Audit**](docs/security/audit.md): Comprehensive security assessment
+*   [**Release Notes v1.2.5**](docs/releases/v1.2.5.md): Security patch with OWASP Argon2 hardening
 *   [**Release Notes v1.2.0**](docs/releases/v1.2.0.md): Security hardening release
 *   [**Release Notes v1.1.0**](docs/releases/v1.1.0.md): Security fixes and Node.js 22 compatibility
 *   [**Release Notes v1.0.0**](docs/releases/v1.0.0.md): Initial MCP server release
