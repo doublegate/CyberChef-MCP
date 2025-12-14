@@ -43,7 +43,7 @@ RUN npm run build
 # Package static build files into nginx #
 #########################################
 # Package into nginx for serving
-FROM nginx:stable-alpine AS cyberchef
+FROM nginx:1.29-alpine-slim AS cyberchef
 
 # Security: Add metadata labels
 LABEL org.opencontainers.image.title="CyberChef Web Application" \
