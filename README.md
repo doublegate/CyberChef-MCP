@@ -10,7 +10,7 @@ This project provides a **Model Context Protocol (MCP)** server interface for **
 
 By running this server, you enable AI assistants (like Claude, Cursor AI, and others) to natively utilize CyberChef's extensive library of 300+ data manipulation operations—including encryption, encoding, compression, and forensic analysis—as executable tools.
 
-**Latest Release:** v1.0.0 | [Release Notes](docs/releases/v1.0.0.md) | [Security Audit](docs/security/audit.md)
+**Latest Release:** v1.1.0 | [Release Notes](docs/releases/v1.1.0.md) | [Security Audit](docs/security/audit.md)
 
 ## Project Context
 
@@ -148,6 +148,7 @@ Detailed documentation can be found in the [`docs/`](docs/) directory:
 
 ### Security & Releases
 *   [**Security Audit**](docs/security/audit.md): Comprehensive security assessment
+*   [**Release Notes v1.1.0**](docs/releases/v1.1.0.md): Security hardening and Node.js 22 compatibility
 *   [**Release Notes v1.0.0**](docs/releases/v1.0.0.md): Initial MCP server release
 
 ## Development

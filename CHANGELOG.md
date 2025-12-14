@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2025-12-13
+
+### Security
+- **Fixed 11 vulnerabilities** (5 code scanning + 2 dependency + 4 npm audit fixes)
+  - CWE-116: Incomplete string escaping in `Utils.mjs`, `PHPDeserialize.mjs`, and `JSONBeautify.mjs`
+  - CWE-79: Cross-site scripting (XSS) in `BindingsWaiter.mjs`
+  - CWE-916: Insufficient password hash iterations in `DeriveEVPKey.mjs` (now 10,000 minimum)
+  - CVE-2024-55565: Removed `babel-plugin-transform-builtin-extend` (prototype pollution)
+  - GHSA-64g7-mvw6-v9qj: Added `shelljs@>=0.8.5` override (command injection)
+  - Updated `@modelcontextprotocol/sdk` to 1.24.3 (DNS rebinding fix)
+  - Updated `@babel/helpers` and `@babel/runtime` to 7.28.4 (ReDoS fixes)
+  - Updated `body-parser`, `brace-expansion`, `jws` via npm audit
+- **Enhanced password hashing**: Increased DeriveEVPKey minimum iterations from 1,000 → 10,000 (NIST SP 800-63B compliance)
+- **XSS protection**: Replaced `innerHTML` with safe DOM API methods (`textContent`, `createElement`)
+- **String escaping**: Implemented proper two-step escaping pattern (backslashes first, then quotes)
+- **Vulnerability reduction**: 76% overall (16 of 21 vulnerabilities fixed)
+- **Production MCP server runtime**: Low Risk (5 remaining issues in dev dependencies only)
+
 ### Added
 - Node.js version badge to README
 - Docker badge to README
@@ -18,6 +36,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Repository information section with GHCR and issue tracker links
 - Development workflow guidelines in Contributing section
 - Option to pull pre-built Docker images from GHCR in Quick Start
+- Created `CLAUDE.md` project guidance file for Claude Code AI assistant
+- Created `.github/SECURITY_MAINTENANCE.md` ongoing security procedures guide
+- Created `.github/copilot-instructions.md` for GitHub Copilot
+- Created `scripts/fix-serialize-javascript.js` automated patch for Node.js 22+ compatibility
+- Added `mcpVersion` field to `package.json` (separate from CyberChef version)
 
 ### Changed
 - Enhanced README with security highlights and production-ready status
@@ -26,9 +49,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Expanded Technical Highlights section with security and CI/CD information
 - Reorganized Documentation section with clear categorization
 - Enhanced Contributing section with detailed workflow and expectations
+- Documentation reorganization:
+  - Created `docs/planning/` directory (moved `to-dos/roadmap.md` and `to-dos/tasks.md`)
+  - Created `docs/releases/` directory (moved `RELEASE_NOTES.md` → `docs/releases/v1.0.0.md`)
+  - Created `docs/security/` directory (moved `SECURITY_AUDIT.md` → `docs/security/audit.md`)
+- Updated all documentation references to reflect new paths
+- Improved CHANGELOG.md formatting and organization
+- Updated `.gitignore` to exclude Docker tarballs and CLAUDE.local.md
 
 ### Fixed
 - README documentation links to reflect new directory structure (`docs/planning/`, `docs/security/`, `docs/releases/`)
+- **Node.js 22 compatibility**: Fixed `serialize-javascript` compatibility with automated patch
+- **Build process**: Corrected test expectations for DeriveEVPKey (10,000 iterations)
+- **CI workflows**: All 5 GitHub Actions workflows verified passing
+- JWT and JPath test failures (updated RSA keys to 2048 bits, fixed ES384/ES512 curves)
+
+### Removed
+- `babel-plugin-transform-builtin-extend` from dependencies (deprecated, security risk)
+- `GEMINI.md` file (consolidated guidance into CLAUDE.md and copilot-instructions.md)
+
+### Breaking Changes
+- **DeriveEVPKey minimum iterations increased to 10,000** (NIST SP 800-63B compliance)
+  - Users specifying `<10,000` iterations will receive secure minimum with warning
+  - Update recipes using DeriveEVPKey with low iteration counts
 
 ## [1.0.0-post-security] - 2025-12-13
 
