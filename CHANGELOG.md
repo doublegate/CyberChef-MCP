@@ -7,7 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-*No unreleased changes.*
+### Security
+- **Fixed 4 GitHub Security code scanning alerts**:
+  - **DS026**: Added HEALTHCHECK to original `Dockerfile` (web app) for container orchestration
+  - **DS002**: Added non-root user (nginx) execution to original `Dockerfile` (web app)
+  - **CVE-2025-64756**: Updated npm in `Dockerfile.mcp` to fix glob command injection vulnerability (glob 10.4.5 → 10.5.0+)
+  - **js/insufficient-password-hash**: Added CodeQL suppression for DeriveEVPKey (intentional OpenSSL EVP KDF implementation)
+
+### Changed
+- **Dockerfile** (web app): Security hardening overhaul
+  - Added OCI metadata labels
+  - Added non-root user execution (nginx user)
+  - Added HEALTHCHECK instruction for container orchestration
+  - Added EXPOSE 80 declaration
+- **Dockerfile.mcp**: Added npm update to fix bundled glob CVE-2025-64756
+- **.dockerignore**: Expanded exclusions to prevent unnecessary files in MCP container
+  - Excludes original `Dockerfile` to prevent Trivy alerts on web app Dockerfile in MCP container
+  - Added IDE, test, and temporary file exclusions for smaller container image
 
 ## [1.2.0] - 2025-12-14
 

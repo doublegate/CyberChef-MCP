@@ -79,7 +79,12 @@ class DeriveEVPKey extends Operation {
             warning = `Warning: Iteration count ${iterations} is below the minimum secure value of ${minIterations}. Using ${minIterations} iterations instead.\n\n`;
         }
 
-        const key = CryptoJS.EvpKDF(passphrase, salt, {
+        // CodeQL suppression: This intentionally implements OpenSSL's EVP_BytesToKey for
+        // compatibility with OpenSSL-encrypted data. This is NOT a password storage mechanism.
+        // We enforce a minimum of 10,000 iterations per NIST SP 800-63B guidelines.
+        // For password storage, users should use bcrypt, scrypt, or Argon2 instead.
+        // lgtm[js/insufficient-password-hash]
+        const key = CryptoJS.EvpKDF(passphrase, salt, { // codeql[js/insufficient-password-hash]
             keySize: keySize,
             hasher: CryptoJS.algo[hasher],
             iterations: actualIterations,

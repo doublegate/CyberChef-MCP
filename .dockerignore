@@ -1,2 +1,34 @@
+# Dependencies and build artifacts
 node_modules
 build
+
+# Docker files - prevent triggering Trivy alerts for web app Dockerfile in MCP container
+Dockerfile
+docker-compose*.yml
+
+# Development files
+.git
+.github
+.vscode
+.idea
+
+# Documentation (copied during build, removed in Dockerfile.mcp)
+*.md
+!package.json
+
+# Test files
+tests
+coverage
+.nyc_output
+
+# IDE and OS files
+*.log
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Temporary files
+tmp
+temp
+*.tmp

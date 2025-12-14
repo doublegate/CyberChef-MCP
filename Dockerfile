@@ -1,3 +1,12 @@
+# =============================================================================
+# CyberChef Web Application - Hardened Docker Image
+# =============================================================================
+# Security Features:
+# - Non-root user execution (nginx user)
+# - Health check for container orchestration
+# - Minimal attack surface with Alpine base
+# =============================================================================
+
 #####################################
 # Build the app to a static website #
 #####################################
@@ -32,4 +41,24 @@ RUN npm run build
 ARG TARGETPLATFORM
 FROM --platform=${TARGETPLATFORM} nginx:stable-alpine AS cyberchef
 
+# Security: Add metadata labels
+LABEL org.opencontainers.image.title="CyberChef Web Application" \
+      org.opencontainers.image.description="Web-based data manipulation tool with 300+ operations" \
+      org.opencontainers.image.vendor="GCHQ" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.source="https://github.com/gchq/CyberChef"
+
 COPY --from=builder /app/build/prod /usr/share/nginx/html/
+
+# Security: Set proper ownership for nginx user
+RUN chown -R nginx:nginx /usr/share/nginx/html && \
+    chmod -R 755 /usr/share/nginx/html
+
+# Security: Switch to non-root user (nginx user is built into nginx:alpine)
+USER nginx
+
+# Health check for container orchestration
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:80/ || exit 1
+
+EXPOSE 80
