@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **GitHub Copilot Agent Support**: Added `.github/agents/copilot-instructions.md` to ensure GitHub Copilot Agents can discover and use custom instructions
+
 ## [1.4.0] - 2025-12-14
 
 ### Added
