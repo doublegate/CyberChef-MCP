@@ -6,6 +6,51 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [1.4.4] - 2025-12-14
+
+### Fixed
+- **Docker Hub Build**: Resolved webpack child compilation failures preventing Docker Hub CI/CD from building v1.4.2 and v1.4.3
+  - Root cause: Corrupted import path in `@natlibfi/loglevel-message-prefix@3.0.1` package
+  - Automated fix via postinstall script using sed to correct the import path
+  - Cross-platform support for Linux and macOS
+  - Prevents webpack child compiler failures in all 5 web workers
+- **Docker Hub Build**: Optimized memory usage and webpack configuration for Docker Hub's constrained resources
+  - Set `NODE_OPTIONS="--max-old-space-size=4096"` in Dockerfile
+  - Reduced webpack parallelism to 1 to minimize resource contention
+  - Made BundleAnalyzerPlugin resilient with `logLevel: "warn"`
+  - Enhanced webpack stats with `children: true` for debugging visibility
+
+### Security
+- **Fixed 12 Code Scanning Vulnerabilities**: Comprehensive security hardening for web UI (PR #10)
+  - **CRITICAL**: Fixed code injection vulnerability in `src/web/waiters/OutputWaiter.mjs`
+  - **HIGH**: Enhanced XSS prevention with attribute allowlist
+  - **HIGH**: Added comprehensive attribute value validation
+  - **HIGH**: Enhanced protocol validation to prevent malicious URIs
+  - All 12 vulnerabilities are in web UI code only - MCP server remains unaffected
+
+### Added
+- **GitHub Copilot Instructions**: Added comprehensive development guidance (PR #12)
+  - Created `.github/copilot-instructions.md` with quick start workflow and code conventions
+  - Created `.github/agents/copilot-instructions.md` for discovery
+  - Includes architecture overview, development tasks, and troubleshooting
+- **Grunt Task**: New `exec:fixLoglevelMessagePrefix` task in Gruntfile.js
+  - Automatically fixes corrupted package on postinstall
+
+### Changed
+- **Version bump**: `1.4.3` → `1.4.4` in `package.json` and `mcp-server.mjs`
+- **Webpack Configuration**: Enhanced debugging and reliability
+  - Set `stats.children: true` to expose worker compilation errors
+  - Added webpack ignore patterns for warnings
+  - Reduced `parallelism: 1` for resource-constrained environments
+- **Dockerfile**: Memory optimization for Docker Hub builds
+  - Added `NODE_OPTIONS="--max-old-space-size=4096"` environment variable
+
+### Testing
+- All 1,933 unit tests passing (1,716 operation tests + 217 Node API tests)
+- Local build: SUCCESS (webpack 5.103.0 compiled in 98s)
+- Docker build: SUCCESS (285MB image created)
+- MCP server: All 465 tools operational
+
 
 ## [1.4.3] - 2025-12-14
 

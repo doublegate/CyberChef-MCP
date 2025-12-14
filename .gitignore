@@ -18,5 +18,7 @@ tests/browser/output/*
 *.tar.gz
 *.tgz
 
-# Claude Code local files
+# AI assistant local files
 CLAUDE.local.md
+GEMINI.md
+WARP.md
