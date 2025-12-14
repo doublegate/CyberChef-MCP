@@ -6,7 +6,7 @@ The solution involves creating a new entry point in the `src/node/` directory th
 
 ```mermaid
 graph TD
-    A[MCP Client (AI/IDE)] <-->|Stdio/SSE| B[CyberChef MCP Server];
+    A[MCP Client (AI/IDE)] -->|Stdio/SSE| B[CyberChef MCP Server];
     B -->|Imports| C[CyberChef Node API];
     C -->|Uses| D[CyberChef Core];
     D -->|Config| E[OperationConfig.json];
