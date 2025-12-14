@@ -36,7 +36,9 @@ RUN sed -i 's/new SlowBuffer/Buffer.alloc/g' node_modules/avsc/lib/types.js && \
 # npm postinstall runs grunt, which depends on files other than package.json
 RUN npm run postinstall
 
-# Build the app
+# Build the app with increased memory for webpack (Docker Hub has constrained resources)
+# Increase Node heap size to 4GB to handle webpack's worker compilation
+ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN npm run build
 
 #########################################

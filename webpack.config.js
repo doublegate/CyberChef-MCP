@@ -224,7 +224,7 @@ module.exports = {
         ]
     },
     stats: {
-        children: false,
+        children: true,  // Enable to see worker compilation errors
         chunks: false,
         modules: false,
         entrypoints: false
@@ -234,9 +234,14 @@ module.exports = {
         /source map/,
         /dependency is an expression/,
         /export 'default'/,
-        /Can't resolve 'sodium'/
+        /Can't resolve 'sodium'/,
+        /child compilations/i,
+        /Error parsing bundle asset/i
     ],
     performance: {
         hints: false
-    }
+    },
+    // Limit webpack parallelism to reduce memory usage in Docker Hub builds
+    // Docker Hub has constrained resources compared to local development
+    parallelism: 1
 };

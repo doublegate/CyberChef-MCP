@@ -140,7 +140,9 @@ module.exports = function (grunt) {
                     new BundleAnalyzerPlugin({
                         analyzerMode: "static",
                         reportFilename: "BundleAnalyzerReport.html",
-                        openAnalyzer: false
+                        openAnalyzer: false,
+                        logLevel: "warn",  // Don't fail on errors
+                        generateStatsFile: false
                     }),
                 ]
             };
@@ -446,6 +448,17 @@ module.exports = function (grunt) {
             },
             fixSerializeJavascript: {
                 command: "node scripts/fix-serialize-javascript.js",
+                stdout: false
+            },
+            fixLoglevelMessagePrefix: {
+                command: function () {
+                    switch (process.platform) {
+                        case "darwin":
+                            return `sed -i '' 's/@natlibfi(es6-polyfills/@natlibfi\\/es6-polyfills/g' ./node_modules/@natlibfi/loglevel-message-prefix/lib/main.js`;
+                        default:
+                            return `sed -i 's/@natlibfi(es6-polyfills/@natlibfi\\/es6-polyfills/g' ./node_modules/@natlibfi/loglevel-message-prefix/lib/main.js`;
+                    }
+                },
                 stdout: false
             }
         },
