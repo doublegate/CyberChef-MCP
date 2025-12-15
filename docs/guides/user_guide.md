@@ -177,7 +177,6 @@ Once connected, you can try prompts like these with your AI assistant:
 *   "Analyze this string and tell me what kind of hash it might be."
 *   "Convert the current time to a UNIX timestamp."
 
-
 ## Environment Variables
 
 | Variable | Description | Default Value | Example |
