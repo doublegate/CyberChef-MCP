@@ -45,6 +45,7 @@ jobs:
           push: false
           tags: cyberchef-mcp:latest
           load: true # Load into local Docker daemon for testing
+          no-cache: true # Force clean build to avoid stale vulnerability data
 
       - name: Test MCP Server (List Tools)
         run: |
