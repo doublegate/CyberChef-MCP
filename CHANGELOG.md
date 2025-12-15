@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.6] - 2025-12-14
+
 ### Security - Sprint 1: Security Hardening
 *   **Chainguard Distroless Base Image**: Migrated from `node:22-alpine` to `cgr.dev/chainguard/node:latest`
     *   **Zero-CVE Baseline**: Daily security updates with 7-day SLA for critical CVE patches

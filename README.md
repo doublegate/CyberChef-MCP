@@ -4,7 +4,7 @@ This project provides a **Model Context Protocol (MCP)** server interface for **
 
 By running this server, you enable AI assistants (like Claude, Cursor AI, and others) to natively utilize CyberChef's extensive library of 463+ data manipulation operations—including encryption, encoding, compression, and forensic analysis—as executable tools.
 
-**Latest Release:** v1.4.5 | [Release Notes](docs/releases/v1.4.5.md) | [Security Policy](SECURITY.md) | [Security Fixes Report](SECURITY_FIX_REPORT.md)
+**Latest Release:** v1.4.6 | [Release Notes](docs/releases/v1.4.6.md) | [Security Policy](SECURITY.md) | [Security Fixes Report](SECURITY_FIX_REPORT.md)
 
 ![CyberChef MCP Banner](images/CyberChef-MCP_Banner-Logo.jpg)
 
@@ -271,7 +271,7 @@ The benchmark suite tests 20+ operations across multiple input sizes (1KB, 10KB,
 
 This project implements comprehensive security hardening with continuous improvements:
 
-### Latest Security Enhancements (v1.4.5 Sprint 1)
+### Latest Security Enhancements (v1.4.6 Sprint 1)
 *   **Chainguard Distroless Base Image**: Enterprise-grade container security
     *   **Zero-CVE Baseline**: Daily security updates with 7-day SLA for critical patches
     *   **70% Smaller Attack Surface**: Minimal OS footprint compared to traditional Alpine/Debian images
