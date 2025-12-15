@@ -189,8 +189,8 @@ Once connected, you can try prompts like these with your AI assistant:
 | CYBERCHEF_CACHE_MAX_SIZE | Maximum cache size in bytes | 104857600 | CYBERCHEF_CACHE_MAX_SIZE=52428800 |
 | CYBERCHEF_CACHE_MAX_ITEMS | Maximum number of cached items | 1000 | CYBERCHEF_CACHE_MAX_ITEMS=500 |
 
-
 > Note: This section documents only the environment variables that are
 > currently implemented in the server (`src/node/mcp-server.mjs`).
+> Some variables referenced in earlier issues or documentation are not
 > Some variables referenced in earlier issues or documentation are not
 > yet implemented and have been intentionally omitted to avoid confusion.
