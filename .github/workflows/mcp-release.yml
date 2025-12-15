@@ -56,9 +56,14 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64
-          # Supply chain attestations for Docker Scout compliance
+          # Supply chain attestations for Docker Scout compliance (v1.4.5+)
+          # Dual SBOM Strategy:
+          # 1. Docker attestation SBOM (below): Attached to image manifest for
+          #    Docker Scout, docker sbom, and registry verification
+          # 2. Trivy SBOM artifact (separate step): Downloadable CycloneDX file
+          #    for offline audits, compliance reports, and third-party tools
           provenance: mode=max # Max-level provenance for build integrity
-          sbom: true # Generate and attach SBOM attestation
+          sbom: true # Generate and attach SBOM attestation (in-toto format)
 
       # Export Docker image as tarball for offline distribution
       # Note: metadata-action generates tags without 'v' prefix (e.g., 1.2.0 not v1.2.0)
@@ -74,8 +79,14 @@ jobs:
           docker save "$REGISTRY/$IMAGE_NAME:latest" | gzip > "cyberchef-mcp-${TAG_NAME}-docker-image.tar.gz"
           ls -lh cyberchef-mcp-*.tar.gz
 
-      # Security: Generate Software Bill of Materials (SBOM)
-      - name: Generate SBOM with Trivy
+      # Security: Generate Software Bill of Materials (SBOM) - Part 2 of Dual Strategy
+      # This Trivy-generated SBOM complements the Docker attestation SBOM above
+      # Purpose: Provides CycloneDX format for:
+      # - Offline security audits (no registry access required)
+      # - Third-party SBOM analysis tools (Dependency-Track, Grype, etc.)
+      # - Compliance documentation (SOC 2, ISO 27001, NIST SSDF)
+      # - Manual verification and archival
+      - name: Generate SBOM with Trivy (CycloneDX artifact)
         uses: aquasecurity/trivy-action@0.28.0
         with:
           image-ref: '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest'

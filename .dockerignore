@@ -2,6 +2,11 @@
 node_modules
 build
 
+# Generated files (regenerated during build by grunt configTests)
+src/core/config/OperationConfig.json
+src/core/config/modules/
+src/node/index.mjs
+
 # Docker files - prevent triggering Trivy alerts for web app Dockerfile in MCP container
 Dockerfile
 docker-compose*.yml

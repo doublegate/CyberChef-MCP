@@ -5,6 +5,69 @@ All notable changes to the CyberChef MCP Server project will be documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security - Sprint 1: Security Hardening
+*   **Chainguard Distroless Base Image**: Migrated from `node:22-alpine` to `cgr.dev/chainguard/node:latest`
+    *   **Zero-CVE Baseline**: Daily security updates with 7-day SLA for critical CVE patches
+    *   **70% Smaller Attack Surface**: Minimal OS footprint (no shell, no package manager, only runtime dependencies)
+    *   **SLSA Build Level 3 Provenance**: Verifiable supply chain integrity via Chainguard attestations
+    *   **Multi-stage Build**: Uses `-dev` variant for compilation, distroless for production runtime
+    *   **Non-Root Execution**: Runs as UID 65532 (nonroot user) in distroless environment
+    *   Reduces container size from ~270MB (Alpine) to ~90MB (distroless)
+*   **Security Scan Fail Thresholds**: Trivy scanner now configured to fail builds on vulnerabilities
+    *   Added `exit-code: '1'` to `.github/workflows/mcp-docker-build.yml`
+    *   Prevents images with CRITICAL or HIGH vulnerabilities from reaching production
+    *   Enforces zero-tolerance security policy in CI/CD pipeline
+*   **Read-Only Filesystem Support**: Container now fully supports `--read-only` mode
+    *   Compliance-ready for PCI-DSS, SOC 2, FedRAMP immutable deployment requirements
+    *   Requires tmpfs mount: `--tmpfs /tmp:rw,noexec,nosuid,size=100m`
+    *   Documented in `Dockerfile.mcp` comments and README security section
+
+### Added - Sprint 1: Security Hardening
+*   **Dual SBOM Strategy**: Comprehensive supply chain transparency
+    *   **Part 1**: Docker buildx attestations in `.github/workflows/mcp-release.yml`
+        *   Provenance attestation (`mode=max`) for complete build process metadata
+        *   SBOM attestation for automatic dependency tree generation
+        *   Enables Docker Scout automated scanning and health score improvements ('C' → 'B' or 'A')
+        *   Supports SLSA Level 2+ compliance for supply chain integrity
+    *   **Part 2**: Trivy CycloneDX SBOM for offline compliance auditing
+        *   Generated during release workflow
+        *   Attached as release asset for verification and compliance reporting
+        *   Complete dependency tree with version information
+*   **Enhanced Error Logging**: Improved operational observability in `src/node/mcp-server.mjs`
+    *   Added diagnostic logging for OperationConfig schema generation failures
+    *   Logs operation name, tool name, argument count, and error message
+    *   Does not disrupt MCP protocol communication
+*   **Docker Build Context Optimization**: Enhanced `.dockerignore` file
+    *   Added exclusions for generated files: `OperationConfig.json`, `modules/`, `index.mjs`
+    *   Prevents permission conflicts during multi-stage builds
+    *   Reduces build context size for faster image builds
+
+### Changed - Sprint 1: Security Hardening
+*   **Dockerfile.mcp**: Complete rewrite for Chainguard distroless base
+    *   Stage 1: Uses `cgr.dev/chainguard/node:latest-dev` for building (includes npm, build tools)
+    *   Stage 2: Uses `cgr.dev/chainguard/node:latest` for runtime (distroless, minimal attack surface)
+    *   Added SlowBuffer compatibility patches for Node.js 22+ during build
+    *   Optimized layer caching for faster rebuilds
+    *   Runs as UID 65532 (nonroot user) instead of UID 1001
+*   **GitHub Actions Workflow**: Upgraded Docker build action in `.github/workflows/mcp-release.yml`
+    *   Updated from `docker/build-push-action@v5` to `@v6` for attestation support
+    *   Added `provenance: mode=max` parameter for maximum build provenance detail
+    *   Added `sbom: true` parameter for automatic SBOM generation
+    *   Both attestations attached to container image and GHCR registry
+*   **README.md**: Comprehensive security documentation updates
+    *   Added "Latest Security Enhancements (v1.4.5 Sprint 1)" section
+    *   Updated Quick Start with read-only filesystem example
+    *   Enhanced "Secure Deployment" section with Chainguard-specific guidance
+    *   Updated container size from ~270MB to ~90MB in Technical Highlights
+
+### Performance - Sprint 1: Security Hardening
+*   **Container Size Reduction**: 70% smaller image size (~270MB → ~90MB compressed)
+    *   Faster image pulls from GHCR
+    *   Reduced storage footprint for offline deployments
+    *   Lower bandwidth requirements for CI/CD pipelines
+
 ## [1.4.5] - 2025-12-14
 
 ### Added

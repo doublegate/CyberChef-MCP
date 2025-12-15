@@ -461,7 +461,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 inputSchema: zodToJsonSchema(z.object(argsSchema))
             });
         } catch (e) {
-            // Ignore schema errors
+            // Log schema generation failures for debugging (P2 security hardening)
+            console.error(`[MCP Server] Schema generation failed for operation: ${opName}`, {
+                error: e.message,
+                toolName,
+                argCount: (op.args || []).length
+            });
+            // Skip this operation and continue with others
         }
     });
 

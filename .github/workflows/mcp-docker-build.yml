@@ -69,13 +69,13 @@ jobs:
 
       - name: Verify non-root execution
         run: |
-          # Check that the container runs as non-root user (UID 1001)
+          # Check that the container runs as non-root user (UID 65532 - Chainguard 'nonroot')
           USER_ID=$(docker run --rm cyberchef-mcp:latest id -u)
           echo "Container user ID: $USER_ID"
-          if [ "$USER_ID" = "1001" ]; then
-            echo "Container correctly runs as non-root user (UID 1001)"
+          if [ "$USER_ID" = "65532" ]; then
+            echo "Container correctly runs as non-root user (UID 65532 'nonroot')"
           else
-            echo "WARNING: Container is not running as expected user (got $USER_ID, expected 1001)"
+            echo "WARNING: Container is not running as expected user (got $USER_ID, expected 65532)"
             exit 1
           fi
 
@@ -87,7 +87,7 @@ jobs:
           output: 'trivy-results.sarif'
           severity: 'CRITICAL,HIGH'
           vuln-type: 'os,library'
-          exit-code: '0'  # Don't fail build, just report
+          exit-code: '1'  # Fail build on CRITICAL/HIGH vulnerabilities (security hardening)
 
       - name: Upload Trivy scan results
         uses: github/codeql-action/upload-sarif@v4

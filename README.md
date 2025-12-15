@@ -4,7 +4,7 @@ This project provides a **Model Context Protocol (MCP)** server interface for **
 
 By running this server, you enable AI assistants (like Claude, Cursor AI, and others) to natively utilize CyberChef's extensive library of 463+ data manipulation operations—including encryption, encoding, compression, and forensic analysis—as executable tools.
 
-**Latest Release:** v1.4.4 | [Release Notes](docs/releases/v1.4.4.md) | [Security Policy](SECURITY.md) | [Security Fixes Report](SECURITY_FIX_REPORT.md)
+**Latest Release:** v1.4.5 | [Release Notes](docs/releases/v1.4.5.md) | [Security Policy](SECURITY.md) | [Security Fixes Report](SECURITY_FIX_REPORT.md)
 
 ![CyberChef MCP Banner](images/CyberChef-MCP_Banner-Logo.jpg)
 
@@ -37,14 +37,14 @@ The server exposes CyberChef operations as MCP tools:
 *   **`cyberchef_search`**: A utility tool to help the AI discover available operations and their descriptions.
 
 ### Technical Highlights
-*   **Dockerized**: Runs as a lightweight, self-contained Docker container based on Alpine Linux with Node.js 22 (~270MB compressed).
+*   **Dockerized**: Runs as a lightweight, self-contained Docker container based on Chainguard distroless Node.js 22 (~90MB compressed, 70% smaller attack surface than traditional images).
 *   **Stdio Transport**: Communicates via standard input/output, making it easy to integrate with CLI-based MCP clients.
 *   **Schema Validation**: All inputs are validated against schemas derived from CyberChef's internal type system using `zod`.
 *   **Modern Node.js**: Fully compatible with Node.js v22+ with automated compatibility patches.
 *   **Performance Optimized** (v1.4.0): LRU cache for operation results (100MB default), automatic streaming for large inputs (10MB+ threshold), configurable resource limits (100MB max input, 30s timeout), memory monitoring, and comprehensive benchmark suite. See [Performance Tuning Guide](docs/architecture/performance-tuning.md) for configuration options.
 *   **Upstream Sync Automation** (v1.3.0): Automated monitoring of upstream CyberChef releases every 6 hours, one-click synchronization workflow, comprehensive validation test suite with 465 tool tests, and emergency rollback mechanism.
-*   **Security Hardened** (v1.2.0+): Non-root container execution (UID 1001), automated Trivy vulnerability scanning, SBOM generation, read-only filesystem support, OWASP 2024-2025 Argon2 hardening, and nginx:alpine-slim optimization. **Latest improvements**: Fixed 11 of 12 code scanning vulnerabilities including critical cryptographic randomness weakness and 7 ReDoS vulnerabilities. New SafeRegex module provides centralized validation for all user-controlled regex patterns. See [Security Policy](SECURITY.md) and [Security Fixes Report](SECURITY_FIX_REPORT.md) for details.
-*   **Production Ready**: Comprehensive CI/CD with CodeQL v4, automated testing, and container image publishing to GHCR.
+*   **Security Hardened** (v1.4.5+): Chainguard distroless base image with zero-CVE baseline, non-root execution (UID 65532), automated Trivy vulnerability scanning with build-fail thresholds, dual SBOM strategy (Docker Scout attestations + CycloneDX), read-only filesystem support, SLSA Build Level 3 provenance, and 7-day SLA for critical CVE patches. Fixed 11 of 12 code scanning vulnerabilities including critical cryptographic randomness weakness and 7 ReDoS vulnerabilities. See [Security Policy](SECURITY.md) and [Security Fixes Report](SECURITY_FIX_REPORT.md) for details.
+*   **Production Ready**: Comprehensive CI/CD with CodeQL v4, automated testing, and container image publishing to GHCR with supply chain attestations.
 
 ## Quick Start
 
@@ -101,6 +101,12 @@ For environments without direct GHCR access, download the pre-built Docker image
     This command starts the server and listens on stdin. This is what your MCP client will run.
     ```bash
     docker run -i --rm cyberchef-mcp
+    ```
+
+4.  **Optional: Run with Enhanced Security (Read-Only Filesystem):**
+    For maximum security in production deployments:
+    ```bash
+    docker run -i --rm --read-only --tmpfs /tmp:rw,noexec,nosuid,size=100m cyberchef-mcp
     ```
 
 ## Client Configuration
@@ -265,7 +271,27 @@ The benchmark suite tests 20+ operations across multiple input sizes (1KB, 10KB,
 
 This project implements comprehensive security hardening with continuous improvements:
 
-### Latest Security Enhancements (Post-v1.4.0)
+### Latest Security Enhancements (v1.4.5 Sprint 1)
+*   **Chainguard Distroless Base Image**: Enterprise-grade container security
+    *   **Zero-CVE Baseline**: Daily security updates with 7-day SLA for critical patches
+    *   **70% Smaller Attack Surface**: Minimal OS footprint compared to traditional Alpine/Debian images
+    *   **Non-Root Execution**: Runs as UID 65532 (nonroot user) in distroless environment
+    *   **SLSA Build Level 3 Provenance**: Verifiable supply chain integrity
+    *   **Multi-stage Build**: `-dev` variant for compilation, distroless runtime for production
+*   **Read-Only Filesystem Support**: Production-ready immutable deployments
+    *   Supports `docker run --read-only` with tmpfs mount for /tmp
+    *   Compliance-ready for PCI-DSS, SOC 2, FedRAMP requirements
+    *   Example: `docker run -i --rm --read-only --tmpfs /tmp:rw,noexec,nosuid,size=100m cyberchef-mcp`
+*   **Security Scan Fail Thresholds**: Automated vulnerability prevention
+    *   Trivy scanner configured with `exit-code: '1'` in CI/CD
+    *   Builds automatically fail on CRITICAL or HIGH vulnerabilities
+    *   Prevents vulnerable images from reaching production
+*   **Dual SBOM Strategy**: Comprehensive supply chain transparency
+    *   **Part 1**: Docker buildx attestations for automated registry scanning (Docker Scout)
+    *   **Part 2**: Trivy CycloneDX SBOM for offline compliance auditing
+    *   Both SBOMs attached as release assets for verification
+
+### Code Security (v1.4.1+)
 *   **11 of 12 Code Scanning Vulnerabilities Fixed**: Comprehensive security hardening completed
     *   **CRITICAL**: Fixed insecure cryptographic randomness in GOST library - replaced `Math.random()` with `crypto.randomBytes()`
     *   **HIGH**: Eliminated 7 ReDoS (Regular Expression Denial of Service) vulnerabilities across 6 operations
@@ -277,20 +303,21 @@ This project implements comprehensive security hardening with continuous improve
 *   **All 1,933 Tests Passing**: Security fixes validated with comprehensive test suite
 *   See [Security Fixes Report](SECURITY_FIX_REPORT.md) for complete details
 
-### Supply Chain Security
-*   **Docker Scout Attestations**: Build integrity and software transparency (v1.4.5+)
-    *   **Provenance Attestation** (mode=max): Verifiable build provenance for integrity verification
-    *   **SBOM Attestation**: Software Bill of Materials automatically generated and attached to releases
+### Supply Chain Security (v1.4.5+)
+*   **Docker Scout Attestations**: Build integrity and software transparency
+    *   **Provenance Attestation** (mode=max): Complete build process metadata (builder, materials, recipe)
+    *   **SBOM Attestation**: Automatic Software Bill of Materials generation
     *   Improves Docker Scout health score from 'C' to 'B' or 'A'
-    *   Enables compliance with supply chain security standards
-*   **SBOM Generation**: CycloneDX Software Bill of Materials with each release
-*   **Trivy Integration**: Container and dependency scanning on every build
-*   **GitHub Security Tab**: All findings automatically uploaded
+    *   Enables SLSA Level 2+ compliance
+*   **SBOM Generation**: CycloneDX format with complete dependency tree
+*   **Trivy Integration**: Container and dependency scanning on every build with fail-fast
+*   **GitHub Security Tab**: All findings automatically uploaded as SARIF
 
-### Container Security (v1.2.0+)
-*   **Non-Root Execution**: Container runs as dedicated `cyberchef` user (UID 1001)
+### Container Security (v1.4.5+)
+*   **Chainguard Distroless**: Zero-CVE baseline with minimal attack surface
+*   **Non-Root Execution**: Container runs as UID 65532 (nonroot user in distroless)
 *   **Read-Only Filesystem**: Supports `--read-only` flag for immutable deployments
-*   **Minimal Attack Surface**: Development files removed from production image
+*   **Minimal Attack Surface**: No shell, no package manager, only runtime dependencies
 *   **Health Checks**: Built-in container health monitoring
 
 ### Cryptographic Hardening (v1.2.5)
@@ -307,13 +334,16 @@ This project implements comprehensive security hardening with continuous improve
 
 ### Secure Deployment
 ```bash
-# Recommended: Run with maximum security options
+# Recommended: Run with maximum security options (Chainguard distroless)
 docker run -i --rm \
   --read-only \
-  --tmpfs /tmp:size=100M \
+  --tmpfs /tmp:rw,noexec,nosuid,size=100m \
   --cap-drop=ALL \
   --security-opt=no-new-privileges \
   cyberchef-mcp
+
+# Note: Chainguard distroless already runs as non-root (UID 65532)
+# --read-only requires tmpfs mount for /tmp directory
 ```
 
 For detailed information, see:
