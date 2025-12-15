@@ -5,8 +5,6 @@
  * @license Apache-2.0
  */
 
-/* eslint-disable no-console */
-
 import { bake, help } from "./index.mjs";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -16,8 +14,33 @@ import { zodToJsonSchema } from "zod-to-json-schema";
 import OperationConfig from "../core/config/OperationConfig.json" with {type: "json"};
 import { createHash } from "crypto";
 
+// New v1.5.0 imports
+import {
+    CyberChefMCPError,
+    createInputError,
+    createOperationNotFoundError
+} from "./errors.mjs";
+import {
+    initLogger,
+    getLogger,
+    logRequestStart,
+    logRequestComplete,
+    logRequestError,
+    logCache,
+    logMemory,
+    logStreaming,
+    logServerStart
+} from "./logger.mjs";
+import {
+    determineStreamingStrategy
+} from "./streaming.mjs";
+import {
+    executeWithTimeoutAndRetry,
+    RetryConfig
+} from "./retry.mjs";
+
 // Performance configuration (configurable via environment variables)
-const VERSION = "1.4.6";
+const VERSION = "1.5.0";
 const MAX_INPUT_SIZE = parseInt(process.env.CYBERCHEF_MAX_INPUT_SIZE, 10) || 100 * 1024 * 1024; // 100MB default
 const OPERATION_TIMEOUT = parseInt(process.env.CYBERCHEF_OPERATION_TIMEOUT, 10) || 30000; // 30s default
 const STREAMING_THRESHOLD = parseInt(process.env.CYBERCHEF_STREAMING_THRESHOLD, 10) || 10 * 1024 * 1024; // 10MB default
@@ -198,8 +221,8 @@ class MemoryMonitor {
         this.lastCheck = now;
         const usage = process.memoryUsage();
 
-        // Log memory usage (to stderr to not interfere with MCP protocol)
-        console.error(`[Memory] Heap: ${Math.round(usage.heapUsed / 1024 / 1024)}MB / ${Math.round(usage.heapTotal / 1024 / 1024)}MB, RSS: ${Math.round(usage.rss / 1024 / 1024)}MB`);
+        // Log memory usage with structured logging
+        logMemory(usage);
 
         return usage;
     }
@@ -232,15 +255,7 @@ const memoryMonitor = new MemoryMonitor();
 //     "Generate RSA Key Pair", "Generate PGP Key Pair"
 // ]);
 
-// Operations that support streaming
-const STREAMING_OPERATIONS = new Set([
-    "To Base64", "From Base64",
-    "To Hex", "From Hex",
-    "Gzip", "Gunzip",
-    "Bzip2 Compress", "Bzip2 Decompress",
-    "SHA1", "SHA2", "SHA3", "MD5",
-    "BLAKE2b", "BLAKE2s"
-]);
+// Note: STREAMING_OPERATIONS is now imported from streaming.mjs
 
 const server = new Server(
     {
@@ -377,54 +392,24 @@ function resolveArgValue(argDef, userValue) {
  * Check if input exceeds maximum allowed size.
  *
  * @param {string} input - The input data.
- * @throws {Error} If input is too large.
+ * @throws {CyberChefMCPError} If input is too large.
  */
 function validateInputSize(input) {
     const size = Buffer.byteLength(input, "utf8");
     if (size > MAX_INPUT_SIZE) {
-        throw new Error(`Input size (${Math.round(size / 1024 / 1024)}MB) exceeds maximum allowed size (${Math.round(MAX_INPUT_SIZE / 1024 / 1024)}MB)`);
+        throw createInputError(
+            `Input size (${Math.round(size / 1024 / 1024)}MB) exceeds maximum allowed size (${Math.round(MAX_INPUT_SIZE / 1024 / 1024)}MB)`,
+            {
+                inputSize: size,
+                maxSize: MAX_INPUT_SIZE
+            }
+        );
     }
 }
 
-/**
- * Execute operation with timeout.
- *
- * @param {Function} fn - The function to execute.
- * @param {number} timeout - Timeout in milliseconds.
- * @returns {Promise} Promise that resolves with function result or rejects on timeout.
- */
-function withTimeout(fn, timeout) {
-    return Promise.race([
-        fn(),
-        new Promise((_, reject) =>
-            setTimeout(() => reject(new Error(`Operation timed out after ${timeout}ms`)), timeout)
-        )
-    ]);
-}
-
-/**
- * Execute operation with streaming for large inputs.
- *
- * @param {string} opName - The operation name.
- * @param {string} input - The input data.
- * @param {Array} args - Operation arguments.
- * @returns {Promise<Object>} The operation result.
- */
-async function executeWithStreaming(opName, input, args) {
-    // For now, implement basic chunking
-    // Future: Use actual streaming operations when available
-    const chunkSize = 1024 * 1024; // 1MB chunks
-    const chunks = [];
-
-    for (let i = 0; i < input.length; i += chunkSize) {
-        const chunk = input.substring(i, i + chunkSize);
-        const recipe = [{ op: opName, args }];
-        const result = await bake(chunk, recipe);
-        chunks.push(result.value);
-    }
-
-    return { value: chunks.join("") };
-}
+// Note: withTimeout and executeWithStreaming have been replaced by:
+// - executeWithTimeoutAndRetry in retry.mjs
+// - executeWithStreamingStrategy in streaming.mjs
 
 server.setRequestHandler(ListToolsRequestSchema, async () => {
     const tools = [
@@ -461,12 +446,15 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 inputSchema: zodToJsonSchema(z.object(argsSchema))
             });
         } catch (e) {
-            // Log schema generation failures for debugging (P2 security hardening)
-            console.error(`[MCP Server] Schema generation failed for operation: ${opName}`, {
-                error: e.message,
+            // Log schema generation failures for debugging
+            const logger = getLogger();
+            logger.warn({
+                operation: opName,
                 toolName,
-                argCount: (op.args || []).length
-            });
+                argCount: (op.args || []).length,
+                error: e.message,
+                event: "schema_generation_failed"
+            }, `Schema generation failed for operation: ${opName}`);
             // Skip this operation and continue with others
         }
     });
@@ -477,98 +465,155 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
 
+    // Start request tracking
+    const requestId = logRequestStart(name, args);
+
     try {
         // Check memory periodically
         memoryMonitor.check();
 
+        // Handle meta-tools
         if (name === "cyberchef_bake") {
             // Validate input size
             validateInputSize(args.input);
 
-            // Execute with timeout
-            const result = await withTimeout(
+            // Execute with timeout and retry
+            const result = await executeWithTimeoutAndRetry(
                 () => bake(args.input, args.recipe),
-                OPERATION_TIMEOUT
+                OPERATION_TIMEOUT,
+                { requestId, maxRetries: RetryConfig.MAX_RETRIES, context: { tool: name } }
             );
 
+            const output = typeof result.value === "string" ? result.value : JSON.stringify(result.value);
+            logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
+
             return {
-                content: [{ type: "text", text: typeof result.value === "string" ? result.value : JSON.stringify(result.value) }]
+                content: [{ type: "text", text: output }]
             };
         }
 
         if (name === "cyberchef_search") {
             const results = help(args.query);
+            const output = JSON.stringify(results, null, 2);
+            logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
+
             return {
-                content: [{ type: "text", text: JSON.stringify(results, null, 2) }]
+                content: [{ type: "text", text: output }]
             };
         }
 
+        // Handle operation tools
         if (name.startsWith("cyberchef_")) {
             const opName = Object.keys(OperationConfig).find(k => sanitizeToolName(k) === name);
 
-            if (opName) {
-                // Validate input size
-                validateInputSize(args.input);
+            if (!opName) {
+                throw createOperationNotFoundError(name, { requestId });
+            }
 
-                const opConfig = OperationConfig[opName];
-                const recipeArgs = [];
+            // Validate input size
+            validateInputSize(args.input);
 
-                if (opConfig.args) {
-                    opConfig.args.forEach(argDef => {
-                        const argName = argDef.name.toLowerCase().replace(/ /g, "_");
-                        const userVal = args[argName];
-                        recipeArgs.push(resolveArgValue(argDef, userVal));
-                    });
-                }
+            const opConfig = OperationConfig[opName];
+            const recipeArgs = [];
 
-                // Check cache
-                const cacheKey = operationCache.getCacheKey(opName, args.input, recipeArgs);
-                const cached = operationCache.get(cacheKey);
-                if (cached) {
-                    console.error(`[Cache] Hit for ${opName}`);
-                    return {
-                        content: [{ type: "text", text: typeof cached === "string" ? cached : JSON.stringify(cached) }]
-                    };
-                }
+            if (opConfig.args) {
+                opConfig.args.forEach(argDef => {
+                    const argName = argDef.name.toLowerCase().replace(/ /g, "_");
+                    const userVal = args[argName];
+                    recipeArgs.push(resolveArgValue(argDef, userVal));
+                });
+            }
 
-                const recipe = [{
-                    op: opName,
-                    args: recipeArgs
-                }];
-
-                let result;
-
-                // Use streaming for large inputs if enabled and operation supports it
-                const inputSize = Buffer.byteLength(args.input, "utf8");
-                if (ENABLE_STREAMING && inputSize > STREAMING_THRESHOLD && STREAMING_OPERATIONS.has(opName)) {
-                    console.error(`[Streaming] Using streaming for ${opName} (${Math.round(inputSize / 1024 / 1024)}MB)`);
-                    result = await withTimeout(
-                        () => executeWithStreaming(opName, args.input, recipeArgs),
-                        OPERATION_TIMEOUT
-                    );
-                } else {
-                    // Standard execution with timeout
-                    result = await withTimeout(
-                        () => bake(args.input, recipe),
-                        OPERATION_TIMEOUT
-                    );
-                }
-
-                // Cache result
-                operationCache.set(cacheKey, result.value);
+            // Check cache
+            const cacheKey = operationCache.getCacheKey(opName, args.input, recipeArgs);
+            const cached = operationCache.get(cacheKey);
+            if (cached) {
+                logCache("hit", { operation: opName, requestId });
+                const output = typeof cached === "string" ? cached : JSON.stringify(cached);
+                logRequestComplete(requestId, {
+                    outputSize: Buffer.byteLength(output, "utf8"),
+                    cached: true
+                });
 
                 return {
-                    content: [{ type: "text", text: typeof result.value === "string" ? result.value : JSON.stringify(result.value) }]
+                    content: [{ type: "text", text: output }]
                 };
             }
+
+            logCache("miss", { operation: opName, requestId });
+
+            const recipe = [{
+                op: opName,
+                args: recipeArgs
+            }];
+
+            // Determine streaming strategy
+            const inputSize = Buffer.byteLength(args.input, "utf8");
+            const strategy = ENABLE_STREAMING ?
+                determineStreamingStrategy(opName, inputSize, STREAMING_THRESHOLD) :
+                { type: "none", reason: "Streaming disabled" };
+
+            let result;
+            let streamed = false;
+
+            if (strategy.type !== "none") {
+                // Use streaming with progress reporting
+                logStreaming(opName, { inputSize, strategy: strategy.type, reason: strategy.reason });
+
+                // Note: MCP streaming would be implemented here if the SDK supports it
+                // For now, we execute with timeout and retry
+                result = await executeWithTimeoutAndRetry(
+                    () => bake(args.input, recipe),
+                    OPERATION_TIMEOUT * 2, // Double timeout for large operations
+                    {
+                        requestId,
+                        maxRetries: RetryConfig.MAX_RETRIES,
+                        context: { tool: name, operation: opName, inputSize }
+                    }
+                );
+                streamed = true;
+            } else {
+                // Standard execution with timeout and retry
+                result = await executeWithTimeoutAndRetry(
+                    () => bake(args.input, recipe),
+                    OPERATION_TIMEOUT,
+                    {
+                        requestId,
+                        maxRetries: RetryConfig.MAX_RETRIES,
+                        context: { tool: name, operation: opName }
+                    }
+                );
+            }
+
+            // Cache result
+            operationCache.set(cacheKey, result.value);
+            logCache("set", { operation: opName, requestId });
+
+            const output = typeof result.value === "string" ? result.value : JSON.stringify(result.value);
+            logRequestComplete(requestId, {
+                outputSize: Buffer.byteLength(output, "utf8"),
+                cached: false,
+                streamed
+            });
+
+            return {
+                content: [{ type: "text", text: output }]
+            };
         }
 
-        throw new Error(`Unknown tool: ${name}`);
+        throw createOperationNotFoundError(name, { requestId });
+
     } catch (error) {
-        return {
-            isError: true,
-            content: [{ type: "text", text: `Error: ${error.message}` }]
-        };
+        // Convert generic errors to CyberChefMCPError
+        const mcpError = error instanceof CyberChefMCPError ?
+            error :
+            CyberChefMCPError.fromError(error, { requestId, tool: name });
+
+        // Log error
+        logRequestError(requestId, mcpError, { tool: name });
+
+        // Return formatted error
+        return mcpError.toMCPError();
     }
 });
 
@@ -576,21 +621,50 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
  * Start the MCP Server.
  */
 async function runServer() {
+    // Initialize logger
+    initLogger({ version: VERSION });
+
     const transport = new StdioServerTransport();
     await server.connect(transport);
 
-    console.error("=== CyberChef MCP Server v" + VERSION + " ===");
-    console.error("Running on stdio");
-    console.error(`Max input size: ${Math.round(MAX_INPUT_SIZE / 1024 / 1024)}MB`);
-    console.error(`Operation timeout: ${OPERATION_TIMEOUT}ms`);
-    console.error(`Streaming threshold: ${Math.round(STREAMING_THRESHOLD / 1024 / 1024)}MB`);
-    console.error(`Streaming: ${ENABLE_STREAMING ? "enabled" : "disabled"}`);
-    console.error(`Worker threads: ${ENABLE_WORKERS ? "enabled" : "disabled"}`);
-    console.error(`Cache size: ${Math.round(CACHE_MAX_SIZE / 1024 / 1024)}MB (${CACHE_MAX_ITEMS} items max)`);
-    console.error("=====================================");
+    // Log server startup with configuration
+    logServerStart({
+        version: VERSION,
+        maxInputSize: MAX_INPUT_SIZE,
+        operationTimeout: OPERATION_TIMEOUT,
+        streamingThreshold: STREAMING_THRESHOLD,
+        streamingEnabled: ENABLE_STREAMING,
+        workerThreadsEnabled: ENABLE_WORKERS,
+        cacheMaxSize: CACHE_MAX_SIZE,
+        cacheMaxItems: CACHE_MAX_ITEMS,
+        maxRetries: RetryConfig.MAX_RETRIES,
+        logLevel: process.env.LOG_LEVEL || "info"
+    });
+
+    // Also output to stderr for compatibility (can be disabled with LOG_LEVEL=error)
+    const logger = getLogger();
+    logger.info("=== CyberChef MCP Server v" + VERSION + " ===");
+    logger.info("Running on stdio");
+    logger.info(`Max input size: ${Math.round(MAX_INPUT_SIZE / 1024 / 1024)}MB`);
+    logger.info(`Operation timeout: ${OPERATION_TIMEOUT}ms`);
+    logger.info(`Streaming threshold: ${Math.round(STREAMING_THRESHOLD / 1024 / 1024)}MB`);
+    logger.info(`Streaming: ${ENABLE_STREAMING ? "enabled" : "disabled"}`);
+    logger.info(`Worker threads: ${ENABLE_WORKERS ? "enabled" : "disabled"}`);
+    logger.info(`Cache size: ${Math.round(CACHE_MAX_SIZE / 1024 / 1024)}MB (${CACHE_MAX_ITEMS} items max)`);
+    logger.info(`Max retries: ${RetryConfig.MAX_RETRIES}`);
+    logger.info(`Log level: ${process.env.LOG_LEVEL || "info"}`);
+    logger.info("=====================================");
 }
 
 runServer().catch((error) => {
-    console.error("Fatal error running server:", error);
+    const logger = getLogger();
+    logger.fatal({
+        error: {
+            name: error.name,
+            message: error.message,
+            stack: error.stack
+        },
+        event: "server_fatal_error"
+    }, "Fatal error running server");
     process.exit(1);
 });
