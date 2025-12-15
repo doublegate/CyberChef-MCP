@@ -81,7 +81,16 @@ jobs:
             exit 1
           fi
 
-      - name: Run Trivy vulnerability scanner
+      - name: Run Trivy vulnerability scanner (diagnostic output)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: 'cyberchef-mcp:latest'
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          vuln-type: 'os,library'
+          exit-code: '0'  # Don't fail - this is diagnostic only
+
+      - name: Run Trivy vulnerability scanner (SARIF for code scanning)
         uses: aquasecurity/trivy-action@0.28.0
         with:
           image-ref: 'cyberchef-mcp:latest'
