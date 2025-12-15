@@ -182,15 +182,16 @@ Once connected, you can try prompts like these with your AI assistant:
 
 | Variable | Description | Default Value | Example |
 |--------|-------------|--------------|--------|
-| CYBERCHEF_CACHE_ENABLED | Enable or disable result caching | true | CYBERCHEF_CACHE_ENABLED=false |
 | CYBERCHEF_MAX_INPUT_SIZE | Maximum input size in bytes | 104857600 | CYBERCHEF_MAX_INPUT_SIZE=52428800 |
-| CYBERCHEF_MEMORY_THRESHOLD | Memory usage threshold before cleanup | 512MB | CYBERCHEF_MEMORY_THRESHOLD=1024MB |
-| CYBERCHEF_LOG_LEVEL | Controls logging verbosity | info | CYBERCHEF_LOG_LEVEL=debug |
-| CYBERCHEF_WORKER_THREADS | Number of worker threads | 4 | CYBERCHEF_WORKER_THREADS=8 |
 | CYBERCHEF_OPERATION_TIMEOUT | Operation timeout in milliseconds | 30000 | CYBERCHEF_OPERATION_TIMEOUT=60000 |
-| CYBERCHEF_STREAM_CHUNK_SIZE | Size of data chunks used during streaming | 65536 | CYBERCHEF_STREAM_CHUNK_SIZE=131072 |
-| CYBERCHEF_DISABLE_TELEMETRY | Disable anonymous usage telemetry | false | CYBERCHEF_DISABLE_TELEMETRY=true |
+| CYBERCHEF_STREAMING_THRESHOLD | Input size threshold for enabling streaming | 10485760 | CYBERCHEF_STREAMING_THRESHOLD=20971520 |
+| CYBERCHEF_ENABLE_STREAMING | Enable or disable streaming | true | CYBERCHEF_ENABLE_STREAMING=false |
+| CYBERCHEF_ENABLE_WORKERS | Enable or disable worker processes | true | CYBERCHEF_ENABLE_WORKERS=false |
+| CYBERCHEF_CACHE_MAX_SIZE | Maximum cache size in bytes | 104857600 | CYBERCHEF_CACHE_MAX_SIZE=52428800 |
+| CYBERCHEF_CACHE_MAX_ITEMS | Maximum number of cached items | 1000 | CYBERCHEF_CACHE_MAX_ITEMS=500 |
 
-> Note: These environment variables are documented as referenced in the user guide
-> and project issue. Some variables may map internally to newer configuration
-> options in the server implementation.
+
+> Note: This section documents only the environment variables that are
+> currently implemented in the server (`src/node/mcp-server.mjs`).
+> Some variables referenced in earlier issues or documentation are not
+> yet implemented and have been intentionally omitted to avoid confusion.
