@@ -70,7 +70,8 @@ jobs:
       - name: Verify non-root execution
         run: |
           # Check that the container runs as non-root user (UID 65532 - Chainguard 'nonroot')
-          USER_ID=$(docker run --rm cyberchef-mcp:latest id -u)
+          # Note: Chainguard distroless has no shell/id command, so we use Node.js process.getuid()
+          USER_ID=$(docker run --rm --entrypoint node cyberchef-mcp:latest -e "console.log(process.getuid())")
           echo "Container user ID: $USER_ID"
           if [ "$USER_ID" = "65532" ]; then
             echo "Container correctly runs as non-root user (UID 65532 'nonroot')"
@@ -91,7 +92,7 @@ jobs:
 
       - name: Upload Trivy scan results
         uses: github/codeql-action/upload-sarif@v4
-        if: always()
+        if: always() && hashFiles('trivy-results.sarif') != ''
         with:
           sarif_file: 'trivy-results.sarif'
           category: 'trivy-build-scan'
