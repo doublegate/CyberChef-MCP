@@ -4,7 +4,7 @@ This project provides a **Model Context Protocol (MCP)** server interface for **
 
 By running this server, you enable AI assistants (like Claude, Cursor AI, and others) to natively utilize CyberChef's extensive library of 463+ data manipulation operations—including encryption, encoding, compression, and forensic analysis—as executable tools.
 
-**Latest Release:** v1.4.6 | [Release Notes](docs/releases/v1.4.6.md) | [Security Policy](SECURITY.md) | [Security Fixes Report](SECURITY_FIX_REPORT.md)
+**Latest Release:** v1.5.0 | [Release Notes](docs/releases/v1.5.0.md) | [Security Policy](SECURITY.md) | [Security Fixes Report](SECURITY_FIX_REPORT.md)
 
 ![CyberChef MCP Banner](images/CyberChef-MCP_Banner-Logo.jpg)
 
@@ -41,6 +41,7 @@ The server exposes CyberChef operations as MCP tools:
 *   **Stdio Transport**: Communicates via standard input/output, making it easy to integrate with CLI-based MCP clients.
 *   **Schema Validation**: All inputs are validated against schemas derived from CyberChef's internal type system using `zod`.
 *   **Modern Node.js**: Fully compatible with Node.js v22+ with automated compatibility patches.
+*   **Enhanced Observability** (v1.5.0): Structured JSON logging with Pino for production monitoring, comprehensive error handling with actionable recovery suggestions, automatic retry logic with exponential backoff, request correlation with UUID tracking, circuit breaker pattern for cascading failure prevention, and streaming infrastructure for progressive results on large operations. See [Release Notes](docs/releases/v1.5.0.md) for details.
 *   **Performance Optimized** (v1.4.0): LRU cache for operation results (100MB default), automatic streaming for large inputs (10MB+ threshold), configurable resource limits (100MB max input, 30s timeout), memory monitoring, and comprehensive benchmark suite. See [Performance Tuning Guide](docs/architecture/performance-tuning.md) for configuration options.
 *   **Upstream Sync Automation** (v1.3.0): Automated monitoring of upstream CyberChef releases every 6 hours, one-click synchronization workflow, comprehensive validation test suite with 465 tool tests, and emergency rollback mechanism.
 *   **Security Hardened** (v1.4.5+): Chainguard distroless base image with zero-CVE baseline, non-root execution (UID 65532), automated Trivy vulnerability scanning with build-fail thresholds, dual SBOM strategy (Docker Scout attestations + CycloneDX), read-only filesystem support, SLSA Build Level 3 provenance, and 7-day SLA for critical CVE patches. Fixed 11 of 12 code scanning vulnerabilities including critical cryptographic randomness weakness and 7 ReDoS vulnerabilities. See [Security Policy](SECURITY.md) and [Security Fixes Report](SECURITY_FIX_REPORT.md) for details.
@@ -67,17 +68,17 @@ For environments without direct GHCR access, download the pre-built Docker image
 1.  **Download the tarball** (approximately 90MB compressed):
     ```bash
     # Download from GitHub Releases
-    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v1.4.6/cyberchef-mcp-v1.4.6-docker-image.tar.gz
+    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v1.5.0/cyberchef-mcp-v1.5.0-docker-image.tar.gz
     ```
 
 2.  **Load the image into Docker:**
     ```bash
-    docker load < cyberchef-mcp-v1.4.6-docker-image.tar.gz
+    docker load < cyberchef-mcp-v1.5.0-docker-image.tar.gz
     ```
 
 3.  **Tag for easier usage:**
     ```bash
-    docker tag ghcr.io/doublegate/cyberchef-mcp_v1:v1.4.6 cyberchef-mcp
+    docker tag ghcr.io/doublegate/cyberchef-mcp_v1:v1.5.0 cyberchef-mcp
     ```
 
 4.  **Run the server:**
@@ -178,29 +179,30 @@ Version 1.4.0 introduces comprehensive performance optimizations and configurabl
 
 ### Configuration Options
 
-All performance features are configurable via environment variables:
+All features are configurable via environment variables:
 
 ```bash
-# Maximum input size (bytes)
-CYBERCHEF_MAX_INPUT_SIZE=104857600       # 100MB default
+# Logging (v1.5.0+)
+LOG_LEVEL=info                           # Logging level: debug, info, warn, error, fatal
 
-# Operation timeout (milliseconds)
-CYBERCHEF_OPERATION_TIMEOUT=30000        # 30s default
+# Retry Logic (v1.5.0+)
+CYBERCHEF_MAX_RETRIES=3                  # Maximum retry attempts for transient failures
+CYBERCHEF_INITIAL_BACKOFF=1000           # Initial backoff delay in milliseconds
+CYBERCHEF_MAX_BACKOFF=10000              # Maximum backoff delay in milliseconds
+CYBERCHEF_BACKOFF_MULTIPLIER=2           # Backoff multiplier for exponential backoff
 
-# Streaming threshold (bytes)
-CYBERCHEF_STREAMING_THRESHOLD=10485760   # 10MB default
+# Streaming (v1.5.0+)
+CYBERCHEF_STREAM_CHUNK_SIZE=1048576      # Chunk size for streaming (1MB)
+CYBERCHEF_STREAM_PROGRESS_INTERVAL=10485760  # Progress reporting interval (10MB)
 
-# Enable/disable streaming
-CYBERCHEF_ENABLE_STREAMING=true          # Enabled by default
-
-# Enable/disable worker threads (infrastructure only in v1.4.0)
-CYBERCHEF_ENABLE_WORKERS=true            # Enabled by default
-
-# Cache maximum size (bytes)
-CYBERCHEF_CACHE_MAX_SIZE=104857600       # 100MB default
-
-# Cache maximum items
-CYBERCHEF_CACHE_MAX_ITEMS=1000           # 1000 items default
+# Performance (v1.4.0+)
+CYBERCHEF_MAX_INPUT_SIZE=104857600       # Maximum input size (100MB)
+CYBERCHEF_OPERATION_TIMEOUT=30000        # Operation timeout in milliseconds (30s)
+CYBERCHEF_STREAMING_THRESHOLD=10485760   # Streaming threshold (10MB)
+CYBERCHEF_ENABLE_STREAMING=true          # Enable streaming for large operations
+CYBERCHEF_ENABLE_WORKERS=true            # Enable worker threads (infrastructure only)
+CYBERCHEF_CACHE_MAX_SIZE=104857600       # Cache maximum size (100MB)
+CYBERCHEF_CACHE_MAX_ITEMS=1000           # Cache maximum items
 ```
 
 ### Example Configurations
@@ -242,6 +244,14 @@ docker run -i --rm --memory=512m \
 }
 ```
 
+**Debug Logging for Troubleshooting (v1.5.0+)**
+```bash
+docker run -i --rm \
+  -e LOG_LEVEL=debug \
+  -e CYBERCHEF_MAX_RETRIES=5 \
+  ghcr.io/doublegate/cyberchef-mcp_v1:latest
+```
+
 For detailed performance tuning guidance, see the [Performance Tuning Guide](docs/architecture/performance-tuning.md).
 
 ### Performance Benchmarks
@@ -271,7 +281,29 @@ The benchmark suite tests 20+ operations across multiple input sizes (1KB, 10KB,
 
 This project implements comprehensive security hardening with continuous improvements:
 
-### Latest Security Enhancements (v1.4.6 Sprint 1)
+### Latest Enhancements (v1.5.0)
+*   **Enhanced Error Handling**: Comprehensive error reporting for production debugging
+    *   **8 Error Codes**: Standardized error classification (INVALID_INPUT, MISSING_ARGUMENT, OPERATION_FAILED, TIMEOUT, OUT_OF_MEMORY, UNSUPPORTED_OPERATION, CACHE_ERROR, STREAMING_ERROR)
+    *   **Rich Context**: Detailed debugging information (input size, operation name, request ID, timestamp)
+    *   **Recovery Suggestions**: Actionable recommendations for common issues
+    *   **Retryable Classification**: Automatic distinction between transient and permanent failures
+*   **Structured Logging with Pino**: Production-ready observability
+    *   **JSON Logs**: Machine-readable logs for monitoring tools (Datadog, Splunk, ELK)
+    *   **Request Correlation**: UUID-based request tracking across operations
+    *   **Performance Metrics**: Duration, throughput, cache hits, memory usage
+    *   **Configurable Levels**: debug, info, warn, error, fatal via LOG_LEVEL environment variable
+*   **Automatic Retry Logic**: Resilience for transient failures
+    *   **Exponential Backoff**: 1s → 2s → 4s with jitter to prevent thundering herd
+    *   **Configurable Retries**: Default 3 attempts, customizable via CYBERCHEF_MAX_RETRIES
+    *   **Smart Detection**: Automatically retries timeouts, memory issues, network errors
+    *   **Circuit Breaker**: Opens after 5 consecutive failures to prevent cascading issues
+*   **MCP Streaming Infrastructure**: Progressive results for large operations
+    *   **Chunked Processing**: Memory-efficient handling of 100MB+ inputs
+    *   **Progress Reporting**: Updates every 10MB for long-running operations
+    *   **14 Supported Operations**: Encoding (Base64, Hex), hashing (MD5, SHA family), text operations
+    *   **Configurable Thresholds**: Streaming chunk size and progress interval
+
+### Security Hardening (v1.4.6)
 *   **Chainguard Distroless Base Image**: Enterprise-grade container security
     *   **Zero-CVE Baseline**: Daily security updates with 7-day SLA for critical patches
     *   **70% Smaller Attack Surface**: Minimal OS footprint compared to traditional Alpine/Debian images
@@ -358,8 +390,8 @@ CyberChef MCP Server has a comprehensive development roadmap spanning **19 relea
 
 | Phase | Releases | Timeline | Focus | Status |
 |-------|----------|----------|-------|--------|
-| **Phase 1: Foundation** | v1.2.0 - v1.4.6 | Q4 2025 - Q1 2026 | Security hardening, upstream sync, performance | **v1.4.6 Released** |
-| **Phase 2: Enhancement** | v1.5.0 - v1.7.0 | Q2 2026 | Streaming, recipe management, batch processing | Planned |
+| **Phase 1: Foundation** | v1.2.0 - v1.4.6 | Q4 2025 - Q1 2026 | Security hardening, upstream sync, performance | **Completed** |
+| **Phase 2: Enhancement** | v1.5.0 - v1.7.0 | Q2 2026 | Streaming, recipe management, batch processing | **v1.5.0 Released** |
 | **Phase 3: Maturity** | v1.8.0 - v2.0.0 | Q3 2026 | API stabilization, breaking changes, v2.0.0 | Planned |
 | **Phase 4: Expansion** | v2.1.0 - v2.3.0 | Q4 2026 | Multi-modal, advanced transports, plugins | Planned |
 | **Phase 5: Enterprise** | v2.4.0 - v2.6.0 | Q1 2027 | OAuth 2.1, RBAC, Kubernetes, observability | Planned |
@@ -399,6 +431,7 @@ Detailed documentation is organized in the [`docs/`](docs/) directory:
 *   [**Security Audit**](docs/security/audit.md): Comprehensive security assessment
 *   [**Security Fixes Report**](SECURITY_FIX_REPORT.md): Detailed report of 11 vulnerability fixes (ReDoS and cryptographic weaknesses)
 *   [**Security Fixes Summary**](SECURITY_FIXES_SUMMARY.md): Quick reference for recent security improvements
+*   [**Release Notes v1.5.0**](docs/releases/v1.5.0.md): Enhanced error handling, structured logging, automatic retry, streaming infrastructure
 *   [**Release Notes v1.4.6**](docs/releases/v1.4.6.md): Sprint 1 Security Hardening - Chainguard distroless migration, zero-CVE baseline, read-only filesystem support
 *   [**Release Notes v1.4.5**](docs/releases/v1.4.5.md): Supply chain attestations and documentation reorganization
 *   [**Release Notes v1.4.4**](docs/releases/v1.4.4.md): Docker Hub build fix and 12 security vulnerability fixes

@@ -22,3 +22,6 @@ tests/browser/output/*
 CLAUDE.local.md
 GEMINI.md
 WARP.md
+
+# Reference projects (local development only)
+ref-proj/
