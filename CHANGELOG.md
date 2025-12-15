@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **CI/CD**: Resolved mcp-docker-build workflow failures with enhanced diagnostics
+  - Added diagnostic Trivy output to identify vulnerabilities in CI logs
+  - Implemented forced clean Docker builds to prevent stale vulnerability data
+  - Improved error reporting for build failures
+
+### Security
+- **Production Image Hardening**: Eliminated esbuild Go standard library vulnerabilities from final container
+  - Removed esbuild build-time dependencies from runtime stage
+  - Already excluded in Dockerfile.mcp multi-stage build (lines 73-80)
+  - Further hardening beyond v1.4.6 baseline
+
 ## [1.4.6] - 2025-12-14
 
 ### Security - Sprint 1: Security Hardening
