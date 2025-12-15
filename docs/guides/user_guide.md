@@ -176,3 +176,21 @@ Once connected, you can try prompts like these with your AI assistant:
 *   "Use CyberChef to gunzip this data."
 *   "Analyze this string and tell me what kind of hash it might be."
 *   "Convert the current time to a UNIX timestamp."
+
+
+## Environment Variables
+
+| Variable | Description | Default Value | Example |
+|--------|-------------|--------------|--------|
+| CYBERCHEF_CACHE_ENABLED | Enable or disable result caching | true | CYBERCHEF_CACHE_ENABLED=false |
+| CYBERCHEF_MAX_INPUT_SIZE | Maximum input size in bytes | 100MB | CYBERCHEF_MAX_INPUT_SIZE=52428800 |
+| CYBERCHEF_MEMORY_THRESHOLD | Memory usage threshold before cleanup | 512MB | CYBERCHEF_MEMORY_THRESHOLD=1024MB |
+| CYBERCHEF_LOG_LEVEL | Controls logging verbosity | info | CYBERCHEF_LOG_LEVEL=debug |
+| CYBERCHEF_WORKER_THREADS | Number of worker threads | 4 | CYBERCHEF_WORKER_THREADS=8 |
+| CYBERCHEF_TIMEOUT | Operation timeout in milliseconds | 30000 | CYBERCHEF_TIMEOUT=60000 |
+| CYBERCHEF_STREAM_CHUNK_SIZE | Size of data chunks used during streaming | 65536 | CYBERCHEF_STREAM_CHUNK_SIZE=131072 |
+| CYBERCHEF_DISABLE_TELEMETRY | Disable anonymous usage telemetry | false | CYBERCHEF_DISABLE_TELEMETRY=true |
+
+> Note: These environment variables are documented as referenced in the user guide
+> and project issue. Some variables may map internally to newer configuration
+> options in the server implementation.
