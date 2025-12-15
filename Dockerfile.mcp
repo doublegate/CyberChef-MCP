@@ -56,7 +56,7 @@ RUN npm run postinstall
 # Generate CyberChef configuration and Node index
 RUN npx grunt configTests
 
-# Remove unnecessary files to reduce final image size
+# Remove unnecessary files to reduce final image size and eliminate dev-time vulnerabilities
 RUN rm -rf \
     .git \
     .github \
@@ -69,7 +69,15 @@ RUN rm -rf \
     nightwatch.conf.cjs \
     webpack.config.js \
     .eslintrc.json \
-    .babelrc 2>/dev/null || true
+    .babelrc \
+    node_modules/@esbuild \
+    node_modules/esbuild \
+    node_modules/webpack \
+    node_modules/babel-loader \
+    node_modules/grunt* \
+    node_modules/nightwatch \
+    node_modules/selenium-webdriver \
+    node_modules/eslint* 2>/dev/null || true
 
 # -----------------------------------------------------------------------------
 # Stage 2: Runtime Stage (distroless, minimal attack surface)
