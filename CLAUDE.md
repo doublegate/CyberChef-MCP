@@ -4,12 +4,12 @@ Guidance for Claude Code when working with this repository.
 
 ## Project Overview
 
-**CyberChef MCP Server** (v1.6.2) - Fork of GCHQ CyberChef wrapping the Node.js API into an MCP server. Exposes 300+ operations (encryption, encoding, compression, forensics) as AI assistant tools.
+**CyberChef MCP Server** (v1.7.0) - Fork of GCHQ CyberChef wrapping the Node.js API into an MCP server. Exposes 300+ operations (encryption, encoding, compression, forensics) as AI assistant tools.
 
 | Metric | Value |
 |--------|-------|
-| MCP Version | 1.6.2 |
-| Tests | 311 (100% passing) |
+| MCP Version | 1.7.0 |
+| Tests | 343 (100% passing) |
 | Coverage | 78.93% lines, 89.33% functions |
 
 **Focus:** MCP server (`src/node/mcp-server.mjs`), not the web app.
@@ -38,7 +38,7 @@ npm start               # Dev server with hot reload
 npm run build           # Production build
 npm run lint            # ESLint (zero errors required)
 npm test                # Core unit tests
-npm run test:mcp        # MCP server tests (311 tests)
+npm run test:mcp        # MCP server tests (343 tests)
 npm run test:coverage   # Coverage report (thresholds: 70% lines/functions)
 npm run testnodeconsumer # Test CJS/ESM consumers
 ```
@@ -131,5 +131,5 @@ git tag -a v1.x.x -F docs/releases/v1.x.x.md && git push origin v1.x.x
 | Guides | `docs/guides/commands.md` (MCP tools), `user_guide.md` (installation) |
 | Planning | `docs/planning/ROADMAP.md`, `docs/planning/phases/overview.md` |
 | Security | `docs/security/audit.md` |
-| Releases | `docs/releases/v1.6.2.md` (latest), `v1.6.1.md`, `v1.6.0.md` ... `v1.0.0.md` |
+| Releases | `docs/releases/v1.7.0.md` (latest), `v1.6.2.md`, `v1.6.1.md`, `v1.6.0.md` ... `v1.0.0.md` |
 | Internal | `docs/internal/tech-debt-analysis-v1.6.1.md` (project health: 8.9/10) |

@@ -5,6 +5,60 @@ All notable changes to the CyberChef MCP Server project will be documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2025-12-16
+
+### Added
+- **Batch Processing (P0)**: Execute multiple operations in a single request
+  - New tool: `cyberchef_batch` with parallel and sequential execution modes
+  - Partial success support - operations continue even if some fail
+  - Configurable batch size limit (default: 100 operations)
+  - Environment variable: `CYBERCHEF_BATCH_MAX_SIZE`, `CYBERCHEF_BATCH_ENABLED`
+  - BatchProcessor class for orchestrating batch execution
+- **Telemetry & Analytics (P1)**: Privacy-first usage metrics collection
+  - New tool: `cyberchef_telemetry_export` for exporting metrics in JSON or summary format
+  - Metrics collected: tool name, duration, data sizes, success status, cache hits (NO input/output data)
+  - Statistics: total calls, success rate, average duration, cache hit rate
+  - TelemetryCollector class with configurable retention (10,000 metrics max)
+  - Environment variable: `CYBERCHEF_TELEMETRY_ENABLED` (default: false - privacy-first)
+- **Rate Limiting (P1)**: Sliding window rate limiting for resource protection
+  - Per-connection request tracking with configurable limits
+  - Automatic cleanup of expired timestamps
+  - 429 error responses with retry-after information when limit exceeded
+  - RateLimiter class implementing sliding window algorithm
+  - Environment variables: `CYBERCHEF_RATE_LIMIT_ENABLED`, `CYBERCHEF_RATE_LIMIT_REQUESTS`, `CYBERCHEF_RATE_LIMIT_WINDOW`
+  - Default: disabled (no restrictions by default)
+- **Cache Enhancements (P2)**: New tools for cache inspection and management
+  - New tool: `cyberchef_cache_stats` for real-time cache statistics
+  - New tool: `cyberchef_cache_clear` for manual cache invalidation
+  - Cache-enabled flag for disabling caching if needed
+  - Environment variable: `CYBERCHEF_CACHE_ENABLED` (default: true)
+- **Resource Quotas (P2)**: Track and enforce resource usage limits
+  - New tool: `cyberchef_quota_info` for current quota and usage information
+  - Concurrent operation tracking and enforcement
+  - Total data size tracking (input/output volumes)
+  - ResourceQuotaTracker class for quota management
+  - Environment variable: `CYBERCHEF_MAX_CONCURRENT_OPS` (default: 10)
+- **Test Coverage**: Added 32 new test cases for v1.7.0 features
+  - TelemetryCollector: 5 tests
+  - RateLimiter: 6 tests
+  - ResourceQuotaTracker: 7 tests
+  - BatchProcessor: 8 tests
+  - Cache Enhancements: 4 tests
+  - Integration Tests: 2 tests
+  - Total tests increased from 311 to 343
+
+### Changed
+- **Integrated tracking into standard operations**: All operations now include telemetry, rate limiting, and quota tracking
+- **Server startup logging**: Enhanced to display all v1.7.0 configuration options
+- **Exports**: Added new classes and constants for testing
+  - Classes: `TelemetryCollector`, `RateLimiter`, `ResourceQuotaTracker`, `BatchProcessor`
+  - Constants: `BATCH_MAX_SIZE`, `BATCH_ENABLED`, `TELEMETRY_ENABLED`, `RATE_LIMIT_ENABLED`, etc.
+
+### Security
+- **Privacy-first defaults**: Telemetry disabled by default, no sensitive data collected
+- **Rate limiting**: Protects against abuse when enabled
+- **Resource quotas**: Prevents DoS attacks via resource exhaustion
+
 ## [1.6.2] - 2025-12-16
 
 ### Fixed

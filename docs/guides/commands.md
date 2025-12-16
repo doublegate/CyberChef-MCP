@@ -34,6 +34,162 @@ Search for an operation.
 
 ---
 
+## Advanced Tools (v1.7.0)
+
+### cyberchef_batch
+Execute multiple CyberChef operations in a single request with parallel or sequential execution.
+
+**Arguments:**
+*   `operations` (array): Array of operation objects, each with `tool` and `arguments` fields.
+*   `mode` (enum: ["parallel", "sequential"]): Execution mode. Default: "parallel"
+
+**Features:**
+- Parallel execution for maximum performance
+- Sequential execution for deterministic results
+- Partial success support - continues even if some operations fail
+- Maximum batch size: 100 operations (configurable via `CYBERCHEF_BATCH_MAX_SIZE`)
+
+**Example:**
+```json
+{
+  "name": "cyberchef_batch",
+  "arguments": {
+    "operations": [
+      { "tool": "cyberchef_to_base64", "arguments": { "input": "Hello" } },
+      { "tool": "cyberchef_sha256", "arguments": { "input": "World" } }
+    ],
+    "mode": "parallel"
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "total": 2,
+  "successful": 2,
+  "failed": 0,
+  "mode": "parallel",
+  "results": [
+    { "index": 0, "result": "SGVsbG8=" },
+    { "index": 1, "result": "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9" }
+  ],
+  "errors": []
+}
+```
+
+### cyberchef_telemetry_export
+Export collected telemetry metrics for monitoring and analysis.
+
+**Arguments:**
+*   `format` (enum: ["json", "summary"]): Export format. Default: "json"
+
+**Features:**
+- Privacy-first: No input/output data collected
+- Metrics collected: tool name, duration, data sizes, success status, cache hits
+- Statistics: total calls, success rate, average duration, cache hit rate
+- Disabled by default (enable via `CYBERCHEF_TELEMETRY_ENABLED=true`)
+
+**Example (Summary):**
+```json
+{
+  "name": "cyberchef_telemetry_export",
+  "arguments": { "format": "summary" }
+}
+```
+
+**Response:**
+```json
+{
+  "totalCalls": 1523,
+  "successRate": "98.42%",
+  "avgDuration": "145ms",
+  "cacheHitRate": "23.45%"
+}
+```
+
+### cyberchef_cache_stats
+Get real-time cache statistics including size, items, and limits.
+
+**Arguments:** None
+
+**Example:**
+```json
+{
+  "name": "cyberchef_cache_stats",
+  "arguments": {}
+}
+```
+
+**Response:**
+```json
+{
+  "items": 42,
+  "size": 1048576,
+  "maxSize": 104857600,
+  "maxItems": 1000
+}
+```
+
+### cyberchef_cache_clear
+Clear all cached operation results. Useful for freeing memory or forcing fresh execution.
+
+**Arguments:** None
+
+**Example:**
+```json
+{
+  "name": "cyberchef_cache_clear",
+  "arguments": {}
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Cache cleared"
+}
+```
+
+### cyberchef_quota_info
+Get current resource quota information including concurrent operations, data sizes, and limits.
+
+**Arguments:** None
+
+**Example:**
+```json
+{
+  "name": "cyberchef_quota_info",
+  "arguments": {}
+}
+```
+
+**Response:**
+```json
+{
+  "quota": {
+    "concurrentOperations": 2,
+    "maxConcurrentOperations": 10,
+    "totalOperations": 1523,
+    "totalInputSize": 15728640,
+    "totalOutputSize": 23592960,
+    "inputSizeMB": "15.00",
+    "outputSizeMB": "22.50",
+    "maxInputSizeMB": "100.00"
+  },
+  "rateLimit": {
+    "enabled": false,
+    "maxRequests": 100,
+    "windowMs": 60000,
+    "activeConnections": 3,
+    "totalTrackedRequests": 156
+  }
+}
+```
+
+---
+
 ## Operation Tools (By Category)
 
 ### Favourites

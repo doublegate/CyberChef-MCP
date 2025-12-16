@@ -43,7 +43,7 @@ import {
 import { recipeManager } from "./recipe-manager.mjs";
 
 // Performance configuration (configurable via environment variables)
-const VERSION = "1.6.2";
+const VERSION = "1.7.0";
 const MAX_INPUT_SIZE = parseInt(process.env.CYBERCHEF_MAX_INPUT_SIZE, 10) || 100 * 1024 * 1024; // 100MB default
 const OPERATION_TIMEOUT = parseInt(process.env.CYBERCHEF_OPERATION_TIMEOUT, 10) || 30000; // 30s default
 const STREAMING_THRESHOLD = parseInt(process.env.CYBERCHEF_STREAMING_THRESHOLD, 10) || 10 * 1024 * 1024; // 10MB default
@@ -51,6 +51,15 @@ const ENABLE_STREAMING = process.env.CYBERCHEF_ENABLE_STREAMING !== "false"; // 
 const ENABLE_WORKERS = process.env.CYBERCHEF_ENABLE_WORKERS === "true"; // Disabled by default (workers not yet implemented)
 const CACHE_MAX_SIZE = parseInt(process.env.CYBERCHEF_CACHE_MAX_SIZE, 10) || 100 * 1024 * 1024; // 100MB default
 const CACHE_MAX_ITEMS = parseInt(process.env.CYBERCHEF_CACHE_MAX_ITEMS, 10) || 1000;
+
+// v1.7.0 configuration
+const BATCH_MAX_SIZE = parseInt(process.env.CYBERCHEF_BATCH_MAX_SIZE, 10) || 100;
+const BATCH_ENABLED = process.env.CYBERCHEF_BATCH_ENABLED !== "false"; // Enabled by default
+const TELEMETRY_ENABLED = process.env.CYBERCHEF_TELEMETRY_ENABLED === "true"; // Disabled by default (privacy-first)
+const RATE_LIMIT_ENABLED = process.env.CYBERCHEF_RATE_LIMIT_ENABLED === "true"; // Disabled by default
+const RATE_LIMIT_REQUESTS = parseInt(process.env.CYBERCHEF_RATE_LIMIT_REQUESTS, 10) || 100;
+const RATE_LIMIT_WINDOW = parseInt(process.env.CYBERCHEF_RATE_LIMIT_WINDOW, 10) || 60000; // 60 seconds
+const CACHE_ENABLED = process.env.CYBERCHEF_CACHE_ENABLED !== "false"; // Enabled by default
 
 /**
  * Simple LRU Cache for operation results.
@@ -240,10 +249,393 @@ class MemoryMonitor {
     }
 }
 
+/**
+ * Telemetry collector for usage analytics (v1.7.0).
+ * Privacy-first: no input/output data is captured.
+ */
+class TelemetryCollector {
+    /**
+     * Create a new telemetry collector.
+     */
+    constructor() {
+        this.metrics = [];
+        this.maxMetrics = 10000; // Keep last 10k metrics
+    }
+
+    /**
+     * Record a tool execution metric.
+     *
+     * @param {Object} metric - Metric object.
+     */
+    record(metric) {
+        if (!TELEMETRY_ENABLED) return;
+
+        this.metrics.push({
+            tool: metric.tool,
+            duration: metric.duration,
+            inputSize: metric.inputSize,
+            outputSize: metric.outputSize,
+            success: metric.success,
+            cached: metric.cached || false,
+            timestamp: Date.now()
+        });
+
+        // Limit metrics array size
+        if (this.metrics.length > this.maxMetrics) {
+            this.metrics.shift();
+        }
+    }
+
+    /**
+     * Export all collected metrics.
+     *
+     * @returns {Array} Array of metric objects.
+     */
+    exportMetrics() {
+        return [...this.metrics];
+    }
+
+    /**
+     * Get telemetry statistics.
+     *
+     * @returns {Object} Statistics object.
+     */
+    getStats() {
+        if (this.metrics.length === 0) {
+            return {
+                totalCalls: 0,
+                successRate: 0,
+                avgDuration: 0,
+                cacheHitRate: 0
+            };
+        }
+
+        const successCount = this.metrics.filter(m => m.success).length;
+        const cachedCount = this.metrics.filter(m => m.cached).length;
+        const totalDuration = this.metrics.reduce((sum, m) => sum + m.duration, 0);
+
+        return {
+            totalCalls: this.metrics.length,
+            successRate: (successCount / this.metrics.length * 100).toFixed(2) + "%",
+            avgDuration: Math.round(totalDuration / this.metrics.length) + "ms",
+            cacheHitRate: (cachedCount / this.metrics.length * 100).toFixed(2) + "%"
+        };
+    }
+
+    /**
+     * Clear all metrics.
+     */
+    clear() {
+        this.metrics = [];
+    }
+}
+
+/**
+ * Rate limiter using sliding window algorithm (v1.7.0).
+ */
+class RateLimiter {
+    /**
+     * Create a new rate limiter.
+     *
+     * @param {number} maxRequests - Maximum requests per window.
+     * @param {number} windowMs - Window size in milliseconds.
+     */
+    constructor(maxRequests = RATE_LIMIT_REQUESTS, windowMs = RATE_LIMIT_WINDOW) {
+        this.maxRequests = maxRequests;
+        this.windowMs = windowMs;
+        this.requests = new Map(); // connectionId -> [timestamps]
+    }
+
+    /**
+     * Check if request is allowed.
+     *
+     * @param {string} connectionId - Connection identifier.
+     * @returns {Object} Result with allowed flag and retry-after time.
+     */
+    checkLimit(connectionId = "default") {
+        if (!RATE_LIMIT_ENABLED) {
+            return { allowed: true, retryAfter: 0 };
+        }
+
+        const now = Date.now();
+        const timestamps = this.requests.get(connectionId) || [];
+
+        // Remove old timestamps outside the window
+        const validTimestamps = timestamps.filter(ts => now - ts < this.windowMs);
+
+        if (validTimestamps.length >= this.maxRequests) {
+            const oldestTimestamp = validTimestamps[0];
+            const retryAfter = Math.ceil((oldestTimestamp + this.windowMs - now) / 1000);
+            return { allowed: false, retryAfter };
+        }
+
+        // Add current timestamp
+        validTimestamps.push(now);
+        this.requests.set(connectionId, validTimestamps);
+
+        return { allowed: true, retryAfter: 0 };
+    }
+
+    /**
+     * Get rate limit statistics.
+     *
+     * @returns {Object} Statistics object.
+     */
+    getStats() {
+        const connections = this.requests.size;
+        let totalRequests = 0;
+        for (const timestamps of this.requests.values()) {
+            totalRequests += timestamps.length;
+        }
+
+        return {
+            enabled: RATE_LIMIT_ENABLED,
+            maxRequests: this.maxRequests,
+            windowMs: this.windowMs,
+            activeConnections: connections,
+            totalTrackedRequests: totalRequests
+        };
+    }
+
+    /**
+     * Clear all tracked requests.
+     */
+    clear() {
+        this.requests.clear();
+    }
+}
+
+/**
+ * Resource quota tracker (v1.7.0).
+ */
+class ResourceQuotaTracker {
+    /**
+     * Create a new resource quota tracker.
+     */
+    constructor() {
+        this.concurrentOps = 0;
+        this.maxConcurrentOps = parseInt(process.env.CYBERCHEF_MAX_CONCURRENT_OPS, 10) || 10;
+        this.totalOps = 0;
+        this.totalInputSize = 0;
+        this.totalOutputSize = 0;
+    }
+
+    /**
+     * Acquire a quota slot.
+     *
+     * @returns {boolean} True if slot acquired, false if quota exceeded.
+     */
+    acquire() {
+        if (this.concurrentOps >= this.maxConcurrentOps) {
+            return false;
+        }
+        this.concurrentOps++;
+        this.totalOps++;
+        return true;
+    }
+
+    /**
+     * Release a quota slot.
+     */
+    release() {
+        this.concurrentOps = Math.max(0, this.concurrentOps - 1);
+    }
+
+    /**
+     * Track data sizes.
+     *
+     * @param {number} inputSize - Input data size in bytes.
+     * @param {number} outputSize - Output data size in bytes.
+     */
+    trackData(inputSize, outputSize) {
+        this.totalInputSize += inputSize;
+        this.totalOutputSize += outputSize;
+    }
+
+    /**
+     * Get quota information.
+     *
+     * @returns {Object} Quota information.
+     */
+    getInfo() {
+        return {
+            concurrentOperations: this.concurrentOps,
+            maxConcurrentOperations: this.maxConcurrentOps,
+            totalOperations: this.totalOps,
+            totalInputSize: this.totalInputSize,
+            totalOutputSize: this.totalOutputSize,
+            inputSizeMB: (this.totalInputSize / 1024 / 1024).toFixed(2),
+            outputSizeMB: (this.totalOutputSize / 1024 / 1024).toFixed(2),
+            maxInputSizeMB: (MAX_INPUT_SIZE / 1024 / 1024).toFixed(2)
+        };
+    }
+
+    /**
+     * Reset statistics.
+     */
+    reset() {
+        this.totalOps = 0;
+        this.totalInputSize = 0;
+        this.totalOutputSize = 0;
+    }
+}
+
+/**
+ * Batch processor for executing multiple operations (v1.7.0).
+ */
+class BatchProcessor {
+    /**
+     * Execute a batch of operations.
+     *
+     * @param {Array} operations - Array of operation objects.
+     * @param {string} mode - Execution mode: "parallel" or "sequential".
+     * @param {Object} context - Execution context.
+     * @returns {Promise<Object>} Batch results.
+     */
+    async executeBatch(operations, mode = "parallel", context = {}) {
+        if (!BATCH_ENABLED) {
+            throw createInputError("Batch processing is disabled", { batchSize: operations.length });
+        }
+
+        if (!Array.isArray(operations) || operations.length === 0) {
+            throw createInputError("Operations must be a non-empty array", { received: typeof operations });
+        }
+
+        if (operations.length > BATCH_MAX_SIZE) {
+            throw createInputError(
+                `Batch size (${operations.length}) exceeds maximum allowed size (${BATCH_MAX_SIZE})`,
+                { batchSize: operations.length, maxBatchSize: BATCH_MAX_SIZE }
+            );
+        }
+
+        const results = [];
+        const errors = [];
+        let successCount = 0;
+
+        if (mode === "parallel") {
+            // Execute all operations in parallel
+            const promises = operations.map(async (op, index) => {
+                try {
+                    const result = await this.executeOperation(op, { ...context, index });
+                    return { index, success: true, result };
+                } catch (error) {
+                    return { index, success: false, error: error.message || String(error) };
+                }
+            });
+
+            const outcomes = await Promise.all(promises);
+
+            outcomes.forEach(outcome => {
+                if (outcome.success) {
+                    results.push({ index: outcome.index, result: outcome.result });
+                    successCount++;
+                } else {
+                    errors.push({ index: outcome.index, error: outcome.error });
+                }
+            });
+
+        } else if (mode === "sequential") {
+            // Execute operations one by one
+            for (let i = 0; i < operations.length; i++) {
+                try {
+                    const result = await this.executeOperation(operations[i], { ...context, index: i });
+                    results.push({ index: i, result });
+                    successCount++;
+                } catch (error) {
+                    errors.push({ index: i, error: error.message || String(error) });
+                    // Continue with next operation (partial success)
+                }
+            }
+        } else {
+            throw createInputError(`Invalid mode: ${mode}. Must be "parallel" or "sequential"`, { mode });
+        }
+
+        return {
+            total: operations.length,
+            successful: successCount,
+            failed: errors.length,
+            results,
+            errors,
+            mode
+        };
+    }
+
+    /**
+     * Execute a single operation from batch.
+     *
+     * @param {Object} op - Operation object.
+     * @param {Object} context - Execution context.
+     * @returns {Promise<any>} Operation result.
+     */
+    async executeOperation(op, context) {
+        if (!op.tool || !op.tool.startsWith("cyberchef_")) {
+            throw new Error(`Invalid tool name: ${op.tool}`);
+        }
+
+        if (!op.arguments || typeof op.arguments !== "object") {
+            throw new Error("Operation arguments must be an object");
+        }
+
+        // Validate input if present
+        if (op.arguments.input) {
+            validateInputSize(op.arguments.input);
+        }
+
+        // Extract operation name
+        const toolName = op.tool;
+
+        // Handle bake operation
+        if (toolName === "cyberchef_bake") {
+            const result = await executeWithTimeoutAndRetry(
+                () => bake(op.arguments.input, op.arguments.recipe),
+                OPERATION_TIMEOUT,
+                { ...context, maxRetries: RetryConfig.MAX_RETRIES }
+            );
+            return typeof result.value === "string" ? result.value : JSON.stringify(result.value);
+        }
+
+        // Handle search operation
+        if (toolName === "cyberchef_search") {
+            const results = help(op.arguments.query);
+            return JSON.stringify(results, null, 2);
+        }
+
+        // Handle standard operations
+        const opName = Object.keys(OperationConfig).find(k => sanitizeToolName(k) === toolName);
+        if (!opName) {
+            throw new Error(`Operation not found: ${toolName}`);
+        }
+
+        const opConfig = OperationConfig[opName];
+        const recipeArgs = [];
+
+        if (opConfig.args) {
+            opConfig.args.forEach(argDef => {
+                const argName = argDef.name.toLowerCase().replace(/ /g, "_");
+                const userVal = op.arguments[argName];
+                recipeArgs.push(resolveArgValue(argDef, userVal));
+            });
+        }
+
+        const recipe = [{ op: opName, args: recipeArgs }];
+        const result = await executeWithTimeoutAndRetry(
+            () => bake(op.arguments.input, recipe),
+            OPERATION_TIMEOUT,
+            { ...context, maxRetries: RetryConfig.MAX_RETRIES }
+        );
+
+        return typeof result.value === "string" ? result.value : JSON.stringify(result.value);
+    }
+}
+
 // Global instances
 const operationCache = new LRUCache();
 // const bufferPool = new BufferPool(); // Reserved for future use
 const memoryMonitor = new MemoryMonitor();
+const telemetryCollector = new TelemetryCollector();
+const rateLimiter = new RateLimiter();
+const quotaTracker = new ResourceQuotaTracker();
+const batchProcessor = new BatchProcessor();
 
 // CPU-intensive operations that benefit from worker threads (reserved for future use)
 // const CPU_INTENSIVE_OPERATIONS = new Set([
@@ -552,6 +944,40 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 }).describe("Recipe to test"),
                 testInputs: z.array(z.string()).describe("Array of test inputs")
             }))
+        },
+        // v1.7.0 tools
+        {
+            name: "cyberchef_batch",
+            description: "Execute multiple CyberChef operations in batch (parallel or sequential mode). Supports partial success.",
+            inputSchema: zodToJsonSchema(z.object({
+                operations: z.array(z.object({
+                    tool: z.string().describe("Tool name (e.g., cyberchef_to_base64)"),
+                    arguments: z.record(z.any()).describe("Tool arguments")
+                })).describe("Array of operations to execute"),
+                mode: z.enum(["parallel", "sequential"]).default("parallel").describe("Execution mode")
+            }))
+        },
+        {
+            name: "cyberchef_telemetry_export",
+            description: "Export collected telemetry metrics. Returns anonymized usage statistics.",
+            inputSchema: zodToJsonSchema(z.object({
+                format: z.enum(["json", "summary"]).default("json").describe("Export format")
+            }))
+        },
+        {
+            name: "cyberchef_cache_stats",
+            description: "Get cache statistics including hits, misses, size, and items.",
+            inputSchema: zodToJsonSchema(z.object({}))
+        },
+        {
+            name: "cyberchef_cache_clear",
+            description: "Clear the operation result cache.",
+            inputSchema: zodToJsonSchema(z.object({}))
+        },
+        {
+            name: "cyberchef_quota_info",
+            description: "Get current resource quota information including concurrent operations and data sizes.",
+            inputSchema: zodToJsonSchema(z.object({}))
         }
     ];
 
@@ -726,103 +1152,294 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             };
         }
 
-        // Handle operation tools
-        if (name.startsWith("cyberchef_")) {
-            const opName = Object.keys(OperationConfig).find(k => sanitizeToolName(k) === name);
-
-            if (!opName) {
-                throw createOperationNotFoundError(name, { requestId });
+        // Handle v1.7.0 tools
+        if (name === "cyberchef_batch") {
+            // Check rate limit
+            const limitCheck = rateLimiter.checkLimit(requestId);
+            if (!limitCheck.allowed) {
+                const error = createInputError(
+                    `Rate limit exceeded. Retry after ${limitCheck.retryAfter} seconds.`,
+                    { retryAfter: limitCheck.retryAfter }
+                );
+                logRequestError(requestId, error, { tool: name });
+                return error.toMCPError();
             }
 
-            // Validate input size
-            validateInputSize(args.input);
+            const startTime = Date.now();
+            try {
+                const result = await batchProcessor.executeBatch(
+                    args.operations,
+                    args.mode || "parallel",
+                    { requestId, tool: name }
+                );
+                const duration = Date.now() - startTime;
 
-            const opConfig = OperationConfig[opName];
-            const recipeArgs = [];
-
-            if (opConfig.args) {
-                opConfig.args.forEach(argDef => {
-                    const argName = argDef.name.toLowerCase().replace(/ /g, "_");
-                    const userVal = args[argName];
-                    recipeArgs.push(resolveArgValue(argDef, userVal));
+                // Record telemetry
+                telemetryCollector.record({
+                    tool: name,
+                    duration,
+                    inputSize: JSON.stringify(args.operations).length,
+                    outputSize: JSON.stringify(result).length,
+                    success: true,
+                    cached: false
                 });
-            }
 
-            // Check cache
-            const cacheKey = operationCache.getCacheKey(opName, args.input, recipeArgs);
-            const cached = operationCache.get(cacheKey);
-            if (cached) {
-                logCache("hit", { operation: opName, requestId });
-                const output = typeof cached === "string" ? cached : JSON.stringify(cached);
+                const output = JSON.stringify(result, null, 2);
                 logRequestComplete(requestId, {
                     outputSize: Buffer.byteLength(output, "utf8"),
-                    cached: true
+                    duration,
+                    batchSize: args.operations.length,
+                    mode: args.mode || "parallel"
                 });
 
                 return {
                     content: [{ type: "text", text: output }]
                 };
+            } catch (error) {
+                const duration = Date.now() - startTime;
+                telemetryCollector.record({
+                    tool: name,
+                    duration,
+                    inputSize: JSON.stringify(args.operations).length,
+                    outputSize: 0,
+                    success: false,
+                    cached: false
+                });
+                throw error;
             }
+        }
 
-            logCache("miss", { operation: opName, requestId });
+        if (name === "cyberchef_telemetry_export") {
+            const format = args.format || "json";
+            let output;
 
-            const recipe = [{
-                op: opName,
-                args: recipeArgs
-            }];
-
-            // Determine streaming strategy
-            const inputSize = Buffer.byteLength(args.input, "utf8");
-            const strategy = ENABLE_STREAMING ?
-                determineStreamingStrategy(opName, inputSize, STREAMING_THRESHOLD) :
-                { type: "none", reason: "Streaming disabled" };
-
-            let result;
-            let streamed = false;
-
-            if (strategy.type !== "none") {
-                // Use streaming with progress reporting
-                logStreaming(opName, { inputSize, strategy: strategy.type, reason: strategy.reason });
-
-                // Note: MCP streaming would be implemented here if the SDK supports it
-                // For now, we execute with timeout and retry
-                result = await executeWithTimeoutAndRetry(
-                    () => bake(args.input, recipe),
-                    OPERATION_TIMEOUT * 2, // Double timeout for large operations
-                    {
-                        requestId,
-                        maxRetries: RetryConfig.MAX_RETRIES,
-                        context: { tool: name, operation: opName, inputSize }
-                    }
-                );
-                streamed = true;
+            if (format === "summary") {
+                const stats = telemetryCollector.getStats();
+                output = JSON.stringify(stats, null, 2);
             } else {
-                // Standard execution with timeout and retry
-                result = await executeWithTimeoutAndRetry(
-                    () => bake(args.input, recipe),
-                    OPERATION_TIMEOUT,
-                    {
-                        requestId,
-                        maxRetries: RetryConfig.MAX_RETRIES,
-                        context: { tool: name, operation: opName }
-                    }
-                );
+                const metrics = telemetryCollector.exportMetrics();
+                output = JSON.stringify(metrics, null, 2);
             }
 
-            // Cache result
-            operationCache.set(cacheKey, result.value);
-            logCache("set", { operation: opName, requestId });
-
-            const output = typeof result.value === "string" ? result.value : JSON.stringify(result.value);
-            logRequestComplete(requestId, {
-                outputSize: Buffer.byteLength(output, "utf8"),
-                cached: false,
-                streamed
-            });
+            logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
 
             return {
                 content: [{ type: "text", text: output }]
             };
+        }
+
+        if (name === "cyberchef_cache_stats") {
+            const stats = operationCache.getStats();
+            const output = JSON.stringify(stats, null, 2);
+            logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
+
+            return {
+                content: [{ type: "text", text: output }]
+            };
+        }
+
+        if (name === "cyberchef_cache_clear") {
+            operationCache.clear();
+            const output = JSON.stringify({ success: true, message: "Cache cleared" }, null, 2);
+            logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
+
+            return {
+                content: [{ type: "text", text: output }]
+            };
+        }
+
+        if (name === "cyberchef_quota_info") {
+            const quotaInfo = quotaTracker.getInfo();
+            const rateLimitStats = rateLimiter.getStats();
+            const combined = {
+                quota: quotaInfo,
+                rateLimit: rateLimitStats
+            };
+            const output = JSON.stringify(combined, null, 2);
+            logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
+
+            return {
+                content: [{ type: "text", text: output }]
+            };
+        }
+
+        // Handle operation tools
+        if (name.startsWith("cyberchef_")) {
+            // Check rate limit
+            const limitCheck = rateLimiter.checkLimit(requestId);
+            if (!limitCheck.allowed) {
+                const error = createInputError(
+                    `Rate limit exceeded. Retry after ${limitCheck.retryAfter} seconds.`,
+                    { retryAfter: limitCheck.retryAfter }
+                );
+                logRequestError(requestId, error, { tool: name });
+                return error.toMCPError();
+            }
+
+            // Check quota
+            if (!quotaTracker.acquire()) {
+                const error = createInputError(
+                    `Resource quota exceeded. Maximum concurrent operations: ${quotaTracker.maxConcurrentOps}`,
+                    { maxConcurrentOps: quotaTracker.maxConcurrentOps }
+                );
+                logRequestError(requestId, error, { tool: name });
+                return error.toMCPError();
+            }
+
+            const startTime = Date.now();
+            try {
+                const opName = Object.keys(OperationConfig).find(k => sanitizeToolName(k) === name);
+
+                if (!opName) {
+                    throw createOperationNotFoundError(name, { requestId });
+                }
+
+                // Validate input size
+                validateInputSize(args.input);
+
+                const opConfig = OperationConfig[opName];
+                const recipeArgs = [];
+
+                if (opConfig.args) {
+                    opConfig.args.forEach(argDef => {
+                        const argName = argDef.name.toLowerCase().replace(/ /g, "_");
+                        const userVal = args[argName];
+                        recipeArgs.push(resolveArgValue(argDef, userVal));
+                    });
+                }
+
+                // Check cache (only if caching is enabled)
+                const inputSize = Buffer.byteLength(args.input, "utf8");
+                let cacheKey, cached;
+                if (CACHE_ENABLED) {
+                    cacheKey = operationCache.getCacheKey(opName, args.input, recipeArgs);
+                    cached = operationCache.get(cacheKey);
+                    if (cached) {
+                        logCache("hit", { operation: opName, requestId });
+                        const output = typeof cached === "string" ? cached : JSON.stringify(cached);
+                        const outputSize = Buffer.byteLength(output, "utf8");
+
+                        // Track quota
+                        quotaTracker.trackData(inputSize, outputSize);
+                        quotaTracker.release();
+
+                        // Record telemetry
+                        const duration = Date.now() - startTime;
+                        telemetryCollector.record({
+                            tool: name,
+                            duration,
+                            inputSize,
+                            outputSize,
+                            success: true,
+                            cached: true
+                        });
+
+                        logRequestComplete(requestId, {
+                            outputSize,
+                            cached: true,
+                            duration
+                        });
+
+                        return {
+                            content: [{ type: "text", text: output }]
+                        };
+                    }
+
+                    logCache("miss", { operation: opName, requestId });
+                }
+
+                const recipe = [{
+                    op: opName,
+                    args: recipeArgs
+                }];
+
+                // Determine streaming strategy
+                const strategy = ENABLE_STREAMING ?
+                    determineStreamingStrategy(opName, inputSize, STREAMING_THRESHOLD) :
+                    { type: "none", reason: "Streaming disabled" };
+
+                let result;
+                let streamed = false;
+
+                if (strategy.type !== "none") {
+                    // Use streaming with progress reporting
+                    logStreaming(opName, { inputSize, strategy: strategy.type, reason: strategy.reason });
+
+                    // Note: MCP streaming would be implemented here if the SDK supports it
+                    // For now, we execute with timeout and retry
+                    result = await executeWithTimeoutAndRetry(
+                        () => bake(args.input, recipe),
+                        OPERATION_TIMEOUT * 2, // Double timeout for large operations
+                        {
+                            requestId,
+                            maxRetries: RetryConfig.MAX_RETRIES,
+                            context: { tool: name, operation: opName, inputSize }
+                        }
+                    );
+                    streamed = true;
+                } else {
+                    // Standard execution with timeout and retry
+                    result = await executeWithTimeoutAndRetry(
+                        () => bake(args.input, recipe),
+                        OPERATION_TIMEOUT,
+                        {
+                            requestId,
+                            maxRetries: RetryConfig.MAX_RETRIES,
+                            context: { tool: name, operation: opName }
+                        }
+                    );
+                }
+
+                // Cache result (only if caching is enabled)
+                if (CACHE_ENABLED) {
+                    operationCache.set(cacheKey, result.value);
+                    logCache("set", { operation: opName, requestId });
+                }
+
+                const output = typeof result.value === "string" ? result.value : JSON.stringify(result.value);
+                const outputSize = Buffer.byteLength(output, "utf8");
+                const duration = Date.now() - startTime;
+
+                // Track quota
+                quotaTracker.trackData(inputSize, outputSize);
+
+                // Record telemetry
+                telemetryCollector.record({
+                    tool: name,
+                    duration,
+                    inputSize,
+                    outputSize,
+                    success: true,
+                    cached: false
+                });
+
+                logRequestComplete(requestId, {
+                    outputSize,
+                    cached: false,
+                    streamed,
+                    duration
+                });
+
+                return {
+                    content: [{ type: "text", text: output }]
+                };
+            } catch (opError) {
+                // Record failed telemetry
+                const duration = Date.now() - startTime;
+                const inputSize = args.input ? Buffer.byteLength(args.input, "utf8") : 0;
+                telemetryCollector.record({
+                    tool: name,
+                    duration,
+                    inputSize,
+                    outputSize: 0,
+                    success: false,
+                    cached: false
+                });
+                throw opError;
+            } finally {
+                // Always release quota
+                quotaTracker.release();
+            }
         }
 
         throw createOperationNotFoundError(name, { requestId });
@@ -865,7 +1482,16 @@ async function runServer() {
         cacheMaxSize: CACHE_MAX_SIZE,
         cacheMaxItems: CACHE_MAX_ITEMS,
         maxRetries: RetryConfig.MAX_RETRIES,
-        logLevel: process.env.LOG_LEVEL || "info"
+        logLevel: process.env.LOG_LEVEL || "info",
+        // v1.7.0 configuration
+        batchMaxSize: BATCH_MAX_SIZE,
+        batchEnabled: BATCH_ENABLED,
+        telemetryEnabled: TELEMETRY_ENABLED,
+        rateLimitEnabled: RATE_LIMIT_ENABLED,
+        rateLimitRequests: RATE_LIMIT_REQUESTS,
+        rateLimitWindow: RATE_LIMIT_WINDOW,
+        cacheEnabled: CACHE_ENABLED,
+        maxConcurrentOps: quotaTracker.maxConcurrentOps
     });
 
     // Also output to stderr for compatibility (can be disabled with LOG_LEVEL=error)
@@ -877,8 +1503,12 @@ async function runServer() {
     logger.info(`Streaming threshold: ${Math.round(STREAMING_THRESHOLD / 1024 / 1024)}MB`);
     logger.info(`Streaming: ${ENABLE_STREAMING ? "enabled" : "disabled"}`);
     logger.info(`Worker threads: ${ENABLE_WORKERS ? "enabled" : "disabled"}`);
-    logger.info(`Cache size: ${Math.round(CACHE_MAX_SIZE / 1024 / 1024)}MB (${CACHE_MAX_ITEMS} items max)`);
+    logger.info(`Cache: ${CACHE_ENABLED ? "enabled" : "disabled"} (${Math.round(CACHE_MAX_SIZE / 1024 / 1024)}MB, ${CACHE_MAX_ITEMS} items max)`);
     logger.info(`Max retries: ${RetryConfig.MAX_RETRIES}`);
+    logger.info(`Batch processing: ${BATCH_ENABLED ? "enabled" : "disabled"} (max ${BATCH_MAX_SIZE} ops)`);
+    logger.info(`Telemetry: ${TELEMETRY_ENABLED ? "enabled" : "disabled"}`);
+    logger.info(`Rate limiting: ${RATE_LIMIT_ENABLED ? "enabled" : "disabled"} (${RATE_LIMIT_REQUESTS} req/${RATE_LIMIT_WINDOW}ms)`);
+    logger.info(`Max concurrent ops: ${quotaTracker.maxConcurrentOps}`);
     logger.info(`Log level: ${process.env.LOG_LEVEL || "info"}`);
     logger.info("=====================================");
 }
@@ -900,6 +1530,10 @@ runServer().catch((error) => {
 export {
     LRUCache,
     MemoryMonitor,
+    TelemetryCollector,
+    RateLimiter,
+    ResourceQuotaTracker,
+    BatchProcessor,
     sanitizeToolName,
     mapArgsToZod,
     resolveArgValue,
@@ -912,6 +1546,17 @@ export {
     ENABLE_WORKERS,
     CACHE_MAX_SIZE,
     CACHE_MAX_ITEMS,
+    BATCH_MAX_SIZE,
+    BATCH_ENABLED,
+    TELEMETRY_ENABLED,
+    RATE_LIMIT_ENABLED,
+    RATE_LIMIT_REQUESTS,
+    RATE_LIMIT_WINDOW,
+    CACHE_ENABLED,
     operationCache,
-    memoryMonitor
+    memoryMonitor,
+    telemetryCollector,
+    rateLimiter,
+    quotaTracker,
+    batchProcessor
 };
