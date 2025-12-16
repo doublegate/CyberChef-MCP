@@ -25,3 +25,8 @@ WARP.md
 
 # Reference projects (local development only)
 ref-proj/
+
+# Codecov test and coverage artifacts
+coverage/
+test-results/
+.nyc_output/

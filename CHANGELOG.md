@@ -7,6 +7,97 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Comprehensive Codecov Integration**: Complete coverage analytics, bundle analysis, and test analytics
+  - **Coverage Analytics**: Automated coverage tracking with status checks on pull requests
+    - V8 coverage provider generating lcov, JSON, HTML, and Cobertura reports
+    - 70% minimum coverage threshold for project (lines, functions, statements)
+    - 75% minimum coverage threshold for new code (patch coverage)
+    - Flags for different test types (mcp-tests, core-tests, node-api)
+    - Component-level coverage tracking (MCP Server, Core Operations, Node API)
+  - **Bundle Analysis**: Webpack bundle size tracking and visualization
+    - Integration with @codecov/webpack-plugin for automated uploads
+    - Bundle size change detection in pull requests
+    - Historical bundle size trends and optimization insights
+    - Dry-run mode for local development without token
+  - **Test Analytics**: JUnit XML test result reporting and analysis
+    - Test performance tracking over time
+    - Flaky test detection and identification
+    - Test execution time monitoring and regression detection
+  - **Configuration Files**:
+    - `codecov.yml`: Coverage thresholds, status checks, PR commenting, path exclusions
+    - Updated `vitest.config.mjs`: V8 coverage, JUnit XML reporter, coverage thresholds
+    - Updated `.github/workflows/core-ci.yml`: Codecov action integration with test results upload
+    - Updated `Gruntfile.js`: Webpack bundle analysis plugin configuration
+  - **GitHub Actions Integration**:
+    - Coverage upload using codecov/codecov-action@v5
+    - Test results upload using codecov/test-results-action@v1
+    - Bundle analysis triggered on production builds
+    - All uploads include appropriate flags and metadata
+  - **Documentation**:
+    - `docs/guides/codecov-integration.md`: Comprehensive 400+ line integration guide
+    - `CODECOV_INTEGRATION_SUMMARY.md`: Implementation summary
+    - `CODECOV_VERIFICATION.md`: Verification guide
+
+### Changed
+- Enhanced test infrastructure to generate coverage and test result reports
+- Updated `.gitignore` to exclude coverage artifacts (coverage/, test-results/, .nyc_output/)
+- Updated README.md with comprehensive Codecov section in CI/CD documentation
+
+### Fixed
+- Fixed `codecov.yml` validation error by removing deprecated `ui` field from configuration
+
+## [1.6.0] - 2025-12-16
+
+### Added
+- **Recipe Management System**: Comprehensive recipe storage and management
+  - Save multi-operation recipes with names, descriptions, tags, and metadata
+  - Recipe CRUD operations: create, read, update, delete
+  - Recipe execution with saved configurations
+  - Recipe composition: nest recipes within recipes
+  - Recipe validation and complexity estimation
+  - Circular dependency detection
+  - Recipe library with 25+ curated examples across 5 categories
+- **Recipe Import/Export**: Multi-format recipe portability
+  - JSON format (native)
+  - YAML format (human-readable)
+  - URL format (shareable base64-encoded links)
+  - CyberChef format (compatibility with upstream)
+- **Recipe Validation Tools**: Pre-execution validation
+  - Validate recipe structure without saving
+  - Test recipes with sample inputs
+  - Operation name and argument validation
+  - Complexity and execution time estimation
+- **New MCP Tools** (10 total):
+  - `cyberchef_recipe_create` - Create new recipe
+  - `cyberchef_recipe_get` - Retrieve recipe by ID
+  - `cyberchef_recipe_list` - List recipes with filtering
+  - `cyberchef_recipe_update` - Update existing recipe
+  - `cyberchef_recipe_delete` - Delete recipe
+  - `cyberchef_recipe_execute` - Execute saved recipe
+  - `cyberchef_recipe_export` - Export to JSON/YAML/URL/CyberChef
+  - `cyberchef_recipe_import` - Import from various formats
+  - `cyberchef_recipe_validate` - Validate recipe structure
+  - `cyberchef_recipe_test` - Test with sample inputs
+- **Recipe Storage**: JSON file-based storage with atomic writes
+  - In-memory caching for performance
+  - Automatic backup creation
+  - Recipe versioning (semver)
+  - Storage statistics and metadata
+- **Environment Variables**: New configuration options
+  - `CYBERCHEF_RECIPE_STORAGE` - Storage file path (default: `./recipes.json`)
+  - `CYBERCHEF_RECIPE_MAX_COUNT` - Maximum recipes (default: 10000)
+  - `CYBERCHEF_RECIPE_MAX_OPERATIONS` - Max operations per recipe (default: 100)
+  - `CYBERCHEF_RECIPE_MAX_DEPTH` - Max nesting depth (default: 5)
+
+### Changed
+- Updated MCP server version from 1.5.1 to 1.6.0
+- Enhanced server initialization to include recipe manager setup
+- Improved tool registration with 10 additional recipe management tools
+
+### Fixed
+- None
+
 ## [1.5.1] - 2025-12-15
 
 ### Added

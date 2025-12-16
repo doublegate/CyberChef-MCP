@@ -39,8 +39,11 @@ import {
     RetryConfig
 } from "./retry.mjs";
 
+// New v1.6.0 imports
+import { recipeManager } from "./recipe-manager.mjs";
+
 // Performance configuration (configurable via environment variables)
-const VERSION = "1.5.1";
+const VERSION = "1.6.0";
 const MAX_INPUT_SIZE = parseInt(process.env.CYBERCHEF_MAX_INPUT_SIZE, 10) || 100 * 1024 * 1024; // 100MB default
 const OPERATION_TIMEOUT = parseInt(process.env.CYBERCHEF_OPERATION_TIMEOUT, 10) || 30000; // 30s default
 const STREAMING_THRESHOLD = parseInt(process.env.CYBERCHEF_STREAMING_THRESHOLD, 10) || 10 * 1024 * 1024; // 10MB default
@@ -430,6 +433,125 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             inputSchema: zodToJsonSchema(z.object({
                 query: z.string().describe("Search query")
             }))
+        },
+        // Recipe management tools (v1.6.0)
+        {
+            name: "cyberchef_recipe_create",
+            description: "Create a new recipe with multiple operations.",
+            inputSchema: zodToJsonSchema(z.object({
+                name: z.string().describe("Recipe name"),
+                description: z.string().optional().describe("Recipe description"),
+                operations: z.array(z.object({
+                    op: z.string().optional().describe("Operation name"),
+                    args: z.record(z.any()).optional().describe("Operation arguments"),
+                    recipe: z.string().optional().describe("Reference to another recipe ID")
+                })).describe("List of operations"),
+                tags: z.array(z.string()).optional().describe("Recipe tags"),
+                author: z.string().optional().describe("Author email"),
+                metadata: z.object({
+                    complexity: z.string().optional(),
+                    estimatedTime: z.string().optional(),
+                    category: z.string().optional()
+                }).optional()
+            }))
+        },
+        {
+            name: "cyberchef_recipe_get",
+            description: "Get a recipe by ID.",
+            inputSchema: zodToJsonSchema(z.object({
+                id: z.string().uuid().describe("Recipe UUID")
+            }))
+        },
+        {
+            name: "cyberchef_recipe_list",
+            description: "List all recipes with optional filtering.",
+            inputSchema: zodToJsonSchema(z.object({
+                tag: z.string().optional().describe("Filter by tag"),
+                category: z.string().optional().describe("Filter by category"),
+                search: z.string().optional().describe("Search in name/description"),
+                limit: z.number().optional().describe("Maximum results"),
+                offset: z.number().optional().describe("Pagination offset")
+            }))
+        },
+        {
+            name: "cyberchef_recipe_update",
+            description: "Update an existing recipe.",
+            inputSchema: zodToJsonSchema(z.object({
+                id: z.string().uuid().describe("Recipe UUID"),
+                name: z.string().optional().describe("New recipe name"),
+                description: z.string().optional().describe("New description"),
+                operations: z.array(z.object({
+                    op: z.string().optional(),
+                    args: z.record(z.any()).optional(),
+                    recipe: z.string().optional()
+                })).optional().describe("New operations"),
+                tags: z.array(z.string()).optional().describe("New tags"),
+                metadata: z.object({
+                    complexity: z.string().optional(),
+                    estimatedTime: z.string().optional(),
+                    category: z.string().optional()
+                }).optional()
+            }))
+        },
+        {
+            name: "cyberchef_recipe_delete",
+            description: "Delete a recipe by ID.",
+            inputSchema: zodToJsonSchema(z.object({
+                id: z.string().uuid().describe("Recipe UUID")
+            }))
+        },
+        {
+            name: "cyberchef_recipe_execute",
+            description: "Execute a saved recipe with input data.",
+            inputSchema: zodToJsonSchema(z.object({
+                id: z.string().uuid().describe("Recipe UUID"),
+                input: z.string().describe("Input data to process")
+            }))
+        },
+        {
+            name: "cyberchef_recipe_export",
+            description: "Export a recipe to various formats (json, yaml, url, cyberchef).",
+            inputSchema: zodToJsonSchema(z.object({
+                id: z.string().uuid().describe("Recipe UUID"),
+                format: z.enum(["json", "yaml", "url", "cyberchef"]).describe("Export format")
+            }))
+        },
+        {
+            name: "cyberchef_recipe_import",
+            description: "Import a recipe from various formats.",
+            inputSchema: zodToJsonSchema(z.object({
+                data: z.string().describe("Recipe data to import"),
+                format: z.enum(["json", "yaml", "url", "cyberchef"]).describe("Import format")
+            }))
+        },
+        {
+            name: "cyberchef_recipe_validate",
+            description: "Validate a recipe without saving it.",
+            inputSchema: zodToJsonSchema(z.object({
+                recipe: z.object({
+                    name: z.string(),
+                    operations: z.array(z.object({
+                        op: z.string().optional(),
+                        args: z.record(z.any()).optional(),
+                        recipe: z.string().optional()
+                    }))
+                }).describe("Recipe to validate")
+            }))
+        },
+        {
+            name: "cyberchef_recipe_test",
+            description: "Test a recipe with sample inputs.",
+            inputSchema: zodToJsonSchema(z.object({
+                recipe: z.object({
+                    name: z.string(),
+                    operations: z.array(z.object({
+                        op: z.string().optional(),
+                        args: z.record(z.any()).optional(),
+                        recipe: z.string().optional()
+                    }))
+                }).describe("Recipe to test"),
+                testInputs: z.array(z.string()).describe("Array of test inputs")
+            }))
         }
     ];
 
@@ -495,6 +617,108 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (name === "cyberchef_search") {
             const results = help(args.query);
             const output = JSON.stringify(results, null, 2);
+            logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
+
+            return {
+                content: [{ type: "text", text: output }]
+            };
+        }
+
+        // Handle recipe management tools (v1.6.0)
+        if (name === "cyberchef_recipe_create") {
+            const recipe = await recipeManager.createRecipe(args);
+            const output = JSON.stringify(recipe, null, 2);
+            logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
+
+            return {
+                content: [{ type: "text", text: output }]
+            };
+        }
+
+        if (name === "cyberchef_recipe_get") {
+            const recipe = await recipeManager.getRecipe(args.id);
+            const output = JSON.stringify(recipe, null, 2);
+            logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
+
+            return {
+                content: [{ type: "text", text: output }]
+            };
+        }
+
+        if (name === "cyberchef_recipe_list") {
+            const recipes = await recipeManager.listRecipes(args);
+            const output = JSON.stringify(recipes, null, 2);
+            logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
+
+            return {
+                content: [{ type: "text", text: output }]
+            };
+        }
+
+        if (name === "cyberchef_recipe_update") {
+            const { id, ...updates } = args;
+            const recipe = await recipeManager.updateRecipe(id, updates);
+            const output = JSON.stringify(recipe, null, 2);
+            logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
+
+            return {
+                content: [{ type: "text", text: output }]
+            };
+        }
+
+        if (name === "cyberchef_recipe_delete") {
+            await recipeManager.deleteRecipe(args.id);
+            const output = JSON.stringify({ success: true, id: args.id }, null, 2);
+            logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
+
+            return {
+                content: [{ type: "text", text: output }]
+            };
+        }
+
+        if (name === "cyberchef_recipe_execute") {
+            validateInputSize(args.input);
+            const result = await recipeManager.executeRecipe(args.id, args.input);
+            const output = typeof result.result === "string" ? result.result : JSON.stringify(result);
+            logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
+
+            return {
+                content: [{ type: "text", text: output }]
+            };
+        }
+
+        if (name === "cyberchef_recipe_export") {
+            const exported = await recipeManager.exportRecipe(args.id, args.format);
+            logRequestComplete(requestId, { outputSize: Buffer.byteLength(exported, "utf8") });
+
+            return {
+                content: [{ type: "text", text: exported }]
+            };
+        }
+
+        if (name === "cyberchef_recipe_import") {
+            const recipe = await recipeManager.importRecipe(args.data, args.format);
+            const output = JSON.stringify(recipe, null, 2);
+            logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
+
+            return {
+                content: [{ type: "text", text: output }]
+            };
+        }
+
+        if (name === "cyberchef_recipe_validate") {
+            const result = await recipeManager.validateRecipe(args.recipe);
+            const output = JSON.stringify(result, null, 2);
+            logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
+
+            return {
+                content: [{ type: "text", text: output }]
+            };
+        }
+
+        if (name === "cyberchef_recipe_test") {
+            const result = await recipeManager.testRecipe(args.recipe, args.testInputs);
+            const output = JSON.stringify(result, null, 2);
             logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
 
             return {
@@ -623,6 +847,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 async function runServer() {
     // Initialize logger
     initLogger({ version: VERSION });
+
+    // Initialize recipe manager (v1.6.0)
+    await recipeManager.initialize();
 
     const transport = new StdioServerTransport();
     await server.connect(transport);

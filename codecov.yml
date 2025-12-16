@@ -1,0 +1,118 @@
+# Codecov Configuration
+# Comprehensive setup for Coverage Analytics, Bundle Analysis, and Test Analytics
+# Documentation: https://docs.codecov.com/docs/codecovyml-reference
+
+# Coverage Analytics Configuration
+coverage:
+  # Coverage precision and display settings
+  precision: 2
+  round: down
+  range: 70..90  # Red below 70%, yellow 70-90%, green above 90%
+
+  # Coverage status checks
+  status:
+    # Overall project coverage
+    project:
+      default:
+        target: 70%              # Minimum coverage required
+        threshold: 1%            # Allow 1% decrease without failing
+        base: auto
+        if_ci_failed: error
+
+    # Coverage on changed files only (patch coverage)
+    patch:
+      default:
+        target: 75%              # Higher target for new code
+        threshold: 2%
+        base: auto
+        if_ci_failed: error
+
+  # Path exclusions - files not counted in coverage
+  ignore:
+    - "node_modules/**"
+    - "build/**"
+    - "dist/**"
+    - "tests/**"
+    - "benchmarks/**"
+    - "scripts/**"
+    - "src/web/**"                # Web UI (not part of MCP server)
+    - "src/core/vendor/**"        # Third-party vendor code
+    - "src/core/operations/legacy/**"  # Legacy operations
+    - "**/*.test.mjs"
+    - "**/*.config.js"
+    - "**/*.config.mjs"
+    - "Gruntfile.js"
+    - "webpack.config.js"
+    - "nightwatch.conf.js"
+    - "**/consumers/**"           # Test consumers
+
+# Pull Request Comments
+comment:
+  layout: "header, diff, flags, components, footer"
+  behavior: default             # Post comment on every PR
+  require_changes: false        # Always post, even if no coverage change
+  require_base: false           # Post even if base branch has no coverage
+  require_head: true            # Require head coverage to post
+
+# Flags for different test types
+# Allows tracking coverage from different test suites separately
+flags:
+  mcp-tests:
+    paths:
+      - src/node/mcp-server.mjs
+      - src/node/lib/**
+    carryforward: true          # Use previous coverage if not uploaded
+
+  core-tests:
+    paths:
+      - src/core/**
+    carryforward: true
+
+  node-api:
+    paths:
+      - src/node/index.mjs
+      - src/node/wrapper.js
+    carryforward: true
+
+# Component-level coverage tracking
+component_management:
+  individual_components:
+    # MCP Server component
+    - component_id: mcp-server
+      name: "MCP Server"
+      paths:
+        - src/node/mcp-server.mjs
+        - src/node/lib/**
+
+    # Core Operations component
+    - component_id: core-operations
+      name: "Core Operations"
+      paths:
+        - src/core/operations/**
+        - "!src/core/operations/legacy/**"
+
+    # Node API component
+    - component_id: node-api
+      name: "Node.js API"
+      paths:
+        - src/node/index.mjs
+        - src/node/wrapper.js
+        - src/node/config/**
+
+# GitHub Checks configuration
+github_checks:
+  annotations: true             # Show line-by-line annotations on PRs
+
+# Codecov UI Settings (deprecated, removed in newer versions)
+# ui:
+#   hide_density: false           # Show coverage density in UI
+#   hide_complexity: false        # Show cyclomatic complexity
+
+# Slack notifications (disabled by default)
+slack_app: false
+
+# Profiling (disabled for public repos)
+profiling:
+  critical_files_paths:
+    - src/node/mcp-server.mjs
+    - src/core/operations/*.mjs

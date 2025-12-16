@@ -26,5 +26,41 @@ export default defineConfig({
 
         // Silent mode for passed tests (reduce noise)
         silent: false,
+
+        // Coverage configuration for Codecov
+        coverage: {
+            provider: "v8",
+            reporter: ["text", "lcov", "json", "html"],
+            reportsDirectory: "./coverage",
+            include: [
+                "src/node/mcp-server.mjs",
+                "src/node/lib/**/*.{js,mjs}",
+                "src/core/operations/**/*.{js,mjs}",
+            ],
+            exclude: [
+                "node_modules/**",
+                "tests/**",
+                "build/**",
+                "dist/**",
+                "src/core/vendor/**",
+                "src/core/operations/legacy/**",
+                "**/*.test.{js,mjs}",
+                "**/*.config.{js,mjs}",
+            ],
+            // Coverage thresholds
+            thresholds: {
+                lines: 70,
+                functions: 70,
+                branches: 65,
+                statements: 70,
+            },
+            all: true,  // Include all files in coverage, even untested ones
+        },
+
+        // JUnit XML reporter for Codecov Test Analytics
+        reporters: ["default", "junit"],
+        outputFile: {
+            junit: "./test-results/junit.xml",
+        },
     },
 });

@@ -49,3 +49,34 @@ jobs:
       run: |
         npm test
         npm run testnodeconsumer
+
+    # Codecov Integration: Coverage Analytics + Test Analytics
+    - name: MCP Tests with Coverage
+      run: npm run test:coverage
+
+    - name: Upload Coverage to Codecov
+      uses: codecov/codecov-action@v5
+      if: always()
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: ./coverage/lcov.info
+        flags: mcp-tests
+        name: codecov-mcp-coverage
+        fail_ci_if_error: false
+        verbose: true
+
+    - name: Upload Test Results to Codecov
+      uses: codecov/test-results-action@v1
+      if: always()
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: ./test-results/junit.xml
+        flags: mcp-tests
+        name: codecov-test-results
+        fail_ci_if_error: false
+
+    # Codecov Integration: Bundle Analysis
+    - name: Build Production Bundle (triggers Bundle Analysis upload)
+      env:
+        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      run: npm run build

@@ -1,0 +1,366 @@
+{
+  "version": "1.0.0",
+  "description": "CyberChef MCP Server Recipe Library - Curated collection of common recipes",
+  "recipes": [
+    {
+      "name": "Decode and Parse JWT",
+      "description": "Decode a JWT token and beautify the JSON payload",
+      "tags": ["jwt", "decode", "json", "crypto"],
+      "operations": [
+        { "op": "JWT Decode", "args": {} },
+        { "op": "JSON Beautify", "args": {} }
+      ],
+      "metadata": {
+        "complexity": "low",
+        "estimatedTime": "50ms",
+        "category": "cryptography"
+      }
+    },
+    {
+      "name": "AES-256 Decrypt and Decompress",
+      "description": "Decrypt AES-256 encrypted data and decompress with gzip",
+      "tags": ["aes", "decrypt", "gzip", "crypto"],
+      "operations": [
+        { "op": "AES Decrypt", "args": { "mode": "CBC", "key": "", "iv": "" } },
+        { "op": "Gunzip", "args": {} }
+      ],
+      "metadata": {
+        "complexity": "medium",
+        "estimatedTime": "200ms",
+        "category": "cryptography"
+      }
+    },
+    {
+      "name": "Generate and Format RSA Keys",
+      "description": "Generate RSA key pair and format as PEM",
+      "tags": ["rsa", "crypto", "keys"],
+      "operations": [
+        { "op": "Generate RSA Key Pair", "args": { "rsa_key_size": "2048" } }
+      ],
+      "metadata": {
+        "complexity": "high",
+        "estimatedTime": "1000ms",
+        "category": "cryptography"
+      }
+    },
+    {
+      "name": "Hash with Multiple Algorithms",
+      "description": "Hash data using MD5, SHA256, and SHA512",
+      "tags": ["hash", "md5", "sha256", "sha512", "crypto"],
+      "operations": [
+        { "op": "MD5", "args": {} },
+        { "op": "SHA2", "args": { "size": "256" } },
+        { "op": "SHA2", "args": { "size": "512" } }
+      ],
+      "metadata": {
+        "complexity": "low",
+        "estimatedTime": "100ms",
+        "category": "cryptography"
+      }
+    },
+    {
+      "name": "Generate TOTP Code",
+      "description": "Generate Time-based One-Time Password",
+      "tags": ["totp", "2fa", "otp", "crypto"],
+      "operations": [
+        { "op": "Generate TOTP", "args": {} }
+      ],
+      "metadata": {
+        "complexity": "low",
+        "estimatedTime": "50ms",
+        "category": "cryptography"
+      }
+    },
+    {
+      "name": "PGP Encrypt and Armor",
+      "description": "Encrypt message with PGP and output ASCII armor",
+      "tags": ["pgp", "encrypt", "crypto"],
+      "operations": [
+        { "op": "PGP Encrypt", "args": {} },
+        { "op": "PGP Armor", "args": {} }
+      ],
+      "metadata": {
+        "complexity": "medium",
+        "estimatedTime": "500ms",
+        "category": "cryptography"
+      }
+    },
+    {
+      "name": "Base64 to Hex",
+      "description": "Decode Base64 and convert to hexadecimal",
+      "tags": ["base64", "hex", "encoding", "convert"],
+      "operations": [
+        { "op": "From Base64", "args": { "alphabet": "Standard" } },
+        { "op": "To Hex", "args": { "delimiter": "Space" } }
+      ],
+      "metadata": {
+        "complexity": "low",
+        "estimatedTime": "50ms",
+        "category": "encoding"
+      }
+    },
+    {
+      "name": "URL Decode and Parse",
+      "description": "URL decode and extract parameters as JSON",
+      "tags": ["url", "decode", "encoding"],
+      "operations": [
+        { "op": "URL Decode", "args": {} },
+        { "op": "Parse URI", "args": {} }
+      ],
+      "metadata": {
+        "complexity": "low",
+        "estimatedTime": "50ms",
+        "category": "encoding"
+      }
+    },
+    {
+      "name": "HTML Entity Decode and Strip Tags",
+      "description": "Decode HTML entities and remove all HTML tags",
+      "tags": ["html", "decode", "encoding"],
+      "operations": [
+        { "op": "From HTML Entity", "args": {} },
+        { "op": "Strip HTML tags", "args": {} }
+      ],
+      "metadata": {
+        "complexity": "low",
+        "estimatedTime": "50ms",
+        "category": "encoding"
+      }
+    },
+    {
+      "name": "Unicode Normalization and Escape",
+      "description": "Normalize Unicode and escape special characters",
+      "tags": ["unicode", "encoding", "escape"],
+      "operations": [
+        { "op": "Normalise Unicode", "args": { "form": "NFC" } },
+        { "op": "Escape Unicode Characters", "args": {} }
+      ],
+      "metadata": {
+        "complexity": "low",
+        "estimatedTime": "50ms",
+        "category": "encoding"
+      }
+    },
+    {
+      "name": "Binary to Text (Multiple Formats)",
+      "description": "Convert binary to ASCII, Hex, and Base64",
+      "tags": ["binary", "encoding", "convert"],
+      "operations": [
+        { "op": "From Binary", "args": { "delimiter": "Space" } },
+        { "op": "To Hex", "args": {} },
+        { "op": "To Base64", "args": {} }
+      ],
+      "metadata": {
+        "complexity": "low",
+        "estimatedTime": "50ms",
+        "category": "encoding"
+      }
+    },
+    {
+      "name": "ROT13 and Base64",
+      "description": "Apply ROT13 cipher and encode with Base64",
+      "tags": ["rot13", "base64", "encoding"],
+      "operations": [
+        { "op": "ROT13", "args": {} },
+        { "op": "To Base64", "args": {} }
+      ],
+      "metadata": {
+        "complexity": "low",
+        "estimatedTime": "50ms",
+        "category": "encoding"
+      }
+    },
+    {
+      "name": "Extract JSON Paths",
+      "description": "Parse JSON and extract specific paths",
+      "tags": ["json", "extract", "data"],
+      "operations": [
+        { "op": "JSON Parse", "args": {} },
+        { "op": "JPath expression", "args": { "query": "$..*" } }
+      ],
+      "metadata": {
+        "complexity": "medium",
+        "estimatedTime": "100ms",
+        "category": "data"
+      }
+    },
+    {
+      "name": "XML to JSON",
+      "description": "Parse XML and convert to JSON format",
+      "tags": ["xml", "json", "convert", "data"],
+      "operations": [
+        { "op": "XML to JSON", "args": {} },
+        { "op": "JSON Beautify", "args": {} }
+      ],
+      "metadata": {
+        "complexity": "medium",
+        "estimatedTime": "100ms",
+        "category": "data"
+      }
+    },
+    {
+      "name": "Extract Emails and URLs",
+      "description": "Extract all email addresses and URLs from text",
+      "tags": ["regex", "extract", "data"],
+      "operations": [
+        { "op": "Extract email addresses", "args": {} },
+        { "op": "Extract URLs", "args": {} }
+      ],
+      "metadata": {
+        "complexity": "low",
+        "estimatedTime": "50ms",
+        "category": "data"
+      }
+    },
+    {
+      "name": "CSV to JSON",
+      "description": "Parse CSV and convert to JSON array",
+      "tags": ["csv", "json", "convert", "data"],
+      "operations": [
+        { "op": "CSV to JSON", "args": { "delimiter": ",", "row_delimiter": "\\r\\n" } },
+        { "op": "JSON Beautify", "args": {} }
+      ],
+      "metadata": {
+        "complexity": "medium",
+        "estimatedTime": "100ms",
+        "category": "data"
+      }
+    },
+    {
+      "name": "SQL Beautify and Minify",
+      "description": "Format SQL query and then minify",
+      "tags": ["sql", "format", "data"],
+      "operations": [
+        { "op": "SQL Beautify", "args": {} },
+        { "op": "SQL Minify", "args": {} }
+      ],
+      "metadata": {
+        "complexity": "low",
+        "estimatedTime": "50ms",
+        "category": "data"
+      }
+    },
+    {
+      "name": "Extract File Metadata",
+      "description": "Parse file magic numbers and extract metadata",
+      "tags": ["file", "metadata", "forensics"],
+      "operations": [
+        { "op": "Detect File Type", "args": {} },
+        { "op": "Parse EXIF", "args": {} }
+      ],
+      "metadata": {
+        "complexity": "medium",
+        "estimatedTime": "200ms",
+        "category": "forensics"
+      }
+    },
+    {
+      "name": "Extract Strings from Binary",
+      "description": "Extract printable strings from binary data",
+      "tags": ["strings", "binary", "forensics"],
+      "operations": [
+        { "op": "Strings", "args": { "minimum_length": "4", "encoding": "All" } }
+      ],
+      "metadata": {
+        "complexity": "low",
+        "estimatedTime": "100ms",
+        "category": "forensics"
+      }
+    },
+    {
+      "name": "Entropy Analysis",
+      "description": "Calculate Shannon entropy to detect encrypted/compressed data",
+      "tags": ["entropy", "analysis", "forensics"],
+      "operations": [
+        { "op": "Entropy", "args": {} }
+      ],
+      "metadata": {
+        "complexity": "low",
+        "estimatedTime": "100ms",
+        "category": "forensics"
+      }
+    },
+    {
+      "name": "Hex Dump and Analysis",
+      "description": "Convert to hex dump and analyze byte patterns",
+      "tags": ["hex", "dump", "forensics"],
+      "operations": [
+        { "op": "To Hexdump", "args": { "width": "16" } },
+        { "op": "Frequency distribution", "args": {} }
+      ],
+      "metadata": {
+        "complexity": "low",
+        "estimatedTime": "100ms",
+        "category": "forensics"
+      }
+    },
+    {
+      "name": "Parse IPv4 and Expand",
+      "description": "Parse IPv4 address and expand to binary/hex representations",
+      "tags": ["ip", "ipv4", "network"],
+      "operations": [
+        { "op": "Parse IP range", "args": {} },
+        { "op": "IP to Hex", "args": {} }
+      ],
+      "metadata": {
+        "complexity": "low",
+        "estimatedTime": "50ms",
+        "category": "networking"
+      }
+    },
+    {
+      "name": "IPv6 Expand and Compress",
+      "description": "Expand abbreviated IPv6 and then compress",
+      "tags": ["ip", "ipv6", "network"],
+      "operations": [
+        { "op": "Expand IPv6 address", "args": {} },
+        { "op": "Compress IPv6 address", "args": {} }
+      ],
+      "metadata": {
+        "complexity": "low",
+        "estimatedTime": "50ms",
+        "category": "networking"
+      }
+    },
+    {
+      "name": "Parse User-Agent",
+      "description": "Parse and analyze HTTP User-Agent string",
+      "tags": ["user-agent", "http", "network"],
+      "operations": [
+        { "op": "Parse User Agent", "args": {} }
+      ],
+      "metadata": {
+        "complexity": "low",
+        "estimatedTime": "50ms",
+        "category": "networking"
+      }
+    },
+    {
+      "name": "HTTP Request Builder",
+      "description": "Build and format HTTP request",
+      "tags": ["http", "request", "network"],
+      "operations": [
+        { "op": "HTTP request", "args": { "method": "GET", "url": "" } }
+      ],
+      "metadata": {
+        "complexity": "medium",
+        "estimatedTime": "100ms",
+        "category": "networking"
+      }
+    },
+    {
+      "name": "Defang and Refang URLs",
+      "description": "Defang malicious URLs and then refang them",
+      "tags": ["url", "defang", "network"],
+      "operations": [
+        { "op": "Defang URL", "args": {} },
+        { "op": "Refang URL", "args": {} }
+      ],
+      "metadata": {
+        "complexity": "low",
+        "estimatedTime": "50ms",
+        "category": "networking"
+      }
+    }
+  ]
+}

@@ -3,6 +3,7 @@
 const webpack = require("webpack");
 const HtmlWebpackPlugin = require("html-webpack-plugin");
 const BundleAnalyzerPlugin = require("webpack-bundle-analyzer").BundleAnalyzerPlugin;
+const { codecovWebpackPlugin } = require("@codecov/webpack-plugin");
 const glob = require("glob");
 const path = require("path");
 
@@ -143,6 +144,14 @@ module.exports = function (grunt) {
                         openAnalyzer: false,
                         logLevel: "warn",  // Don't fail on errors
                         generateStatsFile: false
+                    }),
+                    // Codecov Bundle Analysis Plugin
+                    codecovWebpackPlugin({
+                        enableBundleAnalysis: process.env.CODECOV_TOKEN !== undefined,
+                        bundleName: "cyberchef-mcp-bundle",
+                        uploadToken: process.env.CODECOV_TOKEN,
+                        gitService: "github",
+                        dryRun: process.env.CODECOV_TOKEN === undefined,  // Dry run if no token
                     }),
                 ]
             };
