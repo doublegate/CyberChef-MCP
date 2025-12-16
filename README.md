@@ -4,7 +4,7 @@ This project provides a **Model Context Protocol (MCP)** server interface for **
 
 By running this server, you enable AI assistants (like Claude, Cursor AI, and others) to natively utilize CyberChef's extensive library of 463+ data manipulation operations—including encryption, encoding, compression, and forensic analysis—as executable tools.
 
-**Latest Release:** v1.6.0 | [Release Notes](docs/releases/v1.6.0.md) | [Security Policy](SECURITY.md) | [Security Fixes Report](SECURITY_FIX_REPORT.md)
+**Latest Release:** v1.6.1 | [Release Notes](docs/releases/v1.6.1.md) | [Security Policy](SECURITY.md) | [Security Fixes Report](SECURITY_FIX_REPORT.md)
 
 ![CyberChef MCP Banner](images/CyberChef-MCP_Banner-Logo.jpg)
 
@@ -85,17 +85,17 @@ For environments without direct GHCR access, download the pre-built Docker image
 1.  **Download the tarball** (approximately 90MB compressed):
     ```bash
     # Download from GitHub Releases
-    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v1.6.0/cyberchef-mcp-v1.6.0-docker-image.tar.gz
+    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v1.6.1/cyberchef-mcp-v1.6.1-docker-image.tar.gz
     ```
 
 2.  **Load the image into Docker:**
     ```bash
-    docker load < cyberchef-mcp-v1.6.0-docker-image.tar.gz
+    docker load < cyberchef-mcp-v1.6.1-docker-image.tar.gz
     ```
 
 3.  **Tag for easier usage:**
     ```bash
-    docker tag ghcr.io/doublegate/cyberchef-mcp_v1:v1.6.0 cyberchef-mcp
+    docker tag ghcr.io/doublegate/cyberchef-mcp_v1:v1.6.1 cyberchef-mcp
     ```
 
 4.  **Run the server:**
@@ -557,8 +557,11 @@ All workflows use the latest CodeQL Action v4 for security scanning and SARIF up
 # Run all tests (requires Node.js 22+)
 npm test
 
-# Run MCP validation test suite (465 tool tests with Vitest)
+# Run MCP validation test suite (311 tests with Vitest)
 npm run test:mcp
+
+# Run MCP tests with coverage report
+npm run test:coverage
 
 # Run performance benchmarks (v1.4.0+)
 npm run benchmark
@@ -573,6 +576,13 @@ npm run testui
 # Lint code
 npm run lint
 ```
+
+**Test Coverage:**
+The MCP server maintains comprehensive test coverage across 9 test suites:
+- **311 total tests** covering all MCP server components
+- **Coverage thresholds**: 70% lines/statements/functions, 65% branches
+- **Current coverage**: 78.93% lines, 78.7% statements, 89.33% functions, 74.68% branches
+- Test suites: errors, logger, streaming, retry, recipe-validator, recipe-storage, recipe-manager, mcp-server, validation
 
 ## Contributing
 

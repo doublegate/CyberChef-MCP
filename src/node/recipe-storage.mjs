@@ -19,13 +19,21 @@ const MAX_RECIPES = parseInt(process.env.CYBERCHEF_RECIPE_MAX_COUNT, 10) || 1000
 const BACKUP_ENABLED = process.env.CYBERCHEF_RECIPE_BACKUP !== "false"; // Enabled by default
 
 /**
- * Storage schema for the recipes.json file.
+ * Storage schema version.
  */
-const STORAGE_SCHEMA = {
-    version: "1.0.0",
-    recipes: [],
-    lastModified: new Date().toISOString()
-};
+const STORAGE_VERSION = "1.0.0";
+
+/**
+ * Create a fresh storage schema object.
+ * @returns {Object} Fresh storage schema with empty recipes array.
+ */
+function createEmptyStorage() {
+    return {
+        version: STORAGE_VERSION,
+        recipes: [],
+        lastModified: new Date().toISOString()
+    };
+}
 
 /**
  * Recipe storage class with JSON file backend.
@@ -57,7 +65,7 @@ export class RecipeStorage {
             if (error.code === "ENOENT") {
                 // File doesn't exist, create it
                 this.logger.info({ filePath: this.filePath }, "Creating new recipe storage file");
-                await this.save(STORAGE_SCHEMA);
+                await this.save(createEmptyStorage());
             } else {
                 throw error;
             }
@@ -92,7 +100,7 @@ export class RecipeStorage {
         } catch (error) {
             if (error.code === "ENOENT") {
                 // File doesn't exist yet
-                return STORAGE_SCHEMA;
+                return createEmptyStorage();
             }
 
             this.logger.error({
@@ -389,7 +397,7 @@ export class RecipeStorage {
      */
     async clear() {
         this.logger.warn("Clearing all recipes from storage");
-        await this.save(STORAGE_SCHEMA);
+        await this.save(createEmptyStorage());
     }
 
     /**

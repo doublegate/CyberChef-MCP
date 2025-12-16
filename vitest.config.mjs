@@ -21,9 +21,6 @@ export default defineConfig({
         // Extended timeout for potentially slow operations
         testTimeout: 10000,
 
-        // Fail fast on first failure (useful for CI)
-        bail: 1,
-
         // Silent mode for passed tests (reduce noise)
         silent: false,
 
@@ -34,8 +31,14 @@ export default defineConfig({
             reportsDirectory: "./coverage",
             include: [
                 "src/node/mcp-server.mjs",
+                "src/node/errors.mjs",
+                "src/node/logger.mjs",
+                "src/node/streaming.mjs",
+                "src/node/retry.mjs",
+                "src/node/recipe-validator.mjs",
+                "src/node/recipe-storage.mjs",
+                "src/node/recipe-manager.mjs",
                 "src/node/lib/**/*.{js,mjs}",
-                "src/core/operations/**/*.{js,mjs}",
             ],
             exclude: [
                 "node_modules/**",

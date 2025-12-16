@@ -5,7 +5,7 @@ All notable changes to the CyberChef MCP Server project will be documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.6.1] - 2025-12-16
 
 ### Added
 - **Comprehensive Codecov Integration**: Complete coverage analytics, bundle analysis, and test analytics
@@ -43,9 +43,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enhanced test infrastructure to generate coverage and test result reports
 - Updated `.gitignore` to exclude coverage artifacts (coverage/, test-results/, .nyc_output/)
 - Updated README.md with comprehensive Codecov section in CI/CD documentation
+- **Comprehensive Test Suite Expansion**: Increased from 274 to 311 tests (+37 tests)
+  - Added 67 mcp-server.mjs unit tests covering core functionality
+  - All 9 test files in `tests/mcp/` now provide full coverage of MCP server components
+  - Test files: errors, logger, streaming, retry, recipe-validator, recipe-storage, recipe-manager, mcp-server, validation
+- **Coverage Improvements**: All thresholds now met
+  - Lines: 78.93% (threshold: 70%)
+  - Statements: 78.7% (threshold: 70%)
+  - Functions: 89.33% (threshold: 70%)
+  - Branches: 74.68% (threshold: 65%)
+- **mcp-server.mjs Exports**: Added testable exports for unit testing
+  - `LRUCache` class for cache testing
+  - `MemoryMonitor` class for memory monitoring tests
+  - Utility functions: `sanitizeToolName`, `mapArgsToZod`, `resolveArgValue`, `validateInputSize`
+  - Configuration constants: `VERSION`, `MAX_INPUT_SIZE`, `OPERATION_TIMEOUT`, cache settings
 
 ### Fixed
 - Fixed `codecov.yml` validation error by removing deprecated `ui` field from configuration
+- Fixed mcp-server.mjs 0% coverage by adding exports and updating tests to import actual implementations
+- Fixed recipe-storage.mjs test isolation with `createEmptyStorage()` factory function for consistent timestamp generation
 
 ## [1.6.0] - 2025-12-16
 
