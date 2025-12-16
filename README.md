@@ -433,7 +433,7 @@ CyberChef MCP Server has a comprehensive development roadmap spanning **19 relea
 | Phase | Releases | Timeline | Focus | Status |
 |-------|----------|----------|-------|--------|
 | **Phase 1: Foundation** | v1.2.0 - v1.4.6 | Q4 2025 - Q1 2026 | Security hardening, upstream sync, performance | **Completed** |
-| **Phase 2: Enhancement** | v1.5.0 - v1.7.0 | Q2 2026 | Streaming, recipe management, batch processing | **v1.6.0 Released** |
+| **Phase 2: Enhancement** | v1.5.0 - v1.7.0 | Q2 2026 | Streaming, recipe management, batch processing | **v1.6.2 Released** |
 | **Phase 3: Maturity** | v1.8.0 - v2.0.0 | Q3 2026 | API stabilization, breaking changes, v2.0.0 | Planned |
 | **Phase 4: Expansion** | v2.1.0 - v2.3.0 | Q4 2026 | Multi-modal, advanced transports, plugins | Planned |
 | **Phase 5: Enterprise** | v2.4.0 - v2.6.0 | Q1 2027 | OAuth 2.1, RBAC, Kubernetes, observability | Planned |
@@ -479,6 +479,8 @@ Detailed documentation is organized in the [`docs/`](docs/) directory:
 *   [**Security Audit**](docs/security/audit.md): Comprehensive security assessment
 *   [**Security Fixes Report**](SECURITY_FIX_REPORT.md): Detailed report of 11 vulnerability fixes (ReDoS and cryptographic weaknesses)
 *   [**Security Fixes Summary**](SECURITY_FIXES_SUMMARY.md): Quick reference for recent security improvements
+*   [**Release Notes v1.6.2**](docs/releases/v1.6.2.md): Technical debt fixes - ESLint errors resolved, ENABLE_WORKERS default corrected
+*   [**Release Notes v1.6.1**](docs/releases/v1.6.1.md): Comprehensive test coverage (311 tests, 78.93% coverage) and Codecov integration
 *   [**Release Notes v1.6.0**](docs/releases/v1.6.0.md): Recipe management system with CRUD operations, import/export, and curated library
 *   [**Release Notes v1.5.0**](docs/releases/v1.5.0.md): Enhanced error handling, structured logging, automatic retry, streaming infrastructure
 *   [**Release Notes v1.4.6**](docs/releases/v1.4.6.md): Sprint 1 Security Hardening - Chainguard distroless migration, zero-CVE baseline, read-only filesystem support
