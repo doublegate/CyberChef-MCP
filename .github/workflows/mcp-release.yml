@@ -7,9 +7,13 @@ on:
     - 'v*'
 
 env:
-  REGISTRY: ghcr.io
+  GHCR_REGISTRY: ghcr.io
+  DOCKERHUB_REGISTRY: docker.io
   # Using 'cyberchef-mcp_v1' as requested for the package name
-  IMAGE_NAME: ${{ github.repository_owner }}/cyberchef-mcp_v1
+  GHCR_IMAGE_NAME: ${{ github.repository_owner }}/cyberchef-mcp_v1
+  # Docker Hub image name (assumes username/repo format - update with your Docker Hub namespace)
+  # Example: if your Docker Hub username is 'myusername', this becomes 'myusername/cyberchef-mcp'
+  DOCKERHUB_IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/cyberchef-mcp
 
 jobs:
   build-and-push:
@@ -18,6 +22,8 @@ jobs:
       contents: write
       packages: write
       security-events: write
+      attestations: write  # Required for attestation generation
+      id-token: write      # Required for OIDC token generation (attestation signing)
 
     steps:
       - name: Configure git
@@ -29,57 +35,103 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to the Container registry
+      # =============================================================================
+      # Authentication: Log in to both GHCR and Docker Hub
+      # =============================================================================
+      - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ${{ env.GHCR_REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (tags, labels) for Docker
-        id: meta
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.DOCKERHUB_REGISTRY }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # =============================================================================
+      # Metadata Extraction: Generate tags and labels for both registries
+      # =============================================================================
+      - name: Extract metadata for GHCR
+        id: meta-ghcr
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_IMAGE_NAME }}
           tags: |
             type=semver,pattern={{major}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{version}}
             type=sha
 
-      - name: Build and push Docker image
+      - name: Extract metadata for Docker Hub
+        id: meta-dockerhub
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKERHUB_REGISTRY }}/${{ env.DOCKERHUB_IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{major}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{version}}
+            type=sha
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      # =============================================================================
+      # Build and Push: Single build, multi-registry push with attestations
+      # =============================================================================
+      # CRITICAL: Supply chain attestations for Docker Scout health score compliance
+      # Docker Hub health scores require BOTH provenance and SBOM attestations.
+      # These attestations account for 15 points out of 100 in the health score.
+      # Missing attestations can drop the score from A to C grade.
+      #
+      # Dual SBOM Strategy:
+      # 1. Docker attestation SBOM (below): Attached to image manifest for
+      #    Docker Scout health scores, `docker sbom` command, and registry verification
+      # 2. Trivy SBOM artifact (separate step): Downloadable CycloneDX file
+      #    for offline audits, compliance reports, and third-party tools
+      #
+      # References:
+      # - Docker Scout Policies: https://docs.docker.com/scout/policy/
+      # - Health Scores: https://docs.docker.com/scout/policy/scores/
+      # - GitHub Actions Attestations: https://docs.docker.com/build/ci/github-actions/attestations/
+      # =============================================================================
+      - name: Build and push Docker image to both registries
         uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile.mcp
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: |
+            ${{ steps.meta-ghcr.outputs.tags }}
+            ${{ steps.meta-dockerhub.outputs.tags }}
+          labels: ${{ steps.meta-ghcr.outputs.labels }}
           platforms: linux/amd64
-          # Supply chain attestations for Docker Scout compliance (v1.4.5+)
-          # Dual SBOM Strategy:
-          # 1. Docker attestation SBOM (below): Attached to image manifest for
-          #    Docker Scout, docker sbom, and registry verification
-          # 2. Trivy SBOM artifact (separate step): Downloadable CycloneDX file
-          #    for offline audits, compliance reports, and third-party tools
-          provenance: mode=max # Max-level provenance for build integrity
-          sbom: true # Generate and attach SBOM attestation (in-toto format)
+          # Supply chain attestations (CRITICAL for Docker Hub health score)
+          provenance: mode=max  # Max-level provenance for SLSA Build Level 3 compliance
+          sbom: true            # Generate and attach SBOM attestation (in-toto SPDX format)
+          # Note: Attestations are automatically pushed with the image to both registries
 
-      # Export Docker image as tarball for offline distribution
-      # Note: metadata-action generates tags without 'v' prefix (e.g., 1.2.0 not v1.2.0)
-      # We use the 'latest' tag which is always generated for releases
-      - name: Pull Docker image for export
+      # =============================================================================
+      # Export: Create tarball for offline distribution
+      # =============================================================================
+      # Note: We pull from Docker Hub since that's the primary distribution channel
+      - name: Pull Docker image from Docker Hub for export
         run: |
-          docker pull "$REGISTRY/$IMAGE_NAME:latest"
+          docker pull "$DOCKERHUB_REGISTRY/$DOCKERHUB_IMAGE_NAME:latest"
 
       - name: Export Docker image as tarball
         env:
           TAG_NAME: ${{ github.ref_name }}
         run: |
-          docker save "$REGISTRY/$IMAGE_NAME:latest" | gzip > "cyberchef-mcp-${TAG_NAME}-docker-image.tar.gz"
+          docker save "$DOCKERHUB_REGISTRY/$DOCKERHUB_IMAGE_NAME:latest" | gzip > "cyberchef-mcp-${TAG_NAME}-docker-image.tar.gz"
           ls -lh cyberchef-mcp-*.tar.gz
 
-      # Security: Generate Software Bill of Materials (SBOM) - Part 2 of Dual Strategy
+      # =============================================================================
+      # Security: Generate SBOM and Vulnerability Scans
+      # =============================================================================
+      # Generate Software Bill of Materials (SBOM) - Part 2 of Dual Strategy
       # This Trivy-generated SBOM complements the Docker attestation SBOM above
       # Purpose: Provides CycloneDX format for:
       # - Offline security audits (no registry access required)
@@ -89,16 +141,16 @@ jobs:
       - name: Generate SBOM with Trivy (CycloneDX artifact)
         uses: aquasecurity/trivy-action@0.28.0
         with:
-          image-ref: '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest'
+          image-ref: '${{ env.DOCKERHUB_REGISTRY }}/${{ env.DOCKERHUB_IMAGE_NAME }}:latest'
           format: 'cyclonedx'
           output: 'sbom.cyclonedx.json'
           vuln-type: 'os,library'
 
-      # Security: Run vulnerability scan on release image
+      # Security: Run vulnerability scan on release image (scanning Docker Hub image)
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@0.28.0
         with:
-          image-ref: '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest'
+          image-ref: '${{ env.DOCKERHUB_REGISTRY }}/${{ env.DOCKERHUB_IMAGE_NAME }}:latest'
           format: 'sarif'
           output: 'trivy-release-results.sarif'
           severity: 'CRITICAL,HIGH'

@@ -40,7 +40,7 @@ import {
 } from "./retry.mjs";
 
 // Performance configuration (configurable via environment variables)
-const VERSION = "1.5.0";
+const VERSION = "1.5.1";
 const MAX_INPUT_SIZE = parseInt(process.env.CYBERCHEF_MAX_INPUT_SIZE, 10) || 100 * 1024 * 1024; // 100MB default
 const OPERATION_TIMEOUT = parseInt(process.env.CYBERCHEF_OPERATION_TIMEOUT, 10) || 30000; // 30s default
 const STREAMING_THRESHOLD = parseInt(process.env.CYBERCHEF_STREAMING_THRESHOLD, 10) || 10 * 1024 * 1024; // 10MB default

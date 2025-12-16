@@ -37,14 +37,27 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # =============================================================================
+      # Build Docker Image for Testing (No Attestations)
+      # =============================================================================
+      # Note: This workflow uses `load: true` to load the image into the local
+      # Docker daemon for testing. Attestations (provenance, SBOM) cannot be
+      # generated with `load: true` because the local image store doesn't support
+      # the manifest lists required for attestation attachment.
+      #
+      # Attestations are only generated in the mcp-release.yml workflow, which
+      # pushes to registries (GHCR and Docker Hub) where attestations are supported.
+      #
+      # Reference: https://docs.docker.com/build/ci/github-actions/attestations/
+      # =============================================================================
       - name: Build Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile.mcp
           push: false
           tags: cyberchef-mcp:latest
-          load: true # Load into local Docker daemon for testing
+          load: true  # Load into local Docker daemon for testing (attestations not supported)
 
       - name: Test MCP Server (List Tools)
         run: |

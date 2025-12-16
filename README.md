@@ -4,7 +4,7 @@ This project provides a **Model Context Protocol (MCP)** server interface for **
 
 By running this server, you enable AI assistants (like Claude, Cursor AI, and others) to natively utilize CyberChef's extensive library of 463+ data manipulation operations—including encryption, encoding, compression, and forensic analysis—as executable tools.
 
-**Latest Release:** v1.5.0 | [Release Notes](docs/releases/v1.5.0.md) | [Security Policy](SECURITY.md) | [Security Fixes Report](SECURITY_FIX_REPORT.md)
+**Latest Release:** v1.5.1 | [Release Notes](docs/releases/v1.5.1.md) | [Security Policy](SECURITY.md) | [Security Fixes Report](SECURITY_FIX_REPORT.md)
 
 ![CyberChef MCP Banner](images/CyberChef-MCP_Banner-Logo.jpg)
 
@@ -38,6 +38,8 @@ The server exposes CyberChef operations as MCP tools:
 
 ### Technical Highlights
 *   **Dockerized**: Runs as a lightweight, self-contained Docker container based on Chainguard distroless Node.js 22 (~90MB compressed, 70% smaller attack surface than traditional images).
+*   **Dual-Registry Publishing**: Images published to both Docker Hub and GitHub Container Registry (GHCR) for maximum accessibility and Docker Scout health score optimization.
+*   **Supply Chain Attestations**: SBOM and provenance attestations attached to Docker Hub images for enhanced security transparency and compliance (SLSA Build Level 3).
 *   **Stdio Transport**: Communicates via standard input/output, making it easy to integrate with CLI-based MCP clients.
 *   **Schema Validation**: All inputs are validated against schemas derived from CyberChef's internal type system using `zod`.
 *   **Modern Node.js**: Fully compatible with Node.js v22+ with automated compatibility patches.
@@ -45,7 +47,7 @@ The server exposes CyberChef operations as MCP tools:
 *   **Performance Optimized** (v1.4.0): LRU cache for operation results (100MB default), automatic streaming for large inputs (10MB+ threshold), configurable resource limits (100MB max input, 30s timeout), memory monitoring, and comprehensive benchmark suite. See [Performance Tuning Guide](docs/architecture/performance-tuning.md) for configuration options.
 *   **Upstream Sync Automation** (v1.3.0): Automated monitoring of upstream CyberChef releases every 6 hours, one-click synchronization workflow, comprehensive validation test suite with 465 tool tests, and emergency rollback mechanism.
 *   **Security Hardened** (v1.4.5+): Chainguard distroless base image with zero-CVE baseline, non-root execution (UID 65532), automated Trivy vulnerability scanning with build-fail thresholds, dual SBOM strategy (Docker Scout attestations + CycloneDX), read-only filesystem support, SLSA Build Level 3 provenance, and 7-day SLA for critical CVE patches. Fixed 11 of 12 code scanning vulnerabilities including critical cryptographic randomness weakness and 7 ReDoS vulnerabilities. See [Security Policy](SECURITY.md) and [Security Fixes Report](SECURITY_FIX_REPORT.md) for details.
-*   **Production Ready**: Comprehensive CI/CD with CodeQL v4, automated testing, and container image publishing to GHCR with supply chain attestations.
+*   **Production Ready**: Comprehensive CI/CD with CodeQL v4, automated testing, and dual-registry container publishing (Docker Hub + GHCR) with complete supply chain attestations.
 
 ## Quick Start
 
@@ -54,7 +56,15 @@ The server exposes CyberChef operations as MCP tools:
 
 ### Installation Options
 
-**Option 1: Pull from GitHub Container Registry (Online, Recommended)**
+**Option 1: Pull from Docker Hub (Online, Recommended)**
+```bash
+# Docker Hub provides health scores and supply chain attestations
+docker pull doublegate/cyberchef-mcp:latest
+docker tag doublegate/cyberchef-mcp:latest cyberchef-mcp
+docker run -i --rm cyberchef-mcp
+```
+
+**Option 1b: Pull from GitHub Container Registry (Alternative)**
 ```bash
 docker pull ghcr.io/doublegate/cyberchef-mcp_v1:latest
 docker tag ghcr.io/doublegate/cyberchef-mcp_v1:latest cyberchef-mcp
@@ -68,17 +78,17 @@ For environments without direct GHCR access, download the pre-built Docker image
 1.  **Download the tarball** (approximately 90MB compressed):
     ```bash
     # Download from GitHub Releases
-    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v1.5.0/cyberchef-mcp-v1.5.0-docker-image.tar.gz
+    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v1.5.1/cyberchef-mcp-v1.5.1-docker-image.tar.gz
     ```
 
 2.  **Load the image into Docker:**
     ```bash
-    docker load < cyberchef-mcp-v1.5.0-docker-image.tar.gz
+    docker load < cyberchef-mcp-v1.5.1-docker-image.tar.gz
     ```
 
 3.  **Tag for easier usage:**
     ```bash
-    docker tag ghcr.io/doublegate/cyberchef-mcp_v1:v1.5.0 cyberchef-mcp
+    docker tag ghcr.io/doublegate/cyberchef-mcp_v1:v1.5.1 cyberchef-mcp
     ```
 
 4.  **Run the server:**
@@ -336,14 +346,22 @@ This project implements comprehensive security hardening with continuous improve
 *   See [Security Fixes Report](SECURITY_FIX_REPORT.md) for complete details
 
 ### Supply Chain Security (v1.4.5+)
+*   **Dual-Registry Publishing with Attestations**: Enhanced security transparency and compliance
+    *   **Docker Hub**: Primary distribution with Docker Scout health score monitoring
+    *   **GitHub Container Registry (GHCR)**: Secondary distribution for GitHub ecosystem integration
+    *   Both registries receive identical images with full attestation support
 *   **Docker Scout Attestations**: Build integrity and software transparency
-    *   **Provenance Attestation** (mode=max): Complete build process metadata (builder, materials, recipe)
-    *   **SBOM Attestation**: Automatic Software Bill of Materials generation
-    *   Improves Docker Scout health score from 'C' to 'B' or 'A'
-    *   Enables SLSA Level 2+ compliance
-*   **SBOM Generation**: CycloneDX format with complete dependency tree
-*   **Trivy Integration**: Container and dependency scanning on every build with fail-fast
+    *   **Provenance Attestation** (mode=max): Complete build process metadata (builder, materials, recipe) for SLSA Build Level 3 compliance
+    *   **SBOM Attestation**: Automatic Software Bill of Materials generation in SPDX-JSON format
+    *   Achieves optimal Docker Scout health score (grade A or B) on Docker Hub
+    *   15 points out of 100 in health score calculation - one of the highest-weighted policy categories
+*   **Dual SBOM Strategy**: Comprehensive software transparency
+    *   **Docker Attestation SBOM**: Attached to image manifest for registry-based validation and `docker sbom` command
+    *   **Trivy SBOM Artifact**: Standalone CycloneDX file for offline audits and compliance reporting
+    *   Both SBOMs include complete dependency tree with version information
+*   **Trivy Integration**: Container and dependency scanning on every build with fail-fast thresholds
 *   **GitHub Security Tab**: All findings automatically uploaded as SARIF
+*   **Verification**: Use `docker scout quickview` and `docker sbom` commands to inspect attestations locally
 
 ### Container Security (v1.4.5+)
 *   **Chainguard Distroless**: Zero-CVE baseline with minimal attack surface
@@ -406,6 +424,8 @@ Detailed documentation is organized in the [`docs/`](docs/) directory:
 ### User Guides
 *   [**User Guide**](docs/guides/user_guide.md): Detailed installation and client configuration
 *   [**Commands Reference**](docs/guides/commands.md): List of all available MCP tools and operations
+*   [**Docker Hub Setup Guide**](docs/guides/DOCKER_HUB_SETUP.md): Quick start guide for Docker Hub publishing and attestations
+*   [**Docker Scout Attestations Guide**](docs/guides/docker-scout-attestations.md): Comprehensive guide to supply chain attestations and health scores
 
 ### Technical Documentation
 *   [**Architecture**](docs/architecture/architecture.md): Technical design of the MCP server
@@ -529,7 +549,9 @@ For contributions to the core CyberChef operations, please credit the original [
 
 *   **Original CyberChef**: [GCHQ/CyberChef](https://github.com/gchq/CyberChef)
 *   **MCP Fork**: [doublegate/CyberChef-MCP](https://github.com/doublegate/CyberChef-MCP)
-*   **Container Registry**: [ghcr.io/doublegate/cyberchef-mcp_v1](https://github.com/doublegate/CyberChef-MCP/pkgs/container/cyberchef-mcp_v1)
+*   **Container Registries**:
+    *   **Docker Hub** (Primary): [doublegate/cyberchef-mcp](https://hub.docker.com/r/doublegate/cyberchef-mcp) - With Docker Scout health scores and attestations
+    *   **GHCR** (Secondary): [ghcr.io/doublegate/cyberchef-mcp_v1](https://github.com/doublegate/CyberChef-MCP/pkgs/container/cyberchef-mcp_v1)
 *   **Issue Tracker**: [GitHub Issues](https://github.com/doublegate/CyberChef-MCP/issues)
 
 ## Support
