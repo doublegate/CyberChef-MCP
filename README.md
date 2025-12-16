@@ -4,7 +4,7 @@ This project provides a **Model Context Protocol (MCP)** server interface for **
 
 By running this server, you enable AI assistants (like Claude, Cursor AI, and others) to natively utilize CyberChef's extensive library of 463+ data manipulation operations—including encryption, encoding, compression, and forensic analysis—as executable tools.
 
-**Latest Release:** v1.6.1 | [Release Notes](docs/releases/v1.6.1.md) | [Security Policy](SECURITY.md) | [Security Fixes Report](SECURITY_FIX_REPORT.md)
+**Latest Release:** v1.6.2 | [Release Notes](docs/releases/v1.6.2.md) | [Security Policy](SECURITY.md) | [Security Fixes Report](SECURITY_FIX_REPORT.md)
 
 ![CyberChef MCP Banner](images/CyberChef-MCP_Banner-Logo.jpg)
 
@@ -85,17 +85,17 @@ For environments without direct GHCR access, download the pre-built Docker image
 1.  **Download the tarball** (approximately 90MB compressed):
     ```bash
     # Download from GitHub Releases
-    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v1.6.1/cyberchef-mcp-v1.6.1-docker-image.tar.gz
+    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v1.6.2/cyberchef-mcp-v1.6.2-docker-image.tar.gz
     ```
 
 2.  **Load the image into Docker:**
     ```bash
-    docker load < cyberchef-mcp-v1.6.1-docker-image.tar.gz
+    docker load < cyberchef-mcp-v1.6.2-docker-image.tar.gz
     ```
 
 3.  **Tag for easier usage:**
     ```bash
-    docker tag ghcr.io/doublegate/cyberchef-mcp_v1:v1.6.1 cyberchef-mcp
+    docker tag ghcr.io/doublegate/cyberchef-mcp_v1:v1.6.2 cyberchef-mcp
     ```
 
 4.  **Run the server:**
@@ -223,7 +223,7 @@ CYBERCHEF_MAX_INPUT_SIZE=104857600       # Maximum input size (100MB)
 CYBERCHEF_OPERATION_TIMEOUT=30000        # Operation timeout in milliseconds (30s)
 CYBERCHEF_STREAMING_THRESHOLD=10485760   # Streaming threshold (10MB)
 CYBERCHEF_ENABLE_STREAMING=true          # Enable streaming for large operations
-CYBERCHEF_ENABLE_WORKERS=true            # Enable worker threads (infrastructure only)
+CYBERCHEF_ENABLE_WORKERS=false           # Enable worker threads (disabled by default, not yet implemented)
 CYBERCHEF_CACHE_MAX_SIZE=104857600       # Cache maximum size (100MB)
 CYBERCHEF_CACHE_MAX_ITEMS=1000           # Cache maximum items
 ```

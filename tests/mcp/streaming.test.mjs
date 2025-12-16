@@ -5,7 +5,7 @@
  * @license Apache-2.0
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
     StreamingConfig,
     STREAMABLE_OPERATIONS,
@@ -203,7 +203,8 @@ describe("streamOperation", () => {
         const generator = streamOperation(mockBake, "To Base64", "test", []);
 
         await expect(async () => {
-            for await (const result of generator) {
+            // eslint-disable-next-line no-unused-vars
+            for await (const _ of generator) {
                 // Should throw before completing
             }
         }).rejects.toThrow();
@@ -246,7 +247,8 @@ describe("streamOperationWithProgress", () => {
         // The generator should propagate the error
         let errorCaught = false;
         try {
-            for await (const result of generator) {
+            // eslint-disable-next-line no-unused-vars
+            for await (const _ of generator) {
                 // Will throw during execution
             }
         } catch (error) {

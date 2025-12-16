@@ -5,6 +5,23 @@ All notable changes to the CyberChef MCP Server project will be documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.2] - 2025-12-16
+
+### Fixed
+- **ESLint Errors**: Fixed 12 ESLint errors in test files
+  - Removed unused imports (beforeEach, vi)
+  - Fixed duplicate key in logger test
+  - Fixed camelCase violations in recipe-validator tests
+  - Fixed dot notation issue in recipe-validator tests
+  - Added eslint-disable-next-line for intentionally unused loop variables
+- **ENABLE_WORKERS Default**: Changed default from `true` to `false`
+  - Worker threads are not yet implemented, so default should be disabled
+  - Updated `src/node/mcp-server.mjs` to default to `false`
+  - Updated configuration documentation in README.md and user guide
+- **Configuration Documentation**: Updated all references to ENABLE_WORKERS
+  - README.md: Updated default value and added clarification
+  - docs/guides/user_guide.md: Updated default value and description
+
 ## [1.6.1] - 2025-12-16
 
 ### Added

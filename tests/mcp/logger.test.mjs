@@ -268,13 +268,13 @@ describe("Logging Functions", () => {
 
     describe("logCache", () => {
         it("should log cache hit", () => {
-            logCache("hit", { operation: "test" });
+            logCache("hit", { toolName: "test" });
 
             expect(debugSpy).toHaveBeenCalledWith(
                 expect.objectContaining({
                     cache: {
                         operation: "hit",
-                        operation: "test"
+                        toolName: "test"
                     },
                     event: "cache_operation"
                 }),
@@ -283,7 +283,7 @@ describe("Logging Functions", () => {
         });
 
         it("should log cache miss", () => {
-            logCache("miss", { operation: "test" });
+            logCache("miss", { toolName: "test" });
 
             expect(debugSpy).toHaveBeenCalled();
         });

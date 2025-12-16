@@ -104,9 +104,8 @@ describe("RecipeStorage", () => {
             await storage.save(storageData);
             await storage.save(storageData);
 
-            const backupExists = await fs.access(`${testFile}.backup`).then(() => true).catch(() => false);
             // Backup creation depends on BACKUP_ENABLED env var
-            // This test may pass or fail depending on environment
+            // This test verifies save() succeeds with multiple calls
         });
 
         it("should perform atomic write", async () => {

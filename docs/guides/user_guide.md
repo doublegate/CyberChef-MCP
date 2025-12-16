@@ -185,7 +185,7 @@ Once connected, you can try prompts like these with your AI assistant:
 | CYBERCHEF_OPERATION_TIMEOUT | Operation timeout in milliseconds | 30000 | CYBERCHEF_OPERATION_TIMEOUT=60000 |
 | CYBERCHEF_STREAMING_THRESHOLD | Input size threshold for enabling streaming | 10485760 | CYBERCHEF_STREAMING_THRESHOLD=20971520 |
 | CYBERCHEF_ENABLE_STREAMING | Enable or disable streaming | true | CYBERCHEF_ENABLE_STREAMING=false |
-| CYBERCHEF_ENABLE_WORKERS | Enable or disable worker processes | true | CYBERCHEF_ENABLE_WORKERS=false |
+| CYBERCHEF_ENABLE_WORKERS | Enable or disable worker processes (not yet implemented) | false | CYBERCHEF_ENABLE_WORKERS=true |
 | CYBERCHEF_CACHE_MAX_SIZE | Maximum cache size in bytes | 104857600 | CYBERCHEF_CACHE_MAX_SIZE=52428800 |
 | CYBERCHEF_CACHE_MAX_ITEMS | Maximum number of cached items | 1000 | CYBERCHEF_CACHE_MAX_ITEMS=500 |
 

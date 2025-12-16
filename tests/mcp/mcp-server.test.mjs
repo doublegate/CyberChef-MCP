@@ -7,7 +7,7 @@
  * @license Apache-2.0
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { bake, help } from "../../src/node/index.mjs";
 import {
     LRUCache,
@@ -226,7 +226,7 @@ describe("MCP Server Core Functions", () => {
 
     describe("VERSION and Configuration", () => {
         it("should have correct version", () => {
-            expect(VERSION).toBe("1.6.1");
+            expect(VERSION).toBe("1.6.2");
         });
 
         it("should have valid configuration defaults", () => {

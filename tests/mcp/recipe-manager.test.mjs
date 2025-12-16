@@ -5,7 +5,7 @@
  * @license Apache-2.0
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { RecipeManager } from "../../src/node/recipe-manager.mjs";
 import { RecipeStorage } from "../../src/node/recipe-storage.mjs";
 import { promises as fs } from "fs";

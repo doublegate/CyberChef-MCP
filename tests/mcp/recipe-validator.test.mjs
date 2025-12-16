@@ -5,7 +5,7 @@
  * @license Apache-2.0
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
     RecipeOperationSchema,
     RecipeMetadataSchema,
@@ -234,7 +234,7 @@ describe("validateOperationArguments", () => {
                 {
                     op: "JSON Beautify",
                     args: {
-                        drop_control_chars: true
+                        dropControlChars: true
                     }
                 }
             ]
@@ -249,7 +249,7 @@ describe("validateOperationArguments", () => {
                 {
                     op: "JSON Beautify",
                     args: {
-                        drop_control_chars: "yes" // Should be boolean
+                        dropControlChars: "yes" // Should be boolean
                     }
                 }
             ]
@@ -353,7 +353,7 @@ describe("detectCircularDependencies", () => {
 
         const getRecipeById = async (id) => recipes[id] || null;
 
-        await expect(detectCircularDependencies(recipes["id0"], getRecipeById))
+        await expect(detectCircularDependencies(recipes.id0, getRecipeById))
             .rejects.toThrow(/maximum depth/);
     });
 
