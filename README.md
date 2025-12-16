@@ -4,7 +4,7 @@ This project provides a **Model Context Protocol (MCP)** server interface for **
 
 By running this server, you enable AI assistants (like Claude, Cursor AI, and others) to natively utilize CyberChef's extensive library of 463+ data manipulation operations—including encryption, encoding, compression, and forensic analysis—as executable tools.
 
-**Latest Release:** v1.6.2 | [Release Notes](docs/releases/v1.6.2.md) | [Security Policy](SECURITY.md) | [Security Fixes Report](SECURITY_FIX_REPORT.md)
+**Latest Release:** v1.6.2 | [Release Notes](docs/releases/v1.6.2.md) | [Security Policy](SECURITY.md) | [Security Fixes Report](docs/security/SECURITY_FIX_REPORT.md)
 
 ![CyberChef MCP Banner](images/CyberChef-MCP_Banner-Logo.jpg)
 
@@ -53,7 +53,7 @@ The server exposes CyberChef operations as MCP tools:
 *   **Enhanced Observability** (v1.5.0): Structured JSON logging with Pino for production monitoring, comprehensive error handling with actionable recovery suggestions, automatic retry logic with exponential backoff, request correlation with UUID tracking, circuit breaker pattern for cascading failure prevention, and streaming infrastructure for progressive results on large operations. See [Release Notes](docs/releases/v1.5.0.md) for details.
 *   **Performance Optimized** (v1.4.0): LRU cache for operation results (100MB default), automatic streaming for large inputs (10MB+ threshold), configurable resource limits (100MB max input, 30s timeout), memory monitoring, and comprehensive benchmark suite. See [Performance Tuning Guide](docs/architecture/performance-tuning.md) for configuration options.
 *   **Upstream Sync Automation** (v1.3.0): Automated monitoring of upstream CyberChef releases every 6 hours, one-click synchronization workflow, comprehensive validation test suite with 465 tool tests, and emergency rollback mechanism.
-*   **Security Hardened** (v1.4.5+): Chainguard distroless base image with zero-CVE baseline, non-root execution (UID 65532), automated Trivy vulnerability scanning with build-fail thresholds, dual SBOM strategy (Docker Scout attestations + CycloneDX), read-only filesystem support, SLSA Build Level 3 provenance, and 7-day SLA for critical CVE patches. Fixed 11 of 12 code scanning vulnerabilities including critical cryptographic randomness weakness and 7 ReDoS vulnerabilities. See [Security Policy](SECURITY.md) and [Security Fixes Report](SECURITY_FIX_REPORT.md) for details.
+*   **Security Hardened** (v1.4.5+): Chainguard distroless base image with zero-CVE baseline, non-root execution (UID 65532), automated Trivy vulnerability scanning with build-fail thresholds, dual SBOM strategy (Docker Scout attestations + CycloneDX), read-only filesystem support, SLSA Build Level 3 provenance, and 7-day SLA for critical CVE patches. Fixed 11 of 12 code scanning vulnerabilities including critical cryptographic randomness weakness and 7 ReDoS vulnerabilities. See [Security Policy](SECURITY.md) and [Security Fixes Report](docs/security/SECURITY_FIX_REPORT.md) for details.
 *   **Production Ready**: Comprehensive CI/CD with CodeQL v4, automated testing, and dual-registry container publishing (Docker Hub + GHCR) with complete supply chain attestations.
 
 ## Quick Start
@@ -367,7 +367,7 @@ This project implements comprehensive security hardening with continuous improve
         *   Timeout-based validation (100ms) to detect catastrophic backtracking
         *   XRegExp and standard RegExp support
 *   **All 1,933 Tests Passing**: Security fixes validated with comprehensive test suite
-*   See [Security Fixes Report](SECURITY_FIX_REPORT.md) for complete details
+*   See [Security Fixes Report](docs/security/SECURITY_FIX_REPORT.md) for complete details
 
 ### Supply Chain Security (v1.4.5+)
 *   **Dual-Registry Publishing with Attestations**: Enhanced security transparency and compliance
@@ -423,8 +423,8 @@ docker run -i --rm \
 For detailed information, see:
 *   [Security Policy](SECURITY.md) - Vulnerability reporting and security policies
 *   [Security Audit](docs/security/audit.md) - Comprehensive security assessment
-*   [Security Fixes Report](SECURITY_FIX_REPORT.md) - Latest vulnerability fixes
-*   [Security Fixes Summary](SECURITY_FIXES_SUMMARY.md) - Quick reference guide
+*   [Security Fixes Report](docs/security/SECURITY_FIX_REPORT.md) - Latest vulnerability fixes
+*   [Security Fixes Summary](docs/security/SECURITY_FIXES_SUMMARY.md) - Quick reference guide
 
 ## Project Roadmap
 
@@ -439,7 +439,7 @@ CyberChef MCP Server has a comprehensive development roadmap spanning **19 relea
 | **Phase 5: Enterprise** | v2.4.0 - v2.6.0 | Q1 2027 | OAuth 2.1, RBAC, Kubernetes, observability | Planned |
 | **Phase 6: Evolution** | v2.7.0 - v3.0.0 | Q2-Q3 2027 | Edge deployment, AI-native features, v3.0.0 | Planned |
 
-See the [**Full Roadmap**](docs/ROADMAP.md) for detailed release plans and timelines.
+See the [**Full Roadmap**](docs/planning/ROADMAP.md) for detailed release plans and timelines.
 
 ## Documentation
 
@@ -461,7 +461,7 @@ Detailed documentation is organized in the [`docs/`](docs/) directory:
 *   [**Performance Tuning Guide**](docs/architecture/performance-tuning.md): Configuration guide for optimizing performance
 
 ### Project Management
-*   [**Product Roadmap**](docs/ROADMAP.md): Comprehensive v1.1.0 → v3.0.0 roadmap with timeline
+*   [**Product Roadmap**](docs/planning/ROADMAP.md): Comprehensive v1.1.0 → v3.0.0 roadmap with timeline
 *   [**Tasks**](docs/planning/tasks.md): 500+ implementation tasks organized by release
 *   [**Development Phases**](docs/planning/phases/overview.md): Sprint breakdowns for each development phase
 *   [**Release Plans**](docs/planning/future-releases/): Individual release specifications (v1.2.0 - v3.0.0)
@@ -477,8 +477,8 @@ Detailed documentation is organized in the [`docs/`](docs/) directory:
 ### Security & Releases
 *   [**Security Policy**](SECURITY.md): Security policy and vulnerability reporting
 *   [**Security Audit**](docs/security/audit.md): Comprehensive security assessment
-*   [**Security Fixes Report**](SECURITY_FIX_REPORT.md): Detailed report of 11 vulnerability fixes (ReDoS and cryptographic weaknesses)
-*   [**Security Fixes Summary**](SECURITY_FIXES_SUMMARY.md): Quick reference for recent security improvements
+*   [**Security Fixes Report**](docs/security/SECURITY_FIX_REPORT.md): Detailed report of 11 vulnerability fixes (ReDoS and cryptographic weaknesses)
+*   [**Security Fixes Summary**](docs/security/SECURITY_FIXES_SUMMARY.md): Quick reference for recent security improvements
 *   [**Release Notes v1.6.2**](docs/releases/v1.6.2.md): Technical debt fixes - ESLint errors resolved, ENABLE_WORKERS default corrected
 *   [**Release Notes v1.6.1**](docs/releases/v1.6.1.md): Comprehensive test coverage (311 tests, 78.93% coverage) and Codecov integration
 *   [**Release Notes v1.6.0**](docs/releases/v1.6.0.md): Recipe management system with CRUD operations, import/export, and curated library

@@ -1,12 +1,18 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code when working with this repository.
 
 ## Project Overview
 
-This is a **CyberChef MCP Server** - a fork of the GCHQ CyberChef project that wraps the core CyberChef Node.js API into a Model Context Protocol (MCP) server. It exposes 300+ data manipulation operations (encryption, encoding, compression, forensic analysis) as executable tools for AI assistants.
+**CyberChef MCP Server** (v1.6.2) - Fork of GCHQ CyberChef wrapping the Node.js API into an MCP server. Exposes 300+ operations (encryption, encoding, compression, forensics) as AI assistant tools.
 
-**Primary focus:** The MCP server implementation in `src/node/mcp-server.mjs`, not the web app.
+| Metric | Value |
+|--------|-------|
+| MCP Version | 1.6.2 |
+| Tests | 311 (100% passing) |
+| Coverage | 78.93% lines, 89.33% functions |
+
+**Focus:** MCP server (`src/node/mcp-server.mjs`), not the web app.
 
 ## Essential Commands
 
@@ -26,24 +32,23 @@ docker run -i --rm cyberchef-mcp    # -i flag is CRITICAL
 npm run mcp
 ```
 
-### Development
+### Development & Testing
 ```bash
-npm start               # Dev server with hot reload (grunt dev)
-npm run build           # Production build (grunt prod)
-npm run lint            # ESLint
-npm test                # Unit tests (node + operations)
-npm run testui          # UI tests (requires prod build first)
+npm start               # Dev server with hot reload
+npm run build           # Production build
+npm run lint            # ESLint (zero errors required)
+npm test                # Core unit tests
+npm run test:mcp        # MCP server tests (311 tests)
+npm run test:coverage   # Coverage report (thresholds: 70% lines/functions)
 npm run testnodeconsumer # Test CJS/ESM consumers
-npm run newop           # Scaffold a new operation
 ```
 
-### Testing MCP Server Manually
+### MCP Server Manual Testing
 ```bash
 # List tools
-echo '{"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}' | docker run -i --rm cyberchef-mcp
-
-# Call a tool
-echo '{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "cyberchef_to_base64", "arguments": {"input": "Hello"}}}' | docker run -i --rm cyberchef-mcp
+echo '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | docker run -i --rm cyberchef-mcp
+# Call tool
+echo '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"cyberchef_to_base64","arguments":{"input":"Hello"}}}' | docker run -i --rm cyberchef-mcp
 ```
 
 ## Architecture
@@ -92,16 +97,14 @@ Run these manually if developing locally on Node 22+.
 
 | Workflow | Trigger | Purpose |
 |----------|---------|---------|
-| `core-ci.yml` | Push to master (src/core, src/node) | Lint + unit tests on Node 22 |
+| `core-ci.yml` | Push to master | Lint + tests + Codecov coverage |
 | `mcp-docker-build.yml` | Push to master | Build and verify Docker image |
 | `mcp-release.yml` | Tags `v*` | Publish to GHCR |
 
 ### Release Process
 ```bash
-# Create release notes in docs/releases/vX.X.X.md
-git tag -a v1.x.x -F docs/releases/v1.x.x.md
-git push origin v1.x.x
-# mcp-release workflow publishes to ghcr.io/doublegate/cyberchef-mcp_v1
+git tag -a v1.x.x -F docs/releases/v1.x.x.md && git push origin v1.x.x
+# Workflow publishes to ghcr.io/doublegate/cyberchef-mcp_v1
 ```
 
 ## Code Conventions
@@ -122,19 +125,11 @@ git push origin v1.x.x
 
 ## Documentation
 
-### Technical Documentation
-- `docs/architecture/architecture.md` - Technical design details
-- `docs/architecture/technical_implementation.md` - Implementation details
-- `docs/architecture/performance-tuning.md` - Performance optimization guide
-- `docs/guides/commands.md` - Full list of MCP tools and operations
-- `docs/guides/user_guide.md` - Installation and client configuration
-
-### Project Management
-- `docs/ROADMAP.md` - Product roadmap with timeline (v1.1.0 → v3.0.0)
-- `docs/planning/phases/overview.md` - Phase-based development overview
-- `docs/planning/tasks.md` - Specific implementation tasks
-- `docs/internal/project_summary.md` - Internal project overview
-
-### Security & Releases
-- `docs/security/audit.md` - Security audit report
-- `docs/releases/v1.0.0.md` - v1.0.0 release notes
+| Category | Key Files |
+|----------|-----------|
+| Architecture | `docs/architecture/architecture.md`, `technical_implementation.md`, `performance-tuning.md` |
+| Guides | `docs/guides/commands.md` (MCP tools), `user_guide.md` (installation) |
+| Planning | `docs/planning/ROADMAP.md`, `docs/planning/phases/overview.md` |
+| Security | `docs/security/audit.md` |
+| Releases | `docs/releases/v1.6.2.md` (latest), `v1.6.1.md`, `v1.6.0.md` ... `v1.0.0.md` |
+| Internal | `docs/internal/tech-debt-analysis-v1.6.1.md` (project health: 8.9/10) |
