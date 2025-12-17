@@ -5,6 +5,27 @@ All notable changes to the CyberChef MCP Server project will be documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **CI Workflow**: Renamed "Core CI" to "MCP Server CI" for clarity on workflow purpose
+- **CI Workflow**: Removed web UI production build step from MCP Server CI workflow (not needed for MCP-focused fork)
+
+### Fixed
+- **Codecov Integration**: Updated from deprecated `codecov/test-results-action@v1` to `codecov/codecov-action@v5` with `report_type: test_results` parameter
+  - Ensures continued test analytics support as test-results-action is being deprecated
+  - Uses same action for both coverage and test results uploads
+- **Tests**: Fixed "Scan for embedded files" test to use existing test data file (`tests/node/sampleData/pic.jpg`)
+  - Replaced missing `tests/samples/hello` with actual test file
+  - Test now passes consistently
+
+### Added
+- **Test Coverage**: Expanded test suite from 343 to 493 tests across 13 test files
+  - Added coverage improvement tests in `coverage-improvement.test.mjs` (68 tests)
+  - Added real server handler integration tests in `real-server-handlers.test.mjs`
+  - Added server integration tests in `server-integration.test.mjs`
+  - Total test count: 493 tests covering all MCP server components
+
 ## [1.7.1] - 2025-12-16
 
 ### Changed

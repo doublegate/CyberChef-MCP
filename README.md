@@ -2,7 +2,7 @@
 
 This project provides a **Model Context Protocol (MCP)** server interface for **CyberChef**, the "Cyber Swiss Army Knife" created by [GCHQ](https://github.com/gchq/CyberChef).
 
-By running this server, you enable AI assistants (like Claude, Cursor AI, and others) to natively utilize CyberChef's extensive library of 464 data manipulation operations—including encryption, encoding, compression, and forensic analysis—as executable tools.
+By running this server, you enable AI assistants (like Claude, Cursor AI, and others) to natively utilize CyberChef's extensive library of 463 data manipulation operations—including encryption, encoding, compression, and forensic analysis—as executable tools.
 
 **Latest Release:** v1.7.1 | [Release Notes](docs/releases/v1.7.1.md) | [Security Policy](SECURITY.md) | [Security Fixes Report](docs/security/SECURITY_FIX_REPORT.md)
 
@@ -39,7 +39,7 @@ See [Upstream Sync Guide](docs/guides/upstream-sync-guide.md) for details on the
 The server exposes CyberChef operations as MCP tools:
 
 *   **`cyberchef_bake`**: The "Omni-tool". Executes a full CyberChef recipe (a chain of operations) on an input. Ideal for complex, multi-step transformations (e.g., "Decode Base64, then Gunzip, then prettify JSON").
-*   **Atomic Operations**: 464 individual tools for specific tasks, dynamically generated from the CyberChef configuration.
+*   **Atomic Operations**: 463 individual tools for specific tasks, dynamically generated from the CyberChef configuration.
     *   `cyberchef_to_base64` / `cyberchef_from_base64`
     *   `cyberchef_aes_decrypt`
     *   `cyberchef_sha2`
@@ -68,7 +68,7 @@ The server exposes CyberChef operations as MCP tools:
 *   **Advanced Features** (v1.7.0): Enterprise-grade capabilities with batch processing (parallel/sequential execution of up to 100 operations), privacy-first telemetry collection (disabled by default, no input/output data captured), sliding window rate limiting for resource protection, enhanced caching with inspection tools, and resource quota tracking (concurrent operations, data sizes). All features are configurable via environment variables with secure defaults. See [Release Notes](docs/releases/v1.7.0.md) for details.
 *   **Enhanced Observability** (v1.5.0): Structured JSON logging with Pino for production monitoring, comprehensive error handling with actionable recovery suggestions, automatic retry logic with exponential backoff, request correlation with UUID tracking, circuit breaker pattern for cascading failure prevention, and streaming infrastructure for progressive results on large operations. See [Release Notes](docs/releases/v1.5.0.md) for details.
 *   **Performance Optimized** (v1.4.0): LRU cache for operation results (100MB default), automatic streaming for large inputs (10MB+ threshold), configurable resource limits (100MB max input, 30s timeout), memory monitoring, and comprehensive benchmark suite. See [Performance Tuning Guide](docs/architecture/performance-tuning.md) for configuration options.
-*   **Upstream Sync Automation** (v1.3.0): Automated monitoring of upstream CyberChef releases every 6 hours, one-click synchronization workflow, comprehensive validation test suite with 465 tool tests, and emergency rollback mechanism.
+*   **Upstream Sync Automation** (v1.3.0): Automated monitoring of upstream CyberChef releases every 6 hours, one-click synchronization workflow, comprehensive validation test suite with 493 tests, and emergency rollback mechanism.
 *   **Security Hardened** (v1.4.5+): Chainguard distroless base image with zero-CVE baseline, non-root execution (UID 65532), automated Trivy vulnerability scanning with build-fail thresholds, dual SBOM strategy (Docker Scout attestations + CycloneDX), read-only filesystem support, SLSA Build Level 3 provenance, and 7-day SLA for critical CVE patches. Fixed 11 of 12 code scanning vulnerabilities including critical cryptographic randomness weakness and 7 ReDoS vulnerabilities. See [Security Policy](SECURITY.md) and [Security Fixes Report](docs/security/SECURITY_FIX_REPORT.md) for details.
 *   **Production Ready**: Comprehensive CI/CD with CodeQL v4, automated testing, and dual-registry container publishing (Docker Hub + GHCR) with complete supply chain attestations.
 
@@ -556,7 +556,7 @@ If you want to modify the server code without Docker:
 This project uses GitHub Actions to ensure stability and security:
 
 **Core Development Workflows:**
-*   **Core CI** ([`core-ci.yml`](.github/workflows/core-ci.yml)): Tests the underlying CyberChef logic and configuration generation on Node.js v22
+*   **MCP Server CI** ([`core-ci.yml`](.github/workflows/core-ci.yml)): Tests the underlying CyberChef logic and configuration generation on Node.js v22
 *   **Docker Build** ([`mcp-docker-build.yml`](.github/workflows/mcp-docker-build.yml)): Builds, verifies, and security scans the `cyberchef-mcp` Docker image
 *   **Pull Request Checks** ([`pull_requests.yml`](.github/workflows/pull_requests.yml)): Automated testing and validation for pull requests
 *   **Performance Benchmarks** ([`performance-benchmarks.yml`](.github/workflows/performance-benchmarks.yml)): Automated performance regression testing on code changes (v1.4.0+)
@@ -596,7 +596,7 @@ All workflows use the latest CodeQL Action v4 for security scanning and SARIF up
 # Run all tests (requires Node.js 22+)
 npm test
 
-# Run MCP validation test suite (343 tests with Vitest)
+# Run MCP validation test suite (493 tests with Vitest)
 npm run test:mcp
 
 # Run MCP tests with coverage report
@@ -617,11 +617,12 @@ npm run lint
 ```
 
 **Test Coverage:**
-The MCP server maintains comprehensive test coverage across 10 test suites:
-- **343 total tests** covering all MCP server components (increased from 311 in v1.6.2)
+The MCP server maintains comprehensive test coverage across 13 test suites:
+- **493 total tests** covering all MCP server components (increased from 343 in v1.7.0)
 - **Coverage thresholds**: 70% lines/statements/functions, 65% branches
-- **Current coverage**: 78.93% lines, 78.7% statements, 89.33% functions, 74.68% branches
-- Test suites: errors, logger, streaming, retry, recipe-validator, recipe-storage, recipe-manager, mcp-server, validation, v1.7.0
+- **Current coverage**: 74.97% lines, 74.97% statements, 90.39% functions, 71.62% branches
+- Test suites: coverage-improvement, errors, logger, mcp-server, real-server-handlers, recipe-manager, recipe-storage, recipe-validator, retry, server-integration, streaming, v1.7.0, validation
+- Note: Coverage variation occurs as new features are added; mcp-server.mjs currently has lower coverage due to extensive integration code
 
 ## Contributing
 
