@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.3] - 2025-12-17
+
+### Added
+- **Reference Documentation** (`docs/reference/`): 12 comprehensive security tool documentation files (~312KB total)
+  - Master index `README.md` with navigation and categorization
+  - 11 security tool reference documents: `ares.md`, `ciphey.md`, `cryptii.md`, `cyberchef-recipes.md`, `cyberchef-server.md`, `cyberchef-upstream.md`, `john-the-ripper.md`, `katana.md`, `pwntools.md`, `rsactftool.md`, `xortool.md`
+  - Each document includes: project overview, key features, installation, usage examples, integration notes, and relevant algorithms
+  - Purpose: Support v2.0.0 external project integration planning
+- **External Project Integration Planning** (`docs/planning/ext-proj-int/`): 30 comprehensive planning documents (~23,600 lines)
+  - **Overview**: `README.md` and `overview.md` - Integration strategy and architecture
+  - **Phase Plans** (4 files): `phase-1-foundation.md`, `phase-2-js-native.md`, `phase-3-algorithm-port.md`, `phase-4-advanced.md`
+  - **Sprint Plans** (12 files): Detailed task breakdowns for sprints 1.1 through 4.3
+    - Phase 1: Tool registry infrastructure, testing framework extensions
+    - Phase 2: cryptii integration, recipe presets, pwntools binary utilities
+    - Phase 3: Ciphey auto-decode, xortool analysis, RsaCtfTool factorization, katana patterns
+    - Phase 4: John hash ID, composite workflows, documentation and release
+  - **Tool Integration Plans** (8 files): Per-tool integration strategies for Ciphey, cryptii, xortool, RsaCtfTool, John, pwntools, katana, recipes
+  - **Technical Guides** (4 files): `tool-registration.md`, `algorithm-porting.md`, `testing-strategy.md`, `dependencies.md`
+  - **Target**: v2.0.0+ with 80-120 new MCP tools from 8 security tool projects
+  - **Timeline**: 24 weeks across 4 phases
+
+### Changed
+- **README.md**: Added new documentation sections
+  - "v2.0.0 Integration Planning" section linking to external project integration docs
+  - "Reference Documentation" section linking to security tool reference docs
+  - Enhanced Roadmap section with v2.0.0 planning summary
+- **Project Roadmap**: Updated Phase 2 to v1.7.3 and Phase 3 status to "Planning Complete"
+
 ## [1.7.2] - 2025-12-17
 
 ### Changed

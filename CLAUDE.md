@@ -4,11 +4,11 @@ Guidance for Claude Code when working with this repository.
 
 ## Project Overview
 
-**CyberChef MCP Server** (v1.7.2) - Fork of GCHQ CyberChef wrapping the Node.js API into an MCP server. Exposes 300+ operations (encryption, encoding, compression, forensics) as AI assistant tools.
+**CyberChef MCP Server** (v1.7.3) - Fork of GCHQ CyberChef wrapping the Node.js API into an MCP server. Exposes 300+ operations (encryption, encoding, compression, forensics) as AI assistant tools.
 
 | Metric | Value |
 |--------|-------|
-| MCP Version | 1.7.2 |
+| MCP Version | 1.7.3 |
 | Tests | 493 (100% passing) |
 | Coverage | 74.97% lines, 90.39% functions |
 

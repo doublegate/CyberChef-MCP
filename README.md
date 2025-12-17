@@ -4,7 +4,7 @@ This project provides a **Model Context Protocol (MCP)** server interface for **
 
 By running this server, you enable AI assistants (like Claude, Cursor AI, and others) to natively utilize CyberChef's extensive library of 463 data manipulation operations—including encryption, encoding, compression, and forensic analysis—as executable tools.
 
-**Latest Release:** v1.7.2 | [Release Notes](docs/releases/v1.7.2.md) | [Security Policy](SECURITY.md) | [Security Fixes Report](docs/security/SECURITY_FIX_REPORT.md)
+**Latest Release:** v1.7.3 | [Release Notes](docs/releases/v1.7.3.md) | [Security Policy](SECURITY.md) | [Security Fixes Report](docs/security/SECURITY_FIX_REPORT.md)
 
 ![CyberChef MCP Banner](images/CyberChef-MCP_Banner-Logo.jpg)
 
@@ -101,17 +101,17 @@ For environments without direct GHCR access, download the pre-built Docker image
 1.  **Download the tarball** (approximately 90MB compressed):
     ```bash
     # Download from GitHub Releases
-    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v1.7.2/cyberchef-mcp-v1.7.2-docker-image.tar.gz
+    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v1.7.3/cyberchef-mcp-v1.7.3-docker-image.tar.gz
     ```
 
 2.  **Load the image into Docker:**
     ```bash
-    docker load < cyberchef-mcp-v1.7.2-docker-image.tar.gz
+    docker load < cyberchef-mcp-v1.7.3-docker-image.tar.gz
     ```
 
 3.  **Tag for easier usage:**
     ```bash
-    docker tag ghcr.io/doublegate/cyberchef-mcp_v1:v1.7.2 cyberchef-mcp
+    docker tag ghcr.io/doublegate/cyberchef-mcp_v1:v1.7.3 cyberchef-mcp
     ```
 
 4.  **Run the server:**
@@ -467,11 +467,13 @@ CyberChef MCP Server has a comprehensive development roadmap spanning **19 relea
 | Phase | Releases | Timeline | Focus | Status |
 |-------|----------|----------|-------|--------|
 | **Phase 1: Foundation** | v1.2.0 - v1.4.6 | Q4 2025 - Q1 2026 | Security hardening, upstream sync, performance | **Completed** |
-| **Phase 2: Enhancement** | v1.5.0 - v1.7.0 | Q2 2026 | Streaming, recipe management, batch processing | **v1.7.0 Released** |
-| **Phase 3: Maturity** | v1.8.0 - v2.0.0 | Q3 2026 | API stabilization, breaking changes, v2.0.0 | Planned |
+| **Phase 2: Enhancement** | v1.5.0 - v1.7.3 | Q2 2026 | Streaming, recipe management, batch processing | **v1.7.3 Released** |
+| **Phase 3: Maturity** | v1.8.0 - v2.0.0 | Q3 2026 | API stabilization, external tool integration, v2.0.0 | **Planning Complete** |
 | **Phase 4: Expansion** | v2.1.0 - v2.3.0 | Q4 2026 | Multi-modal, advanced transports, plugins | Planned |
 | **Phase 5: Enterprise** | v2.4.0 - v2.6.0 | Q1 2027 | OAuth 2.1, RBAC, Kubernetes, observability | Planned |
 | **Phase 6: Evolution** | v2.7.0 - v3.0.0 | Q2-Q3 2027 | Edge deployment, AI-native features, v3.0.0 | Planned |
+
+**v2.0.0 Planning:** Comprehensive external project integration planning is now complete with 30 planning documents covering 80-120 new MCP tools from 8 security tool projects (Ciphey, cryptii, xortool, RsaCtfTool, John the Ripper, pwntools, katana, cyberchef-recipes). See [External Project Integration](docs/planning/ext-proj-int/) for details.
 
 See the [**Full Roadmap**](docs/planning/ROADMAP.md) for detailed release plans and timelines.
 
@@ -509,11 +511,29 @@ Detailed documentation is organized in the [`docs/`](docs/) directory:
 *   [**Plugin Architecture**](docs/planning/strategies/PLUGIN-ARCHITECTURE-DESIGN.md): Custom operations and sandboxed execution
 *   [**Enterprise Features**](docs/planning/strategies/ENTERPRISE-FEATURES-PLAN.md): OAuth 2.1, RBAC, audit logging
 
+### v2.0.0 Integration Planning
+*   [**External Project Integration**](docs/planning/ext-proj-int/): Comprehensive planning for v2.0.0+ integrations
+    *   [Overview](docs/planning/ext-proj-int/overview.md): Integration strategy and architecture (4 phases, 12 sprints, 80-120 new tools)
+    *   [Phase Plans](docs/planning/ext-proj-int/phases/): Foundation, JavaScript Native, Algorithm Ports, Advanced
+    *   [Sprint Plans](docs/planning/ext-proj-int/sprints/): 12 detailed sprint breakdowns with task lists
+    *   [Tool Integration Plans](docs/planning/ext-proj-int/tools/): Per-tool integration strategies (Ciphey, cryptii, xortool, RsaCtfTool, John, pwntools, katana, recipes)
+    *   [Technical Guides](docs/planning/ext-proj-int/technical/): Tool registration, algorithm porting, testing, dependencies
+
+### Reference Documentation
+*   [**Security Tool Reference**](docs/reference/): Technical documentation for 11 security tools and related projects
+    *   [ares](docs/reference/ares.md), [ciphey](docs/reference/ciphey.md): Auto-decode tools and algorithms
+    *   [cryptii](docs/reference/cryptii.md): Modular encoding/decoding system
+    *   [cyberchef-recipes](docs/reference/cyberchef-recipes.md), [cyberchef-server](docs/reference/cyberchef-server.md): Related CyberChef projects
+    *   [john-the-ripper](docs/reference/john-the-ripper.md): Password cracking and hash identification
+    *   [katana](docs/reference/katana.md), [pwntools](docs/reference/pwntools.md): CTF and binary exploitation tools
+    *   [rsactftool](docs/reference/rsactftool.md), [xortool](docs/reference/xortool.md): Cryptanalysis utilities
+
 ### Security & Releases
 *   [**Security Policy**](SECURITY.md): Security policy and vulnerability reporting
 *   [**Security Audit**](docs/security/audit.md): Comprehensive security assessment
 *   [**Security Fixes Report**](docs/security/SECURITY_FIX_REPORT.md): Detailed report of 11 vulnerability fixes (ReDoS and cryptographic weaknesses)
 *   [**Security Fixes Summary**](docs/security/SECURITY_FIXES_SUMMARY.md): Quick reference for recent security improvements
+*   [**Release Notes v1.7.3**](docs/releases/v1.7.3.md): Reference documentation and v2.0.0 integration planning - 42 new documentation files, comprehensive security tool reference
 *   [**Release Notes v1.7.2**](docs/releases/v1.7.2.md): CI improvements, test expansion, documentation updates - enhanced workflows, 150 new tests, corrected metrics
 *   [**Release Notes v1.7.1**](docs/releases/v1.7.1.md): Repository cleanup and workflow enhancements - removed 88 unused files, enhanced upstream sync
 *   [**Release Notes v1.7.0**](docs/releases/v1.7.0.md): Advanced features - batch processing, telemetry, rate limiting, cache enhancements, resource quotas
