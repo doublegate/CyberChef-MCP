@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.0] - 2025-12-17
+
+### Added
+- **Deprecation Warning System** (`src/node/deprecation.mjs`): Comprehensive runtime warning system for APIs changing in v2.0.0
+  - 8 deprecation codes (DEP001-DEP008) covering tool naming, recipe schema, error format, configuration, arguments, recipe format, and meta-tool renames
+  - Session-based warning tracking (warnings emitted only once per session per code)
+  - Suppressible via `CYBERCHEF_SUPPRESS_DEPRECATIONS=true` environment variable
+  - V2 compatibility mode that elevates warnings to errors via `V2_COMPATIBILITY_MODE=true`
+  - Recipe analysis tools (`analyzeRecipeCompatibility`, `transformRecipeToV2`)
+  - Utility functions (`getToolName`, `stripToolPrefix`)
+- **Migration Preview Tool** (`cyberchef_migration_preview`): New MCP tool for analyzing and transforming recipes
+  - `analyze` mode: Check recipes for v2.0.0 compatibility issues with detailed diagnostics
+  - `transform` mode: Automatically convert recipes to v2.0.0 format
+  - Reports issues with severity levels (breaking/warning), locations, and fix suggestions
+- **Deprecation Stats Tool** (`cyberchef_deprecation_stats`): New MCP tool for tracking deprecated API usage
+  - Shows which deprecations have been triggered in current session
+  - Includes session duration, suppression status, and v2 compatibility mode status
+  - Lists all available deprecation codes with details
+- **v2.0.0 Breaking Changes Documentation** (`docs/v2.0.0-breaking-changes.md`): Comprehensive migration guide
+  - Tool naming convention changes (removing `cyberchef_` prefix)
+  - Recipe schema format changes (Zod v4 validation)
+  - Error response format changes (structured error codes)
+  - Configuration system changes (unified config file)
+  - Legacy argument handling changes (named object args)
+  - Recipe array format changes (explicit operation objects)
+  - Meta-tool renames (`cyberchef_bake` -> `bake`, `cyberchef_search` -> `search`)
+  - Migration examples and FAQ section
+- **Test Suites**: 81 new tests for v1.8.0 features (total: 563 tests, all passing)
+  - `tests/mcp/deprecation.test.mjs`: 43 tests for deprecation warning system
+  - `tests/mcp/migration-preview.test.mjs`: 38 tests for migration preview tool and server integration
+  - Increased from 493 tests (v1.7.2) to 563 tests across 15 test suites
+
+### Changed
+- **VERSION**: Updated from 1.7.3 to 1.8.0 in `src/node/mcp-server.mjs`
+- **Server Startup Logging**: Enhanced to display v1.8.0 configuration options (V2_COMPATIBILITY_MODE, SUPPRESS_DEPRECATIONS)
+- **Meta-tool Deprecation Warnings**: `cyberchef_bake` and `cyberchef_search` now emit deprecation warnings when used
+
+### Documentation
+- **Release Notes** (`docs/releases/v1.8.0.md`): Comprehensive release notes for v1.8.0
+- Updated README.md with v1.8.0 features and migration tools
+- Updated CLAUDE.md with v1.8.0 version references
+- Updated project roadmap to reflect Phase 3 progress
+
 ## [1.7.3] - 2025-12-17
 
 ### Added

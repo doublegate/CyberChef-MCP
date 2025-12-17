@@ -42,8 +42,25 @@ import {
 // New v1.6.0 imports
 import { recipeManager } from "./recipe-manager.mjs";
 
+// v1.8.0 imports - Deprecation Warning System
+import {
+    emitDeprecation,
+    emitToolNamingDeprecation,
+    emitMetaToolDeprecation,
+    emitRecipeFormatDeprecation,
+    getDeprecationStats,
+    resetDeprecations,
+    analyzeRecipeCompatibility,
+    transformRecipeToV2,
+    getToolName,
+    stripToolPrefix,
+    isV2CompatibilityMode,
+    areSuppressed,
+    DEPRECATION_CODES
+} from "./deprecation.mjs";
+
 // Performance configuration (configurable via environment variables)
-const VERSION = "1.7.3";
+const VERSION = "1.8.0";
 const MAX_INPUT_SIZE = parseInt(process.env.CYBERCHEF_MAX_INPUT_SIZE, 10) || 100 * 1024 * 1024; // 100MB default
 const OPERATION_TIMEOUT = parseInt(process.env.CYBERCHEF_OPERATION_TIMEOUT, 10) || 30000; // 30s default
 const STREAMING_THRESHOLD = parseInt(process.env.CYBERCHEF_STREAMING_THRESHOLD, 10) || 10 * 1024 * 1024; // 10MB default
@@ -60,6 +77,10 @@ const RATE_LIMIT_ENABLED = process.env.CYBERCHEF_RATE_LIMIT_ENABLED === "true"; 
 const RATE_LIMIT_REQUESTS = parseInt(process.env.CYBERCHEF_RATE_LIMIT_REQUESTS, 10) || 100;
 const RATE_LIMIT_WINDOW = parseInt(process.env.CYBERCHEF_RATE_LIMIT_WINDOW, 10) || 60000; // 60 seconds
 const CACHE_ENABLED = process.env.CYBERCHEF_CACHE_ENABLED !== "false"; // Enabled by default
+
+// v1.8.0 configuration
+const V2_COMPATIBILITY_MODE = process.env.V2_COMPATIBILITY_MODE === "true"; // Disabled by default
+const SUPPRESS_DEPRECATIONS = process.env.CYBERCHEF_SUPPRESS_DEPRECATIONS === "true"; // Disabled by default
 
 /**
  * Simple LRU Cache for operation results.
@@ -978,6 +999,20 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             name: "cyberchef_quota_info",
             description: "Get current resource quota information including concurrent operations and data sizes.",
             inputSchema: zodToJsonSchema(z.object({}))
+        },
+        // v1.8.0 tools - Breaking Changes Preparation
+        {
+            name: "cyberchef_migration_preview",
+            description: "Analyze recipes and configurations for v2.0.0 compatibility. Returns compatibility issues and optionally transforms recipes to v2.0.0 format.",
+            inputSchema: zodToJsonSchema(z.object({
+                recipe: z.any().describe("Recipe object or array to analyze"),
+                mode: z.enum(["analyze", "transform"]).default("analyze").describe("analyze: check compatibility, transform: convert to v2.0.0 format")
+            }))
+        },
+        {
+            name: "cyberchef_deprecation_stats",
+            description: "Get statistics on deprecated API usage in current session. Shows which deprecation warnings have been triggered and v2.0.0 preparation status.",
+            inputSchema: zodToJsonSchema(z.object({}))
         }
     ];
 
@@ -1022,6 +1057,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         // Handle meta-tools
         if (name === "cyberchef_bake") {
+            // Emit deprecation warnings for v2.0.0 (meta-tool rename)
+            emitMetaToolDeprecation(name);
+
+            // Check recipe format and emit warning if using legacy format
+            if (args.recipe) {
+                emitRecipeFormatDeprecation(args.recipe);
+            }
+
             // Validate input size
             validateInputSize(args.input);
 
@@ -1041,6 +1084,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
 
         if (name === "cyberchef_search") {
+            // Emit deprecation warning for v2.0.0 (meta-tool rename)
+            emitMetaToolDeprecation(name);
+
             const results = help(args.query);
             const output = JSON.stringify(results, null, 2);
             logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
@@ -1256,6 +1302,42 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 rateLimit: rateLimitStats
             };
             const output = JSON.stringify(combined, null, 2);
+            logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
+
+            return {
+                content: [{ type: "text", text: output }]
+            };
+        }
+
+        // Handle v1.8.0 tools
+        if (name === "cyberchef_migration_preview") {
+            const mode = args.mode || "analyze";
+            let result;
+
+            if (mode === "analyze") {
+                result = analyzeRecipeCompatibility(args.recipe);
+            } else if (mode === "transform") {
+                const analysis = analyzeRecipeCompatibility(args.recipe);
+                const transformed = transformRecipeToV2(args.recipe);
+                result = {
+                    ...analysis,
+                    transformed
+                };
+            } else {
+                throw createInputError(`Invalid mode: ${mode}. Must be "analyze" or "transform"`, { mode });
+            }
+
+            const output = JSON.stringify(result, null, 2);
+            logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
+
+            return {
+                content: [{ type: "text", text: output }]
+            };
+        }
+
+        if (name === "cyberchef_deprecation_stats") {
+            const stats = getDeprecationStats();
+            const output = JSON.stringify(stats, null, 2);
             logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
 
             return {
@@ -1491,7 +1573,10 @@ async function runServer() {
         rateLimitRequests: RATE_LIMIT_REQUESTS,
         rateLimitWindow: RATE_LIMIT_WINDOW,
         cacheEnabled: CACHE_ENABLED,
-        maxConcurrentOps: quotaTracker.maxConcurrentOps
+        maxConcurrentOps: quotaTracker.maxConcurrentOps,
+        // v1.8.0 configuration
+        v2CompatibilityMode: V2_COMPATIBILITY_MODE,
+        suppressDeprecations: SUPPRESS_DEPRECATIONS
     });
 
     // Also output to stderr for compatibility (can be disabled with LOG_LEVEL=error)
@@ -1510,6 +1595,9 @@ async function runServer() {
     logger.info(`Rate limiting: ${RATE_LIMIT_ENABLED ? "enabled" : "disabled"} (${RATE_LIMIT_REQUESTS} req/${RATE_LIMIT_WINDOW}ms)`);
     logger.info(`Max concurrent ops: ${quotaTracker.maxConcurrentOps}`);
     logger.info(`Log level: ${process.env.LOG_LEVEL || "info"}`);
+    // v1.8.0 configuration
+    logger.info(`V2 compatibility mode: ${V2_COMPATIBILITY_MODE ? "enabled" : "disabled"}`);
+    logger.info(`Deprecation warnings: ${SUPPRESS_DEPRECATIONS ? "suppressed" : "enabled"}`);
     logger.info("=====================================");
 }
 
@@ -1558,5 +1646,22 @@ export {
     telemetryCollector,
     rateLimiter,
     quotaTracker,
-    batchProcessor
+    batchProcessor,
+    // v1.8.0 exports
+    V2_COMPATIBILITY_MODE,
+    SUPPRESS_DEPRECATIONS,
+    // Re-export deprecation functions for testing
+    emitDeprecation,
+    emitToolNamingDeprecation,
+    emitMetaToolDeprecation,
+    emitRecipeFormatDeprecation,
+    getDeprecationStats,
+    resetDeprecations,
+    analyzeRecipeCompatibility,
+    transformRecipeToV2,
+    getToolName,
+    stripToolPrefix,
+    isV2CompatibilityMode,
+    areSuppressed,
+    DEPRECATION_CODES
 };

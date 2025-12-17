@@ -4,7 +4,7 @@ This project provides a **Model Context Protocol (MCP)** server interface for **
 
 By running this server, you enable AI assistants (like Claude, Cursor AI, and others) to natively utilize CyberChef's extensive library of 463 data manipulation operations—including encryption, encoding, compression, and forensic analysis—as executable tools.
 
-**Latest Release:** v1.7.3 | [Release Notes](docs/releases/v1.7.3.md) | [Security Policy](SECURITY.md) | [Security Fixes Report](docs/security/SECURITY_FIX_REPORT.md)
+**Latest Release:** v1.8.0 | [Release Notes](docs/releases/v1.8.0.md) | [Security Policy](SECURITY.md) | [Security Fixes Report](docs/security/SECURITY_FIX_REPORT.md)
 
 ![CyberChef MCP Banner](images/CyberChef-MCP_Banner-Logo.jpg)
 
@@ -56,6 +56,14 @@ The server exposes CyberChef operations as MCP tools:
     *   `cyberchef_telemetry_export` - Privacy-first usage analytics (opt-in)
     *   `cyberchef_cache_stats` / `cyberchef_cache_clear` - Cache inspection and management
     *   `cyberchef_quota_info` - Resource quota and usage tracking
+*   **Migration Tools** (v1.8.0): Comprehensive v2.0.0 preparation and migration assistance
+    *   `cyberchef_migration_preview` - Analyze recipes for v2.0.0 compatibility with two modes:
+        - `analyze` mode: Check recipes for breaking changes with detailed diagnostics
+        - `transform` mode: Automatically convert recipes to v2.0.0 format
+    *   `cyberchef_deprecation_stats` - Track deprecated API usage statistics
+        - Shows deprecation warnings triggered in current session
+        - Reports session duration, suppression status, and v2 compatibility mode
+        - Lists all 8 deprecation codes (DEP001-DEP008) with details
 
 ### Technical Highlights
 *   **Dockerized**: Runs as a lightweight, self-contained Docker container based on Chainguard distroless Node.js 22 (~90MB compressed, 70% smaller attack surface than traditional images).
@@ -68,7 +76,7 @@ The server exposes CyberChef operations as MCP tools:
 *   **Advanced Features** (v1.7.0): Enterprise-grade capabilities with batch processing (parallel/sequential execution of up to 100 operations), privacy-first telemetry collection (disabled by default, no input/output data captured), sliding window rate limiting for resource protection, enhanced caching with inspection tools, and resource quota tracking (concurrent operations, data sizes). All features are configurable via environment variables with secure defaults. See [Release Notes](docs/releases/v1.7.0.md) for details.
 *   **Enhanced Observability** (v1.5.0): Structured JSON logging with Pino for production monitoring, comprehensive error handling with actionable recovery suggestions, automatic retry logic with exponential backoff, request correlation with UUID tracking, circuit breaker pattern for cascading failure prevention, and streaming infrastructure for progressive results on large operations. See [Release Notes](docs/releases/v1.5.0.md) for details.
 *   **Performance Optimized** (v1.4.0): LRU cache for operation results (100MB default), automatic streaming for large inputs (10MB+ threshold), configurable resource limits (100MB max input, 30s timeout), memory monitoring, and comprehensive benchmark suite. See [Performance Tuning Guide](docs/architecture/performance-tuning.md) for configuration options.
-*   **Upstream Sync Automation** (v1.3.0): Automated monitoring of upstream CyberChef releases every 6 hours, one-click synchronization workflow, comprehensive validation test suite with 493 tests, and emergency rollback mechanism.
+*   **Upstream Sync Automation** (v1.3.0): Automated monitoring of upstream CyberChef releases every 6 hours, one-click synchronization workflow, comprehensive validation test suite with 563 tests, and emergency rollback mechanism.
 *   **Security Hardened** (v1.4.5+): Chainguard distroless base image with zero-CVE baseline, non-root execution (UID 65532), automated Trivy vulnerability scanning with build-fail thresholds, dual SBOM strategy (Docker Scout attestations + CycloneDX), read-only filesystem support, SLSA Build Level 3 provenance, and 7-day SLA for critical CVE patches. Fixed 11 of 12 code scanning vulnerabilities including critical cryptographic randomness weakness and 7 ReDoS vulnerabilities. See [Security Policy](SECURITY.md) and [Security Fixes Report](docs/security/SECURITY_FIX_REPORT.md) for details.
 *   **Production Ready**: Comprehensive CI/CD with CodeQL v4, automated testing, and dual-registry container publishing (Docker Hub + GHCR) with complete supply chain attestations.
 
@@ -101,17 +109,17 @@ For environments without direct GHCR access, download the pre-built Docker image
 1.  **Download the tarball** (approximately 90MB compressed):
     ```bash
     # Download from GitHub Releases
-    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v1.7.3/cyberchef-mcp-v1.7.3-docker-image.tar.gz
+    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v1.8.0/cyberchef-mcp-v1.8.0-docker-image.tar.gz
     ```
 
 2.  **Load the image into Docker:**
     ```bash
-    docker load < cyberchef-mcp-v1.7.3-docker-image.tar.gz
+    docker load < cyberchef-mcp-v1.8.0-docker-image.tar.gz
     ```
 
 3.  **Tag for easier usage:**
     ```bash
-    docker tag ghcr.io/doublegate/cyberchef-mcp_v1:v1.7.3 cyberchef-mcp
+    docker tag ghcr.io/doublegate/cyberchef-mcp_v1:v1.8.0 cyberchef-mcp
     ```
 
 4.  **Run the server:**
@@ -251,6 +259,10 @@ CYBERCHEF_CACHE_ENABLED=true             # Enable/disable caching
 
 # Resource Quotas (v1.7.0+)
 CYBERCHEF_MAX_CONCURRENT_OPS=10          # Maximum concurrent operations
+
+# Deprecation & Migration (v1.8.0+)
+V2_COMPATIBILITY_MODE=false              # Enable v2.0.0 behavior preview (elevates warnings to errors)
+CYBERCHEF_SUPPRESS_DEPRECATIONS=false    # Suppress deprecation warnings
 
 # Performance (v1.4.0+)
 CYBERCHEF_MAX_INPUT_SIZE=104857600       # Maximum input size (100MB)
@@ -467,8 +479,8 @@ CyberChef MCP Server has a comprehensive development roadmap spanning **19 relea
 | Phase | Releases | Timeline | Focus | Status |
 |-------|----------|----------|-------|--------|
 | **Phase 1: Foundation** | v1.2.0 - v1.4.6 | Q4 2025 - Q1 2026 | Security hardening, upstream sync, performance | **Completed** |
-| **Phase 2: Enhancement** | v1.5.0 - v1.7.3 | Q2 2026 | Streaming, recipe management, batch processing | **v1.7.3 Released** |
-| **Phase 3: Maturity** | v1.8.0 - v2.0.0 | Q3 2026 | API stabilization, external tool integration, v2.0.0 | **Planning Complete** |
+| **Phase 2: Enhancement** | v1.5.0 - v1.7.3 | Q2 2026 | Streaming, recipe management, batch processing | **Completed** |
+| **Phase 3: Maturity** | v1.8.0 - v2.0.0 | Q3 2026 | API stabilization, external tool integration, v2.0.0 | **v1.8.0 Released** |
 | **Phase 4: Expansion** | v2.1.0 - v2.3.0 | Q4 2026 | Multi-modal, advanced transports, plugins | Planned |
 | **Phase 5: Enterprise** | v2.4.0 - v2.6.0 | Q1 2027 | OAuth 2.1, RBAC, Kubernetes, observability | Planned |
 | **Phase 6: Evolution** | v2.7.0 - v3.0.0 | Q2-Q3 2027 | Edge deployment, AI-native features, v3.0.0 | Planned |
@@ -533,6 +545,8 @@ Detailed documentation is organized in the [`docs/`](docs/) directory:
 *   [**Security Audit**](docs/security/audit.md): Comprehensive security assessment
 *   [**Security Fixes Report**](docs/security/SECURITY_FIX_REPORT.md): Detailed report of 11 vulnerability fixes (ReDoS and cryptographic weaknesses)
 *   [**Security Fixes Summary**](docs/security/SECURITY_FIXES_SUMMARY.md): Quick reference for recent security improvements
+*   [**v2.0.0 Breaking Changes**](docs/v2.0.0-breaking-changes.md): Comprehensive migration guide for v2.0.0 with deprecation codes, examples, and FAQ
+*   [**Release Notes v1.8.0**](docs/releases/v1.8.0.md): Breaking changes preparation - deprecation warnings, migration preview tool, v2.0.0 compatibility mode
 *   [**Release Notes v1.7.3**](docs/releases/v1.7.3.md): Reference documentation and v2.0.0 integration planning - 42 new documentation files, comprehensive security tool reference
 *   [**Release Notes v1.7.2**](docs/releases/v1.7.2.md): CI improvements, test expansion, documentation updates - enhanced workflows, 150 new tests, corrected metrics
 *   [**Release Notes v1.7.1**](docs/releases/v1.7.1.md): Repository cleanup and workflow enhancements - removed 88 unused files, enhanced upstream sync
@@ -617,7 +631,7 @@ All workflows use the latest CodeQL Action v4 for security scanning and SARIF up
 # Run all tests (requires Node.js 22+)
 npm test
 
-# Run MCP validation test suite (493 tests with Vitest)
+# Run MCP validation test suite (563 tests with Vitest)
 npm run test:mcp
 
 # Run MCP tests with coverage report
@@ -638,11 +652,11 @@ npm run lint
 ```
 
 **Test Coverage:**
-The MCP server maintains comprehensive test coverage across 13 test suites:
-- **493 total tests** covering all MCP server components (increased from 343 in v1.7.0)
+The MCP server maintains comprehensive test coverage across 15 test suites:
+- **563 total tests** covering all MCP server components (increased from 493 in v1.7.2)
 - **Coverage thresholds**: 70% lines/statements/functions, 65% branches
 - **Current coverage**: 74.97% lines, 74.97% statements, 90.39% functions, 71.62% branches
-- Test suites: coverage-improvement, errors, logger, mcp-server, real-server-handlers, recipe-manager, recipe-storage, recipe-validator, retry, server-integration, streaming, v1.7.0, validation
+- Test suites: coverage-improvement, deprecation, errors, logger, mcp-server, migration-preview, real-server-handlers, recipe-manager, recipe-storage, recipe-validator, retry, server-integration, streaming, v1.7.0, validation
 - Note: Coverage variation occurs as new features are added; mcp-server.mjs currently has lower coverage due to extensive integration code
 
 ## Contributing
