@@ -8,7 +8,7 @@
  * @license Apache-2.0
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import {
     TelemetryCollector,
     RateLimiter,
@@ -20,7 +20,6 @@ import {
     validateInputSize,
     mapArgsToZod
 } from "../../src/node/mcp-server.mjs";
-import { createInputError } from "../../src/node/errors.mjs";
 
 describe("Coverage Improvement Tests", () => {
     describe("Rate Limiting - Internal Logic", () => {

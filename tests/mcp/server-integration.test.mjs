@@ -7,9 +7,7 @@
  * @license Apache-2.0
  */
 
-import { describe, it, expect, beforeAll } from "vitest";
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import { describe, it, expect } from "vitest";
 import OperationConfig from "../../src/core/config/OperationConfig.json" with {type: "json"};
 
 // Import server utilities
@@ -19,21 +17,6 @@ import {
 } from "../../src/node/mcp-server.mjs";
 
 describe("MCP Server Integration Tests", () => {
-    let server;
-    let listToolsHandler;
-    let callToolHandler;
-
-    beforeAll(async () => {
-        // Create a minimal server instance to test handlers
-        server = new Server(
-            { name: "test-server", version: "1.0.0" },
-            { capabilities: { tools: {} } }
-        );
-
-        // We'll test the handler logic by importing and calling them
-        // But since we can't easily access the private handlers, we'll test
-        // the exported functions and classes instead
-    });
 
     describe("Tool Listing", () => {
         it("should have core tools", () => {
@@ -216,7 +199,7 @@ describe("MCP Server Integration Tests", () => {
     describe("Configuration Constants", () => {
         it("should export VERSION", async () => {
             const { VERSION } = await import("../../src/node/mcp-server.mjs");
-            expect(VERSION).toBe("1.7.1");
+            expect(VERSION).toBe("1.7.2");
         });
 
         it("should export configuration constants", async () => {
