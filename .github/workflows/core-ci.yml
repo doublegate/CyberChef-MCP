@@ -67,10 +67,11 @@ jobs:
         verbose: true
 
     - name: Upload Test Results to Codecov
-      uses: codecov/test-results-action@v1
+      uses: codecov/codecov-action@v5
       if: always()
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
+        report_type: test_results
         files: ./test-results/junit.xml
         flags: mcp-tests
         name: codecov-test-results
