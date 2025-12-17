@@ -1,0 +1,67 @@
+chore: remove upstream files not needed for MCP functionality
+
+Remove 88 files from upstream CyberChef that are not used by the MCP server:
+
+## Files Removed
+
+### src/web/ directory (81 files)
+- Web UI application code (App.mjs, Manager.mjs, HTML*.mjs)
+- Static assets: 21 images, 14 fonts
+- Stylesheets (11 CSS files)
+- UI waiters (13 files)
+- Web workers (12 files)
+- Web-specific static files (manifest, robots.txt, etc.)
+
+Justification: MCP server (`src/node/mcp-server.mjs`) only imports from 
+src/node/ and src/core/, never from src/web/. The Gruntfile confirms 
+src/web/ is only used for the "prod" task (web builds), not for "node" 
+or "configTests" tasks used by MCP.
+
+### Browser tests (4 files)
+- tests/browser/01-io.js
+- tests/browser/02-ops.js
+- tests/browser/03-highlighter.js
+- tests/browser/04-operations.js
+
+Justification: MCP uses Vitest (tests/mcp/*.test.mjs), not browser UI tests.
+
+### Config files (2 files)
+- nightwatch.json - Nightwatch is for web UI testing
+- postcss.config.js - PostCSS is for CSS processing (web builds only)
+
+Justification: Not needed for MCP server or Node.js builds.
+
+### DevContainer (1 file)
+- .devcontainer/devcontainer.json
+
+Justification: Not used for MCP development workflow.
+
+## Files Modified
+
+### GitHub templates (5 files)
+- .github/CONTRIBUTING.md
+- .github/ISSUE_TEMPLATE.md
+- .github/ISSUE_TEMPLATE/bug-report.md
+- .github/ISSUE_TEMPLATE/feature-request.md
+- .github/ISSUE_TEMPLATE/operation-request.md
+
+Updated to reference doublegate/CyberChef-MCP instead of GCHQ/CyberChef.
+
+## Impact
+
+- Reduces file count by 88 files (8.6%)
+- Saves ~3 MB disk space
+- Clarifies project focus (MCP server vs web UI)
+- No impact on MCP functionality
+
+## Verification
+
+✅ npm run mcp - MCP server starts
+✅ npx grunt configTests - Config generation works  
+✅ npm test - Core tests pass
+✅ npm run test:mcp - MCP tests pass (343 tests)
+✅ npm run lint - Linting passes
+✅ docker build -f Dockerfile.mcp - Docker build succeeds
+
+All core operations (547 files), operation tests (160 files), and 
+Node.js tests (10 files) remain intact.

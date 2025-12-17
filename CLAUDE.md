@@ -4,13 +4,13 @@ Guidance for Claude Code when working with this repository.
 
 ## Project Overview
 
-**CyberChef MCP Server** (v1.7.1) - Fork of GCHQ CyberChef wrapping the Node.js API into an MCP server. Exposes 300+ operations (encryption, encoding, compression, forensics) as AI assistant tools.
+**CyberChef MCP Server** (v1.7.2) - Fork of GCHQ CyberChef wrapping the Node.js API into an MCP server. Exposes 300+ operations (encryption, encoding, compression, forensics) as AI assistant tools.
 
 | Metric | Value |
 |--------|-------|
-| MCP Version | 1.7.1 |
-| Tests | 343 (100% passing) |
-| Coverage | 78.93% lines, 89.33% functions |
+| MCP Version | 1.7.2 |
+| Tests | 493 (100% passing) |
+| Coverage | 74.97% lines, 90.39% functions |
 
 **Focus:** MCP server (`src/node/mcp-server.mjs`), not the web app.
 
@@ -38,7 +38,7 @@ npm start               # Dev server with hot reload
 npm run build           # Production build
 npm run lint            # ESLint (zero errors required)
 npm test                # Core unit tests
-npm run test:mcp        # MCP server tests (343 tests)
+npm run test:mcp        # MCP server tests (493 tests)
 npm run test:coverage   # Coverage report (thresholds: 70% lines/functions)
 npm run testnodeconsumer # Test CJS/ESM consumers
 ```

@@ -4,7 +4,7 @@ This project provides a **Model Context Protocol (MCP)** server interface for **
 
 By running this server, you enable AI assistants (like Claude, Cursor AI, and others) to natively utilize CyberChef's extensive library of 463 data manipulation operations—including encryption, encoding, compression, and forensic analysis—as executable tools.
 
-**Latest Release:** v1.7.1 | [Release Notes](docs/releases/v1.7.1.md) | [Security Policy](SECURITY.md) | [Security Fixes Report](docs/security/SECURITY_FIX_REPORT.md)
+**Latest Release:** v1.7.2 | [Release Notes](docs/releases/v1.7.2.md) | [Security Policy](SECURITY.md) | [Security Fixes Report](docs/security/SECURITY_FIX_REPORT.md)
 
 ![CyberChef MCP Banner](images/CyberChef-MCP_Banner-Logo.jpg)
 
@@ -101,17 +101,17 @@ For environments without direct GHCR access, download the pre-built Docker image
 1.  **Download the tarball** (approximately 90MB compressed):
     ```bash
     # Download from GitHub Releases
-    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v1.7.1/cyberchef-mcp-v1.7.1-docker-image.tar.gz
+    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v1.7.2/cyberchef-mcp-v1.7.2-docker-image.tar.gz
     ```
 
 2.  **Load the image into Docker:**
     ```bash
-    docker load < cyberchef-mcp-v1.7.1-docker-image.tar.gz
+    docker load < cyberchef-mcp-v1.7.2-docker-image.tar.gz
     ```
 
 3.  **Tag for easier usage:**
     ```bash
-    docker tag ghcr.io/doublegate/cyberchef-mcp_v1:v1.7.1 cyberchef-mcp
+    docker tag ghcr.io/doublegate/cyberchef-mcp_v1:v1.7.2 cyberchef-mcp
     ```
 
 4.  **Run the server:**
@@ -514,6 +514,7 @@ Detailed documentation is organized in the [`docs/`](docs/) directory:
 *   [**Security Audit**](docs/security/audit.md): Comprehensive security assessment
 *   [**Security Fixes Report**](docs/security/SECURITY_FIX_REPORT.md): Detailed report of 11 vulnerability fixes (ReDoS and cryptographic weaknesses)
 *   [**Security Fixes Summary**](docs/security/SECURITY_FIXES_SUMMARY.md): Quick reference for recent security improvements
+*   [**Release Notes v1.7.2**](docs/releases/v1.7.2.md): CI improvements, test expansion, documentation updates - enhanced workflows, 150 new tests, corrected metrics
 *   [**Release Notes v1.7.1**](docs/releases/v1.7.1.md): Repository cleanup and workflow enhancements - removed 88 unused files, enhanced upstream sync
 *   [**Release Notes v1.7.0**](docs/releases/v1.7.0.md): Advanced features - batch processing, telemetry, rate limiting, cache enhancements, resource quotas
 *   [**Release Notes v1.6.2**](docs/releases/v1.6.2.md): Technical debt fixes - ESLint errors resolved, ENABLE_WORKERS default corrected

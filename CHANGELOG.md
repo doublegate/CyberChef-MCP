@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.2] - 2025-12-17
+
 ### Changed
 - **CI Workflow**: Renamed "Core CI" to "MCP Server CI" for clarity on workflow purpose
 - **CI Workflow**: Removed web UI production build step from MCP Server CI workflow (not needed for MCP-focused fork)
@@ -18,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Tests**: Fixed "Scan for embedded files" test to use existing test data file (`tests/node/sampleData/pic.jpg`)
   - Replaced missing `tests/samples/hello` with actual test file
   - Test now passes consistently
+- **Documentation**: Corrected operation count from 464 to 463 in README.md
+- **Documentation**: Updated coverage metrics to reflect current state (74.97% lines, 90.39% functions)
 
 ### Added
 - **Test Coverage**: Expanded test suite from 343 to 493 tests across 13 test files
@@ -25,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added real server handler integration tests in `real-server-handlers.test.mjs`
   - Added server integration tests in `server-integration.test.mjs`
   - Total test count: 493 tests covering all MCP server components
+- **Documentation**: Added cleanup analysis scripts to `scripts/cyberchef-cleanup/` directory
 
 ## [1.7.1] - 2025-12-16
 

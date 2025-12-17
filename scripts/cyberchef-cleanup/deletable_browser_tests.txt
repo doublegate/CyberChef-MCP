@@ -1,0 +1,4 @@
+./tests/browser/00_nightwatch.js
+./tests/browser/01_io.js
+./tests/browser/02_ops.js
+./tests/browser/browserUtils.js
