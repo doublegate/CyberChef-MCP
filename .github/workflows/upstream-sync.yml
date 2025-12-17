@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       target_version:
-        description: 'Target CyberChef version (e.g., v10.19.5)'
+        description: 'Target CyberChef version (e.g., v10.19.5) - leave empty for latest'
         required: false
         type: string
   issues:
@@ -40,60 +40,214 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Add upstream remote
-        run: |
-          git remote add upstream https://github.com/gchq/CyberChef.git || true
-          git fetch upstream --tags
-
-      - name: Determine target version
-        id: version
+      - name: Ensure ref-proj exists and is updated
+        id: update_ref
         env:
-          INPUT_VERSION: ${{ inputs.target_version }}
+          TARGET_VERSION: ${{ inputs.target_version }}
         run: |
-          if [ -n "$INPUT_VERSION" ]; then
-            TARGET="$INPUT_VERSION"
-            echo "Using manual target: $TARGET"
+          # Ensure ref-proj directory exists
+          mkdir -p ref-proj
+
+          # Clone or update upstream reference
+          if [ -d "ref-proj/CyberChef/.git" ]; then
+            echo "Updating existing ref-proj/CyberChef"
+            cd ref-proj/CyberChef
+            git fetch origin --tags
+            BEFORE_SHA=$(git rev-parse HEAD)
+
+            if [ -n "$TARGET_VERSION" ]; then
+              # Checkout specific version
+              git checkout "$TARGET_VERSION"
+              echo "Checked out $TARGET_VERSION"
+            else
+              # Pull latest master
+              git pull origin master
+            fi
+
+            AFTER_SHA=$(git rev-parse HEAD)
+            echo "before_sha=$BEFORE_SHA" >> $GITHUB_OUTPUT
+            echo "after_sha=$AFTER_SHA" >> $GITHUB_OUTPUT
+            cd ../..
           else
-            # Get latest upstream release
-            TARGET=$(git describe --tags --abbrev=0 upstream/master)
-            echo "Using latest upstream: $TARGET"
+            echo "Cloning upstream to ref-proj/CyberChef"
+            cd ref-proj
+            git clone https://github.com/gchq/CyberChef.git
+            cd CyberChef
+
+            if [ -n "$TARGET_VERSION" ]; then
+              git checkout "$TARGET_VERSION"
+            fi
+
+            AFTER_SHA=$(git rev-parse HEAD)
+            echo "before_sha=initial" >> $GITHUB_OUTPUT
+            echo "after_sha=$AFTER_SHA" >> $GITHUB_OUTPUT
+            cd ../..
           fi
 
-          echo "target=$TARGET" >> $GITHUB_OUTPUT
-          echo "Target version: $TARGET"
+          # Get version info
+          cd ref-proj/CyberChef
+          UPSTREAM_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "unknown")
+          UPSTREAM_VERSION=$(node -p "require('./package.json').version" 2>/dev/null || echo "unknown")
+          echo "tag=$UPSTREAM_TAG" >> $GITHUB_OUTPUT
+          echo "version=$UPSTREAM_VERSION" >> $GITHUB_OUTPUT
+          cd ../..
 
       - name: Create sync branch
         env:
-          TARGET: ${{ steps.version.outputs.target }}
+          TARGET: ${{ steps.update_ref.outputs.tag }}
         run: |
           BRANCH_NAME="upstream-sync-${TARGET}"
           git checkout -b "$BRANCH_NAME"
           echo "branch=$BRANCH_NAME" >> $GITHUB_ENV
 
-      - name: Merge upstream changes
-        id: merge
-        env:
-          TARGET: ${{ steps.version.outputs.target }}
+      - name: Identify operation changes
+        id: changes
         run: |
-          # Attempt to merge upstream tag
-          if git merge "$TARGET" --no-edit -m "chore(upstream): merge CyberChef $TARGET"; then
-            echo "status=success" >> $GITHUB_OUTPUT
-            echo "Merge successful"
-          else
-            echo "status=conflict" >> $GITHUB_OUTPUT
-            echo "Merge conflicts detected"
+          # Find new operations (in ref but not in main)
+          echo "Finding new operations..."
+          NEW_OPS=$(comm -13 \
+            <(ls src/core/operations/*.mjs 2>/dev/null | xargs -n1 basename | sort) \
+            <(ls ref-proj/CyberChef/src/core/operations/*.mjs 2>/dev/null | xargs -n1 basename | sort))
+          NEW_COUNT=$(echo "$NEW_OPS" | grep -v '^$' | wc -l)
+          echo "new_count=$NEW_COUNT" >> $GITHUB_OUTPUT
+          echo "Found $NEW_COUNT new operations"
 
-            # Create conflict report
-            git status > /tmp/merge-conflicts.txt
-            echo "conflicts=true" >> $GITHUB_OUTPUT
+          # Find modified operations (different checksums)
+          echo "Finding modified operations..."
+          MODIFIED_OPS=""
+          MODIFIED_COUNT=0
+          for op in src/core/operations/*.mjs; do
+            if [ -f "$op" ]; then
+              basename_op=$(basename "$op")
+              ref_op="ref-proj/CyberChef/src/core/operations/$basename_op"
+              if [ -f "$ref_op" ]; then
+                if ! cmp -s "$op" "$ref_op"; then
+                  MODIFIED_OPS="$MODIFIED_OPS$basename_op"$'\n'
+                  MODIFIED_COUNT=$((MODIFIED_COUNT + 1))
+                fi
+              fi
+            fi
+          done
+          echo "modified_count=$MODIFIED_COUNT" >> $GITHUB_OUTPUT
+          echo "Found $MODIFIED_COUNT modified operations"
+
+          # Find deleted operations (in main but not in ref)
+          DELETED_OPS=$(comm -23 \
+            <(ls src/core/operations/*.mjs 2>/dev/null | xargs -n1 basename | sort) \
+            <(ls ref-proj/CyberChef/src/core/operations/*.mjs 2>/dev/null | xargs -n1 basename | sort))
+          DELETED_COUNT=$(echo "$DELETED_OPS" | grep -v '^$' | wc -l)
+          echo "deleted_count=$DELETED_COUNT" >> $GITHUB_OUTPUT
+          echo "Found $DELETED_COUNT deleted operations"
+
+          # Save lists to files
+          echo "$NEW_OPS" > /tmp/new_ops.txt
+          echo "$MODIFIED_OPS" > /tmp/modified_ops.txt
+          echo "$DELETED_OPS" > /tmp/deleted_ops.txt
+
+          # Determine if sync is needed
+          TOTAL_CHANGES=$((NEW_COUNT + MODIFIED_COUNT + DELETED_COUNT))
+          if [ $TOTAL_CHANGES -gt 0 ]; then
+            echo "needs_sync=true" >> $GITHUB_OUTPUT
+            echo "Total changes: $TOTAL_CHANGES"
+          else
+            echo "needs_sync=false" >> $GITHUB_OUTPUT
+            echo "No changes detected"
           fi
 
+      - name: Sync operation files
+        if: steps.changes.outputs.needs_sync == 'true'
+        id: sync
+        run: |
+          echo "Syncing operation files..."
+          SYNCED_FILES=0
+          FAILED_FILES=0
+
+          # Copy new operations
+          while IFS= read -r op; do
+            if [ -n "$op" ]; then
+              echo "Adding new operation: $op"
+              if cp "ref-proj/CyberChef/src/core/operations/$op" "src/core/operations/$op"; then
+                SYNCED_FILES=$((SYNCED_FILES + 1))
+              else
+                echo "Failed to copy $op"
+                FAILED_FILES=$((FAILED_FILES + 1))
+              fi
+            fi
+          done < /tmp/new_ops.txt
+
+          # Copy modified operations
+          while IFS= read -r op; do
+            if [ -n "$op" ]; then
+              echo "Updating modified operation: $op"
+              if cp "ref-proj/CyberChef/src/core/operations/$op" "src/core/operations/$op"; then
+                SYNCED_FILES=$((SYNCED_FILES + 1))
+              else
+                echo "Failed to copy $op"
+                FAILED_FILES=$((FAILED_FILES + 1))
+              fi
+            fi
+          done < /tmp/modified_ops.txt
+
+          # Delete removed operations (with confirmation)
+          while IFS= read -r op; do
+            if [ -n "$op" ]; then
+              echo "Note: Operation removed upstream: $op (keeping in MCP for now)"
+              # We don't auto-delete in case it's still useful for MCP
+            fi
+          done < /tmp/deleted_ops.txt
+
+          echo "synced_files=$SYNCED_FILES" >> $GITHUB_OUTPUT
+          echo "failed_files=$FAILED_FILES" >> $GITHUB_OUTPUT
+
+          if [ $FAILED_FILES -gt 0 ]; then
+            echo "status=partial" >> $GITHUB_OUTPUT
+            echo "WARNING: Some files failed to sync"
+          else
+            echo "status=success" >> $GITHUB_OUTPUT
+            echo "All files synced successfully"
+          fi
+
+      - name: Verify no excluded files
+        if: steps.changes.outputs.needs_sync == 'true'
+        run: |
+          echo "Verifying no excluded files were copied..."
+          EXCLUDED_FOUND=0
+
+          # Check for web UI files
+          if [ -d "src/web" ]; then
+            echo "ERROR: src/web/ directory found!"
+            EXCLUDED_FOUND=1
+          fi
+
+          # Check for browser tests
+          if [ -d "tests/browser" ]; then
+            echo "ERROR: tests/browser/ directory found!"
+            EXCLUDED_FOUND=1
+          fi
+
+          # Check for excluded config files
+          for file in nightwatch.json postcss.config.js .devcontainer; do
+            if [ -e "$file" ]; then
+              echo "ERROR: Excluded file $file found!"
+              EXCLUDED_FOUND=1
+            fi
+          done
+
+          if [ $EXCLUDED_FOUND -eq 1 ]; then
+            echo "CRITICAL: Excluded files detected! Sync failed."
+            exit 1
+          else
+            echo "Verification passed: No excluded files found"
+          fi
+
+      - name: Install dependencies
+        if: steps.changes.outputs.needs_sync == 'true'
+        run: npm install
+
       - name: Apply Node 22 compatibility patches
-        if: steps.merge.outputs.status == 'success'
+        if: steps.changes.outputs.needs_sync == 'true'
         run: |
           # Apply SlowBuffer patches for Node 22 compatibility
-          npm install || true
-
           if [ -f "node_modules/avsc/lib/types.js" ]; then
             sed -i 's/new SlowBuffer/Buffer.alloc/g' node_modules/avsc/lib/types.js
             echo "Applied avsc patch"
@@ -105,7 +259,7 @@ jobs:
           fi
 
       - name: Regenerate OperationConfig
-        if: steps.merge.outputs.status == 'success'
+        if: steps.changes.outputs.needs_sync == 'true'
         run: |
           npx grunt configTests
           echo "OperationConfig.json regenerated"
@@ -113,19 +267,41 @@ jobs:
           # Show stats
           OPERATION_COUNT=$(node -p "Object.keys(require('./src/core/config/OperationConfig.json')).length")
           echo "Total operations: $OPERATION_COUNT"
+          echo "operation_count=$OPERATION_COUNT" >> $GITHUB_ENV
 
       - name: Run tests
-        if: steps.merge.outputs.status == 'success'
+        if: steps.changes.outputs.needs_sync == 'true'
         id: tests
         run: |
-          # Run existing tests
-          npm test || echo "test_failed=true" >> $GITHUB_OUTPUT
+          # Run core tests
+          if npm test; then
+            echo "core_passed=true" >> $GITHUB_OUTPUT
+          else
+            echo "core_passed=false" >> $GITHUB_OUTPUT
+            echo "WARNING: Core tests failed"
+          fi
 
           # Run MCP validation tests
-          npm run test:mcp || echo "mcp_test_failed=true" >> $GITHUB_OUTPUT
+          if npm run test:mcp; then
+            echo "mcp_passed=true" >> $GITHUB_OUTPUT
+          else
+            echo "mcp_passed=false" >> $GITHUB_OUTPUT
+            echo "WARNING: MCP tests failed"
+          fi
+
+      - name: Run lint
+        if: steps.changes.outputs.needs_sync == 'true'
+        id: lint
+        run: |
+          if npm run lint; then
+            echo "lint_passed=true" >> $GITHUB_OUTPUT
+          else
+            echo "lint_passed=false" >> $GITHUB_OUTPUT
+            echo "WARNING: Lint failed"
+          fi
 
       - name: Update baseline
-        if: steps.merge.outputs.status == 'success' && steps.tests.outputs.test_failed != 'true'
+        if: steps.changes.outputs.needs_sync == 'true' && steps.tests.outputs.mcp_passed == 'true'
         run: |
           # Regenerate baseline with new tool inventory
           node --input-type=module << 'EOF'
@@ -169,66 +345,132 @@ jobs:
           console.log('Baseline updated:', baseline.tool_count, 'tools');
           EOF
 
-      - name: Commit changes
-        if: steps.merge.outputs.status == 'success'
-        env:
-          TARGET: ${{ steps.version.outputs.target }}
+      - name: Generate sync report
+        if: steps.changes.outputs.needs_sync == 'true'
         run: |
-          git add .
-          COMMIT_MSG="chore(upstream): sync with CyberChef $TARGET
+          # Generate detailed sync report
+          cat > /tmp/sync_report.md << 'EOF'
+          ## Sync Report
 
-          * Merged upstream changes from $TARGET
-          * Regenerated OperationConfig.json
+          ### Files Changed
+          - New operations: ${{ steps.changes.outputs.new_count }}
+          - Modified operations: ${{ steps.changes.outputs.modified_count }}
+          - Deleted operations: ${{ steps.changes.outputs.deleted_count }}
+          - Total synced files: ${{ steps.sync.outputs.synced_files }}
+
+          ### New Operations
+          ```
+          EOF
+          cat /tmp/new_ops.txt >> /tmp/sync_report.md
+          cat >> /tmp/sync_report.md << 'EOF'
+          ```
+
+          ### Modified Operations
+          ```
+          EOF
+          cat /tmp/modified_ops.txt >> /tmp/sync_report.md
+          cat >> /tmp/sync_report.md << 'EOF'
+          ```
+
+          ### Deleted Operations (Kept in MCP)
+          ```
+          EOF
+          cat /tmp/deleted_ops.txt >> /tmp/sync_report.md
+          echo '```' >> /tmp/sync_report.md
+
+      - name: Commit changes
+        if: steps.changes.outputs.needs_sync == 'true'
+        env:
+          TARGET: ${{ steps.update_ref.outputs.tag }}
+          NEW_COUNT: ${{ steps.changes.outputs.new_count }}
+          MODIFIED_COUNT: ${{ steps.changes.outputs.modified_count }}
+          DELETED_COUNT: ${{ steps.changes.outputs.deleted_count }}
+        run: |
+          git add src/core/operations/
+          git add src/core/config/OperationConfig.json
+          git add tests/mcp/baseline.json
+
+          COMMIT_MSG="chore(upstream): selective sync from CyberChef $TARGET
+
+          * Synced $NEW_COUNT new operations
+          * Updated $MODIFIED_COUNT modified operations
+          * Noted $DELETED_COUNT deleted operations (kept in MCP)
+          * Regenerated OperationConfig.json ($operation_count operations)
           * Updated baseline.json
           * Applied Node 22 compatibility patches
 
+          Sync method: Selective file copying (preserves MCP modifications)
+
           Generated with upstream-sync workflow"
+
           git commit -m "$COMMIT_MSG" || echo "No changes to commit"
 
       - name: Push branch
-        if: steps.merge.outputs.status == 'success'
+        if: steps.changes.outputs.needs_sync == 'true'
         env:
           BRANCH: ${{ env.branch }}
         run: |
           git push origin "$BRANCH" --force
 
       - name: Create Pull Request
-        if: steps.merge.outputs.status == 'success'
+        if: steps.changes.outputs.needs_sync == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          TARGET: ${{ steps.version.outputs.target }}
-          TEST_STATUS: ${{ steps.tests.outputs.test_failed }}
-          MCP_TEST_STATUS: ${{ steps.tests.outputs.mcp_test_failed }}
+          TARGET: ${{ steps.update_ref.outputs.tag }}
+          NEW_COUNT: ${{ steps.changes.outputs.new_count }}
+          MODIFIED_COUNT: ${{ steps.changes.outputs.modified_count }}
+          DELETED_COUNT: ${{ steps.changes.outputs.deleted_count }}
+          CORE_TEST: ${{ steps.tests.outputs.core_passed }}
+          MCP_TEST: ${{ steps.tests.outputs.mcp_passed }}
+          LINT: ${{ steps.lint.outputs.lint_passed }}
         run: |
-          OPERATION_COUNT=$(node -p "Object.keys(require('./src/core/config/OperationConfig.json')).length")
+          # Read sync report
+          SYNC_REPORT=$(cat /tmp/sync_report.md)
 
-          # Determine test status message
-          if [ "$TEST_STATUS" == "true" ] || [ "$MCP_TEST_STATUS" == "true" ]; then
-            TEST_MSG="**WARNING:** Some tests failed. Review carefully before merging."
+          # Determine test status
+          if [ "$CORE_TEST" == "true" ] && [ "$MCP_TEST" == "true" ] && [ "$LINT" == "true" ]; then
+            TEST_STATUS="✅ All tests and linting passed"
           else
-            TEST_MSG="All tests passed successfully."
+            TEST_STATUS="⚠️ **WARNING:** Some checks failed\n"
+            [ "$CORE_TEST" != "true" ] && TEST_STATUS="${TEST_STATUS}- Core tests: FAILED\n"
+            [ "$MCP_TEST" != "true" ] && TEST_STATUS="${TEST_STATUS}- MCP tests: FAILED\n"
+            [ "$LINT" != "true" ] && TEST_STATUS="${TEST_STATUS}- Lint: FAILED\n"
           fi
 
           PR_BODY="## Upstream Sync: $TARGET
 
-          This PR synchronizes with upstream CyberChef release $TARGET.
+          This PR synchronizes operations with upstream CyberChef release $TARGET using **selective file syncing**.
 
-          ### Changes
+          ### Sync Method
 
-          * Merged upstream changes from \`$TARGET\`
-          * Regenerated \`OperationConfig.json\` ($OPERATION_COUNT operations)
-          * Updated \`baseline.json\` for regression testing
-          * Applied Node 22 compatibility patches
+          ✅ **Selective File Sync** (NOT full merge)
+          - Only syncs \`src/core/operations/\` files
+          - Preserves MCP-specific modifications
+          - Excludes \`src/web/\`, \`tests/browser/\`, and other removed files
+          - Maintains package.json, Gruntfile.js, and MCP workflows
+
+          ### Changes Summary
+
+          - **New Operations**: $NEW_COUNT
+          - **Modified Operations**: $MODIFIED_COUNT
+          - **Deleted Operations**: $DELETED_COUNT (kept in MCP)
+          - **Total Operations**: $operation_count
+
+          $SYNC_REPORT
 
           ### Test Results
 
-          $TEST_MSG
+          $TEST_STATUS
 
-          ### Verification
+          ### Verification Checklist
 
+          - [x] Only operation files synced
+          - [x] No excluded files (src/web/, tests/browser/, etc.)
+          - [x] MCP-specific files preserved
+          - [x] OperationConfig.json regenerated
+          - [x] Baseline.json updated
           - [ ] Review upstream changelog for breaking changes
-          - [ ] Verify all tests pass
-          - [ ] Test critical MCP operations manually
+          - [ ] Manual testing of new/modified operations
           - [ ] Update CHANGELOG.md if needed
           - [ ] Update version in package.json if needed
 
@@ -240,79 +482,45 @@ jobs:
           \`\`\`
 
           ---
-          Generated automatically by upstream-sync workflow"
+          Generated automatically by upstream-sync workflow (selective sync mode)"
 
           gh pr create \
-            --title "chore(upstream): sync with CyberChef $TARGET" \
+            --title "chore(upstream): selective sync with CyberChef $TARGET" \
             --label "upstream-sync,automated" \
             --body "$PR_BODY" || echo "PR already exists"
 
-      - name: Handle merge conflicts
-        if: steps.merge.outputs.status == 'conflict'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TARGET: ${{ steps.version.outputs.target }}
-          EVENT_NAME: ${{ github.event_name }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
-          BRANCH: ${{ env.branch }}
+      - name: No changes needed
+        if: steps.changes.outputs.needs_sync != 'true'
         run: |
-          # Comment on the issue about conflicts
-          if [ "$EVENT_NAME" == "issues" ]; then
-            CONFLICT_BODY="## Merge Conflicts Detected
-
-            Automatic sync with $TARGET failed due to merge conflicts.
-
-            ### Manual Intervention Required
-
-            1. Checkout the branch:
-               \`\`\`bash
-               git fetch origin
-               git checkout $BRANCH
-               \`\`\`
-
-            2. Resolve conflicts manually
-
-            3. Complete the sync:
-               \`\`\`bash
-               npm install
-               npx grunt configTests
-               npm test
-               npm run test:mcp
-               git add .
-               git commit
-               git push origin $BRANCH
-               \`\`\`
-
-            4. Create PR manually
-
-            ### Conflict Files
-
-            See workflow logs for details.
-
-            ---
-            Generated by upstream-sync workflow"
-
-            gh issue comment "$ISSUE_NUMBER" --body "$CONFLICT_BODY"
-          fi
-
-          echo "Merge conflicts require manual resolution"
-          exit 1
+          echo "No synchronization needed - all operations are up-to-date"
+          echo "### Sync Status: Up-to-date" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "All operation files match upstream." >> $GITHUB_STEP_SUMMARY
 
       - name: Summary
         if: always()
         env:
-          STATUS: ${{ steps.merge.outputs.status }}
-          TARGET: ${{ steps.version.outputs.target }}
+          TARGET: ${{ steps.update_ref.outputs.tag }}
           BRANCH: ${{ env.branch }}
+          NEEDS_SYNC: ${{ steps.changes.outputs.needs_sync }}
+          NEW_COUNT: ${{ steps.changes.outputs.new_count }}
+          MODIFIED_COUNT: ${{ steps.changes.outputs.modified_count }}
+          SYNCED_FILES: ${{ steps.sync.outputs.synced_files }}
         run: |
           echo "### Upstream Sync Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Target Version:** $TARGET" >> $GITHUB_STEP_SUMMARY
-          echo "- **Branch:** $BRANCH" >> $GITHUB_STEP_SUMMARY
-          echo "- **Merge Status:** $STATUS" >> $GITHUB_STEP_SUMMARY
+          echo "- **Sync Method:** Selective file copying" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
 
-          if [ "$STATUS" == "success" ]; then
+          if [ "$NEEDS_SYNC" == "true" ]; then
+            echo "#### Changes" >> $GITHUB_STEP_SUMMARY
+            echo "- New operations: $NEW_COUNT" >> $GITHUB_STEP_SUMMARY
+            echo "- Modified operations: $MODIFIED_COUNT" >> $GITHUB_STEP_SUMMARY
+            echo "- Files synced: $SYNCED_FILES" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "- **Branch:** $BRANCH" >> $GITHUB_STEP_SUMMARY
             echo "- **Result:** Pull request created" >> $GITHUB_STEP_SUMMARY
           else
-            echo "- **Result:** Manual intervention required" >> $GITHUB_STEP_SUMMARY
+            echo "- **Result:** No changes needed" >> $GITHUB_STEP_SUMMARY
           fi

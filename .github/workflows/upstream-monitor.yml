@@ -7,7 +7,7 @@ on:
   workflow_dispatch: # Allow manual trigger
 
 permissions:
-  contents: read
+  contents: write
   issues: write
 
 jobs:
@@ -17,16 +17,56 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Fetch latest CyberChef release
-        id: upstream
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Update ref-proj/CyberChef from upstream
+        id: update_ref
         run: |
-          # Get latest release from gchq/CyberChef
-          LATEST_RELEASE=$(gh api repos/gchq/CyberChef/releases/latest --jq '.tag_name')
-          echo "latest=$LATEST_RELEASE" >> $GITHUB_OUTPUT
-          echo "Latest CyberChef release: $LATEST_RELEASE"
+          # Ensure ref-proj directory exists
+          mkdir -p ref-proj
+
+          # Clone or update upstream reference
+          if [ -d "ref-proj/CyberChef/.git" ]; then
+            echo "Updating existing ref-proj/CyberChef"
+            cd ref-proj/CyberChef
+            git fetch origin --tags
+            BEFORE_SHA=$(git rev-parse HEAD)
+            git pull origin master
+            AFTER_SHA=$(git rev-parse HEAD)
+            echo "before_sha=$BEFORE_SHA" >> $GITHUB_OUTPUT
+            echo "after_sha=$AFTER_SHA" >> $GITHUB_OUTPUT
+            cd ../..
+          else
+            echo "Cloning upstream to ref-proj/CyberChef"
+            cd ref-proj
+            git clone https://github.com/gchq/CyberChef.git
+            cd CyberChef
+            AFTER_SHA=$(git rev-parse HEAD)
+            echo "before_sha=initial" >> $GITHUB_OUTPUT
+            echo "after_sha=$AFTER_SHA" >> $GITHUB_OUTPUT
+            cd ../..
+          fi
+
+      - name: Get upstream version info
+        id: upstream
+        run: |
+          cd ref-proj/CyberChef
+          # Get latest tag
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "unknown")
+          echo "latest=$LATEST_TAG" >> $GITHUB_OUTPUT
+          echo "Latest CyberChef release: $LATEST_TAG"
+
+          # Get version from package.json
+          UPSTREAM_VERSION=$(node -p "require('./package.json').version" 2>/dev/null || echo "unknown")
+          echo "version=$UPSTREAM_VERSION" >> $GITHUB_OUTPUT
+          echo "Upstream package.json version: $UPSTREAM_VERSION"
+          cd ../..
 
       - name: Get current version
         id: current
@@ -40,6 +80,48 @@ jobs:
           CYBERCHEF_VERSION=$(node -p "require('./package.json').version")
           echo "cyberchef_version=$CYBERCHEF_VERSION" >> $GITHUB_OUTPUT
           echo "Current CyberChef version: $CYBERCHEF_VERSION"
+
+      - name: Compare operation files
+        id: compare_ops
+        run: |
+          # Count operations in both repos
+          MAIN_OPS=$(ls src/core/operations/*.mjs 2>/dev/null | wc -l)
+          REF_OPS=$(ls ref-proj/CyberChef/src/core/operations/*.mjs 2>/dev/null | wc -l)
+          echo "main_ops=$MAIN_OPS" >> $GITHUB_OUTPUT
+          echo "ref_ops=$REF_OPS" >> $GITHUB_OUTPUT
+          echo "Main operations: $MAIN_OPS"
+          echo "Ref operations: $REF_OPS"
+
+          # Find new operations (in ref but not in main)
+          NEW_OPS=$(comm -13 \
+            <(ls src/core/operations/*.mjs 2>/dev/null | xargs -n1 basename | sort) \
+            <(ls ref-proj/CyberChef/src/core/operations/*.mjs 2>/dev/null | xargs -n1 basename | sort) \
+            | wc -l)
+          echo "new_ops=$NEW_OPS" >> $GITHUB_OUTPUT
+          echo "New operations: $NEW_OPS"
+
+          # Find modified operations (different checksums)
+          MODIFIED_OPS=0
+          for op in src/core/operations/*.mjs; do
+            if [ -f "$op" ]; then
+              basename_op=$(basename "$op")
+              ref_op="ref-proj/CyberChef/src/core/operations/$basename_op"
+              if [ -f "$ref_op" ]; then
+                if ! cmp -s "$op" "$ref_op"; then
+                  MODIFIED_OPS=$((MODIFIED_OPS + 1))
+                fi
+              fi
+            fi
+          done
+          echo "modified_ops=$MODIFIED_OPS" >> $GITHUB_OUTPUT
+          echo "Modified operations: $MODIFIED_OPS"
+
+          # Determine if update needed
+          if [ "$NEW_OPS" -gt 0 ] || [ "$MODIFIED_OPS" -gt 0 ]; then
+            echo "needs_update=true" >> $GITHUB_OUTPUT
+          else
+            echo "needs_update=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Compare versions
         id: compare
@@ -59,7 +141,7 @@ jobs:
           fi
 
       - name: Check for existing issue
-        if: steps.compare.outputs.new_version == 'true'
+        if: steps.compare.outputs.new_version == 'true' || steps.compare_ops.outputs.needs_update == 'true'
         id: existing
         env:
           GH_TOKEN: ${{ github.token }}
@@ -76,55 +158,108 @@ jobs:
           echo "count=$ISSUE_COUNT" >> $GITHUB_OUTPUT
           echo "Found $ISSUE_COUNT existing issues for this release"
 
+      - name: Generate operation change list
+        if: (steps.compare.outputs.new_version == 'true' || steps.compare_ops.outputs.needs_update == 'true') && steps.existing.outputs.count == '0'
+        id: op_changes
+        run: |
+          # List new operations
+          NEW_LIST=$(comm -13 \
+            <(ls src/core/operations/*.mjs 2>/dev/null | xargs -n1 basename | sort) \
+            <(ls ref-proj/CyberChef/src/core/operations/*.mjs 2>/dev/null | xargs -n1 basename | sort) \
+            | head -20)
+
+          # List modified operations
+          MODIFIED_LIST=""
+          COUNT=0
+          for op in src/core/operations/*.mjs; do
+            if [ -f "$op" ] && [ $COUNT -lt 20 ]; then
+              basename_op=$(basename "$op")
+              ref_op="ref-proj/CyberChef/src/core/operations/$basename_op"
+              if [ -f "$ref_op" ]; then
+                if ! cmp -s "$op" "$ref_op"; then
+                  MODIFIED_LIST="$MODIFIED_LIST$basename_op"$'\n'
+                  COUNT=$((COUNT + 1))
+                fi
+              fi
+            fi
+          done
+
+          # Save to file for multiline output
+          echo "$NEW_LIST" > /tmp/new_ops.txt
+          echo "$MODIFIED_LIST" > /tmp/modified_ops.txt
+
       - name: Create issue for new release
-        if: steps.compare.outputs.new_version == 'true' && steps.existing.outputs.count == '0'
+        if: (steps.compare.outputs.new_version == 'true' || steps.compare_ops.outputs.needs_update == 'true') && steps.existing.outputs.count == '0'
         env:
           GH_TOKEN: ${{ github.token }}
           LATEST: ${{ steps.upstream.outputs.latest }}
           CYBERCHEF_VERSION: ${{ steps.current.outputs.cyberchef_version }}
+          MAIN_OPS: ${{ steps.compare_ops.outputs.main_ops }}
+          REF_OPS: ${{ steps.compare_ops.outputs.ref_ops }}
+          NEW_OPS: ${{ steps.compare_ops.outputs.new_ops }}
+          MODIFIED_OPS: ${{ steps.compare_ops.outputs.modified_ops }}
         run: |
           TIMESTAMP=$(date -u +'%Y-%m-%d %H:%M:%S UTC')
 
+          # Read operation lists
+          NEW_OPS_LIST=$(cat /tmp/new_ops.txt)
+          MODIFIED_OPS_LIST=$(cat /tmp/modified_ops.txt)
+
           ISSUE_BODY="## New Upstream Release Detected
 
-          CyberChef Version: $LATEST
-          Current Version: v$CYBERCHEF_VERSION
-          Detected: $TIMESTAMP
+          **CyberChef Version**: $LATEST
+          **Current Version**: v$CYBERCHEF_VERSION
+          **Detected**: $TIMESTAMP
+
+          ### Operation Changes
+
+          - **Current Operations**: $MAIN_OPS
+          - **Upstream Operations**: $REF_OPS
+          - **New Operations**: $NEW_OPS
+          - **Modified Operations**: $MODIFIED_OPS
+
+          #### New Operations (first 20)
+          \`\`\`
+          $NEW_OPS_LIST
+          \`\`\`
+
+          #### Modified Operations (first 20)
+          \`\`\`
+          $MODIFIED_OPS_LIST
+          \`\`\`
 
           ### Next Steps
 
           1. Review the [upstream release notes](https://github.com/gchq/CyberChef/releases/tag/$LATEST)
-          2. Check for breaking changes or new operations
-          3. If safe to proceed, add the \`upstream-sync-approved\` label to trigger automatic sync
-          4. If manual intervention needed, sync manually and close this issue
+          2. Check the [upstream commit log](https://github.com/gchq/CyberChef/compare/v$CYBERCHEF_VERSION...$LATEST)
+          3. Review operation changes above for breaking changes
+          4. To trigger automatic sync, add the \`upstream-sync-approved\` label
+          5. For manual sync or complex changes, see instructions below
 
-          ### Automatic Sync
+          ### Automatic Sync (Recommended)
 
-          To trigger automatic synchronization:
+          The new selective sync workflow will:
+          - Only sync \`src/core/operations/\` files
+          - Preserve MCP-specific modifications
+          - Run comprehensive tests
+          - Create a PR for review
+
+          To trigger:
           \`\`\`bash
           gh issue edit <issue-number> --add-label upstream-sync-approved
           \`\`\`
 
-          Or use the GitHub web interface to add the label.
-
-          ### Manual Sync
+          ### Manual Sync (If Needed)
 
           If automatic sync is not suitable:
           \`\`\`bash
-          # Add upstream remote
-          git remote add upstream https://github.com/gchq/CyberChef.git
+          # Update ref-proj (already done by monitor workflow)
+          cd ref-proj/CyberChef
+          git pull origin master
+          cd ../..
 
-          # Fetch and merge
-          git fetch upstream
-          git merge upstream/master
-
-          # Regenerate configs
-          npm install
-          npx grunt configTests
-
-          # Run tests
-          npm test
-          npm run test:mcp
+          # Use the upstream-sync workflow manually
+          gh workflow run upstream-sync.yml
           \`\`\`
 
           ---
@@ -135,12 +270,27 @@ jobs:
             --label "upstream-release,needs-review" \
             --body "$ISSUE_BODY"
 
+      - name: Commit ref-proj updates
+        if: steps.compare_ops.outputs.needs_update == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add ref-proj/CyberChef
+          git commit -m "chore(upstream): update ref-proj/CyberChef to latest upstream" || echo "No changes to commit"
+          git push origin master || echo "Nothing to push"
+
       - name: Summary
+        if: always()
         env:
           LATEST: ${{ steps.upstream.outputs.latest }}
           CYBERCHEF_VERSION: ${{ steps.current.outputs.cyberchef_version }}
           MCP_VERSION: ${{ steps.current.outputs.version }}
           NEW_VERSION: ${{ steps.compare.outputs.new_version }}
+          NEEDS_UPDATE: ${{ steps.compare_ops.outputs.needs_update }}
+          MAIN_OPS: ${{ steps.compare_ops.outputs.main_ops }}
+          REF_OPS: ${{ steps.compare_ops.outputs.ref_ops }}
+          NEW_OPS: ${{ steps.compare_ops.outputs.new_ops }}
+          MODIFIED_OPS: ${{ steps.compare_ops.outputs.modified_ops }}
           EXISTING_COUNT: ${{ steps.existing.outputs.count }}
         run: |
           echo "### Upstream Monitor Summary" >> $GITHUB_STEP_SUMMARY
@@ -148,15 +298,23 @@ jobs:
           echo "- **Latest CyberChef:** $LATEST" >> $GITHUB_STEP_SUMMARY
           echo "- **Current Version:** v$CYBERCHEF_VERSION" >> $GITHUB_STEP_SUMMARY
           echo "- **MCP Version:** $MCP_VERSION" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "#### Operation Comparison" >> $GITHUB_STEP_SUMMARY
+          echo "- **Main Operations:** $MAIN_OPS" >> $GITHUB_STEP_SUMMARY
+          echo "- **Ref Operations:** $REF_OPS" >> $GITHUB_STEP_SUMMARY
+          echo "- **New Operations:** $NEW_OPS" >> $GITHUB_STEP_SUMMARY
+          echo "- **Modified Operations:** $MODIFIED_OPS" >> $GITHUB_STEP_SUMMARY
 
-          if [ "$NEW_VERSION" == "true" ]; then
-            echo "- **Status:** New version available" >> $GITHUB_STEP_SUMMARY
-            if [ "$EXISTING_COUNT" == "0" ]; then
+          if [ "$NEW_VERSION" == "true" ] || [ "$NEEDS_UPDATE" == "true" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "- **Status:** Updates available" >> $GITHUB_STEP_SUMMARY
+            if [ "${EXISTING_COUNT:-0}" == "0" ]; then
               echo "- **Action:** Issue created" >> $GITHUB_STEP_SUMMARY
             else
               echo "- **Action:** Issue already exists" >> $GITHUB_STEP_SUMMARY
             fi
           else
+            echo "" >> $GITHUB_STEP_SUMMARY
             echo "- **Status:** Up-to-date" >> $GITHUB_STEP_SUMMARY
             echo "- **Action:** None" >> $GITHUB_STEP_SUMMARY
           fi
