@@ -838,7 +838,7 @@ pCGTErs=
     }),
 
     it("Scan for embedded files", () => {
-        const result = chef.scanForEmbeddedFiles(fs.readFileSync("src/web/static/images/cook_male-32x32.png"));
+        const result = chef.scanForEmbeddedFiles(fs.readFileSync("tests/node/sampleData/pic.jpg"));
         const expected = "Scanning data for 'magic bytes' which may indicate embedded files.";
         assert.ok(result.toString().indexOf(expected) === 0);
     }),
