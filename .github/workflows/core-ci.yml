@@ -1,4 +1,4 @@
-name: "Core Logic CI"
+name: "MCP Server CI"
 
 on:
   workflow_dispatch:
@@ -9,6 +9,7 @@ on:
       - 'src/core/**'
       - 'src/node/**'
       - 'package.json'
+      - '.github/workflows/**'
 
 jobs:
   test:
@@ -75,8 +76,8 @@ jobs:
         name: codecov-test-results
         fail_ci_if_error: false
 
-    # Codecov Integration: Bundle Analysis
-    - name: Build Production Bundle (triggers Bundle Analysis upload)
-      env:
-        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-      run: npm run build
+    # NOTE: Web UI production build (npx grunt prod) removed in v1.7.1
+    # This fork focuses on the MCP server implementation. The web UI files
+    # (src/web/) and related build infrastructure were removed as they are
+    # not needed for MCP server functionality. The production build step
+    # required those deleted web UI files and would fail.
