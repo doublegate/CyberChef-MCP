@@ -1,6 +1,7 @@
 # top-most EditorConfig file
 root = true
 
+# Default settings for all files
 [*]
 charset = utf-8
 end_of_line = lf
@@ -9,6 +10,33 @@ trim_trailing_whitespace = true
 indent_style = space
 indent_size = 4
 
-[{package.json,.travis.yml,nightwatch.json}]
+# JavaScript/TypeScript source files (.js, .mjs, .cjs)
+[*.{js,mjs,cjs}]
+indent_style = space
+indent_size = 4
+
+# Markdown documentation
+[*.md]
+indent_style = space
+indent_size = 4
+trim_trailing_whitespace = false
+
+# JSON configuration files
+[*.json]
 indent_style = space
 indent_size = 2
+
+# YAML configuration files
+[*.{yml,yaml}]
+indent_style = space
+indent_size = 2
+
+# Package manager files
+[{package.json,package-lock.json}]
+indent_style = space
+indent_size = 2
+
+# Docker files
+[Dockerfile*]
+indent_style = space
+indent_size = 4

@@ -5,6 +5,46 @@ All notable changes to the CyberChef MCP Server project will be documented in th
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.1] - 2025-12-16
+
+### Changed
+- **Repository Structure**: Cleaned up 88 unused upstream files for MCP-focused codebase
+  - Removed 81 web UI files from `src/web/` (stylesheets, fonts, images, UI components)
+  - Removed 4 browser test files from `tests/browser/` (Nightwatch.js browser tests)
+  - Removed 2 config files (`nightwatch.json` for browser testing, `postcss.config.js` for CSS processing)
+  - Removed 1 `.devcontainer/devcontainer.json` for VS Code dev containers
+  - Net reduction: ~19,260 lines of code
+  - All MCP functionality preserved (343 tests still passing)
+- **Upstream Sync Workflows**: Complete rewrite for selective file synchronization model
+  - `upstream-monitor.yml`: Enhanced to work with `ref-proj/CyberChef/` directory structure for full upstream clone
+  - `upstream-sync.yml`: Complete rewrite to copy only `src/core/operations/*.mjs` files from upstream
+    - Prevents restoration of deleted web UI files during sync
+    - Verifies no excluded files are copied to main codebase
+    - Creates pull request for review instead of direct merge to master
+    - Includes comprehensive testing before PR creation
+  - `rollback.yml`: Enhanced with state comparison table and ref-proj rollback guidance
+  - New sync philosophy: Selective file copying instead of git merge to preserve MCP-specific modifications
+- **GitHub Templates**: Updated 5 issue and pull request templates with fork-specific references
+  - Bug report template: Updated upstream repository references
+  - Feature request template: Added context for MCP-specific features
+  - Pull request template: Updated contribution guidelines
+  - Issue templates: Clarified fork relationship with GCHQ/CyberChef
+- **Configuration Files**: Multiple enhancements for project consistency and compliance
+  - `CODE_OF_CONDUCT.md`: Updated enforcement contact from GCHQ to `doublegate@pm.me` for fork-specific reporting
+  - `LICENSE`: Added fork notice header crediting both GCHQ (original CyberChef) and DoubleGate (MCP fork maintainer)
+  - `eslint.config.mjs`: Fixed flat config structure with proper exports, added comprehensive MCP server documentation
+  - `.editorconfig`: Added comprehensive file type configurations (JSON, YAML, Markdown, Shell scripts, etc.)
+  - `.cspell.json`: Added 96 project-specific terms for accurate spell checking (CyberChef operations, MCP terminology, technical terms)
+
+### Added
+- **Documentation**: `docs/guides/upstream-sync-guide.md` - Comprehensive guide to selective upstream synchronization workflow (540 lines)
+  - Explains selective sync model vs. full git merge approach
+  - Documents file exclusion rules (88 files never synced from upstream)
+  - Provides troubleshooting guidance for common sync issues
+  - Includes workflow diagrams for monitor → sync → merge flow
+  - Details testing strategy for pre-sync, during sync, and post-sync validation
+  - Covers common scenarios: routine updates, manual sync, rollback, breaking changes
+
 ## [1.7.0] - 2025-12-16
 
 ### Added

@@ -5,6 +5,16 @@ import globals from "globals";
 
 export default [
     js.configs.recommended,
+    // Ignore patterns for generated files and vendor code
+    {
+        ignores: [
+            "src/core/vendor/**",
+            "src/core/config/OperationConfig.json",
+            "src/node/index.mjs",
+            "build/**",
+            "node_modules/**"
+        ]
+    },
     {
         languageOptions: {
             ecmaVersion: 2022,
@@ -18,20 +28,24 @@ export default [
                 allowImportExportEverywhere: true
             },
             globals: {
-                ...globals.browser,
+                // Node.js environment for MCP server
                 ...globals.node,
                 ...globals.es6,
+                // Browser globals for operations that support Web Worker environments
+                ...globals.browser,
+
+                // CyberChef-specific globals
                 "$": false,
                 "jQuery": false,
                 "log": false,
                 "app": false,
 
+                // Build-time constants
                 "COMPILE_TIME": false,
                 "COMPILE_MSG": false,
                 "PKG_VERSION": false
             },
         },
-        ignores: ["src/core/vendor/**"],
         plugins: {
             jsdoc
         },

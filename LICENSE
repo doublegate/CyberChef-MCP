@@ -1,3 +1,18 @@
+================================================================================
+CyberChef-MCP - Model Context Protocol Server for CyberChef
+================================================================================
+
+This is a fork of GCHQ CyberChef (https://github.com/gchq/CyberChef) that
+wraps the CyberChef Node.js API into a Model Context Protocol (MCP) server.
+
+Original CyberChef Copyright (c) 2016 Government Communications Headquarters (GCHQ)
+CyberChef-MCP Modifications Copyright (c) 2024-2025 DoubleGate
+
+Both the original work and this derivative work are licensed under the
+Apache License 2.0 (see below).
+
+================================================================================
+
 
                                  Apache License
                            Version 2.0, January 2004

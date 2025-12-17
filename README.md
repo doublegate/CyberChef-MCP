@@ -2,9 +2,9 @@
 
 This project provides a **Model Context Protocol (MCP)** server interface for **CyberChef**, the "Cyber Swiss Army Knife" created by [GCHQ](https://github.com/gchq/CyberChef).
 
-By running this server, you enable AI assistants (like Claude, Cursor AI, and others) to natively utilize CyberChef's extensive library of 463+ data manipulation operations—including encryption, encoding, compression, and forensic analysis—as executable tools.
+By running this server, you enable AI assistants (like Claude, Cursor AI, and others) to natively utilize CyberChef's extensive library of 464 data manipulation operations—including encryption, encoding, compression, and forensic analysis—as executable tools.
 
-**Latest Release:** v1.7.0 | [Release Notes](docs/releases/v1.7.0.md) | [Security Policy](SECURITY.md) | [Security Fixes Report](docs/security/SECURITY_FIX_REPORT.md)
+**Latest Release:** v1.7.1 | [Release Notes](docs/releases/v1.7.1.md) | [Security Policy](SECURITY.md) | [Security Fixes Report](docs/security/SECURITY_FIX_REPORT.md)
 
 ![CyberChef MCP Banner](images/CyberChef-MCP_Banner-Logo.jpg)
 
@@ -21,6 +21,16 @@ By running this server, you enable AI assistants (like Claude, Cursor AI, and ot
 
 This fork wraps the core CyberChef Node.js API into an MCP server, bridging the gap between natural language AI intent and deterministic data processing.
 
+### Fork Relationship
+
+This project maintains a selective sync relationship with the upstream GCHQ/CyberChef repository:
+- **Core Operations**: Synced from upstream (`src/core/operations/*.mjs`) via automated workflows
+- **Web UI Components**: Removed (88 files, ~19,260 lines) - not needed for MCP server
+- **MCP-Specific Code**: Custom implementation (`src/node/mcp-server.mjs`, tests, workflows)
+- **Sync Model**: Selective file copying, NOT git merge, to preserve MCP-specific modifications
+
+See [Upstream Sync Guide](docs/guides/upstream-sync-guide.md) for details on the synchronization process.
+
 ![CyberChef MCP Blueprint](images/CyberChef-MCP_Blueprint.jpg)
 
 ## Features
@@ -29,7 +39,7 @@ This fork wraps the core CyberChef Node.js API into an MCP server, bridging the 
 The server exposes CyberChef operations as MCP tools:
 
 *   **`cyberchef_bake`**: The "Omni-tool". Executes a full CyberChef recipe (a chain of operations) on an input. Ideal for complex, multi-step transformations (e.g., "Decode Base64, then Gunzip, then prettify JSON").
-*   **Atomic Operations**: 463 individual tools for specific tasks, dynamically generated from the CyberChef configuration.
+*   **Atomic Operations**: 464 individual tools for specific tasks, dynamically generated from the CyberChef configuration.
     *   `cyberchef_to_base64` / `cyberchef_from_base64`
     *   `cyberchef_aes_decrypt`
     *   `cyberchef_sha2`
@@ -91,17 +101,17 @@ For environments without direct GHCR access, download the pre-built Docker image
 1.  **Download the tarball** (approximately 90MB compressed):
     ```bash
     # Download from GitHub Releases
-    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v1.7.0/cyberchef-mcp-v1.7.0-docker-image.tar.gz
+    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v1.7.1/cyberchef-mcp-v1.7.1-docker-image.tar.gz
     ```
 
 2.  **Load the image into Docker:**
     ```bash
-    docker load < cyberchef-mcp-v1.7.0-docker-image.tar.gz
+    docker load < cyberchef-mcp-v1.7.1-docker-image.tar.gz
     ```
 
 3.  **Tag for easier usage:**
     ```bash
-    docker tag ghcr.io/doublegate/cyberchef-mcp_v1:v1.7.0 cyberchef-mcp
+    docker tag ghcr.io/doublegate/cyberchef-mcp_v1:v1.7.1 cyberchef-mcp
     ```
 
 4.  **Run the server:**
@@ -473,6 +483,7 @@ Detailed documentation is organized in the [`docs/`](docs/) directory:
 *   [**User Guide**](docs/guides/user_guide.md): Detailed installation and client configuration
 *   [**Commands Reference**](docs/guides/commands.md): List of all available MCP tools and operations
 *   [**Recipe Management Guide**](docs/guides/recipe_management.md): Complete guide to saving, organizing, and reusing workflows
+*   [**Upstream Sync Guide**](docs/guides/upstream-sync-guide.md): Guide to selective upstream synchronization workflow
 *   [**Docker Hub Setup Guide**](docs/guides/DOCKER_HUB_SETUP.md): Quick start guide for Docker Hub publishing and attestations
 *   [**Docker Scout Attestations Guide**](docs/guides/docker-scout-attestations.md): Comprehensive guide to supply chain attestations and health scores
 
@@ -503,6 +514,7 @@ Detailed documentation is organized in the [`docs/`](docs/) directory:
 *   [**Security Audit**](docs/security/audit.md): Comprehensive security assessment
 *   [**Security Fixes Report**](docs/security/SECURITY_FIX_REPORT.md): Detailed report of 11 vulnerability fixes (ReDoS and cryptographic weaknesses)
 *   [**Security Fixes Summary**](docs/security/SECURITY_FIXES_SUMMARY.md): Quick reference for recent security improvements
+*   [**Release Notes v1.7.1**](docs/releases/v1.7.1.md): Repository cleanup and workflow enhancements - removed 88 unused files, enhanced upstream sync
 *   [**Release Notes v1.7.0**](docs/releases/v1.7.0.md): Advanced features - batch processing, telemetry, rate limiting, cache enhancements, resource quotas
 *   [**Release Notes v1.6.2**](docs/releases/v1.6.2.md): Technical debt fixes - ESLint errors resolved, ENABLE_WORKERS default corrected
 *   [**Release Notes v1.6.1**](docs/releases/v1.6.1.md): Comprehensive test coverage (311 tests, 78.93% coverage) and Codecov integration
@@ -572,10 +584,10 @@ This project uses GitHub Actions to ensure stability and security:
 *   **CodeQL Analysis** ([`codeql.yml`](.github/workflows/codeql.yml)): Automated security scanning for code vulnerabilities (CodeQL v4)
 *   **Release** ([`mcp-release.yml`](.github/workflows/mcp-release.yml)): Publishes Docker image to GHCR with SBOM attachment on version tags (`v*`), automatically creates GitHub releases
 
-**Upstream Sync Automation (v1.3.0):**
+**Upstream Sync Automation (v1.3.0+):**
 *   **Upstream Monitor** ([`upstream-monitor.yml`](.github/workflows/upstream-monitor.yml)): Monitors GCHQ/CyberChef for new releases every 6 hours, creates GitHub issues for review
-*   **Upstream Sync** ([`upstream-sync.yml`](.github/workflows/upstream-sync.yml)): Automated synchronization workflow with merge, config regeneration, testing, and PR creation
-*   **Rollback** ([`rollback.yml`](.github/workflows/rollback.yml)): Emergency rollback mechanism for reverting problematic upstream merges
+*   **Upstream Sync** ([`upstream-sync.yml`](.github/workflows/upstream-sync.yml)): Selective file synchronization workflow - copies only `src/core/operations/*.mjs` files, prevents restoration of deleted web UI components, creates PR for review
+*   **Rollback** ([`rollback.yml`](.github/workflows/rollback.yml)): Emergency rollback mechanism with state comparison and ref-proj guidance
 
 All workflows use the latest CodeQL Action v4 for security scanning and SARIF upload.
 
