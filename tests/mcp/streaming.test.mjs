@@ -17,7 +17,8 @@ import {
     streamOperation,
     streamOperationWithProgress,
     determineStreamingStrategy,
-    executeWithStreamingStrategy
+    executeWithStreamingStrategy,
+    executeWithStreamingProgress
 } from "../../src/node/streaming.mjs";
 
 describe("StreamingConfig", () => {
@@ -328,5 +329,161 @@ describe("executeWithStreamingStrategy", () => {
         expect(results).toHaveLength(1);
         expect(results[0]._meta?.complete).toBe(true);
         expect(results[0]._meta?.streamed).toBe(false);
+    });
+});
+
+describe("executeWithStreamingProgress", () => {
+    it("should fall back to direct execution without progress token", async () => {
+        const mockBake = vi.fn((input, recipe) => {
+            return Promise.resolve({ value: "result123" });
+        });
+
+        const result = await executeWithStreamingProgress({
+            bakeFunction: mockBake,
+            operation: "To Base64",
+            input: "test",
+            recipeArgs: ["A-Za-z0-9+/="],
+            recipe: [{ op: "To Base64", args: ["A-Za-z0-9+/="] }],
+            server: null,
+            progressToken: undefined,
+            streamingEnabled: true,
+            streamingThreshold: 10000,
+            timeout: 5000,
+            requestId: "test-1"
+        });
+
+        expect(result.value).toBe("result123");
+        expect(mockBake).toHaveBeenCalled();
+    });
+
+    it("should fall back to direct execution when streaming is disabled", async () => {
+        const mockBake = vi.fn((input, recipe) => {
+            return Promise.resolve({ value: "disabled-stream" });
+        });
+
+        const result = await executeWithStreamingProgress({
+            bakeFunction: mockBake,
+            operation: "To Base64",
+            input: "test",
+            recipeArgs: [],
+            recipe: [{ op: "To Base64", args: [] }],
+            server: null,
+            progressToken: "token-1",
+            streamingEnabled: false,
+            streamingThreshold: 10000,
+            timeout: 5000,
+            requestId: "test-2"
+        });
+
+        expect(result.value).toBe("disabled-stream");
+    });
+
+    it("should fall back when below streaming threshold", async () => {
+        const mockBake = vi.fn((input, recipe) => {
+            return Promise.resolve({ value: "small-result" });
+        });
+
+        const result = await executeWithStreamingProgress({
+            bakeFunction: mockBake,
+            operation: "To Base64",
+            input: "tiny",
+            recipeArgs: [],
+            recipe: [{ op: "To Base64", args: [] }],
+            server: { notification: vi.fn() },
+            progressToken: "token-2",
+            streamingEnabled: true,
+            streamingThreshold: 10000,
+            timeout: 5000,
+            requestId: "test-3"
+        });
+
+        expect(result.value).toBe("small-result");
+    });
+
+    it("should send progress notifications for large streamable operations", async () => {
+        const mockBake = vi.fn((input, recipe) => {
+            return Promise.resolve({ value: Buffer.from(input).toString("base64") });
+        });
+        const mockServer = {
+            notification: vi.fn().mockResolvedValue(undefined)
+        };
+
+        const largeInput = "a".repeat(20000);
+        const result = await executeWithStreamingProgress({
+            bakeFunction: mockBake,
+            operation: "To Base64",
+            input: largeInput,
+            recipeArgs: [],
+            recipe: [{ op: "To Base64", args: [] }],
+            server: mockServer,
+            progressToken: "progress-token-1",
+            streamingEnabled: true,
+            streamingThreshold: 10000,
+            timeout: 30000,
+            requestId: "test-4"
+        });
+
+        expect(result.value).toBeDefined();
+        expect(result.value.length).toBeGreaterThan(0);
+        // Should have sent progress notifications
+        expect(mockServer.notification).toHaveBeenCalled();
+        // First call should be initial progress (0)
+        const firstCall = mockServer.notification.mock.calls[0][0];
+        expect(firstCall.method).toBe("notifications/progress");
+        expect(firstCall.params.progressToken).toBe("progress-token-1");
+    });
+
+    it("should handle progress notification failures gracefully", async () => {
+        const mockBake = vi.fn((input, recipe) => {
+            return Promise.resolve({ value: Buffer.from(input).toString("base64") });
+        });
+        const mockServer = {
+            notification: vi.fn().mockRejectedValue(new Error("notification failed"))
+        };
+
+        const largeInput = "a".repeat(20000);
+        // Should not throw even when notifications fail
+        const result = await executeWithStreamingProgress({
+            bakeFunction: mockBake,
+            operation: "To Base64",
+            input: largeInput,
+            recipeArgs: [],
+            recipe: [{ op: "To Base64", args: [] }],
+            server: mockServer,
+            progressToken: "token-fail",
+            streamingEnabled: true,
+            streamingThreshold: 10000,
+            timeout: 30000,
+            requestId: "test-5"
+        });
+
+        expect(result.value).toBeDefined();
+    });
+
+    it("should send progress for progress-only operations", async () => {
+        const mockBake = vi.fn((input, recipe) => {
+            return Promise.resolve({ value: "compressed" });
+        });
+        const mockServer = {
+            notification: vi.fn().mockResolvedValue(undefined)
+        };
+
+        const largeInput = "b".repeat(20000);
+        const result = await executeWithStreamingProgress({
+            bakeFunction: mockBake,
+            operation: "Gzip",
+            input: largeInput,
+            recipeArgs: [],
+            recipe: [{ op: "Gzip", args: [] }],
+            server: mockServer,
+            progressToken: "progress-gzip",
+            streamingEnabled: true,
+            streamingThreshold: 10000,
+            timeout: 30000,
+            requestId: "test-6"
+        });
+
+        expect(result.value).toBeDefined();
+        expect(mockServer.notification).toHaveBeenCalled();
     });
 });
