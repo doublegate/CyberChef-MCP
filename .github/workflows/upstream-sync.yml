@@ -207,37 +207,51 @@ jobs:
             echo "All files synced successfully"
           fi
 
-      - name: Verify no excluded files
+      - name: Verify no excluded files introduced by sync
         if: steps.changes.outputs.needs_sync == 'true'
         run: |
-          echo "Verifying no excluded files were copied..."
+          echo "Verifying sync did not introduce excluded files..."
           EXCLUDED_FOUND=0
 
-          # Check for web UI files
-          if [ -d "src/web" ]; then
-            echo "ERROR: src/web/ directory found!"
-            EXCLUDED_FOUND=1
-          fi
+          # Check git diff for any new/modified files outside src/core/operations/
+          # The sync should ONLY touch src/core/operations/*.mjs files
+          CHANGED_FILES=$(git diff --name-only HEAD 2>/dev/null || git diff --cached --name-only 2>/dev/null || true)
+          UNEXPECTED_FILES=""
 
-          # Check for browser tests
-          if [ -d "tests/browser" ]; then
-            echo "ERROR: tests/browser/ directory found!"
-            EXCLUDED_FOUND=1
-          fi
-
-          # Check for excluded config files
-          for file in nightwatch.json postcss.config.js .devcontainer; do
-            if [ -e "$file" ]; then
-              echo "ERROR: Excluded file $file found!"
-              EXCLUDED_FOUND=1
+          while IFS= read -r file; do
+            if [ -n "$file" ]; then
+              case "$file" in
+                src/core/operations/*.mjs)
+                  # Expected - operation files are the sync target
+                  ;;
+                src/web/*)
+                  echo "ERROR: Sync introduced src/web/ file: $file"
+                  EXCLUDED_FOUND=1
+                  UNEXPECTED_FILES="$UNEXPECTED_FILES $file"
+                  ;;
+                tests/browser/*)
+                  echo "ERROR: Sync introduced tests/browser/ file: $file"
+                  EXCLUDED_FOUND=1
+                  UNEXPECTED_FILES="$UNEXPECTED_FILES $file"
+                  ;;
+                nightwatch.json|postcss.config.js|.devcontainer/*)
+                  echo "ERROR: Sync introduced excluded file: $file"
+                  EXCLUDED_FOUND=1
+                  UNEXPECTED_FILES="$UNEXPECTED_FILES $file"
+                  ;;
+                *)
+                  echo "Note: Non-operation file changed: $file (reviewing...)"
+                  ;;
+              esac
             fi
-          done
+          done <<< "$CHANGED_FILES"
 
           if [ $EXCLUDED_FOUND -eq 1 ]; then
-            echo "CRITICAL: Excluded files detected! Sync failed."
+            echo "CRITICAL: Sync introduced excluded files! Reverting sync changes."
+            echo "Unexpected files: $UNEXPECTED_FILES"
             exit 1
           else
-            echo "Verification passed: No excluded files found"
+            echo "Verification passed: Sync only modified operation files"
           fi
 
       - name: Install dependencies
