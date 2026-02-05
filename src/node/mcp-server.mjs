@@ -178,59 +178,6 @@ class LRUCache {
 }
 
 /**
- * Simple Buffer Pool for memory optimization.
- * Reserved for future use - currently commented out to avoid unused code warnings.
- */
-// class BufferPool {
-//     /**
-//      * Create a new buffer pool.
-//      */
-//     constructor() {
-//         this.pools = new Map(); // size -> buffer array
-//     }
-//
-//     /**
-//      * Acquire a buffer from the pool.
-//      *
-//      * @param {number} size - Buffer size in bytes.
-//      * @returns {Buffer} A buffer of the requested size.
-//      */
-//     acquire(size) {
-//         const pool = this.pools.get(size);
-//         if (pool && pool.length > 0) {
-//             return pool.pop();
-//         }
-//         return Buffer.allocUnsafe(size);
-//     }
-//
-//     /**
-//      * Release a buffer back to the pool.
-//      *
-//      * @param {Buffer} buffer - Buffer to release.
-//      */
-//     release(buffer) {
-//         if (!buffer) return;
-//         buffer.fill(0); // Clear before reuse
-//         const size = buffer.length;
-//         if (!this.pools.has(size)) {
-//             this.pools.set(size, []);
-//         }
-//         const pool = this.pools.get(size);
-//         // Limit pool size to prevent memory bloat
-//         if (pool.length < 10) {
-//             pool.push(buffer);
-//         }
-//     }
-//
-//     /**
-//      * Clear the buffer pool.
-//      */
-//     clear() {
-//         this.pools.clear();
-//     }
-// }
-
-/**
  * Memory monitor for resource tracking.
  */
 class MemoryMonitor {
@@ -651,27 +598,14 @@ class BatchProcessor {
 
 // Global instances
 const operationCache = new LRUCache();
-// const bufferPool = new BufferPool(); // Reserved for future use
 const memoryMonitor = new MemoryMonitor();
 const telemetryCollector = new TelemetryCollector();
 const rateLimiter = new RateLimiter();
 const quotaTracker = new ResourceQuotaTracker();
 const batchProcessor = new BatchProcessor();
 
-// CPU-intensive operations that benefit from worker threads (reserved for future use)
-// const CPU_INTENSIVE_OPERATIONS = new Set([
-//     "AES Decrypt", "AES Encrypt",
-//     "DES Decrypt", "DES Encrypt",
-//     "Triple DES Decrypt", "Triple DES Encrypt",
-//     "RSA Decrypt", "RSA Encrypt", "RSA Sign", "RSA Verify",
-//     "Bcrypt", "Scrypt",
-//     "Gzip", "Gunzip", "Bzip2 Decompress", "Bzip2 Compress",
-//     "SHA1", "SHA2", "SHA3", "MD2", "MD4", "MD5", "MD6",
-//     "Whirlpool", "BLAKE2b", "BLAKE2s",
-//     "Generate RSA Key Pair", "Generate PGP Key Pair"
-// ]);
-
-// Note: STREAMING_OPERATIONS is now imported from streaming.mjs
+// Note: CPU_INTENSIVE_OPERATIONS moved to worker-pool.mjs
+// Note: STREAMING_OPERATIONS is imported from streaming.mjs
 
 const server = new Server(
     {
