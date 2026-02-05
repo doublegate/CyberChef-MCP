@@ -320,7 +320,7 @@ jobs:
           # Regenerate baseline with new tool inventory
           node --input-type=module << 'EOF'
           import OperationConfig from './src/core/config/OperationConfig.json' with { type: 'json' };
-          import { writeFileSync } from 'fs';
+          import { readFileSync, writeFileSync } from 'fs';
 
           function sanitizeToolName(name) {
               if (!name) return null;
@@ -332,8 +332,9 @@ jobs:
               return sanitized;
           }
 
+          const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
           const baseline = {
-              version: require('./package.json').mcpVersion,
+              version: pkg.mcpVersion,
               timestamp: new Date().toISOString(),
               tool_count: Object.keys(OperationConfig).length + 2,
               tools: {
