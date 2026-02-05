@@ -600,7 +600,7 @@ describe("Handler Dispatch Tests", () => {
 
     describe("Server Configuration Exports", () => {
         it("should export all configuration constants", () => {
-            expect(VERSION).toMatch(/^\d+\.\d+\.\d+$/);
+            expect(VERSION).toBe("1.9.0");
             expect(MAX_INPUT_SIZE).toBeGreaterThan(0);
             expect(OPERATION_TIMEOUT).toBeGreaterThan(0);
             expect(STREAMING_THRESHOLD).toBeGreaterThan(0);
