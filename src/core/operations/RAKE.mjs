@@ -5,8 +5,6 @@
  */
 
 import Operation from "../Operation.mjs";
-import OperationError from "../errors/OperationError.mjs";
-import { createSafeRegExp } from "../lib/SafeRegex.mjs";
 
 /**
  * RAKE operation
@@ -56,14 +54,9 @@ class RAKE extends Operation {
      */
     run(input, args) {
 
-        // Get delimiter regexs with ReDoS protection
-        let wordDelim, sentDelim;
-        try {
-            wordDelim = createSafeRegExp(args[0], "g");
-            sentDelim = createSafeRegExp(args[1], "g");
-        } catch (err) {
-            throw new OperationError(`Invalid regex pattern: ${err.message}`);
-        }
+        // Get delimiter regexs
+        const wordDelim =  new RegExp(args[0], "g");
+        const sentDelim = new RegExp(args[1], "g");
 
         // Deduplicate the stop words and add the empty string
         const stopWords = args[2].toLowerCase().replace(/ /g, "").split(",").unique();
