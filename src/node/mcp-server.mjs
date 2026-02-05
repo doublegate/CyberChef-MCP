@@ -7,7 +7,6 @@
 
 import { bake, help } from "./index.mjs";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
@@ -32,8 +31,10 @@ import {
     logServerStart
 } from "./logger.mjs";
 import {
-    determineStreamingStrategy
+    determineStreamingStrategy,
+    executeWithStreamingProgress
 } from "./streaming.mjs";
+import { createTransport, getTransportType } from "./transports.mjs";
 import {
     executeWithTimeoutAndRetry,
     RetryConfig
@@ -1369,42 +1370,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     args: recipeArgs
                 }];
 
-                // Determine streaming strategy
-                const strategy = ENABLE_STREAMING ?
-                    determineStreamingStrategy(opName, inputSize, STREAMING_THRESHOLD) :
-                    { type: "none", reason: "Streaming disabled" };
+                // Extract progress token from MCP request metadata
+                const progressToken = request.params?._meta?.progressToken;
 
-                let result;
-                let streamed = false;
-
-                if (strategy.type !== "none") {
-                    // Use streaming with progress reporting
-                    logStreaming(opName, { inputSize, strategy: strategy.type, reason: strategy.reason });
-
-                    // Note: MCP streaming would be implemented here if the SDK supports it
-                    // For now, we execute with timeout and retry
-                    result = await executeWithTimeoutAndRetry(
-                        () => bake(args.input, recipe),
-                        OPERATION_TIMEOUT * 2, // Double timeout for large operations
-                        {
-                            requestId,
-                            maxRetries: RetryConfig.MAX_RETRIES,
-                            context: { tool: name, operation: opName, inputSize }
-                        }
-                    );
-                    streamed = true;
-                } else {
-                    // Standard execution with timeout and retry
-                    result = await executeWithTimeoutAndRetry(
-                        () => bake(args.input, recipe),
-                        OPERATION_TIMEOUT,
-                        {
-                            requestId,
-                            maxRetries: RetryConfig.MAX_RETRIES,
-                            context: { tool: name, operation: opName }
-                        }
-                    );
-                }
+                // Execute with streaming progress support
+                const result = await executeWithStreamingProgress({
+                    bakeFunction: bake,
+                    operation: opName,
+                    input: args.input,
+                    recipeArgs,
+                    recipe,
+                    server,
+                    progressToken,
+                    streamingEnabled: ENABLE_STREAMING,
+                    streamingThreshold: STREAMING_THRESHOLD,
+                    timeout: OPERATION_TIMEOUT,
+                    requestId
+                });
+                const streamed = !!progressToken && ENABLE_STREAMING;
 
                 // Cache result (only if caching is enabled)
                 if (CACHE_ENABLED) {
@@ -1484,7 +1467,7 @@ async function runServer() {
     // Initialize recipe manager (v1.6.0)
     await recipeManager.initialize();
 
-    const transport = new StdioServerTransport();
+    const { transport, httpServer } = await createTransport();
     await server.connect(transport);
 
     // Log server startup with configuration
@@ -1516,7 +1499,7 @@ async function runServer() {
     // Also output to stderr for compatibility (can be disabled with LOG_LEVEL=error)
     const logger = getLogger();
     logger.info("=== CyberChef MCP Server v" + VERSION + " ===");
-    logger.info("Running on stdio");
+    logger.info(`Running on ${getTransportType()} transport`);
     logger.info(`Max input size: ${Math.round(MAX_INPUT_SIZE / 1024 / 1024)}MB`);
     logger.info(`Operation timeout: ${OPERATION_TIMEOUT}ms`);
     logger.info(`Streaming threshold: ${Math.round(STREAMING_THRESHOLD / 1024 / 1024)}MB`);

@@ -7,6 +7,7 @@
 
 import { logStreaming } from "./logger.mjs";
 import { ErrorCodes, CyberChefMCPError } from "./errors.mjs";
+import { executeWithTimeoutAndRetry, RetryConfig } from "./retry.mjs";
 
 /**
  * Configuration for streaming operations.
@@ -388,4 +389,108 @@ export function executeWithStreamingStrategy(bakeFunction, operation, input, arg
             }
         };
     })();
+}
+
+/**
+ * Execute an operation with MCP progress notifications.
+ *
+ * Consumes the existing async generators (streamOperation, streamOperationWithProgress)
+ * and sends MCP notifications/progress via the server when a progress token is provided.
+ * Falls back to direct execution when no progress token or streaming is disabled.
+ *
+ * @param {Object} options - Execution options.
+ * @param {Function} options.bakeFunction - CyberChef bake function.
+ * @param {string} options.operation - Operation name.
+ * @param {string} options.input - Input data.
+ * @param {Array} options.recipeArgs - Operation arguments.
+ * @param {Array} options.recipe - Full recipe array [{op, args}].
+ * @param {Object} options.server - MCP Server instance (for sending notifications).
+ * @param {string|number|undefined} options.progressToken - MCP progress token from request.
+ * @param {boolean} options.streamingEnabled - Whether streaming is enabled globally.
+ * @param {number} options.streamingThreshold - Size threshold for streaming.
+ * @param {number} options.timeout - Operation timeout in ms.
+ * @param {string} options.requestId - Request ID for logging.
+ * @returns {Promise<Object>} The operation result {value: string}.
+ */
+export async function executeWithStreamingProgress({
+    bakeFunction,
+    operation,
+    input,
+    recipeArgs,
+    recipe,
+    server,
+    progressToken,
+    streamingEnabled,
+    streamingThreshold,
+    timeout,
+    requestId
+}) {
+    const inputSize = Buffer.byteLength(input, "utf8");
+    const strategy = streamingEnabled
+        ? determineStreamingStrategy(operation, inputSize, streamingThreshold)
+        : { type: "none", reason: "Streaming disabled" };
+
+    // If no progress token or no streaming strategy, fall back to direct execution
+    if (!progressToken || strategy.type === "none") {
+        const timeoutMs = strategy.type !== "none" ? timeout * 2 : timeout;
+        return executeWithTimeoutAndRetry(
+            () => bakeFunction(input, recipe),
+            timeoutMs,
+            {
+                requestId,
+                maxRetries: RetryConfig.MAX_RETRIES,
+                context: { operation, inputSize }
+            }
+        );
+    }
+
+    logStreaming(operation, { inputSize, strategy: strategy.type, progressToken });
+
+    // Send initial progress notification
+    const sendProgress = async (progress, total, message) => {
+        try {
+            await server.notification({
+                method: "notifications/progress",
+                params: {
+                    progressToken,
+                    progress,
+                    total: total || inputSize,
+                    message
+                }
+            });
+        } catch {
+            // Progress notifications are best-effort
+        }
+    };
+
+    await sendProgress(0, inputSize, `Starting ${operation}`);
+
+    // Choose the appropriate generator
+    const generator = strategy.type === "chunked"
+        ? streamOperation(bakeFunction, operation, input, recipeArgs)
+        : streamOperationWithProgress(bakeFunction, operation, input, recipeArgs);
+
+    let finalResult = null;
+
+    for await (const update of generator) {
+        const meta = update._meta || {};
+
+        if (meta.complete) {
+            finalResult = update.content[0].text;
+            await sendProgress(inputSize, inputSize, `Completed ${operation}`);
+        } else if (meta.progress !== undefined) {
+            const processed = meta.processed || 0;
+            await sendProgress(processed, inputSize, `Processing ${operation}: ${meta.progress}%`);
+        }
+    }
+
+    if (finalResult === null) {
+        throw new CyberChefMCPError(
+            ErrorCodes.STREAMING_ERROR,
+            "Streaming completed without producing a result",
+            { operation, inputSize }
+        );
+    }
+
+    return { value: finalResult };
 }
