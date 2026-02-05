@@ -22,7 +22,7 @@ class Argon2 extends Operation {
 
         this.name = "Argon2";
         this.module = "Crypto";
-        this.description = "Argon2 is a key derivation function that was selected as the winner of the Password Hashing Competition in July 2015. It was designed by Alex Biryukov, Daniel Dinu, and Dmitry Khovratovich from the University of Luxembourg.<br><br>Enter the password in the input to generate its hash.<br><br><strong>OWASP Recommendation:</strong> Use Argon2id with at least 19 MiB memory, 2 iterations, and parallelism of 1 (default settings).";
+        this.description = "Argon2 is a key derivation function that was selected as the winner of the Password Hashing Competition in July 2015. It was designed by Alex Biryukov, Daniel Dinu, and Dmitry Khovratovich from the University of Luxembourg.<br><br>Enter the password in the input to generate its hash.";
         this.infoURL = "https://wikipedia.org/wiki/Argon2";
         this.inputType = "string";
         this.outputType = "string";
@@ -36,12 +36,12 @@ class Argon2 extends Operation {
             {
                 "name": "Iterations",
                 "type": "number",
-                "value": 2
+                "value": 3
             },
             {
                 "name": "Memory (KiB)",
                 "type": "number",
-                "value": 19456
+                "value": 4096
             },
             {
                 "name": "Parallelism",
@@ -56,7 +56,7 @@ class Argon2 extends Operation {
             {
                 "name": "Type",
                 "type": "option",
-                "value": ["Argon2id", "Argon2i", "Argon2d"],
+                "value": ["Argon2i", "Argon2d", "Argon2id"],
                 "defaultIndex": 0
             },
             {

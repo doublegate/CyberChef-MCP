@@ -226,7 +226,7 @@ describe("MCP Server Core Functions", () => {
 
     describe("VERSION and Configuration", () => {
         it("should have correct version", () => {
-            expect(VERSION).toBe("1.8.0");
+            expect(VERSION).toBe("1.9.0");
         });
 
         it("should have valid configuration defaults", () => {

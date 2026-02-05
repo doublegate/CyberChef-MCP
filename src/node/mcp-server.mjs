@@ -7,7 +7,6 @@
 
 import { bake, help } from "./index.mjs";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
@@ -28,12 +27,19 @@ import {
     logRequestError,
     logCache,
     logMemory,
-    logStreaming,
     logServerStart
 } from "./logger.mjs";
 import {
-    determineStreamingStrategy
+    executeWithStreamingProgress
 } from "./streaming.mjs";
+import { createTransport, getTransportType } from "./transports.mjs";
+import {
+    initWorkerPool,
+    shouldUseWorker,
+    executeInWorker,
+    getPoolStats,
+    destroyWorkerPool
+} from "./worker-pool.mjs";
 import {
     executeWithTimeoutAndRetry,
     RetryConfig
@@ -60,7 +66,7 @@ import {
 } from "./deprecation.mjs";
 
 // Performance configuration (configurable via environment variables)
-const VERSION = "1.8.0";
+const VERSION = "1.9.0";
 const MAX_INPUT_SIZE = parseInt(process.env.CYBERCHEF_MAX_INPUT_SIZE, 10) || 100 * 1024 * 1024; // 100MB default
 const OPERATION_TIMEOUT = parseInt(process.env.CYBERCHEF_OPERATION_TIMEOUT, 10) || 30000; // 30s default
 const STREAMING_THRESHOLD = parseInt(process.env.CYBERCHEF_STREAMING_THRESHOLD, 10) || 10 * 1024 * 1024; // 10MB default
@@ -176,59 +182,6 @@ class LRUCache {
         };
     }
 }
-
-/**
- * Simple Buffer Pool for memory optimization.
- * Reserved for future use - currently commented out to avoid unused code warnings.
- */
-// class BufferPool {
-//     /**
-//      * Create a new buffer pool.
-//      */
-//     constructor() {
-//         this.pools = new Map(); // size -> buffer array
-//     }
-//
-//     /**
-//      * Acquire a buffer from the pool.
-//      *
-//      * @param {number} size - Buffer size in bytes.
-//      * @returns {Buffer} A buffer of the requested size.
-//      */
-//     acquire(size) {
-//         const pool = this.pools.get(size);
-//         if (pool && pool.length > 0) {
-//             return pool.pop();
-//         }
-//         return Buffer.allocUnsafe(size);
-//     }
-//
-//     /**
-//      * Release a buffer back to the pool.
-//      *
-//      * @param {Buffer} buffer - Buffer to release.
-//      */
-//     release(buffer) {
-//         if (!buffer) return;
-//         buffer.fill(0); // Clear before reuse
-//         const size = buffer.length;
-//         if (!this.pools.has(size)) {
-//             this.pools.set(size, []);
-//         }
-//         const pool = this.pools.get(size);
-//         // Limit pool size to prevent memory bloat
-//         if (pool.length < 10) {
-//             pool.push(buffer);
-//         }
-//     }
-//
-//     /**
-//      * Clear the buffer pool.
-//      */
-//     clear() {
-//         this.pools.clear();
-//     }
-// }
 
 /**
  * Memory monitor for resource tracking.
@@ -651,27 +604,14 @@ class BatchProcessor {
 
 // Global instances
 const operationCache = new LRUCache();
-// const bufferPool = new BufferPool(); // Reserved for future use
 const memoryMonitor = new MemoryMonitor();
 const telemetryCollector = new TelemetryCollector();
 const rateLimiter = new RateLimiter();
 const quotaTracker = new ResourceQuotaTracker();
 const batchProcessor = new BatchProcessor();
 
-// CPU-intensive operations that benefit from worker threads (reserved for future use)
-// const CPU_INTENSIVE_OPERATIONS = new Set([
-//     "AES Decrypt", "AES Encrypt",
-//     "DES Decrypt", "DES Encrypt",
-//     "Triple DES Decrypt", "Triple DES Encrypt",
-//     "RSA Decrypt", "RSA Encrypt", "RSA Sign", "RSA Verify",
-//     "Bcrypt", "Scrypt",
-//     "Gzip", "Gunzip", "Bzip2 Decompress", "Bzip2 Compress",
-//     "SHA1", "SHA2", "SHA3", "MD2", "MD4", "MD5", "MD6",
-//     "Whirlpool", "BLAKE2b", "BLAKE2s",
-//     "Generate RSA Key Pair", "Generate PGP Key Pair"
-// ]);
-
-// Note: STREAMING_OPERATIONS is now imported from streaming.mjs
+// Note: CPU_INTENSIVE_OPERATIONS moved to worker-pool.mjs
+// Note: STREAMING_OPERATIONS is imported from streaming.mjs
 
 const server = new Server(
     {
@@ -1013,6 +953,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             name: "cyberchef_deprecation_stats",
             description: "Get statistics on deprecated API usage in current session. Shows which deprecation warnings have been triggered and v2.0.0 preparation status.",
             inputSchema: zodToJsonSchema(z.object({}))
+        },
+        // v1.9.0 tools - Worker Thread Pool
+        {
+            name: "cyberchef_worker_stats",
+            description: "Get worker thread pool statistics including thread count, utilization, and completed tasks. Only available when ENABLE_WORKERS=true.",
+            inputSchema: zodToJsonSchema(z.object({}))
         }
     ];
 
@@ -1345,6 +1291,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             };
         }
 
+        // Handle v1.9.0 tools
+        if (name === "cyberchef_worker_stats") {
+            const stats = getPoolStats();
+            const result = stats ?
+                { enabled: true, ...stats } :
+                { enabled: false, message: "Worker pool is not enabled. Set ENABLE_WORKERS=true to enable." };
+            const output = JSON.stringify(result, null, 2);
+            logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
+
+            return {
+                content: [{ type: "text", text: output }]
+            };
+        }
+
         // Handle operation tools
         if (name.startsWith("cyberchef_")) {
             // Check rate limit
@@ -1435,41 +1395,31 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     args: recipeArgs
                 }];
 
-                // Determine streaming strategy
-                const strategy = ENABLE_STREAMING ?
-                    determineStreamingStrategy(opName, inputSize, STREAMING_THRESHOLD) :
-                    { type: "none", reason: "Streaming disabled" };
-
                 let result;
                 let streamed = false;
 
-                if (strategy.type !== "none") {
-                    // Use streaming with progress reporting
-                    logStreaming(opName, { inputSize, strategy: strategy.type, reason: strategy.reason });
-
-                    // Note: MCP streaming would be implemented here if the SDK supports it
-                    // For now, we execute with timeout and retry
-                    result = await executeWithTimeoutAndRetry(
-                        () => bake(args.input, recipe),
-                        OPERATION_TIMEOUT * 2, // Double timeout for large operations
-                        {
-                            requestId,
-                            maxRetries: RetryConfig.MAX_RETRIES,
-                            context: { tool: name, operation: opName, inputSize }
-                        }
-                    );
-                    streamed = true;
+                // Route to worker thread if applicable
+                if (ENABLE_WORKERS && shouldUseWorker(opName, inputSize)) {
+                    result = await executeInWorker(args.input, recipe, OPERATION_TIMEOUT);
                 } else {
-                    // Standard execution with timeout and retry
-                    result = await executeWithTimeoutAndRetry(
-                        () => bake(args.input, recipe),
-                        OPERATION_TIMEOUT,
-                        {
-                            requestId,
-                            maxRetries: RetryConfig.MAX_RETRIES,
-                            context: { tool: name, operation: opName }
-                        }
-                    );
+                    // Extract progress token from MCP request metadata
+                    const progressToken = request.params?._meta?.progressToken;
+
+                    // Execute with streaming progress support
+                    result = await executeWithStreamingProgress({
+                        bakeFunction: bake,
+                        operation: opName,
+                        input: args.input,
+                        recipeArgs,
+                        recipe,
+                        server,
+                        progressToken,
+                        streamingEnabled: ENABLE_STREAMING,
+                        streamingThreshold: STREAMING_THRESHOLD,
+                        timeout: OPERATION_TIMEOUT,
+                        requestId
+                    });
+                    streamed = !!progressToken && ENABLE_STREAMING;
                 }
 
                 // Cache result (only if caching is enabled)
@@ -1550,7 +1500,12 @@ async function runServer() {
     // Initialize recipe manager (v1.6.0)
     await recipeManager.initialize();
 
-    const transport = new StdioServerTransport();
+    // Initialize worker pool if enabled (v1.9.0)
+    if (ENABLE_WORKERS) {
+        await initWorkerPool();
+    }
+
+    const { transport } = await createTransport();
     await server.connect(transport);
 
     // Log server startup with configuration
@@ -1582,7 +1537,7 @@ async function runServer() {
     // Also output to stderr for compatibility (can be disabled with LOG_LEVEL=error)
     const logger = getLogger();
     logger.info("=== CyberChef MCP Server v" + VERSION + " ===");
-    logger.info("Running on stdio");
+    logger.info(`Running on ${getTransportType()} transport`);
     logger.info(`Max input size: ${Math.round(MAX_INPUT_SIZE / 1024 / 1024)}MB`);
     logger.info(`Operation timeout: ${OPERATION_TIMEOUT}ms`);
     logger.info(`Streaming threshold: ${Math.round(STREAMING_THRESHOLD / 1024 / 1024)}MB`);
@@ -1663,5 +1618,16 @@ export {
     stripToolPrefix,
     isV2CompatibilityMode,
     areSuppressed,
-    DEPRECATION_CODES
+    DEPRECATION_CODES,
+    // v1.9.0 exports - re-export worker pool functions
+    initWorkerPool,
+    shouldUseWorker,
+    executeInWorker,
+    getPoolStats,
+    destroyWorkerPool,
+    // v1.9.0 exports - re-export streaming progress
+    executeWithStreamingProgress,
+    // v1.9.0 exports - re-export transport functions
+    createTransport,
+    getTransportType
 };

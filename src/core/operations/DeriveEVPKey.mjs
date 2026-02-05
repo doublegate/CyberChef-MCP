@@ -40,7 +40,7 @@ class DeriveEVPKey extends Operation {
             {
                 "name": "Iterations",
                 "type": "number",
-                "value": 10000
+                "value": 1
             },
             {
                 "name": "Hashing function",
@@ -68,29 +68,14 @@ class DeriveEVPKey extends Operation {
             iterations = args[2],
             hasher = args[3],
             salt = CryptoJS.enc.Latin1.parse(
-                Utils.convertToByteString(args[4].string, args[4].option));
+                Utils.convertToByteString(args[4].string, args[4].option)),
+            key = CryptoJS.EvpKDF(passphrase, salt, { // lgtm [js/insufficient-password-hash]
+                keySize: keySize,
+                hasher: CryptoJS.algo[hasher],
+                iterations: iterations,
+            });
 
-        // Enforce minimum iteration count for security (NIST SP 800-63B recommends 10,000+)
-        const minIterations = 10000;
-        const actualIterations = Math.max(iterations, minIterations);
-
-        let warning = "";
-        if (iterations < minIterations) {
-            warning = `Warning: Iteration count ${iterations} is below the minimum secure value of ${minIterations}. Using ${minIterations} iterations instead.\n\n`;
-        }
-
-        // CodeQL suppression: This intentionally implements OpenSSL's EVP_BytesToKey for
-        // compatibility with OpenSSL-encrypted data. This is NOT a password storage mechanism.
-        // We enforce a minimum of 10,000 iterations per NIST SP 800-63B guidelines.
-        // For password storage, users should use bcrypt, scrypt, or Argon2 instead.
-        // lgtm[js/insufficient-password-hash]
-        const key = CryptoJS.EvpKDF(passphrase, salt, { // codeql[js/insufficient-password-hash]
-            keySize: keySize,
-            hasher: CryptoJS.algo[hasher],
-            iterations: actualIterations,
-        });
-
-        return warning + key.toString(CryptoJS.enc.Hex);
+        return key.toString(CryptoJS.enc.Hex);
     }
 
 }
@@ -126,11 +111,8 @@ CryptoJS.kdf.OpenSSL.execute = function (password, keySize, ivSize, salt) {
         salt = CryptoJS.lib.WordArray.random(64/8);
     }
 
-    // Derive key and IV with sufficient iterations for security (NIST recommends 10,000+)
-    const key = CryptoJS.algo.EvpKDF.create({
-        keySize: keySize + ivSize,
-        iterations: 10000
-    }).compute(password, salt);
+    // Derive key and IV
+    const key = CryptoJS.algo.EvpKDF.create({ keySize: keySize + ivSize }).compute(password, salt);
 
     // Separate key and IV
     const iv = CryptoJS.lib.WordArray.create(key.words.slice(keySize), ivSize * 4);

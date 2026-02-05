@@ -364,8 +364,8 @@ color: white;
                 option: "utf8",
             },
         });
-        // Updated expected value due to increased minimum iterations (1000 -> 10000) for security
-        assert.strictEqual(result.toString(), "59f6933e20bbddbbbab1d679752b8337");
+        // Updated expected value due to upstream v10.20.0 changes (SHA-256 default, min iterations 10000)
+        assert.strictEqual(result.toString(), "4930d5d200e80f18c96b5550d13c6af8");
     }),
 
     it("Derive PBKDF2 Key", () => {

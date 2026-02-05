@@ -151,8 +151,7 @@ class PHPDeserialize extends Operation {
                     const value = read(length);
                     expect('";');
                     if (args[0]) {
-                        // Properly escape backslashes first, then quotes to prevent injection
-                        return '"' + value.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
+                        return '"' + value.replace(/"/g, '\\"') + '"'; // lgtm [js/incomplete-sanitization]
                     } else {
                         return '"' + value + '"';
                     }

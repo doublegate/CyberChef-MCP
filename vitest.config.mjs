@@ -38,6 +38,9 @@ export default defineConfig({
                 "src/node/recipe-validator.mjs",
                 "src/node/recipe-storage.mjs",
                 "src/node/recipe-manager.mjs",
+                "src/node/worker-pool.mjs",
+                "src/node/transports.mjs",
+                "src/node/deprecation.mjs",
                 "src/node/lib/**/*.{js,mjs}",
             ],
             exclude: [
@@ -50,12 +53,12 @@ export default defineConfig({
                 "**/*.test.{js,mjs}",
                 "**/*.config.{js,mjs}",
             ],
-            // Coverage thresholds
+            // Coverage thresholds (raised in v1.9.0)
             thresholds: {
-                lines: 70,
-                functions: 70,
-                branches: 65,
-                statements: 70,
+                lines: 75,
+                functions: 90,
+                branches: 70,
+                statements: 75,
             },
             all: true,  // Include all files in coverage, even untested ones
         },
