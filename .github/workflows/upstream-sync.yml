@@ -402,7 +402,7 @@ jobs:
           DELETED_COUNT: ${{ steps.changes.outputs.deleted_count }}
         run: |
           git add src/core/operations/
-          git add src/core/config/OperationConfig.json
+          git add -f src/core/config/OperationConfig.json
           git add tests/mcp/baseline.json
 
           COMMIT_MSG="chore(upstream): selective sync from CyberChef $TARGET
