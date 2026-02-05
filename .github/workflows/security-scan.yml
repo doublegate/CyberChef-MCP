@@ -117,7 +117,7 @@ jobs:
           format: 'table'
           severity: ${{ steps.severity.outputs.level }}
           vuln-type: 'os,library'
-          exit-code: '0'
+          exit-code: '1'
 
   dependency-scan:
     name: Dependency Vulnerability Scan

@@ -73,13 +73,41 @@ module.exports = function (grunt) {
         });
 
 
+    grunt.registerTask("chmod",
+        "Sets file permissions on build output using native fs",
+        function() {
+            const done = this.async();
+            const fs = require("fs");
+            const buildPath = path.resolve("build");
+            function chmodRecursive(dir) {
+                if (!fs.existsSync(dir)) return;
+                const entries = fs.readdirSync(dir, { withFileTypes: true });
+                for (const entry of entries) {
+                    const fullPath = path.join(dir, entry.name);
+                    fs.chmodSync(fullPath, 0o755);
+                    if (entry.isDirectory()) {
+                        chmodRecursive(fullPath);
+                    }
+                }
+                fs.chmodSync(dir, 0o755);
+            }
+            try {
+                chmodRecursive(buildPath);
+                grunt.log.ok("Set permissions 755 on build/**/*");
+                done();
+            } catch (err) {
+                grunt.log.error("chmod failed: " + err.message);
+                done(false);
+            }
+        });
+
+
     // Load tasks provided by each plugin
     grunt.loadNpmTasks("grunt-eslint");
     grunt.loadNpmTasks("grunt-webpack");
     grunt.loadNpmTasks("grunt-contrib-clean");
     grunt.loadNpmTasks("grunt-contrib-copy");
     grunt.loadNpmTasks("grunt-contrib-watch");
-    grunt.loadNpmTasks("grunt-chmod");
     grunt.loadNpmTasks("grunt-exec");
     grunt.loadNpmTasks("grunt-concurrent");
     grunt.loadNpmTasks("grunt-contrib-connect");
@@ -318,14 +346,7 @@ module.exports = function (grunt) {
                 ]
             }
         },
-        chmod: {
-            build: {
-                options: {
-                    mode: "755",
-                },
-                src: ["build/**/*", "build/"]
-            }
-        },
+        // chmod replaced by custom 'chmod' task registered below
         watch: {
             config: {
                 files: ["src/core/operations/**/*", "!src/core/operations/index.mjs"],
