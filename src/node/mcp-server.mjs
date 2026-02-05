@@ -36,6 +36,13 @@ import {
 } from "./streaming.mjs";
 import { createTransport, getTransportType } from "./transports.mjs";
 import {
+    initWorkerPool,
+    shouldUseWorker,
+    executeInWorker,
+    getPoolStats,
+    destroyWorkerPool
+} from "./worker-pool.mjs";
+import {
     executeWithTimeoutAndRetry,
     RetryConfig
 } from "./retry.mjs";
@@ -948,6 +955,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             name: "cyberchef_deprecation_stats",
             description: "Get statistics on deprecated API usage in current session. Shows which deprecation warnings have been triggered and v2.0.0 preparation status.",
             inputSchema: zodToJsonSchema(z.object({}))
+        },
+        // v1.9.0 tools - Worker Thread Pool
+        {
+            name: "cyberchef_worker_stats",
+            description: "Get worker thread pool statistics including thread count, utilization, and completed tasks. Only available when ENABLE_WORKERS=true.",
+            inputSchema: zodToJsonSchema(z.object({}))
         }
     ];
 
@@ -1280,6 +1293,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             };
         }
 
+        // Handle v1.9.0 tools
+        if (name === "cyberchef_worker_stats") {
+            const stats = getPoolStats();
+            const result = stats
+                ? { enabled: true, ...stats }
+                : { enabled: false, message: "Worker pool is not enabled. Set ENABLE_WORKERS=true to enable." };
+            const output = JSON.stringify(result, null, 2);
+            logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
+
+            return {
+                content: [{ type: "text", text: output }]
+            };
+        }
+
         // Handle operation tools
         if (name.startsWith("cyberchef_")) {
             // Check rate limit
@@ -1370,24 +1397,32 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     args: recipeArgs
                 }];
 
-                // Extract progress token from MCP request metadata
-                const progressToken = request.params?._meta?.progressToken;
+                let result;
+                let streamed = false;
 
-                // Execute with streaming progress support
-                const result = await executeWithStreamingProgress({
-                    bakeFunction: bake,
-                    operation: opName,
-                    input: args.input,
-                    recipeArgs,
-                    recipe,
-                    server,
-                    progressToken,
-                    streamingEnabled: ENABLE_STREAMING,
-                    streamingThreshold: STREAMING_THRESHOLD,
-                    timeout: OPERATION_TIMEOUT,
-                    requestId
-                });
-                const streamed = !!progressToken && ENABLE_STREAMING;
+                // Route to worker thread if applicable
+                if (ENABLE_WORKERS && shouldUseWorker(opName, inputSize)) {
+                    result = await executeInWorker(args.input, recipe, OPERATION_TIMEOUT);
+                } else {
+                    // Extract progress token from MCP request metadata
+                    const progressToken = request.params?._meta?.progressToken;
+
+                    // Execute with streaming progress support
+                    result = await executeWithStreamingProgress({
+                        bakeFunction: bake,
+                        operation: opName,
+                        input: args.input,
+                        recipeArgs,
+                        recipe,
+                        server,
+                        progressToken,
+                        streamingEnabled: ENABLE_STREAMING,
+                        streamingThreshold: STREAMING_THRESHOLD,
+                        timeout: OPERATION_TIMEOUT,
+                        requestId
+                    });
+                    streamed = !!progressToken && ENABLE_STREAMING;
+                }
 
                 // Cache result (only if caching is enabled)
                 if (CACHE_ENABLED) {
@@ -1466,6 +1501,11 @@ async function runServer() {
 
     // Initialize recipe manager (v1.6.0)
     await recipeManager.initialize();
+
+    // Initialize worker pool if enabled (v1.9.0)
+    if (ENABLE_WORKERS) {
+        await initWorkerPool();
+    }
 
     const { transport, httpServer } = await createTransport();
     await server.connect(transport);
@@ -1580,5 +1620,16 @@ export {
     stripToolPrefix,
     isV2CompatibilityMode,
     areSuppressed,
-    DEPRECATION_CODES
+    DEPRECATION_CODES,
+    // v1.9.0 exports - re-export worker pool functions
+    initWorkerPool,
+    shouldUseWorker,
+    executeInWorker,
+    getPoolStats,
+    destroyWorkerPool,
+    // v1.9.0 exports - re-export streaming progress
+    executeWithStreamingProgress,
+    // v1.9.0 exports - re-export transport functions
+    createTransport,
+    getTransportType
 };
