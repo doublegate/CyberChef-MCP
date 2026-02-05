@@ -199,7 +199,7 @@ describe("MCP Server Integration Tests", () => {
     describe("Configuration Constants", () => {
         it("should export VERSION", async () => {
             const { VERSION } = await import("../../src/node/mcp-server.mjs");
-            expect(VERSION).toBe("1.8.0");
+            expect(VERSION).toBe("1.9.0");
         });
 
         it("should export configuration constants", async () => {

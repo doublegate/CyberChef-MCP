@@ -10,11 +10,9 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
     LRUCache,
-    MemoryMonitor,
     TelemetryCollector,
     RateLimiter,
     ResourceQuotaTracker,
-    BatchProcessor,
     sanitizeToolName,
     mapArgsToZod,
     resolveArgValue,
@@ -42,7 +40,6 @@ import {
     batchProcessor,
     V2_COMPATIBILITY_MODE,
     SUPPRESS_DEPRECATIONS,
-    emitDeprecation,
     getDeprecationStats,
     resetDeprecations,
     analyzeRecipeCompatibility,

@@ -27,11 +27,9 @@ import {
     logRequestError,
     logCache,
     logMemory,
-    logStreaming,
     logServerStart
 } from "./logger.mjs";
 import {
-    determineStreamingStrategy,
     executeWithStreamingProgress
 } from "./streaming.mjs";
 import { createTransport, getTransportType } from "./transports.mjs";
@@ -1296,9 +1294,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         // Handle v1.9.0 tools
         if (name === "cyberchef_worker_stats") {
             const stats = getPoolStats();
-            const result = stats
-                ? { enabled: true, ...stats }
-                : { enabled: false, message: "Worker pool is not enabled. Set ENABLE_WORKERS=true to enable." };
+            const result = stats ?
+                { enabled: true, ...stats } :
+                { enabled: false, message: "Worker pool is not enabled. Set ENABLE_WORKERS=true to enable." };
             const output = JSON.stringify(result, null, 2);
             logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
 
@@ -1507,7 +1505,7 @@ async function runServer() {
         await initWorkerPool();
     }
 
-    const { transport, httpServer } = await createTransport();
+    const { transport } = await createTransport();
     await server.connect(transport);
 
     // Log server startup with configuration

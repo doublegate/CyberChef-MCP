@@ -426,9 +426,9 @@ export async function executeWithStreamingProgress({
     requestId
 }) {
     const inputSize = Buffer.byteLength(input, "utf8");
-    const strategy = streamingEnabled
-        ? determineStreamingStrategy(operation, inputSize, streamingThreshold)
-        : { type: "none", reason: "Streaming disabled" };
+    const strategy = streamingEnabled ?
+        determineStreamingStrategy(operation, inputSize, streamingThreshold) :
+        { type: "none", reason: "Streaming disabled" };
 
     // If no progress token or no streaming strategy, fall back to direct execution
     if (!progressToken || strategy.type === "none") {
@@ -466,9 +466,9 @@ export async function executeWithStreamingProgress({
     await sendProgress(0, inputSize, `Starting ${operation}`);
 
     // Choose the appropriate generator
-    const generator = strategy.type === "chunked"
-        ? streamOperation(bakeFunction, operation, input, recipeArgs)
-        : streamOperationWithProgress(bakeFunction, operation, input, recipeArgs);
+    const generator = strategy.type === "chunked" ?
+        streamOperation(bakeFunction, operation, input, recipeArgs) :
+        streamOperationWithProgress(bakeFunction, operation, input, recipeArgs);
 
     let finalResult = null;
 

@@ -79,6 +79,11 @@ module.exports = function (grunt) {
             const done = this.async();
             const fs = require("fs");
             const buildPath = path.resolve("build");
+            /**
+             * Recursively sets 755 permissions on a directory and its contents.
+             *
+             * @param {string} dir - Directory path to chmod
+             */
             function chmodRecursive(dir) {
                 if (!fs.existsSync(dir)) return;
                 const entries = fs.readdirSync(dir, { withFileTypes: true });

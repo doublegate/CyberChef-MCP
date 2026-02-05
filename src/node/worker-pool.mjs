@@ -54,15 +54,15 @@ export async function initWorkerPool(options = {}) {
 
     const { default: Piscina } = await import("piscina");
 
-    const minThreads = options.minThreads
-        || parseInt(process.env.CYBERCHEF_WORKER_MIN_THREADS, 10)
-        || 1;
-    const maxThreads = options.maxThreads
-        || parseInt(process.env.CYBERCHEF_WORKER_MAX_THREADS, 10)
-        || 4;
-    const idleTimeout = options.idleTimeout
-        || parseInt(process.env.CYBERCHEF_WORKER_IDLE_TIMEOUT, 10)
-        || 30000;
+    const minThreads = options.minThreads ||
+        parseInt(process.env.CYBERCHEF_WORKER_MIN_THREADS, 10) ||
+        1;
+    const maxThreads = options.maxThreads ||
+        parseInt(process.env.CYBERCHEF_WORKER_MAX_THREADS, 10) ||
+        4;
+    const idleTimeout = options.idleTimeout ||
+        parseInt(process.env.CYBERCHEF_WORKER_IDLE_TIMEOUT, 10) ||
+        30000;
 
     pool = new Piscina({
         filename: join(__dirname, "worker.mjs"),
