@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-02-05
+
+### Added
+- **MCP Streaming Protocol** (closes #13): `executeWithStreamingProgress()` sends `notifications/progress` via MCP SDK progress token mechanism
+- **Worker Thread Pool with Piscina** (closes #15): CPU-intensive operations offloaded to worker threads with configurable pool size
+- **Streamable HTTP Transport**: Transport factory supporting stdio (default) or HTTP via `CYBERCHEF_TRANSPORT=http`
+- **`cyberchef_worker_stats` tool**: Monitor worker pool utilization at runtime
+- New `src/node/transports.mjs` transport factory (stdio/HTTP)
+- New `src/node/worker.mjs` worker thread script for Piscina
+- New `src/node/worker-pool.mjs` worker pool manager
+- New test files: handler-dispatch, config-variations, worker-pool, transports
+- 9 new environment variables for transport, worker pool, and worker routing configuration
+
+### Changed
+- **Upstream Sync v10.20.0** (closes #26): Merged 10 modified operations (Argon2, DeriveEVPKey, Filter, FindReplace, JSONBeautify, PHPDeserialize, RAKE, Register, RegularExpression, Subsection)
+- **Test Suites**: 126 new tests (total: 689 tests, all passing) (closes #14)
+- **Coverage Thresholds**: Raised to 75% lines/stmts, 90% functions, 70% branches
+- **Coverage**: 75.64% lines, 71.98% branches, 91.5% functions
+
+### Security
+- `@modelcontextprotocol/sdk` ^1.22.0 -> ^1.26.0 (fixes #45, #52)
+- `lodash` ^4.17.21 -> ^4.17.23 (fixes #51)
+- `diff` ^5.2.0 -> ^5.2.2 (fixes #50)
+- `qs >=6.14.1` override added (fixes #43)
+- Trivy container scan now fails CI on vulnerabilities (closes #16)
+- `grunt-chmod` replaced with native `fs.chmod` (closes #19)
+- **elliptic (#46):** No fix available - documented for tracking
+
+### Removed
+- Dead `BufferPool` class code from mcp-server.mjs (closes #20)
+- Commented-out `CPU_INTENSIVE_OPERATIONS` set (moved to worker-pool.mjs)
+
 ## [1.8.0] - 2025-12-17
 
 ### Added

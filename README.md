@@ -4,7 +4,7 @@ This project provides a **Model Context Protocol (MCP)** server interface for **
 
 By running this server, you enable AI assistants (like Claude, Cursor AI, and others) to natively utilize CyberChef's extensive library of 463 data manipulation operations—including encryption, encoding, compression, and forensic analysis—as executable tools.
 
-**Latest Release:** v1.8.0 | [Release Notes](docs/releases/v1.8.0.md) | [Security Policy](SECURITY.md) | [Security Fixes Report](docs/security/SECURITY_FIX_REPORT.md)
+**Latest Release:** v1.9.0 | [Release Notes](docs/releases/v1.9.0.md) | [Security Policy](SECURITY.md) | [Security Fixes Report](docs/security/SECURITY_FIX_REPORT.md)
 
 ![CyberChef MCP Banner](images/CyberChef-MCP_Banner-Logo.jpg)
 
@@ -64,19 +64,25 @@ The server exposes CyberChef operations as MCP tools:
         - Shows deprecation warnings triggered in current session
         - Reports session duration, suppression status, and v2 compatibility mode
         - Lists all 8 deprecation codes (DEP001-DEP008) with details
+*   **Worker Thread Pool** (v1.9.0): CPU-intensive operations offloaded to worker threads
+    *   `cyberchef_worker_stats` - Monitor worker pool utilization, active/completed tasks, and pool configuration
+    *   Enable with `ENABLE_WORKERS=true` environment variable
+    *   Configurable pool size, idle timeout, and minimum input size for worker routing
 
 ### Technical Highlights
 *   **Dockerized**: Runs as a lightweight, self-contained Docker container based on Chainguard distroless Node.js 22 (~90MB compressed, 70% smaller attack surface than traditional images).
 *   **Dual-Registry Publishing**: Images published to both Docker Hub and GitHub Container Registry (GHCR) for maximum accessibility and Docker Scout health score optimization.
 *   **Supply Chain Attestations**: SBOM and provenance attestations attached to Docker Hub images for enhanced security transparency and compliance (SLSA Build Level 3).
-*   **Stdio Transport**: Communicates via standard input/output, making it easy to integrate with CLI-based MCP clients.
+*   **Dual Transport** (v1.9.0): Stdio (default) or Streamable HTTP via `CYBERCHEF_TRANSPORT=http` for browser and remote clients.
+*   **MCP Streaming with Progress** (v1.9.0): Operations send `notifications/progress` via the MCP SDK progress token mechanism for real-time status updates during long-running tasks.
+*   **Worker Thread Pool** (v1.9.0): Piscina-based worker threads offload CPU-intensive operations (AES, Blowfish, bcrypt, scrypt, PBKDF2, etc.) to prevent event loop blocking. Configurable pool size and routing thresholds.
 *   **Schema Validation**: All inputs are validated against schemas derived from CyberChef's internal type system using `zod`.
 *   **Modern Node.js**: Fully compatible with Node.js v22+ with automated compatibility patches.
 *   **Recipe Management** (v1.6.0): Save and reuse multi-operation workflows with full CRUD operations, import/export in multiple formats (JSON/YAML/URL/CyberChef), recipe composition with nesting support, and curated library of 25+ production-ready recipes across 5 categories. See [Recipe Management Guide](docs/guides/recipe_management.md) for details.
 *   **Advanced Features** (v1.7.0): Enterprise-grade capabilities with batch processing (parallel/sequential execution of up to 100 operations), privacy-first telemetry collection (disabled by default, no input/output data captured), sliding window rate limiting for resource protection, enhanced caching with inspection tools, and resource quota tracking (concurrent operations, data sizes). All features are configurable via environment variables with secure defaults. See [Release Notes](docs/releases/v1.7.0.md) for details.
 *   **Enhanced Observability** (v1.5.0): Structured JSON logging with Pino for production monitoring, comprehensive error handling with actionable recovery suggestions, automatic retry logic with exponential backoff, request correlation with UUID tracking, circuit breaker pattern for cascading failure prevention, and streaming infrastructure for progressive results on large operations. See [Release Notes](docs/releases/v1.5.0.md) for details.
 *   **Performance Optimized** (v1.4.0): LRU cache for operation results (100MB default), automatic streaming for large inputs (10MB+ threshold), configurable resource limits (100MB max input, 30s timeout), memory monitoring, and comprehensive benchmark suite. See [Performance Tuning Guide](docs/architecture/performance-tuning.md) for configuration options.
-*   **Upstream Sync Automation** (v1.3.0): Automated monitoring of upstream CyberChef releases every 6 hours, one-click synchronization workflow, comprehensive validation test suite with 563 tests, and emergency rollback mechanism.
+*   **Upstream Sync Automation** (v1.3.0): Automated monitoring of upstream CyberChef releases every 6 hours, one-click synchronization workflow, comprehensive validation test suite with 689 tests, and emergency rollback mechanism.
 *   **Security Hardened** (v1.4.5+): Chainguard distroless base image with zero-CVE baseline, non-root execution (UID 65532), automated Trivy vulnerability scanning with build-fail thresholds, dual SBOM strategy (Docker Scout attestations + CycloneDX), read-only filesystem support, SLSA Build Level 3 provenance, and 7-day SLA for critical CVE patches. Fixed 11 of 12 code scanning vulnerabilities including critical cryptographic randomness weakness and 7 ReDoS vulnerabilities. See [Security Policy](SECURITY.md) and [Security Fixes Report](docs/security/SECURITY_FIX_REPORT.md) for details.
 *   **Production Ready**: Comprehensive CI/CD with CodeQL v4, automated testing, and dual-registry container publishing (Docker Hub + GHCR) with complete supply chain attestations.
 
@@ -109,17 +115,17 @@ For environments without direct GHCR access, download the pre-built Docker image
 1.  **Download the tarball** (approximately 90MB compressed):
     ```bash
     # Download from GitHub Releases
-    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v1.8.0/cyberchef-mcp-v1.8.0-docker-image.tar.gz
+    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v1.9.0/cyberchef-mcp-v1.9.0-docker-image.tar.gz
     ```
 
 2.  **Load the image into Docker:**
     ```bash
-    docker load < cyberchef-mcp-v1.8.0-docker-image.tar.gz
+    docker load < cyberchef-mcp-v1.9.0-docker-image.tar.gz
     ```
 
 3.  **Tag for easier usage:**
     ```bash
-    docker tag ghcr.io/doublegate/cyberchef-mcp_v1:v1.8.0 cyberchef-mcp
+    docker tag ghcr.io/doublegate/cyberchef-mcp_v1:v1.9.0 cyberchef-mcp
     ```
 
 4.  **Run the server:**
@@ -264,12 +270,23 @@ CYBERCHEF_MAX_CONCURRENT_OPS=10          # Maximum concurrent operations
 V2_COMPATIBILITY_MODE=false              # Enable v2.0.0 behavior preview (elevates warnings to errors)
 CYBERCHEF_SUPPRESS_DEPRECATIONS=false    # Suppress deprecation warnings
 
+# Transport (v1.9.0+)
+CYBERCHEF_TRANSPORT=stdio                # Transport type: stdio or http
+CYBERCHEF_HTTP_PORT=3000                 # HTTP transport port
+CYBERCHEF_HTTP_HOST=127.0.0.1            # HTTP transport bind address
+
+# Worker Thread Pool (v1.9.0+)
+CYBERCHEF_WORKER_MIN_THREADS=1           # Minimum worker threads
+CYBERCHEF_WORKER_MAX_THREADS=4           # Maximum worker threads
+CYBERCHEF_WORKER_IDLE_TIMEOUT=30000      # Worker idle timeout in milliseconds
+CYBERCHEF_WORKER_MIN_INPUT_SIZE=1024     # Minimum input size for worker routing (bytes)
+
 # Performance (v1.4.0+)
 CYBERCHEF_MAX_INPUT_SIZE=104857600       # Maximum input size (100MB)
 CYBERCHEF_OPERATION_TIMEOUT=30000        # Operation timeout in milliseconds (30s)
 CYBERCHEF_STREAMING_THRESHOLD=10485760   # Streaming threshold (10MB)
 CYBERCHEF_ENABLE_STREAMING=true          # Enable streaming for large operations
-CYBERCHEF_ENABLE_WORKERS=false           # Enable worker threads (disabled by default, not yet implemented)
+CYBERCHEF_ENABLE_WORKERS=false           # Enable worker threads (disabled by default)
 CYBERCHEF_CACHE_MAX_SIZE=104857600       # Cache maximum size (100MB)
 CYBERCHEF_CACHE_MAX_ITEMS=1000           # Cache maximum items
 ```
@@ -318,6 +335,24 @@ docker run -i --rm --memory=512m \
 docker run -i --rm \
   -e LOG_LEVEL=debug \
   -e CYBERCHEF_MAX_RETRIES=5 \
+  ghcr.io/doublegate/cyberchef-mcp_v1:latest
+```
+
+**Worker Thread Pool for CPU-Intensive Operations (v1.9.0+)**
+```bash
+docker run -i --rm \
+  -e ENABLE_WORKERS=true \
+  -e CYBERCHEF_WORKER_MAX_THREADS=8 \
+  -e CYBERCHEF_WORKER_IDLE_TIMEOUT=60000 \
+  ghcr.io/doublegate/cyberchef-mcp_v1:latest
+```
+
+**HTTP Transport for Browser/Remote Clients (v1.9.0+)**
+```bash
+docker run --rm -p 3000:3000 \
+  -e CYBERCHEF_TRANSPORT=http \
+  -e CYBERCHEF_HTTP_PORT=3000 \
+  -e CYBERCHEF_HTTP_HOST=0.0.0.0 \
   ghcr.io/doublegate/cyberchef-mcp_v1:latest
 ```
 
@@ -480,7 +515,7 @@ CyberChef MCP Server has a comprehensive development roadmap spanning **19 relea
 |-------|----------|----------|-------|--------|
 | **Phase 1: Foundation** | v1.2.0 - v1.4.6 | Q4 2025 - Q1 2026 | Security hardening, upstream sync, performance | **Completed** |
 | **Phase 2: Enhancement** | v1.5.0 - v1.7.3 | Q2 2026 | Streaming, recipe management, batch processing | **Completed** |
-| **Phase 3: Maturity** | v1.8.0 - v2.0.0 | Q3 2026 | API stabilization, external tool integration, v2.0.0 | **v1.8.0 Released** |
+| **Phase 3: Maturity** | v1.8.0 - v2.0.0 | Q3 2026 | API stabilization, external tool integration, v2.0.0 | **v1.9.0 Released** |
 | **Phase 4: Expansion** | v2.1.0 - v2.3.0 | Q4 2026 | Multi-modal, advanced transports, plugins | Planned |
 | **Phase 5: Enterprise** | v2.4.0 - v2.6.0 | Q1 2027 | OAuth 2.1, RBAC, Kubernetes, observability | Planned |
 | **Phase 6: Evolution** | v2.7.0 - v3.0.0 | Q2-Q3 2027 | Edge deployment, AI-native features, v3.0.0 | Planned |
@@ -546,6 +581,7 @@ Detailed documentation is organized in the [`docs/`](docs/) directory:
 *   [**Security Fixes Report**](docs/security/SECURITY_FIX_REPORT.md): Detailed report of 11 vulnerability fixes (ReDoS and cryptographic weaknesses)
 *   [**Security Fixes Summary**](docs/security/SECURITY_FIXES_SUMMARY.md): Quick reference for recent security improvements
 *   [**v2.0.0 Breaking Changes**](docs/v2.0.0-breaking-changes.md): Comprehensive migration guide for v2.0.0 with deprecation codes, examples, and FAQ
+*   [**Release Notes v1.9.0**](docs/releases/v1.9.0.md): MCP streaming, worker thread pool, HTTP transport, upstream v10.20.0, security updates, 689 tests
 *   [**Release Notes v1.8.0**](docs/releases/v1.8.0.md): Breaking changes preparation - deprecation warnings, migration preview tool, v2.0.0 compatibility mode
 *   [**Release Notes v1.7.3**](docs/releases/v1.7.3.md): Reference documentation and v2.0.0 integration planning - 42 new documentation files, comprehensive security tool reference
 *   [**Release Notes v1.7.2**](docs/releases/v1.7.2.md): CI improvements, test expansion, documentation updates - enhanced workflows, 150 new tests, corrected metrics
@@ -631,7 +667,7 @@ All workflows use the latest CodeQL Action v4 for security scanning and SARIF up
 # Run all tests (requires Node.js 22+)
 npm test
 
-# Run MCP validation test suite (563 tests with Vitest)
+# Run MCP validation test suite (689 tests with Vitest)
 npm run test:mcp
 
 # Run MCP tests with coverage report
@@ -652,11 +688,11 @@ npm run lint
 ```
 
 **Test Coverage:**
-The MCP server maintains comprehensive test coverage across 15 test suites:
-- **563 total tests** covering all MCP server components (increased from 493 in v1.7.2)
-- **Coverage thresholds**: 70% lines/statements/functions, 65% branches
-- **Current coverage**: 74.97% lines, 74.97% statements, 90.39% functions, 71.62% branches
-- Test suites: coverage-improvement, deprecation, errors, logger, mcp-server, migration-preview, real-server-handlers, recipe-manager, recipe-storage, recipe-validator, retry, server-integration, streaming, v1.7.0, validation
+The MCP server maintains comprehensive test coverage across 19 test suites:
+- **689 total tests** covering all MCP server components (increased from 563 in v1.8.0)
+- **Coverage thresholds**: 75% lines/statements, 90% functions, 70% branches
+- **Current coverage**: 75.64% lines, 75.7% statements, 91.5% functions, 71.98% branches
+- Test suites: config-variations, coverage-improvement, deprecation, errors, handler-dispatch, logger, mcp-server, migration-preview, real-server-handlers, recipe-manager, recipe-storage, recipe-validator, retry, server-integration, streaming, transports, v1.7.0, validation, worker-pool
 - Note: Coverage variation occurs as new features are added; mcp-server.mjs currently has lower coverage due to extensive integration code
 
 ## Contributing
