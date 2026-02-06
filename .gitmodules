@@ -1,0 +1,3 @@
+[submodule "ref-proj/CyberChef"]
+	path = ref-proj/CyberChef
+	url = https://github.com/gchq/CyberChef.git
