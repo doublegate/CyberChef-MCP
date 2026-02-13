@@ -39,7 +39,7 @@ npm run build           # Production build
 npm run lint            # ESLint (zero errors required)
 npm test                # Core unit tests
 npm run test:mcp        # MCP server tests (689 tests)
-npm run test:coverage   # Coverage report (thresholds: 70% lines/functions)
+npm run test:coverage   # Coverage report (thresholds: 75% lines/stmts, 90% functions, 70% branches)
 npm run testnodeconsumer # Test CJS/ESM consumers
 ```
 
@@ -66,7 +66,7 @@ MCP Client (AI/IDE) <--> CyberChef MCP Server <--> CyberChef Node API <--> Cyber
 | `src/node/index.mjs` | Node.js API bridge (**generated** by Grunt) |
 | `src/core/config/OperationConfig.json` | Operation metadata (**generated** by Grunt) |
 | `src/core/operations/*.mjs` | Individual operation implementations |
-| `Dockerfile.mcp` | MCP server container (node:22-alpine) |
+| `Dockerfile.mcp` | MCP server container (Chainguard distroless) |
 | `Gruntfile.js` | Build orchestration for config generation |
 
 ### MCP Tools Structure
@@ -74,6 +74,10 @@ MCP Client (AI/IDE) <--> CyberChef MCP Server <--> CyberChef Node API <--> Cyber
 1. **`cyberchef_bake`** - Meta-tool for complex recipe chains
 2. **`cyberchef_search`** - Operation discovery via `help()` function
 3. **`cyberchef_<op_name>`** - 300+ dynamically generated tools from OperationConfig
+4. **`cyberchef_worker_stats`** - Worker thread pool monitoring (v1.9.0)
+5. **`cyberchef_deprecation_stats`** / **`cyberchef_migration_preview`** - v2.0.0 migration tools (v1.8.0)
+6. **Recipe tools** - `cyberchef_recipe_create/get/list/update/delete/execute/export/import/validate/test` (v1.6.0)
+7. **`cyberchef_batch`** / **`cyberchef_telemetry_export`** / **`cyberchef_cache_stats`** / **`cyberchef_cache_clear`** / **`cyberchef_quota_info`** (v1.7.0)
 
 Tool naming: Operations are sanitized to snake_case with `cyberchef_` prefix (e.g., "AES Decrypt" -> `cyberchef_aes_decrypt`).
 
@@ -99,7 +103,14 @@ Run these manually if developing locally on Node 22+.
 |----------|---------|---------|
 | `core-ci.yml` | Push to master | Lint + tests + Codecov coverage |
 | `mcp-docker-build.yml` | Push to master | Build and verify Docker image |
-| `mcp-release.yml` | Tags `v*` | Publish to GHCR |
+| `mcp-release.yml` | Tags `v*` | Publish to Docker Hub + GHCR |
+| `security-scan.yml` | Push/PR/weekly | Trivy + npm audit |
+| `upstream-monitor.yml` | Weekly (Sun noon UTC) | Check for upstream releases |
+| `upstream-sync.yml` | Label/manual | Selective upstream sync |
+| `rollback.yml` | Manual | Emergency rollback |
+| `pull_requests.yml` | PRs | PR validation |
+| `performance-benchmarks.yml` | Push | Performance regression testing |
+| `codeql.yml` | Push/PR/weekly | CodeQL security scanning |
 
 ### Release Process
 ```bash

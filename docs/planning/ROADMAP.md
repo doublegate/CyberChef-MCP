@@ -77,19 +77,19 @@ gantt
 
 ### Phase 1-3 (v1.2.0 - v2.0.0)
 
-| Release | Theme | Key Features | Effort | Risk |
-|---------|-------|--------------|--------|------|
-| **v1.2.6** | Container Optimization | nginx:alpine-slim for web app, non-root permissions | S | Low |
-| **v1.2.5** | Security Patch | GitHub alerts, OWASP Argon2 hardening, build fixes | S | Low |
-| **v1.2.0** | Security Hardening | Docker DHI, non-root, security scanning | L | Medium |
-| **v1.3.0** | Upstream Sync | Automated CyberChef updates, validation testing | XL | Medium | ✅ **Completed** |
-| **v1.4.0** | Performance | Streaming optimization, worker threads, memory management | L | Low |
-| **v1.5.0** | Streaming & Errors | Large operation support, enhanced error handling | L | Medium |
-| **v1.6.0** | Recipe Management | Save/load/share recipes, recipe library | XL | Medium |
-| **v1.7.0** | Advanced Features | Batch processing, telemetry, rate limiting | L | Low |
-| **v1.8.0** | Breaking Changes Prep | Deprecation warnings, migration guides | M | High |
-| **v1.9.0** | Pre-v2.0.0 Polish | Final testing, documentation, migration tools | M | Medium |
-| **v2.0.0** | Major Release | Breaking changes, API stabilization, type system | XL | High |
+| Release | Theme | Key Features | Effort | Risk | Status |
+|---------|-------|--------------|--------|------|--------|
+| **v1.2.6** | Container Optimization | nginx:alpine-slim for web app, non-root permissions | S | Low | Released |
+| **v1.2.5** | Security Patch | GitHub alerts, OWASP Argon2 hardening, build fixes | S | Low | Released |
+| **v1.2.0** | Security Hardening | Docker DHI, non-root, security scanning | L | Medium | Released |
+| **v1.3.0** | Upstream Sync | Automated CyberChef updates, validation testing | XL | Medium | Released |
+| **v1.4.0** | Performance | Streaming optimization, worker threads, memory management | L | Low | Released |
+| **v1.5.0** | Streaming & Errors | Large operation support, enhanced error handling | L | Medium | Released |
+| **v1.6.0** | Recipe Management | Save/load/share recipes, recipe library | XL | Medium | Released |
+| **v1.7.0** | Advanced Features | Batch processing, telemetry, rate limiting | L | Low | Released |
+| **v1.8.0** | Breaking Changes Prep | Deprecation warnings, migration guides | M | High | Released |
+| **v1.9.0** | Pre-v2.0.0 Polish | Streaming, workers, HTTP transport, security | M | Medium | Released |
+| **v2.0.0** | Major Release | Breaking changes, API stabilization, type system | XL | High | Planned |
 
 ### Phase 4-6 (v2.1.0 - v3.0.0)
 

@@ -66,7 +66,7 @@ The server exposes CyberChef operations as MCP tools:
         - Lists all 8 deprecation codes (DEP001-DEP008) with details
 *   **Worker Thread Pool** (v1.9.0): CPU-intensive operations offloaded to worker threads
     *   `cyberchef_worker_stats` - Monitor worker pool utilization, active/completed tasks, and pool configuration
-    *   Enable with `ENABLE_WORKERS=true` environment variable
+    *   Enable with `CYBERCHEF_ENABLE_WORKERS=true` environment variable
     *   Configurable pool size, idle timeout, and minimum input size for worker routing
 
 ### Technical Highlights
@@ -82,7 +82,7 @@ The server exposes CyberChef operations as MCP tools:
 *   **Advanced Features** (v1.7.0): Enterprise-grade capabilities with batch processing (parallel/sequential execution of up to 100 operations), privacy-first telemetry collection (disabled by default, no input/output data captured), sliding window rate limiting for resource protection, enhanced caching with inspection tools, and resource quota tracking (concurrent operations, data sizes). All features are configurable via environment variables with secure defaults. See [Release Notes](docs/releases/v1.7.0.md) for details.
 *   **Enhanced Observability** (v1.5.0): Structured JSON logging with Pino for production monitoring, comprehensive error handling with actionable recovery suggestions, automatic retry logic with exponential backoff, request correlation with UUID tracking, circuit breaker pattern for cascading failure prevention, and streaming infrastructure for progressive results on large operations. See [Release Notes](docs/releases/v1.5.0.md) for details.
 *   **Performance Optimized** (v1.4.0): LRU cache for operation results (100MB default), automatic streaming for large inputs (10MB+ threshold), configurable resource limits (100MB max input, 30s timeout), memory monitoring, and comprehensive benchmark suite. See [Performance Tuning Guide](docs/architecture/performance-tuning.md) for configuration options.
-*   **Upstream Sync Automation** (v1.3.0): Automated monitoring of upstream CyberChef releases every 6 hours, one-click synchronization workflow, comprehensive validation test suite with 689 tests, and emergency rollback mechanism.
+*   **Upstream Sync Automation** (v1.3.0): Automated monitoring of upstream CyberChef releases weekly (Sundays at noon UTC), one-click synchronization workflow, comprehensive validation test suite with 689 tests, and emergency rollback mechanism.
 *   **Security Hardened** (v1.4.5+): Chainguard distroless base image with zero-CVE baseline, non-root execution (UID 65532), automated Trivy vulnerability scanning with build-fail thresholds, dual SBOM strategy (Docker Scout attestations + CycloneDX), read-only filesystem support, SLSA Build Level 3 provenance, and 7-day SLA for critical CVE patches. Fixed 11 of 12 code scanning vulnerabilities including critical cryptographic randomness weakness and 7 ReDoS vulnerabilities. See [Security Policy](SECURITY.md) and [Security Fixes Report](docs/security/SECURITY_FIX_REPORT.md) for details.
 *   **Production Ready**: Comprehensive CI/CD with CodeQL v4, automated testing, and dual-registry container publishing (Docker Hub + GHCR) with complete supply chain attestations.
 
@@ -286,7 +286,7 @@ CYBERCHEF_MAX_INPUT_SIZE=104857600       # Maximum input size (100MB)
 CYBERCHEF_OPERATION_TIMEOUT=30000        # Operation timeout in milliseconds (30s)
 CYBERCHEF_STREAMING_THRESHOLD=10485760   # Streaming threshold (10MB)
 CYBERCHEF_ENABLE_STREAMING=true          # Enable streaming for large operations
-CYBERCHEF_ENABLE_WORKERS=false           # Enable worker threads (disabled by default)
+CYBERCHEF_ENABLE_WORKERS=false           # Enable worker thread pool (disabled by default)
 CYBERCHEF_CACHE_MAX_SIZE=104857600       # Cache maximum size (100MB)
 CYBERCHEF_CACHE_MAX_ITEMS=1000           # Cache maximum items
 ```
@@ -341,7 +341,7 @@ docker run -i --rm \
 **Worker Thread Pool for CPU-Intensive Operations (v1.9.0+)**
 ```bash
 docker run -i --rm \
-  -e ENABLE_WORKERS=true \
+  -e CYBERCHEF_ENABLE_WORKERS=true \
   -e CYBERCHEF_WORKER_MAX_THREADS=8 \
   -e CYBERCHEF_WORKER_IDLE_TIMEOUT=60000 \
   ghcr.io/doublegate/cyberchef-mcp_v1:latest
@@ -656,7 +656,7 @@ This project uses GitHub Actions to ensure stability and security:
 *   **Release** ([`mcp-release.yml`](.github/workflows/mcp-release.yml)): Publishes Docker image to GHCR with SBOM attachment on version tags (`v*`), automatically creates GitHub releases
 
 **Upstream Sync Automation (v1.3.0+):**
-*   **Upstream Monitor** ([`upstream-monitor.yml`](.github/workflows/upstream-monitor.yml)): Monitors GCHQ/CyberChef for new releases every 6 hours, creates GitHub issues for review
+*   **Upstream Monitor** ([`upstream-monitor.yml`](.github/workflows/upstream-monitor.yml)): Monitors GCHQ/CyberChef for new releases weekly (Sundays at noon UTC), creates GitHub issues for review
 *   **Upstream Sync** ([`upstream-sync.yml`](.github/workflows/upstream-sync.yml)): Selective file synchronization workflow - copies only `src/core/operations/*.mjs` files, prevents restoration of deleted web UI components, creates PR for review
 *   **Rollback** ([`rollback.yml`](.github/workflows/rollback.yml)): Emergency rollback mechanism with state comparison and ref-proj guidance
 

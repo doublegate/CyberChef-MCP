@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Upstream Monitor Schedule**: Changed cron from every 6 hours to weekly (Sundays at noon UTC) to reduce unnecessary CI runs
+
+### Fixed
+- **Documentation**: Corrected `ENABLE_WORKERS` env var references to `CYBERCHEF_ENABLE_WORKERS` across README.md, CLAUDE.md, and release notes
+- **Documentation**: Updated upstream monitor schedule references from "every 6 hours" to "weekly" in README.md
+- **Documentation**: Updated Dockerfile base image references from `node:18-alpine`/`node:22-alpine` to Chainguard distroless in architecture docs and CLAUDE.md
+- **Documentation**: Updated coverage threshold references in CLAUDE.md to match current thresholds (75% lines/stmts, 90% functions, 70% branches)
+- **Documentation**: Expanded MCP tools listing and CI/CD workflow table in CLAUDE.md
+
 ## [1.9.0] - 2026-02-05
 
 ### Added

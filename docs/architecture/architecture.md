@@ -6,11 +6,13 @@ The solution involves creating a new entry point in the `src/node/` directory th
 
 ```mermaid
 graph TD
-    A[MCP Client AI/IDE] -->|Stdio| B[CyberChef MCP Server]
-    B -->|Imports| C[CyberChef Node API]
-    C -->|Uses| D[CyberChef Core]
-    D -->|Config| E[OperationConfig.json]
-    D -->|Logic| F[Operations]
+    A[MCP Client AI/IDE] -->|Stdio/HTTP| B[Transport Layer]
+    B -->|Routes| C[CyberChef MCP Server]
+    C -->|Imports| D[CyberChef Node API]
+    D -->|Uses| E[CyberChef Core]
+    E -->|Config| F[OperationConfig.json]
+    E -->|Logic| G[Operations]
+    C -->|Offloads| H[Worker Thread Pool]
 ```
 
 ## Components
@@ -49,9 +51,10 @@ Programmatically generated tools for every supported CyberChef operation.
 
 ### 3. Containerization (`Dockerfile.mcp`)
 A specialized Docker build for the server.
--   **Base:** `node:18-alpine`.
--   **Context:** Copies `src/`, `package.json`.
+-   **Base:** Chainguard distroless Node.js 22 (`cgr.dev/chainguard/node:latest`).
+-   **Context:** Multi-stage build; copies `src/`, `package.json`.
 -   **Command:** `node src/node/mcp-server.mjs`.
+-   **Security:** Non-root (UID 65532), zero-CVE baseline, read-only filesystem support.
 
 ## Data Flow
 1.  **Discovery:** Client requests `listTools`. Server iterates `OperationConfig` and generates tool schemas.

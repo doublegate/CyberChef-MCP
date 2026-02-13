@@ -2,8 +2,8 @@ name: Upstream Release Monitor
 
 on:
   schedule:
-    # Run every 6 hours
-    - cron: '0 */6 * * *'
+    # Run once per week: Sunday at 12:00 UTC (mid-day)
+    - cron: '0 12 * * 0'
   workflow_dispatch: # Allow manual trigger
 
 permissions:
