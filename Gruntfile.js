@@ -239,7 +239,7 @@ module.exports = function (grunt) {
             configs: ["*.{js,mjs}"],
             core: ["src/core/**/*.{js,mjs}", "!src/core/vendor/**/*", "!src/core/operations/legacy/**/*"],
             web: ["src/web/**/*.{js,mjs}", "!src/web/static/**/*"],
-            node: ["src/node/**/*.{js,mjs}"],
+            node: ["src/node/**/*.{js,mjs}", "!src/node/index.mjs"],
             tests: ["tests/**/*.{js,mjs}"],
         },
         webpack: {

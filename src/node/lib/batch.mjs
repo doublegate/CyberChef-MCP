@@ -1,0 +1,168 @@
+/**
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * Batch operation execution, parallel or sequential.
+ *
+ * Extracted verbatim from mcp-server.mjs during the v2.0.0 decomposition. Behaviour is
+ * unchanged; the only edits are the import and export lines needed to stand alone.
+ *
+ * @author DoubleGate
+ * @license GPL-3.0-or-later
+ */
+
+import { bake, help } from "../index.mjs";
+import OperationConfig from "../../core/config/OperationConfig.json" with {type: "json"};
+import { BATCH_ENABLED, BATCH_MAX_SIZE, OPERATION_TIMEOUT } from "./config.mjs";
+import { executeWithTimeoutAndRetry, RetryConfig } from "../retry.mjs";
+import { createInputError } from "../errors.mjs";
+import { sanitizeToolName, resolveArgValue, validateInputSize } from "./tool-schema.mjs";
+
+/**
+ * Batch processor for executing multiple operations (v1.7.0).
+ */
+class BatchProcessor {
+    /**
+     * Execute a batch of operations.
+     *
+     * @param {Array} operations - Array of operation objects.
+     * @param {string} mode - Execution mode: "parallel" or "sequential".
+     * @param {Object} context - Execution context.
+     * @returns {Promise<Object>} Batch results.
+     */
+    async executeBatch(operations, mode = "parallel", context = {}) {
+        if (!BATCH_ENABLED) {
+            throw createInputError("Batch processing is disabled", { batchSize: operations.length });
+        }
+
+        if (!Array.isArray(operations) || operations.length === 0) {
+            throw createInputError("Operations must be a non-empty array", { received: typeof operations });
+        }
+
+        if (operations.length > BATCH_MAX_SIZE) {
+            throw createInputError(
+                `Batch size (${operations.length}) exceeds maximum allowed size (${BATCH_MAX_SIZE})`,
+                { batchSize: operations.length, maxBatchSize: BATCH_MAX_SIZE }
+            );
+        }
+
+        const results = [];
+        const errors = [];
+        let successCount = 0;
+
+        if (mode === "parallel") {
+            // Execute all operations in parallel
+            const promises = operations.map(async (op, index) => {
+                try {
+                    const result = await this.executeOperation(op, { ...context, index });
+                    return { index, success: true, result };
+                } catch (error) {
+                    return { index, success: false, error: error.message || String(error) };
+                }
+            });
+
+            const outcomes = await Promise.all(promises);
+
+            outcomes.forEach(outcome => {
+                if (outcome.success) {
+                    results.push({ index: outcome.index, result: outcome.result });
+                    successCount++;
+                } else {
+                    errors.push({ index: outcome.index, error: outcome.error });
+                }
+            });
+
+        } else if (mode === "sequential") {
+            // Execute operations one by one
+            for (let i = 0; i < operations.length; i++) {
+                try {
+                    const result = await this.executeOperation(operations[i], { ...context, index: i });
+                    results.push({ index: i, result });
+                    successCount++;
+                } catch (error) {
+                    errors.push({ index: i, error: error.message || String(error) });
+                    // Continue with next operation (partial success)
+                }
+            }
+        } else {
+            throw createInputError(`Invalid mode: ${mode}. Must be "parallel" or "sequential"`, { mode });
+        }
+
+        return {
+            total: operations.length,
+            successful: successCount,
+            failed: errors.length,
+            results,
+            errors,
+            mode
+        };
+    }
+
+    /**
+     * Execute a single operation from batch.
+     *
+     * @param {Object} op - Operation object.
+     * @param {Object} context - Execution context.
+     * @returns {Promise<any>} Operation result.
+     */
+    async executeOperation(op, context) {
+        if (!op.tool || !op.tool.startsWith("cyberchef_")) {
+            throw new Error(`Invalid tool name: ${op.tool}`);
+        }
+
+        if (!op.arguments || typeof op.arguments !== "object") {
+            throw new Error("Operation arguments must be an object");
+        }
+
+        // Validate input if present
+        if (op.arguments.input) {
+            validateInputSize(op.arguments.input);
+        }
+
+        // Extract operation name
+        const toolName = op.tool;
+
+        // Handle bake operation
+        if (toolName === "cyberchef_bake") {
+            const result = await executeWithTimeoutAndRetry(
+                () => bake(op.arguments.input, op.arguments.recipe),
+                OPERATION_TIMEOUT,
+                { ...context, maxRetries: RetryConfig.MAX_RETRIES }
+            );
+            return typeof result.value === "string" ? result.value : JSON.stringify(result.value);
+        }
+
+        // Handle search operation
+        if (toolName === "cyberchef_search") {
+            const results = help(op.arguments.query);
+            return JSON.stringify(results, null, 2);
+        }
+
+        // Handle standard operations
+        const opName = Object.keys(OperationConfig).find(k => sanitizeToolName(k) === toolName);
+        if (!opName) {
+            throw new Error(`Operation not found: ${toolName}`);
+        }
+
+        const opConfig = OperationConfig[opName];
+        const recipeArgs = [];
+
+        if (opConfig.args) {
+            opConfig.args.forEach(argDef => {
+                const argName = argDef.name.toLowerCase().replace(/ /g, "_");
+                const userVal = op.arguments[argName];
+                recipeArgs.push(resolveArgValue(argDef, userVal));
+            });
+        }
+
+        const recipe = [{ op: opName, args: recipeArgs }];
+        const result = await executeWithTimeoutAndRetry(
+            () => bake(op.arguments.input, recipe),
+            OPERATION_TIMEOUT,
+            { ...context, maxRetries: RetryConfig.MAX_RETRIES }
+        );
+
+        return typeof result.value === "string" ? result.value : JSON.stringify(result.value);
+    }
+}
+
+export { BatchProcessor };
