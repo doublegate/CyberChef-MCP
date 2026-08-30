@@ -57,7 +57,9 @@ jobs:
           # added only when a step explicitly sets `shell: bash`. Without this line, `tee`
           # would mask a failing `npm run benchmark` and the job would go green on a failure.
           set -o pipefail
-          npm run benchmark 2>&1 | tee benchmark-output.txt
+          # NO_COLOR/FORCE_COLOR: the output goes into a markdown code block, where ANSI
+          # escapes render as literal `\x1b[32m` noise rather than colour.
+          NO_COLOR=1 FORCE_COLOR=0 npm run benchmark 2>&1 | tee benchmark-output.txt
 
       # Hand the output to the reporting job as an artifact. `if: always()` so a FAILING
       # benchmark still gets reported -- the output of a failure is the most useful comment
@@ -138,7 +140,7 @@ jobs:
               "",
               `Benchmark job: **${{ needs.benchmark.result }}**`,
               "",
-              truncated ? "_Output truncated to the last 60,000 characters._\n" : "",
+              ...(truncated ? ["_Output truncated to the last 60,000 characters._", ""] : []),
               "<details><summary>Full benchmark output</summary>",
               "",
               fence,
