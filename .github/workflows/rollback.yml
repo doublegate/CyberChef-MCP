@@ -41,20 +41,20 @@ jobs:
         id: current
         run: |
           # Save current operation count
-          CURRENT_OPS=$(ls src/core/operations/*.mjs 2>/dev/null | wc -l)
-          echo "current_ops=$CURRENT_OPS" >> $GITHUB_OUTPUT
+          CURRENT_OPS=$(find src/core/operations -maxdepth 1 -name '*.mjs' 2>/dev/null | wc -l)
+          echo "current_ops=$CURRENT_OPS" >> "$GITHUB_OUTPUT"
 
           # Check ref-proj state
           if [ -d "ref-proj/CyberChef/.git" ]; then
             cd ref-proj/CyberChef
             REF_SHA=$(git rev-parse HEAD)
             REF_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "unknown")
-            echo "ref_sha=$REF_SHA" >> $GITHUB_OUTPUT
-            echo "ref_tag=$REF_TAG" >> $GITHUB_OUTPUT
+            echo "ref_sha=$REF_SHA" >> "$GITHUB_OUTPUT"
+            echo "ref_tag=$REF_TAG" >> "$GITHUB_OUTPUT"
             cd ../..
           else
-            echo "ref_sha=none" >> $GITHUB_OUTPUT
-            echo "ref_tag=none" >> $GITHUB_OUTPUT
+            echo "ref_sha=none" >> "$GITHUB_OUTPUT"
+            echo "ref_tag=none" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Determine rollback target
@@ -71,15 +71,15 @@ jobs:
             echo "Using parent commit: $COMMIT"
           fi
 
-          echo "commit=$COMMIT" >> $GITHUB_OUTPUT
+          echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
 
           # Get commit info for reference (sanitized)
           SHORT_SHA=$(echo "$COMMIT" | cut -c1-7)
-          echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
+          echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
 
           # Get commit message for context
           COMMIT_MSG=$(git log --format=%s -n 1 "$COMMIT" | head -c 100)
-          echo "commit_msg=$COMMIT_MSG" >> $GITHUB_OUTPUT
+          echo "commit_msg=$COMMIT_MSG" >> "$GITHUB_OUTPUT"
 
       - name: Create rollback branch
         env:
@@ -87,7 +87,7 @@ jobs:
         run: |
           BRANCH_NAME="rollback-to-${SHORT_SHA}"
           git checkout -b "$BRANCH_NAME"
-          echo "branch=$BRANCH_NAME" >> $GITHUB_ENV
+          echo "branch=$BRANCH_NAME" >> "$GITHUB_ENV"
 
       - name: Perform rollback
         id: rollback
@@ -96,7 +96,7 @@ jobs:
         run: |
           # Save current SHA for reference
           CURRENT_SHA=$(git rev-parse HEAD)
-          echo "current_sha=$CURRENT_SHA" >> $GITHUB_OUTPUT
+          echo "current_sha=$CURRENT_SHA" >> "$GITHUB_OUTPUT"
 
           # Reset to target commit
           git reset --hard "$COMMIT"
@@ -109,7 +109,7 @@ jobs:
           fi
 
           echo "Rollback successful"
-          echo "target_sha=$ACTUAL_SHA" >> $GITHUB_OUTPUT
+          echo "target_sha=$ACTUAL_SHA" >> "$GITHUB_OUTPUT"
 
       - name: Install dependencies
         run: |
@@ -135,17 +135,17 @@ jobs:
         run: |
           # Run existing tests
           if npm test; then
-            echo "passed=true" >> $GITHUB_OUTPUT
+            echo "passed=true" >> "$GITHUB_OUTPUT"
           else
-            echo "passed=false" >> $GITHUB_OUTPUT
+            echo "passed=false" >> "$GITHUB_OUTPUT"
             echo "WARNING: Tests failed after rollback"
           fi
 
           # Run MCP validation tests
           if npm run test:mcp; then
-            echo "mcp_passed=true" >> $GITHUB_OUTPUT
+            echo "mcp_passed=true" >> "$GITHUB_OUTPUT"
           else
-            echo "mcp_passed=false" >> $GITHUB_OUTPUT
+            echo "mcp_passed=false" >> "$GITHUB_OUTPUT"
             echo "WARNING: MCP tests failed after rollback"
           fi
 
@@ -218,20 +218,20 @@ jobs:
         id: rollback_state
         run: |
           # Count operations after rollback
-          ROLLBACK_OPS=$(ls src/core/operations/*.mjs 2>/dev/null | wc -l)
-          echo "rollback_ops=$ROLLBACK_OPS" >> $GITHUB_OUTPUT
+          ROLLBACK_OPS=$(find src/core/operations -maxdepth 1 -name '*.mjs' 2>/dev/null | wc -l)
+          echo "rollback_ops=$ROLLBACK_OPS" >> "$GITHUB_OUTPUT"
 
           # Check if ref-proj exists
           if [ -d "ref-proj/CyberChef/.git" ]; then
             cd ref-proj/CyberChef
             ROLLBACK_REF_SHA=$(git rev-parse HEAD)
             ROLLBACK_REF_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "unknown")
-            echo "rollback_ref_sha=$ROLLBACK_REF_SHA" >> $GITHUB_OUTPUT
-            echo "rollback_ref_tag=$ROLLBACK_REF_TAG" >> $GITHUB_OUTPUT
+            echo "rollback_ref_sha=$ROLLBACK_REF_SHA" >> "$GITHUB_OUTPUT"
+            echo "rollback_ref_tag=$ROLLBACK_REF_TAG" >> "$GITHUB_OUTPUT"
             cd ../..
           else
-            echo "rollback_ref_sha=none" >> $GITHUB_OUTPUT
-            echo "rollback_ref_tag=none" >> $GITHUB_OUTPUT
+            echo "rollback_ref_sha=none" >> "$GITHUB_OUTPUT"
+            echo "rollback_ref_tag=none" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Create Pull Request
@@ -352,23 +352,25 @@ jobs:
           ROLLBACK_OPS: ${{ steps.rollback_state.outputs.rollback_ops }}
           REF_TAG: ${{ steps.rollback_state.outputs.rollback_ref_tag }}
         run: |
-          echo "### Rollback Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Target Commit:** \`$SHORT_SHA\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Commit Message:** $COMMIT_MSG" >> $GITHUB_STEP_SUMMARY
-          echo "- **Branch:** $BRANCH" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "#### State Changes" >> $GITHUB_STEP_SUMMARY
-          echo "- **Operations:** $CURRENT_OPS → $ROLLBACK_OPS" >> $GITHUB_STEP_SUMMARY
-          echo "- **ref-proj Tag:** $REF_TAG" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "#### Test Results" >> $GITHUB_STEP_SUMMARY
-          echo "- **Core Tests:** $TEST_PASSED" >> $GITHUB_STEP_SUMMARY
-          echo "- **MCP Tests:** $MCP_PASSED" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "### Rollback Summary"
+            echo ""
+            echo "- **Target Commit:** \`$SHORT_SHA\`"
+            echo "- **Commit Message:** $COMMIT_MSG"
+            echo "- **Branch:** $BRANCH"
+            echo ""
+            echo "#### State Changes"
+            echo "- **Operations:** $CURRENT_OPS → $ROLLBACK_OPS"
+            echo "- **ref-proj Tag:** $REF_TAG"
+            echo ""
+            echo "#### Test Results"
+            echo "- **Core Tests:** $TEST_PASSED"
+            echo "- **MCP Tests:** $MCP_PASSED"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
 
           if [ "$TEST_PASSED" == "true" ] && [ "$MCP_PASSED" == "true" ]; then
-            echo "✅ Rollback successful - all tests passed" >> $GITHUB_STEP_SUMMARY
+            echo "✅ Rollback successful - all tests passed" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "⚠️ Rollback completed but some tests failed" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ Rollback completed but some tests failed" >> "$GITHUB_STEP_SUMMARY"
           fi

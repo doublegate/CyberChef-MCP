@@ -39,8 +39,8 @@ jobs:
             BEFORE_SHA=$(git rev-parse HEAD)
             git pull origin master
             AFTER_SHA=$(git rev-parse HEAD)
-            echo "before_sha=$BEFORE_SHA" >> $GITHUB_OUTPUT
-            echo "after_sha=$AFTER_SHA" >> $GITHUB_OUTPUT
+            echo "before_sha=$BEFORE_SHA" >> "$GITHUB_OUTPUT"
+            echo "after_sha=$AFTER_SHA" >> "$GITHUB_OUTPUT"
             cd ../..
           else
             echo "Cloning upstream to ref-proj/CyberChef"
@@ -48,8 +48,8 @@ jobs:
             git clone https://github.com/gchq/CyberChef.git
             cd CyberChef
             AFTER_SHA=$(git rev-parse HEAD)
-            echo "before_sha=initial" >> $GITHUB_OUTPUT
-            echo "after_sha=$AFTER_SHA" >> $GITHUB_OUTPUT
+            echo "before_sha=initial" >> "$GITHUB_OUTPUT"
+            echo "after_sha=$AFTER_SHA" >> "$GITHUB_OUTPUT"
             cd ../..
           fi
 
@@ -59,12 +59,12 @@ jobs:
           cd ref-proj/CyberChef
           # Get latest tag
           LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "unknown")
-          echo "latest=$LATEST_TAG" >> $GITHUB_OUTPUT
+          echo "latest=$LATEST_TAG" >> "$GITHUB_OUTPUT"
           echo "Latest CyberChef release: $LATEST_TAG"
 
           # Get version from package.json
           UPSTREAM_VERSION=$(node -p "require('./package.json').version" 2>/dev/null || echo "unknown")
-          echo "version=$UPSTREAM_VERSION" >> $GITHUB_OUTPUT
+          echo "version=$UPSTREAM_VERSION" >> "$GITHUB_OUTPUT"
           echo "Upstream package.json version: $UPSTREAM_VERSION"
           cd ../..
 
@@ -73,31 +73,31 @@ jobs:
         run: |
           # Extract mcpVersion from package.json
           CURRENT_VERSION=$(node -p "require('./package.json').mcpVersion")
-          echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "version=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
           echo "Current MCP version: $CURRENT_VERSION"
 
           # Extract CyberChef version from package.json
           CYBERCHEF_VERSION=$(node -p "require('./package.json').version")
-          echo "cyberchef_version=$CYBERCHEF_VERSION" >> $GITHUB_OUTPUT
+          echo "cyberchef_version=$CYBERCHEF_VERSION" >> "$GITHUB_OUTPUT"
           echo "Current CyberChef version: $CYBERCHEF_VERSION"
 
       - name: Compare operation files
         id: compare_ops
         run: |
           # Count operations in both repos
-          MAIN_OPS=$(ls src/core/operations/*.mjs 2>/dev/null | wc -l)
-          REF_OPS=$(ls ref-proj/CyberChef/src/core/operations/*.mjs 2>/dev/null | wc -l)
-          echo "main_ops=$MAIN_OPS" >> $GITHUB_OUTPUT
-          echo "ref_ops=$REF_OPS" >> $GITHUB_OUTPUT
+          MAIN_OPS=$(find src/core/operations -maxdepth 1 -name '*.mjs' 2>/dev/null | wc -l)
+          REF_OPS=$(find ref-proj/CyberChef/src/core/operations -maxdepth 1 -name '*.mjs' 2>/dev/null | wc -l)
+          echo "main_ops=$MAIN_OPS" >> "$GITHUB_OUTPUT"
+          echo "ref_ops=$REF_OPS" >> "$GITHUB_OUTPUT"
           echo "Main operations: $MAIN_OPS"
           echo "Ref operations: $REF_OPS"
 
           # Find new operations (in ref but not in main)
           NEW_OPS=$(comm -13 \
-            <(ls src/core/operations/*.mjs 2>/dev/null | xargs -n1 basename | sort) \
-            <(ls ref-proj/CyberChef/src/core/operations/*.mjs 2>/dev/null | xargs -n1 basename | sort) \
+            <(find src/core/operations -maxdepth 1 -name '*.mjs' -printf '%f\n' 2>/dev/null | sort) \
+            <(find ref-proj/CyberChef/src/core/operations -maxdepth 1 -name '*.mjs' -printf '%f\n' 2>/dev/null | sort) \
             | wc -l)
-          echo "new_ops=$NEW_OPS" >> $GITHUB_OUTPUT
+          echo "new_ops=$NEW_OPS" >> "$GITHUB_OUTPUT"
           echo "New operations: $NEW_OPS"
 
           # Find modified operations (different checksums)
@@ -113,14 +113,14 @@ jobs:
               fi
             fi
           done
-          echo "modified_ops=$MODIFIED_OPS" >> $GITHUB_OUTPUT
+          echo "modified_ops=$MODIFIED_OPS" >> "$GITHUB_OUTPUT"
           echo "Modified operations: $MODIFIED_OPS"
 
           # Determine if update needed
           if [ "$NEW_OPS" -gt 0 ] || [ "$MODIFIED_OPS" -gt 0 ]; then
-            echo "needs_update=true" >> $GITHUB_OUTPUT
+            echo "needs_update=true" >> "$GITHUB_OUTPUT"
           else
-            echo "needs_update=false" >> $GITHUB_OUTPUT
+            echo "needs_update=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Compare versions
@@ -133,10 +133,10 @@ jobs:
           echo "Comparing: $CURRENT vs $LATEST"
 
           if [ "$LATEST" != "$CURRENT" ]; then
-            echo "new_version=true" >> $GITHUB_OUTPUT
+            echo "new_version=true" >> "$GITHUB_OUTPUT"
             echo "New version available: $LATEST (current: $CURRENT)"
           else
-            echo "new_version=false" >> $GITHUB_OUTPUT
+            echo "new_version=false" >> "$GITHUB_OUTPUT"
             echo "Already up-to-date"
           fi
 
@@ -155,7 +155,7 @@ jobs:
             --json number \
             --jq 'length')
 
-          echo "count=$ISSUE_COUNT" >> $GITHUB_OUTPUT
+          echo "count=$ISSUE_COUNT" >> "$GITHUB_OUTPUT"
           echo "Found $ISSUE_COUNT existing issues for this release"
 
       - name: Generate operation change list
@@ -164,8 +164,8 @@ jobs:
         run: |
           # List new operations
           NEW_LIST=$(comm -13 \
-            <(ls src/core/operations/*.mjs 2>/dev/null | xargs -n1 basename | sort) \
-            <(ls ref-proj/CyberChef/src/core/operations/*.mjs 2>/dev/null | xargs -n1 basename | sort) \
+            <(find src/core/operations -maxdepth 1 -name '*.mjs' -printf '%f\n' 2>/dev/null | sort) \
+            <(find ref-proj/CyberChef/src/core/operations -maxdepth 1 -name '*.mjs' -printf '%f\n' 2>/dev/null | sort) \
             | head -20)
 
           # List modified operations
@@ -293,28 +293,32 @@ jobs:
           MODIFIED_OPS: ${{ steps.compare_ops.outputs.modified_ops }}
           EXISTING_COUNT: ${{ steps.existing.outputs.count }}
         run: |
-          echo "### Upstream Monitor Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Latest CyberChef:** $LATEST" >> $GITHUB_STEP_SUMMARY
-          echo "- **Current Version:** v$CYBERCHEF_VERSION" >> $GITHUB_STEP_SUMMARY
-          echo "- **MCP Version:** $MCP_VERSION" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "#### Operation Comparison" >> $GITHUB_STEP_SUMMARY
-          echo "- **Main Operations:** $MAIN_OPS" >> $GITHUB_STEP_SUMMARY
-          echo "- **Ref Operations:** $REF_OPS" >> $GITHUB_STEP_SUMMARY
-          echo "- **New Operations:** $NEW_OPS" >> $GITHUB_STEP_SUMMARY
-          echo "- **Modified Operations:** $MODIFIED_OPS" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "### Upstream Monitor Summary"
+            echo ""
+            echo "- **Latest CyberChef:** $LATEST"
+            echo "- **Current Version:** v$CYBERCHEF_VERSION"
+            echo "- **MCP Version:** $MCP_VERSION"
+            echo ""
+            echo "#### Operation Comparison"
+            echo "- **Main Operations:** $MAIN_OPS"
+            echo "- **Ref Operations:** $REF_OPS"
+            echo "- **New Operations:** $NEW_OPS"
+            echo "- **Modified Operations:** $MODIFIED_OPS"
+          } >> "$GITHUB_STEP_SUMMARY"
 
           if [ "$NEW_VERSION" == "true" ] || [ "$NEEDS_UPDATE" == "true" ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "- **Status:** Updates available" >> $GITHUB_STEP_SUMMARY
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "- **Status:** Updates available" >> "$GITHUB_STEP_SUMMARY"
             if [ "${EXISTING_COUNT:-0}" == "0" ]; then
-              echo "- **Action:** Issue created" >> $GITHUB_STEP_SUMMARY
+              echo "- **Action:** Issue created" >> "$GITHUB_STEP_SUMMARY"
             else
-              echo "- **Action:** Issue already exists" >> $GITHUB_STEP_SUMMARY
+              echo "- **Action:** Issue already exists" >> "$GITHUB_STEP_SUMMARY"
             fi
           else
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "- **Status:** Up-to-date" >> $GITHUB_STEP_SUMMARY
-            echo "- **Action:** None" >> $GITHUB_STEP_SUMMARY
+            {
+              echo ""
+              echo "- **Status:** Up-to-date"
+              echo "- **Action:** None"
+            } >> "$GITHUB_STEP_SUMMARY"
           fi

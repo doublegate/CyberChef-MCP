@@ -86,9 +86,9 @@ jobs:
           INPUT_SEVERITY: ${{ inputs.severity }}
         run: |
           if [ -n "$INPUT_SEVERITY" ]; then
-            echo "level=$INPUT_SEVERITY" >> $GITHUB_OUTPUT
+            echo "level=$INPUT_SEVERITY" >> "$GITHUB_OUTPUT"
           else
-            echo "level=CRITICAL,HIGH" >> $GITHUB_OUTPUT
+            echo "level=CRITICAL,HIGH" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Run Trivy vulnerability scanner
@@ -151,9 +151,9 @@ jobs:
           INPUT_SEVERITY: ${{ inputs.severity }}
         run: |
           if [ -n "$INPUT_SEVERITY" ]; then
-            echo "level=$INPUT_SEVERITY" >> $GITHUB_OUTPUT
+            echo "level=$INPUT_SEVERITY" >> "$GITHUB_OUTPUT"
           else
-            echo "level=CRITICAL,HIGH" >> $GITHUB_OUTPUT
+            echo "level=CRITICAL,HIGH" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Run Trivy filesystem scan

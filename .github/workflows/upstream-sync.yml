@@ -65,8 +65,8 @@ jobs:
             fi
 
             AFTER_SHA=$(git rev-parse HEAD)
-            echo "before_sha=$BEFORE_SHA" >> $GITHUB_OUTPUT
-            echo "after_sha=$AFTER_SHA" >> $GITHUB_OUTPUT
+            echo "before_sha=$BEFORE_SHA" >> "$GITHUB_OUTPUT"
+            echo "after_sha=$AFTER_SHA" >> "$GITHUB_OUTPUT"
             cd ../..
           else
             echo "Cloning upstream to ref-proj/CyberChef"
@@ -79,8 +79,8 @@ jobs:
             fi
 
             AFTER_SHA=$(git rev-parse HEAD)
-            echo "before_sha=initial" >> $GITHUB_OUTPUT
-            echo "after_sha=$AFTER_SHA" >> $GITHUB_OUTPUT
+            echo "before_sha=initial" >> "$GITHUB_OUTPUT"
+            echo "after_sha=$AFTER_SHA" >> "$GITHUB_OUTPUT"
             cd ../..
           fi
 
@@ -88,8 +88,8 @@ jobs:
           cd ref-proj/CyberChef
           UPSTREAM_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "unknown")
           UPSTREAM_VERSION=$(node -p "require('./package.json').version" 2>/dev/null || echo "unknown")
-          echo "tag=$UPSTREAM_TAG" >> $GITHUB_OUTPUT
-          echo "version=$UPSTREAM_VERSION" >> $GITHUB_OUTPUT
+          echo "tag=$UPSTREAM_TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$UPSTREAM_VERSION" >> "$GITHUB_OUTPUT"
           cd ../..
 
       - name: Create sync branch
@@ -98,7 +98,7 @@ jobs:
         run: |
           BRANCH_NAME="upstream-sync-${TARGET}"
           git checkout -b "$BRANCH_NAME"
-          echo "branch=$BRANCH_NAME" >> $GITHUB_ENV
+          echo "branch=$BRANCH_NAME" >> "$GITHUB_ENV"
 
       - name: Identify operation changes
         id: changes
@@ -106,10 +106,15 @@ jobs:
           # Find new operations (in ref but not in main)
           echo "Finding new operations..."
           NEW_OPS=$(comm -13 \
-            <(ls src/core/operations/*.mjs 2>/dev/null | xargs -n1 basename | sort) \
-            <(ls ref-proj/CyberChef/src/core/operations/*.mjs 2>/dev/null | xargs -n1 basename | sort))
+            <(find src/core/operations -maxdepth 1 -name '*.mjs' -printf '%f\n' 2>/dev/null | sort) \
+            <(find ref-proj/CyberChef/src/core/operations -maxdepth 1 -name '*.mjs' -printf '%f\n' 2>/dev/null | sort))
+          # shellcheck disable=SC2126  # `grep -c` is NOT equivalent here and would break this
+          # step. GitHub runs `run:` under `bash -e` (no explicit `shell:` is set anywhere in this
+          # repo), and `grep -c` exits 1 when the count is 0 -- so `X=$(... | grep -c ...)` fails
+          # the step on every week with no new operations, which is the common case. `wc -l`
+          # always exits 0, which is precisely why it is used. Verified both forms under `bash -e`.
           NEW_COUNT=$(echo "$NEW_OPS" | grep -v '^$' | wc -l)
-          echo "new_count=$NEW_COUNT" >> $GITHUB_OUTPUT
+          echo "new_count=$NEW_COUNT" >> "$GITHUB_OUTPUT"
           echo "Found $NEW_COUNT new operations"
 
           # Find modified operations (different checksums)
@@ -128,15 +133,17 @@ jobs:
               fi
             fi
           done
-          echo "modified_count=$MODIFIED_COUNT" >> $GITHUB_OUTPUT
+          echo "modified_count=$MODIFIED_COUNT" >> "$GITHUB_OUTPUT"
           echo "Found $MODIFIED_COUNT modified operations"
 
           # Find deleted operations (in main but not in ref)
           DELETED_OPS=$(comm -23 \
-            <(ls src/core/operations/*.mjs 2>/dev/null | xargs -n1 basename | sort) \
-            <(ls ref-proj/CyberChef/src/core/operations/*.mjs 2>/dev/null | xargs -n1 basename | sort))
+            <(find src/core/operations -maxdepth 1 -name '*.mjs' -printf '%f\n' 2>/dev/null | sort) \
+            <(find ref-proj/CyberChef/src/core/operations -maxdepth 1 -name '*.mjs' -printf '%f\n' 2>/dev/null | sort))
+          # shellcheck disable=SC2126  # see the NEW_COUNT note above: `grep -c` exits 1 on zero
+          # matches and would fail this step whenever nothing was deleted.
           DELETED_COUNT=$(echo "$DELETED_OPS" | grep -v '^$' | wc -l)
-          echo "deleted_count=$DELETED_COUNT" >> $GITHUB_OUTPUT
+          echo "deleted_count=$DELETED_COUNT" >> "$GITHUB_OUTPUT"
           echo "Found $DELETED_COUNT deleted operations"
 
           # Save lists to files
@@ -147,10 +154,10 @@ jobs:
           # Determine if sync is needed
           TOTAL_CHANGES=$((NEW_COUNT + MODIFIED_COUNT + DELETED_COUNT))
           if [ $TOTAL_CHANGES -gt 0 ]; then
-            echo "needs_sync=true" >> $GITHUB_OUTPUT
+            echo "needs_sync=true" >> "$GITHUB_OUTPUT"
             echo "Total changes: $TOTAL_CHANGES"
           else
-            echo "needs_sync=false" >> $GITHUB_OUTPUT
+            echo "needs_sync=false" >> "$GITHUB_OUTPUT"
             echo "No changes detected"
           fi
 
@@ -196,14 +203,14 @@ jobs:
             fi
           done < /tmp/deleted_ops.txt
 
-          echo "synced_files=$SYNCED_FILES" >> $GITHUB_OUTPUT
-          echo "failed_files=$FAILED_FILES" >> $GITHUB_OUTPUT
+          echo "synced_files=$SYNCED_FILES" >> "$GITHUB_OUTPUT"
+          echo "failed_files=$FAILED_FILES" >> "$GITHUB_OUTPUT"
 
           if [ $FAILED_FILES -gt 0 ]; then
-            echo "status=partial" >> $GITHUB_OUTPUT
+            echo "status=partial" >> "$GITHUB_OUTPUT"
             echo "WARNING: Some files failed to sync"
           else
-            echo "status=success" >> $GITHUB_OUTPUT
+            echo "status=success" >> "$GITHUB_OUTPUT"
             echo "All files synced successfully"
           fi
 
@@ -281,7 +288,7 @@ jobs:
           # Show stats
           OPERATION_COUNT=$(node -p "Object.keys(require('./src/core/config/OperationConfig.json')).length")
           echo "Total operations: $OPERATION_COUNT"
-          echo "operation_count=$OPERATION_COUNT" >> $GITHUB_ENV
+          echo "operation_count=$OPERATION_COUNT" >> "$GITHUB_ENV"
 
       - name: Run tests
         if: steps.changes.outputs.needs_sync == 'true'
@@ -289,17 +296,17 @@ jobs:
         run: |
           # Run core tests
           if npm test; then
-            echo "core_passed=true" >> $GITHUB_OUTPUT
+            echo "core_passed=true" >> "$GITHUB_OUTPUT"
           else
-            echo "core_passed=false" >> $GITHUB_OUTPUT
+            echo "core_passed=false" >> "$GITHUB_OUTPUT"
             echo "WARNING: Core tests failed"
           fi
 
           # Run MCP validation tests
           if npm run test:mcp; then
-            echo "mcp_passed=true" >> $GITHUB_OUTPUT
+            echo "mcp_passed=true" >> "$GITHUB_OUTPUT"
           else
-            echo "mcp_passed=false" >> $GITHUB_OUTPUT
+            echo "mcp_passed=false" >> "$GITHUB_OUTPUT"
             echo "WARNING: MCP tests failed"
           fi
 
@@ -308,9 +315,9 @@ jobs:
         id: lint
         run: |
           if npm run lint; then
-            echo "lint_passed=true" >> $GITHUB_OUTPUT
+            echo "lint_passed=true" >> "$GITHUB_OUTPUT"
           else
-            echo "lint_passed=false" >> $GITHUB_OUTPUT
+            echo "lint_passed=false" >> "$GITHUB_OUTPUT"
             echo "WARNING: Lint failed"
           fi
 
@@ -376,6 +383,10 @@ jobs:
           ### New Operations
           ```
           EOF
+          # shellcheck disable=SC2129  # These redirects interleave heredocs with `cat` of
+          # generated files to assemble one report. Collapsing them into a single
+          # `{ ... } >> file` would mean restructuring heredoc blocks for a style point, with no
+          # behaviour change and real risk of altering the report. Left as-is deliberately.
           cat /tmp/new_ops.txt >> /tmp/sync_report.md
           cat >> /tmp/sync_report.md << 'EOF'
           ```
@@ -508,9 +519,11 @@ jobs:
         if: steps.changes.outputs.needs_sync != 'true'
         run: |
           echo "No synchronization needed - all operations are up-to-date"
-          echo "### Sync Status: Up-to-date" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "All operation files match upstream." >> $GITHUB_STEP_SUMMARY
+          {
+            echo "### Sync Status: Up-to-date"
+            echo ""
+            echo "All operation files match upstream."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Summary
         if: always()
@@ -522,20 +535,24 @@ jobs:
           MODIFIED_COUNT: ${{ steps.changes.outputs.modified_count }}
           SYNCED_FILES: ${{ steps.sync.outputs.synced_files }}
         run: |
-          echo "### Upstream Sync Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Target Version:** $TARGET" >> $GITHUB_STEP_SUMMARY
-          echo "- **Sync Method:** Selective file copying" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "### Upstream Sync Summary"
+            echo ""
+            echo "- **Target Version:** $TARGET"
+            echo "- **Sync Method:** Selective file copying"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
 
           if [ "$NEEDS_SYNC" == "true" ]; then
-            echo "#### Changes" >> $GITHUB_STEP_SUMMARY
-            echo "- New operations: $NEW_COUNT" >> $GITHUB_STEP_SUMMARY
-            echo "- Modified operations: $MODIFIED_COUNT" >> $GITHUB_STEP_SUMMARY
-            echo "- Files synced: $SYNCED_FILES" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "- **Branch:** $BRANCH" >> $GITHUB_STEP_SUMMARY
-            echo "- **Result:** Pull request created" >> $GITHUB_STEP_SUMMARY
+            {
+              echo "#### Changes"
+              echo "- New operations: $NEW_COUNT"
+              echo "- Modified operations: $MODIFIED_COUNT"
+              echo "- Files synced: $SYNCED_FILES"
+              echo ""
+              echo "- **Branch:** $BRANCH"
+              echo "- **Result:** Pull request created"
+            } >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "- **Result:** No changes needed" >> $GITHUB_STEP_SUMMARY
+            echo "- **Result:** No changes needed" >> "$GITHUB_STEP_SUMMARY"
           fi
