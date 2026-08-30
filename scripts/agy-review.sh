@@ -436,6 +436,15 @@ fi
 if ! have_text "$diff_file"; then log "empty diff; nothing to review"; exit 0; fi
 
 truncated=""
+# `head -c` is a BYTE cut and can slice a multi-byte UTF-8 sequence in half. That is accepted, not
+# overlooked: the UTF-8 scrub further down (`iconv -c`, python3 fallback) removes any partial
+# sequence before the prompt reaches agy, so the split never escapes this file.
+#
+# A line-aware cut would avoid creating the split, but cannot honour a byte ceiling — and the
+# ceiling is the actual constraint, since this bounds what is handed to a model with a hard context
+# limit. One minified-asset line in a diff can exceed the whole budget by itself, so "cut at a line
+# boundary" degenerates to either overshooting the cap or emitting nothing. Exact where the limit is
+# real, tolerant where the damage is already handled.
 if [ "$(wc -c < "$diff_file")" -gt "$MAX_DIFF_BYTES" ]; then
   head -c "$MAX_DIFF_BYTES" "$diff_file" > "$diff_file.cut" && mv "$diff_file.cut" "$diff_file"
   truncated=$'\n\n> Note: the diff exceeded '"${MAX_DIFF_BYTES}"$' bytes and was truncated for this review.'
