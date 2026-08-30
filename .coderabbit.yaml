@@ -19,7 +19,7 @@
 language: en-US
 
 tone_instructions: >-
-  Precise, technical language. No emojis or poems. Prioritise correctness of
+  Precise, technical language. No emojis or poems. Prioritize correctness of
   cryptographic and data-transformation output, and fork hygiene, over style nits
   that ESLint already catches in CI.
 
