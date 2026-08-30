@@ -8,6 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+
+- **BREAKING — Licence: Apache-2.0 → GPL-3.0-or-later.** Applies to v2.0.0 and later. Versions
+  1.9.x and earlier remain Apache-2.0 and are unaffected.
+
+  v2.0.0 incorporates algorithms from reference security tools whose licences constrain the choice:
+  **katana** is GPL-3.0-or-later (which rules out GPLv2), **John the Ripper** is GPL-2.0-or-later
+  (usable under GPLv3), and upstream CyberChef is Apache-2.0 (compatible with GPLv3, *not* GPLv2).
+  GPL-3.0-or-later is the only licence admitting all three.
+
+  This is **not** a relicensing of GCHQ's code. Upstream files keep their Apache-2.0 headers and
+  copyright; only the combined work changes licence, as Apache-2.0's one-way compatibility with
+  GPLv3 permits. The previous combined notice is preserved as `LICENSE.Apache-2.0`.
+
+  **What it means for you:** running CyberChef-MCP, including serving it over HTTP, carries no
+  obligation — GPLv3 has no network-use clause. Distributing a *derivative* must also be GPLv3. If
+  your policy precludes GPLv3, remain on the v1.9.x line, which stays Apache-2.0 through its LTS
+  window. See [ADR 0001](docs/adr/0001-relicense-to-gpl-3-0-or-later.md) and
+  `THIRD-PARTY-NOTICES.md`.
+
 - **Upstream Monitor Schedule**: Changed cron from every 6 hours to weekly (Sundays at noon UTC) to reduce unnecessary CI runs
 
 ### Fixed
