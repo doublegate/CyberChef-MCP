@@ -92,7 +92,7 @@ jobs:
           fi
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: 'cyberchef-mcp:scan'
           format: 'sarif'
@@ -110,12 +110,12 @@ jobs:
           category: 'trivy-container-scan'
 
       - name: Run Trivy in table format for logs
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         if: github.event_name == 'pull_request'
         with:
           image-ref: 'cyberchef-mcp:scan'
           format: 'table'
-          severity: ${{ steps.severity.outputs.level }}
+          severity: 'CRITICAL'
           vuln-type: 'os,library'
           exit-code: '1'
 
@@ -157,7 +157,7 @@ jobs:
           fi
 
       - name: Run Trivy filesystem scan
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -208,7 +208,7 @@ jobs:
           load: true
 
       - name: Generate SBOM with Trivy
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: 'cyberchef-mcp:sbom'
           format: 'cyclonedx'

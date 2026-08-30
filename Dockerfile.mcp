@@ -86,7 +86,7 @@ FROM cgr.dev/chainguard/node:latest
 
 # Security: Add metadata labels
 LABEL org.opencontainers.image.title="CyberChef MCP Server" \
-      org.opencontainers.image.description="MCP server exposing 300+ CyberChef operations as AI tools" \
+      org.opencontainers.image.description="MCP server exposing 463 CyberChef operations as AI tools" \
       org.opencontainers.image.vendor="DoubleGate" \
       org.opencontainers.image.licenses="Apache-2.0" \
       org.opencontainers.image.source="https://github.com/doublegate/CyberChef-MCP" \

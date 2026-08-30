@@ -30,7 +30,7 @@ When making changes to this repository, follow this workflow:
 - MCP tool names: `cyberchef_` prefix + snake_case
 
 ## Project Overview
-This repository hosts the **Model Context Protocol (MCP) Server** adaptation of CyberChef. The primary focus is to expose CyberChef's 300+ operations as executable tools for AI agents (Claude, Cursor AI, etc.) via the MCP protocol.
+This repository hosts the **Model Context Protocol (MCP) Server** adaptation of CyberChef. The primary focus is to expose CyberChef's 463 operations as executable tools for AI agents (Claude, Cursor AI, etc.) via the MCP protocol.
 
 ## Key Architecture Points
 
@@ -41,7 +41,7 @@ This repository hosts the **Model Context Protocol (MCP) Server** adaptation of 
 - **Core Operations:** `src/core/operations/` - Individual CyberChef operation implementations
 
 ### Technology Stack
-- **Runtime:** Node.js v22+ (Alpine Linux in Docker)
+- **Runtime:** Node.js v22+ (Chainguard distroless, Wolfi-based, in Docker - NOT Alpine)
 - **Protocol:** Model Context Protocol (MCP) via `@modelcontextprotocol/sdk`
 - **Validation:** `zod` and `zod-to-json-schema` for input validation
 - **Build System:** Grunt (legacy config generation) + NPM Scripts
@@ -97,7 +97,9 @@ This generates:
 
 ### Production Docker Image
 - **File:** `Dockerfile.mcp`
-- **Base Image:** `node:22-alpine`
+- **Base Image:** `cgr.dev/chainguard/node` (distroless, Wolfi-based). NOT node:22-alpine.
+  On this branch both stages still use the floating `latest` / `latest-dev` tags; digest pinning
+  lands with the v2.0.0 release branch.
 - **Key Steps:**
   1. Install dependencies with `npm ci --ignore-scripts`
   2. Apply SlowBuffer patches to `avsc` and `buffer-equal-constant-time`
@@ -146,9 +148,9 @@ npm run mcp  # Runs server on stdin/stdout
 - **docs/planning/roadmap.md** - Project roadmap and planned features
 - **docs/planning/tasks.md** - Specific implementation tasks
 - **docs/security/audit.md** - Security audit report
-- **docs/releases/v1.0.0.md** - v1.0.0 release notes
+- **docs/releases/** - per-version release notes (latest: v1.9.0.md)
 - **src/node/mcp-server.mjs** - Main MCP server implementation
-- **Dockerfile.mcp** - Production Docker build with Node v22 patches
+- **Dockerfile.mcp** - Production Docker build (Chainguard distroless, non-root UID 65532)
 
 ## Troubleshooting Common Issues
 
