@@ -17,12 +17,10 @@ on:
       - 'benchmarks/**'
   workflow_dispatch:
 
-# GITHUB_TOKEN defaults to read-only in this repository, so the "comment results" step
-# below 403s with "Resource not accessible by integration" -- which failed the whole
-# workflow on every PR. Least privilege: read the code, write one PR comment.
+# Default for every job: read only. The write scope needed to post a comment is granted to the
+# `report` job alone, and ONLY that job -- see the note on its `permissions:` block.
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
   benchmark:
@@ -53,17 +51,52 @@ jobs:
         run: npx grunt configTests
 
       - name: Run benchmarks
-        id: bench
         run: |
+          # `set -o pipefail` is NOT redundant here. GitHub's default shell for `run:` is
+          # `bash -e {0}` -- confirmed from this repository's own run logs -- and pipefail is
+          # added only when a step explicitly sets `shell: bash`. Without this line, `tee`
+          # would mask a failing `npm run benchmark` and the job would go green on a failure.
           set -o pipefail
           npm run benchmark 2>&1 | tee benchmark-output.txt
 
-      # `continue-on-error`: this step REPORTS, it does not gate. Previously a failure to post
-      # a comment failed the whole workflow, so a permissions problem in the reporting path
-      # showed up as a red "Run Performance Benchmarks" check even though every benchmark had
-      # passed. A build gate should fail on the build, never on its own commentary.
+      # Hand the output to the reporting job as an artifact. `if: always()` so a FAILING
+      # benchmark still gets reported -- the output of a failure is the most useful comment
+      # this workflow can post, and it was previously discarded.
+      - name: Upload benchmark output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-output
+          path: benchmark-output.txt
+          retention-days: 7
+          if-no-files-found: warn
+
+  # Separate job, and the separation is the point. The job above installs the PR's dependencies
+  # (`npm ci`, with lifecycle scripts) and executes the PR's own code. Holding a write-scoped
+  # token in that job would put it within reach of anything that code or its dependency tree
+  # does -- flagged by CodeRabbit and by zizmor as `excessive-permissions` (CWE-732).
+  #
+  # This job never checks out the repository and never runs project code. It downloads one text
+  # file and posts it. That is the only place `pull-requests: write` exists.
+  report:
+    name: Report benchmark results
+    needs: benchmark
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      # Posting a comment on a pull request. PRs are issues, but GitHub scopes PR comments to
+      # `pull-requests`, not `issues` -- see the permissions table in the Actions docs.
+      pull-requests: write
+    steps:
+      - name: Download benchmark output
+        uses: actions/download-artifact@v4
+        with:
+          name: benchmark-output
+        continue-on-error: true
+
+      # Reporting must never fail the workflow. Before this split, a 403 in the comment step
+      # turned a fully green benchmark run into a red check and blocked unrelated PRs.
       - name: Comment benchmark results on PR
-        if: github.event_name == 'pull_request'
         continue-on-error: true
         uses: actions/github-script@v7
         with:
@@ -71,33 +104,46 @@ jobs:
             const fs = require("fs");
 
             // Carry the actual numbers. The previous body said only "Benchmarks have been run
-            // ... check the workflow logs", which is a notification that a thing happened
-            // rather than a result -- it cost an API call and a comment to convey nothing.
-            let output = "";
+            // ... check the workflow logs", spending an API call and a PR comment to report
+            // that a thing had happened.
+            let output;
             try {
               output = fs.readFileSync("benchmark-output.txt", "utf8").trim();
-            } catch {
-              output = "(benchmark output was not captured)";
+            } catch (err) {
+              // Logged, not swallowed: if the artifact is missing, the reason belongs in the
+              // job log rather than being replaced silently by a placeholder.
+              console.error("Could not read benchmark-output.txt:", err.message);
+              output = "(benchmark output was not captured -- see the workflow logs)";
             }
 
-            // GitHub rejects comment bodies over 65536 characters. Keep the TAIL, since these
+            // GitHub rejects bodies over 65536 characters. Keep the TAIL, since these
             // benchmarks print their summary last.
             const LIMIT = 60000;
             let truncated = false;
             if (output.length > LIMIT) {
               output = output.slice(-LIMIT);
+              // `slice` cuts UTF-16 code units, so the boundary can land inside a surrogate
+              // pair and leave a lone half. Drop it rather than emit a broken character.
+              output = output.replace(/^[\uDC00-\uDFFF]/, "");
               truncated = true;
             }
+
+            // A fence longer than any backtick run in the content, so benchmark output that
+            // itself contains ``` cannot break out of the code block.
+            const longest = (output.match(/`+/g) || []).reduce((n, s) => Math.max(n, s.length), 0);
+            const fence = "`".repeat(Math.max(3, longest + 1));
 
             const body = [
               "## Performance Benchmark Results",
               "",
+              `Benchmark job: **${{ needs.benchmark.result }}**`,
+              "",
               truncated ? "_Output truncated to the last 60,000 characters._\n" : "",
               "<details><summary>Full benchmark output</summary>",
               "",
-              "```",
+              fence,
               output,
-              "```",
+              fence,
               "",
               "</details>",
               "",
@@ -106,8 +152,8 @@ jobs:
               "> for the v2.0.0 release work.",
             ].join("\n");
 
-            // `await` matters: without it a rejected promise became an unhandled rejection that
-            // took the job down with an opaque stack instead of a readable failure.
+            // `await`: without it a rejection became an unhandled rejection that took the job
+            // down with an opaque stack instead of a readable error.
             await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
