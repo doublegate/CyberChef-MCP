@@ -1,0 +1,25 @@
+# actionlint configuration.
+#
+# actionlint validates `runs-on:` against GitHub's list of hosted-runner labels
+# and reports anything else as unknown, because a typo'd label is a job that
+# queues forever rather than failing. Self-hosted labels therefore have to be
+# declared here — that is the mechanism actionlint's own diagnostic points at.
+#
+# Without this file, `actionlint` reports an error on EVERY run in a repo that
+# has the reviewer installed. That is not a harmless false positive: a linter
+# that always reports something is a linter people stop reading, and the real
+# findings go with it.
+#
+# Run it over the whole tree with:
+#
+#   actionlint
+#
+# (no arguments — it discovers `.github/workflows/*.yml` and reads this file.)
+
+self-hosted-runner:
+  labels:
+    # The maintainer's self-hosted runner for the Antigravity PR reviewer
+    # (`.github/workflows/antigravity-review.yml`, `runs-on: [self-hosted, agy]`).
+    # It is a personal machine holding the `agy` CLI's Google AI Ultra OAuth
+    # session, which is why that workflow cannot run on a hosted runner.
+    - agy

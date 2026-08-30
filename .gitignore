@@ -30,3 +30,6 @@ ref-proj/
 coverage/
 test-results/
 .nyc_output/
+
+# Antigravity PR reviewer: large-diff on-disk handoff (transient, removed by the script).
+/.agy-review-work/
