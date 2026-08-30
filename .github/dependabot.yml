@@ -1,0 +1,91 @@
+# Dependabot configuration for CyberChef-MCP.
+#
+# Before this file existed the repository received only Dependabot *security* updates
+# (which are on by default and need no config). That is why the alert backlog reached
+# 194 with no corresponding version-update PRs. This adds proactive version updates for
+# all three ecosystems the project actually uses.
+#
+# Grouping keeps the PR volume sane: minor+patch bumps are batched per ecosystem, while
+# majors are raised individually so each breaking change gets its own review.
+version: 2
+
+updates:
+  # ---------------------------------------------------------------- npm
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "06:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 10
+    versioning-strategy: "increase"
+    labels:
+      - "dependencies"
+      - "npm"
+    commit-message:
+      prefix: "build(deps)"
+      prefix-development: "build(deps-dev)"
+    groups:
+      production-minor-patch:
+        applies-to: version-updates
+        dependency-type: "production"
+        update-types: ["minor", "patch"]
+      development-minor-patch:
+        applies-to: version-updates
+        dependency-type: "development"
+        update-types: ["minor", "patch"]
+      # Restricted to minor+patch so a MAJOR security update still arrives as its own PR,
+      # matching the majors-get-individual-review policy stated at the top of this file.
+      security-patches:
+        applies-to: security-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      # The `version` field tracks the upstream CyberChef release, not our own semver, and
+      # the operation/core dependency set is adopted wholesale from upstream by the
+      # upstream-sync workflow. Letting Dependabot bump these independently would fight
+      # that sync and desynchronise us from the pinned upstream base.
+      - dependency-name: "grunt"
+      - dependency-name: "grunt-*"
+
+  # ------------------------------------------------------- github-actions
+  # The 0.28.0 -> v0.36.0 trivy-action breakage that took Security Scan down for months
+  # is exactly what this ecosystem catches.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "06:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "ci(deps)"
+    groups:
+      actions-minor-patch:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]
+
+  # -------------------------------------------------------------- docker
+  # Tracks the Chainguard base images in Dockerfile.mcp.
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "06:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "docker"
+    commit-message:
+      prefix: "build(docker)"
+    groups:
+      docker-minor-patch:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]
