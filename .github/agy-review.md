@@ -31,10 +31,15 @@ PRs in the current series belong to the **v2.0.0 release train** (see
 
 ## MCP-layer conventions
 
-- Tool names: snake_case, **no `cyberchef_` prefix** as of v2.0.0 (DEP001). New external
-  tools use `<category>_<operation>`; `preset_*` for the recipe corpus, `recipe_*` reserved
-  for the v1.6.0 management tools.
-- Tool arguments are named objects validated with Zod — never positional arrays (DEP005).
+- Tool names: snake_case. **The `cyberchef_` prefix is still correct and expected** on every
+  existing tool — do **not** flag it. DEP001 removes it, but that lands in the dedicated
+  breaking-changes PR; until then, prefixed names are the current convention and code using them
+  is right. Once that PR merges, this bullet flips to "no prefix" and new external tools take
+  `<category>_<operation>` (`preset_*` for the recipe corpus, `recipe_*` reserved for the v1.6.0
+  management tools).
+- Tool arguments: positional arrays are the **current** shape and are not a defect. DEP005 moves
+  them to named Zod-validated objects in the same breaking-changes PR. Flag a *new* tool that
+  introduces positional args; do not flag existing ones.
 - `bake()` and `NodeRecipe.execute()` are **async** as of upstream v11.0.0. Flag any call
   site that uses the return value synchronously or calls `.then()` on it without awaiting.
 - Anything long-running must respect the timeout/retry wrapper in `src/node/retry.mjs` and
