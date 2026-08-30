@@ -185,6 +185,29 @@ readonly SELECT_OURS_JQ
 
 REPO="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY not set}"
 
+# Does $1 actually hold write access to this repository?
+#
+# `author_association` is NOT a permission check, which is the trap this replaces. It is a
+# relationship label: a user granted only the *Triage* role reports as COLLABORATOR while
+# holding no write access at all, and OWNER/MEMBER describe org membership rather than
+# repository rights. On a self-hosted runner — someone's actual workstation — "may this
+# person schedule execution here" has to be answered by the permissions API, not inferred
+# from a label that was never meant to answer it.
+#
+# Fails CLOSED: any API error, missing token, or unrecognised role denies. A reviewer that
+# stops running is a visible annoyance; one that runs for the wrong person is not.
+agy_has_write_access() {
+  _login="${1:-}"
+  [ -n "$_login" ] || { log "no login to check for write access"; return 1; }
+  _perm="$(gh api "repos/${REPO}/collaborators/${_login}/permission" \
+             --jq '.permission // empty' 2>/dev/null || true)"
+  case "$_perm" in
+    admin|maintain|write) return 0 ;;
+    *) log "user '${_login}' has repository permission '${_perm:-<none/unknown>}'; write required"
+       return 1 ;;
+  esac
+}
+
 # --- resolve the PR number from the triggering event --------------------------
 case "${GITHUB_EVENT_NAME:-}" in
   pull_request|pull_request_target)
@@ -193,20 +216,20 @@ case "${GITHUB_EVENT_NAME:-}" in
   issue_comment)
     is_pr="$(jq -r '.issue.pull_request // empty' "$GITHUB_EVENT_PATH")"
     body="$(jq -r '.comment.body // ""' "$GITHUB_EVENT_PATH")"
-    assoc="$(jq -r '.comment.author_association // ""' "$GITHUB_EVENT_PATH")"
+    commenter="$(jq -r '.comment.user.login // ""' "$GITHUB_EVENT_PATH")"
     [ -n "$is_pr" ] || { log "comment is not on a PR; skipping"; exit 0; }
     case "$body" in
       /agy-review*) : ;;
       *) log "comment is not an /agy-review command; skipping"; exit 0 ;;
     esac
-    # Defense in depth: the workflow `if:` already gates on author_association, but this
-    # script is also runnable by hand and by any future caller, so re-check here that the
-    # commenter has write access. A stranger's `/agy-review` must never schedule an agy
-    # run on the self-hosted host — losing this to a workflow-only gate would be silent.
-    case "$assoc" in
-      OWNER|MEMBER|COLLABORATOR) : ;;
-      *) log "comment author association '$assoc' lacks write access; skipping"; exit 0 ;;
-    esac
+    # THE authoritative permission gate, not defence in depth. The workflow `if:` can only
+    # filter on `author_association`, which the payload carries but which does not answer the
+    # question being asked (see `agy_has_write_access`). Treat that `if:` as a cheap
+    # pre-filter that avoids booting a runner for obvious strangers, and settle the actual
+    # decision here, where an API call is possible. A stranger's `/agy-review` must never
+    # schedule an agy run on the self-hosted host.
+    agy_has_write_access "$commenter" \
+      || { log "commenter '${commenter}' lacks write access; skipping"; exit 0; }
     PR="$(jq -r '.issue.number' "$GITHUB_EVENT_PATH")"
     ;;
   *)
@@ -708,7 +731,16 @@ fi
 # costs only the archive, never the review.
 prior_id=""
 prior_body_file="$(mktemp)"
-if prior_json="$(gh api "repos/${REPO}/issues/${PR}/comments" --paginate 2>/dev/null)"; then
+# `--paginate` emits one top-level JSON array PER PAGE, concatenated — not one merged array.
+# jq then runs the filter once per array, so `[ ... ] | first | .id` yields one id per page
+# that matches rather than one id overall. On a thread short enough to fit a single page that
+# is invisible; past 30 comments, if a fallback POST has ever left a second marked comment
+# behind, `prior_id` becomes multi-line, `--argjson id` rejects it, and the in-place edit
+# silently degrades into a duplicate post — exactly on the long threads where the archive
+# matters most. `jq -s add` merges the pages into the single array the filter assumes.
+# (`gh api --slurp` does this too, but only on gh >= 2.42; this works on any version.)
+if prior_json="$(gh api "repos/${REPO}/issues/${PR}/comments" --paginate 2>/dev/null \
+                  | jq -s 'add // []' 2>/dev/null)"; then
   prior_id="$(printf '%s' "$prior_json" | jq -r --arg marker "$MARKER" "$SELECT_OURS_JQ" 2>/dev/null || true)"
   if [ -n "$prior_id" ] && [ "$prior_id" != "null" ]; then
     printf '%s' "$prior_json" \
