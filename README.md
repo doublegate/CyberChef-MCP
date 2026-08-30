@@ -441,12 +441,15 @@ This project implements comprehensive security hardening with continuous improve
 ### Code Security (v1.4.1+)
 *   **11 of 12 Code Scanning Vulnerabilities Fixed**: Comprehensive security hardening completed
     *   **CRITICAL**: Fixed insecure cryptographic randomness in GOST library - replaced `Math.random()` with `crypto.randomBytes()`
-    *   **HIGH**: Eliminated 7 ReDoS (Regular Expression Denial of Service) vulnerabilities across 6 operations
-    *   **NEW MODULE**: SafeRegex.mjs provides centralized validation for all user-controlled regex patterns
-        *   Pattern length limits (10,000 characters)
-        *   ReDoS pattern detection (nested quantifiers, overlapping alternations)
-        *   Timeout-based validation (100ms) to detect catastrophic backtracking
-        *   XRegExp and standard RegExp support
+    *   **HIGH**: Addressed 7 ReDoS (Regular Expression Denial of Service) findings across 6 operations
+        *   **Withdrawn — this protection is no longer present.** The fix worked by importing a
+            `SafeRegex.mjs` helper into the affected operations. Those operations live under
+            `src/core/operations/`, which `upstream-sync.yml` copies verbatim from upstream, so a
+            later sync removed every import. The module has been removed rather than left as
+            dead code claiming a protection it no longer provided.
+        *   See [the incident record](docs/security/2026-08-30-saferegex-reverted-by-upstream-sync.md)
+            for the verification and the general rule it establishes: a hand-edit inside
+            `src/core/**` is a fix with an expiry date set by the next sync.
 *   **All 1,933 Tests Passing**: Security fixes validated with comprehensive test suite
 *   See [Security Fixes Report](docs/security/SECURITY_FIX_REPORT.md) for complete details
 

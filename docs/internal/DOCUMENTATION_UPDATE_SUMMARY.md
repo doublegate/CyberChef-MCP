@@ -1,4 +1,13 @@
 # Documentation Update Summary
+
+> [!IMPORTANT]
+> **Superseded in part, 2026-08-30.** This document is kept as the historical record of the work it
+> describes; everything below this notice is unchanged. But the `SafeRegex.mjs` mitigation it reports
+> as in place **is no longer in the code**: a later run of `upstream-sync.yml` overwrote the
+> operations that imported it, and the module has since been removed. Do not read this file as a
+> statement of current security posture. See
+> [the incident record](../security/2026-08-30-saferegex-reverted-by-upstream-sync.md).
+
 ## CyberChef MCP Server - README.md & CHANGELOG.md Comprehensive Update
 
 **Date:** 2025-12-14
