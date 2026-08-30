@@ -356,7 +356,11 @@ jobs:
             echo "### Rollback Summary"
             echo ""
             echo "- **Target Commit:** \`$SHORT_SHA\`"
-            echo "- **Commit Message:** $COMMIT_MSG"
+            # printf, not echo: $COMMIT_MSG is an upstream commit subject, i.e. text this
+            # workflow does not control. `echo` swallows a value that is exactly `-n`, `-e` or
+            # `-E`, treating it as its own flag -- so the summary would silently lose the one
+            # field an operator most needs during a rollback. `printf --` cannot be flag-confused.
+            printf -- "- **Commit Message:** %s\n" "$COMMIT_MSG"
             echo "- **Branch:** $BRANCH"
             echo ""
             echo "#### State Changes"
