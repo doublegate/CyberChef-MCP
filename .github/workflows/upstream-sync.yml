@@ -108,12 +108,17 @@ jobs:
           NEW_OPS=$(comm -13 \
             <(find src/core/operations -maxdepth 1 -name '*.mjs' -printf '%f\n' 2>/dev/null | sort) \
             <(find ref-proj/CyberChef/src/core/operations -maxdepth 1 -name '*.mjs' -printf '%f\n' 2>/dev/null | sort))
-          # shellcheck disable=SC2126  # `grep -c` is NOT equivalent here and would break this
-          # step. GitHub runs `run:` under `bash -e` (no explicit `shell:` is set anywhere in this
-          # repo), and `grep -c` exits 1 when the count is 0 -- so `X=$(... | grep -c ...)` fails
-          # the step on every week with no new operations, which is the common case. `wc -l`
-          # always exits 0, which is precisely why it is used. Verified both forms under `bash -e`.
-          NEW_COUNT=$(echo "$NEW_OPS" | grep -v '^$' | wc -l)
+          # No `grep` in this count, deliberately. `grep` exits 1 on zero matches, and zero new
+          # operations is the NORMAL state -- so any `grep` here is one `shell: bash` away from
+          # failing the step every quiet week. (Today the runner is `bash -e` with no pipefail,
+          # confirmed from a run log: `shell: /usr/bin/bash -e {0}`. That makes the old
+          # `grep -v '^$' | wc -l` safe, but only by accident of `wc` masking grep's status.)
+          # Testing emptiness directly is correct under `bash -e` and `bash -eo pipefail` alike.
+          if [ -z "$NEW_OPS" ]; then
+            NEW_COUNT=0
+          else
+            NEW_COUNT=$(printf '%s\n' "$NEW_OPS" | wc -l)
+          fi
           echo "new_count=$NEW_COUNT" >> "$GITHUB_OUTPUT"
           echo "Found $NEW_COUNT new operations"
 
@@ -140,9 +145,12 @@ jobs:
           DELETED_OPS=$(comm -23 \
             <(find src/core/operations -maxdepth 1 -name '*.mjs' -printf '%f\n' 2>/dev/null | sort) \
             <(find ref-proj/CyberChef/src/core/operations -maxdepth 1 -name '*.mjs' -printf '%f\n' 2>/dev/null | sort))
-          # shellcheck disable=SC2126  # see the NEW_COUNT note above: `grep -c` exits 1 on zero
-          # matches and would fail this step whenever nothing was deleted.
-          DELETED_COUNT=$(echo "$DELETED_OPS" | grep -v '^$' | wc -l)
+          # See the NEW_COUNT note above: no `grep` in the count, for the same reason.
+          if [ -z "$DELETED_OPS" ]; then
+            DELETED_COUNT=0
+          else
+            DELETED_COUNT=$(printf '%s\n' "$DELETED_OPS" | wc -l)
+          fi
           echo "deleted_count=$DELETED_COUNT" >> "$GITHUB_OUTPUT"
           echo "Found $DELETED_COUNT deleted operations"
 
