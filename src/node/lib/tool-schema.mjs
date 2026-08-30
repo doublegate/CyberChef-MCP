@@ -13,6 +13,7 @@
 import { z } from "zod";
 import { MAX_INPUT_SIZE } from "./config.mjs";
 import { createInputError } from "../errors.mjs";
+import { assertSafeRegexArg } from "./safe-regex.mjs";
 
 /**
  * Sanitize tool name to be MCP compatible.
@@ -127,9 +128,16 @@ function resolveArgValue(argDef, userValue) {
         }
 
         // For editableOption, if not found, treat as custom value
+        assertSafeRegexArg(argDef, userValue);
         return userValue;
     }
 
+    // ReDoS screening. This is the single point every user-supplied argument passes through on
+    // its way into a recipe -- single-operation tools, `cyberchef_bake`, and batch execution all
+    // funnel here -- so one hook covers every path. Screening BEFORE the value is handed to an
+    // operation is the whole point: once a catastrophic pattern starts executing, it blocks the
+    // event loop and no timeout in this process can stop it.
+    assertSafeRegexArg(argDef, userValue);
     return userValue;
 }
 
