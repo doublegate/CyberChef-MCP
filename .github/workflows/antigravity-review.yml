@@ -31,11 +31,16 @@ jobs:
     #    collaborators" setting is belt-and-suspenders, not the gate — its default only
     #    covers *first-time* contributors, so a returning outside contributor would
     #    otherwise get a runner.
-    #  - issue_comment: only `/agy-review` from someone with write access
-    #    (OWNER/MEMBER/COLLABORATOR), so a stranger cannot trigger execution by
-    #    commenting. `scripts/agy-review.sh` re-checks the fork status defensively,
-    #    because the `issue_comment` payload carries no head-repo field for the `if:`
-    #    to gate on — a trusted commenter is not the same as a trusted diff.
+    #  - issue_comment: only `/agy-review`, and the association test below is a CHEAP
+    #    PRE-FILTER, not the permission gate. `author_association` answers "what is this
+    #    person's relationship to the repo", not "may they run code on my workstation":
+    #    a Triage-only user reports as COLLABORATOR with no write access whatsoever.
+    #    The real decision is `agy_has_write_access` in `scripts/agy-review.sh`, which
+    #    asks the permissions API and fails closed. Keeping the coarse test here only
+    #    avoids booting a runner for an obvious stranger; do not treat it as the gate.
+    #    That script also re-checks fork status, because the `issue_comment` payload
+    #    carries no head-repo field for the `if:` to gate on — a trusted commenter is
+    #    not the same as a trusted diff.
     if: >-
       (github.event_name == 'pull_request' &&
        github.event.pull_request.head.repo.full_name == github.repository) ||
@@ -91,17 +96,63 @@ jobs:
       # are not there and the job dies before it can review anything. Observed on
       # CyberChef-MCP PR #41, and predicted by Copilot review on that same PR.
       #
-      # The trust model above is preserved, not weakened. This fires ONLY when the default
-      # branch genuinely has no reviewer yet AND the PR head is in this same repository, so
-      # it could only have been pushed by someone who already has write access. A fork PR
-      # never reaches this step and can never supply the script that runs on the self-hosted
-      # runner. Once the first PR merges, the default branch has the scripts, `hashFiles` is
-      # non-empty, and this step never fires again for the life of the repo.
-      - name: Bootstrap reviewer from PR head (first install only)
-        id: agy_bootstrap
+      # This step checks out and then EXECUTES code from the PR head on a self-hosted runner,
+      # which is normally the thing you must never do. Three properties are what make it
+      # defensible here, and all three must hold — if you are editing this step, they are the
+      # invariant, not the YAML:
+      #
+      #  1. It fires only when the default branch has no reviewer at all (`hashFiles` empty),
+      #     i.e. exactly once in a repository's life, and never again after that PR merges.
+      #  2. The head must be a branch in THIS repository, so a fork PR can never reach it.
+      #  3. The PR author must hold write access AT RUN TIME, verified against the permissions
+      #     API by the step below — not inferred from `author_association`, and not merely
+      #     implied by their having been able to push the branch at some point in the past.
+      #     This is what closes the revoked-collaborator gap: a stale branch pushed by someone
+      #     whose access was later removed no longer bootstraps.
+      #
+      # Worth stating plainly, because it is what bounds the exposure: `pull_request` runs the
+      # workflow definition from the PR branch. Anyone who can satisfy (2) and (3) can already
+      # rewrite THIS FILE on their branch and have it execute on the runner. The bootstrap
+      # therefore grants no capability that the event type has not already granted to the same
+      # set of people. It is not a reason to relax any of the three conditions.
+      - name: Check bootstrap author still has write access
+        id: agy_bootstrap_auth
         if: >-
           hashFiles('scripts/agy-review.sh') == '' &&
           github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          set -eu
+          # Fails closed: an API error, an unknown login, or any role below `write` leaves
+          # `writer` unset, and the checkout below does not run.
+          #
+          # The failure REASON is surfaced, not swallowed. Denying silently makes "this person
+          # has no write access" (intended, one PR affected) indistinguishable from "the token
+          # lost its scope" (the bootstrap is dead for everyone) — an outage that reads as a
+          # decision. Redacted first: this log is public.
+          if perm="$(gh api "repos/${GITHUB_REPOSITORY}/collaborators/${PR_AUTHOR}/permission" \
+                       --jq '.permission // empty' 2>perm_err.txt)"; then
+            :
+          else
+            reason="$(tr '\n' ' ' < perm_err.txt \
+                        | sed -E 's/(gh[pousr]|github_pat)_[A-Za-z0-9_]+/<redacted-token>/g' \
+                        | cut -c1-300)"
+            echo "::warning::Reviewer bootstrap permission lookup failed for ${PR_AUTHOR}: ${reason}"
+            perm=""
+          fi
+          rm -f perm_err.txt
+          case "$perm" in
+            admin|maintain|write)
+              echo "writer=true" >> "$GITHUB_OUTPUT" ;;
+            *)
+              echo "::warning::Skipping reviewer bootstrap: ${PR_AUTHOR} has permission '${perm:-none}', write required." ;;
+          esac
+
+      - name: Bootstrap reviewer from PR head (first install only)
+        id: agy_bootstrap
+        if: steps.agy_bootstrap_auth.outputs.writer == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.event.pull_request.head.sha }}
@@ -146,14 +197,10 @@ jobs:
           # chmods a file the default branch does not have yet. Observed exactly
           # once, on the PR that introduced `_agy_comment_body.sh`.
           #
-          # The two required files are chmod'd unconditionally; anything added later
-          # is chmod'd only if present, so the workflow stays compatible with both
-          # the old and the new script set. A genuinely missing required file still
-          # fails loudly -- `agy-review.sh` sources it and dies -- rather than being
-          # papered over here.
+          # Only the two files that are EXECUTED need the bit. `_agy_comment_body.sh` is
+          # sourced, never executed, so it never needed chmod -- it was carried along by a
+          # loop that also had only one item to iterate. Both are now gone. A genuinely
+          # missing required file still fails loudly: `agy-review.sh` sources it and dies,
+          # rather than being papered over here.
           chmod +x scripts/agy-review.sh scripts/_agy_print.sh
-          for opt in scripts/_agy_comment_body.sh; do
-            [ -f "$opt" ] && chmod +x "$opt"
-          done
-          true
           scripts/agy-review.sh

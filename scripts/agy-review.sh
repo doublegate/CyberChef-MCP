@@ -174,6 +174,18 @@ MAX_BODY_BYTES="${MAX_BODY_BYTES:-60000}"
 # (an HTML comment, invisible when rendered) in a PR comment and have this bot edit it. Only
 # ever touch our own bot's comments. `first` picks the OLDEST match, so if duplicates exist
 # from an older version of this script, the canonical thread is the one that keeps growing.
+#
+# COUPLING, stated because it is invisible otherwise: the `github-actions[bot]` login pin assumes
+# the review is posted with `GITHUB_TOKEN` from Actions, which is the only path the workflow has.
+# Move this to a GitHub App or a PAT and the filter stops finding its own comments — it will post
+# a fresh review every round instead of editing one, and the archive stops accumulating.
+#
+# Do not "fix" that in advance by dropping the login and matching on `.user.type == "Bot"` plus the
+# marker. Under a PAT the comment's type is `"User"`, not `"Bot"`, so that clause fails in the same
+# scenario; and the marker is an HTML comment, so any bot that quotes or summarises a PR comment
+# carries it along, which would let this script PATCH over ANOTHER bot's comment. Losing a review
+# that way is worse than posting a duplicate. Change this filter when the auth changes, not before,
+# and match on whatever identity the new credential actually presents.
 # >>> SELFTEST-EXTRACT: ours-comment filter
 SELECT_OURS_JQ='[ .[]
   | select(.user.type == "Bot" and .user.login == "github-actions[bot]")
@@ -185,6 +197,50 @@ readonly SELECT_OURS_JQ
 
 REPO="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY not set}"
 
+# Does $1 actually hold write access to this repository?
+#
+# `author_association` is NOT a permission check, which is the trap this replaces. It is a
+# relationship label: a user granted only the *Triage* role reports as COLLABORATOR while
+# holding no write access at all, and OWNER/MEMBER describe org membership rather than
+# repository rights. On a self-hosted runner — someone's actual workstation — "may this
+# person schedule execution here" has to be answered by the permissions API, not inferred
+# from a label that was never meant to answer it.
+#
+# Fails CLOSED: any API error, missing token, or unrecognised role denies. A reviewer that
+# stops running is a visible annoyance; one that runs for the wrong person is not.
+#
+# But fail-closed makes the error TEXT load-bearing, which is why stderr is captured and logged
+# rather than sent to /dev/null. Denying and swallowing the reason makes two very different
+# situations look identical in the log: "this person genuinely has no write access" (working as
+# intended, one user affected) and "the token lost its scope / the API is rate-limited" (the
+# reviewer is now dead for EVERYONE and nothing says so). The first is a decision; the second is
+# an outage wearing a decision's clothes, and it would sit undiagnosed until someone noticed
+# reviews had quietly stopped.
+agy_has_write_access() {
+  _login="${1:-}"
+  [ -n "$_login" ] || { log "no login to check for write access"; return 1; }
+  _perm_err="$(mktemp)"
+  if _perm="$(gh api "repos/${REPO}/collaborators/${_login}/permission" \
+                --jq '.permission // empty' 2>"$_perm_err")"; then
+    rm -f "$_perm_err"
+  else
+    # Redacted before logging. gh does not echo credentials in its error text today, but this
+    # log lands in a PUBLIC Actions log, and "today" is not a property worth betting a token on.
+    log "permission lookup for '${_login}' FAILED: $(tr '\n' ' ' < "$_perm_err" \
+          | sed -E 's/(gh[pousr]|github_pat)_[A-Za-z0-9_]+/<redacted-token>/g' \
+          | cut -c1-400)"
+    log "denying by default. A 404 here is an ordinary non-collaborator; a 401/403 or a rate"
+    log "limit means the token is the problem and EVERY review will skip until it is fixed."
+    rm -f "$_perm_err"
+    return 1
+  fi
+  case "$_perm" in
+    admin|maintain|write) return 0 ;;
+    *) log "user '${_login}' has repository permission '${_perm:-<none>}'; write required"
+       return 1 ;;
+  esac
+}
+
 # --- resolve the PR number from the triggering event --------------------------
 case "${GITHUB_EVENT_NAME:-}" in
   pull_request|pull_request_target)
@@ -193,26 +249,33 @@ case "${GITHUB_EVENT_NAME:-}" in
   issue_comment)
     is_pr="$(jq -r '.issue.pull_request // empty' "$GITHUB_EVENT_PATH")"
     body="$(jq -r '.comment.body // ""' "$GITHUB_EVENT_PATH")"
-    assoc="$(jq -r '.comment.author_association // ""' "$GITHUB_EVENT_PATH")"
+    commenter="$(jq -r '.comment.user.login // ""' "$GITHUB_EVENT_PATH")"
     [ -n "$is_pr" ] || { log "comment is not on a PR; skipping"; exit 0; }
     case "$body" in
       /agy-review*) : ;;
       *) log "comment is not an /agy-review command; skipping"; exit 0 ;;
     esac
-    # Defense in depth: the workflow `if:` already gates on author_association, but this
-    # script is also runnable by hand and by any future caller, so re-check here that the
-    # commenter has write access. A stranger's `/agy-review` must never schedule an agy
-    # run on the self-hosted host — losing this to a workflow-only gate would be silent.
-    case "$assoc" in
-      OWNER|MEMBER|COLLABORATOR) : ;;
-      *) log "comment author association '$assoc' lacks write access; skipping"; exit 0 ;;
-    esac
+    # THE authoritative permission gate, not defence in depth. The workflow `if:` can only
+    # filter on `author_association`, which the payload carries but which does not answer the
+    # question being asked (see `agy_has_write_access`). Treat that `if:` as a cheap
+    # pre-filter that avoids booting a runner for obvious strangers, and settle the actual
+    # decision here, where an API call is possible. A stranger's `/agy-review` must never
+    # schedule an agy run on the self-hosted host.
+    agy_has_write_access "$commenter" \
+      || { log "commenter '${commenter}' lacks write access; skipping"; exit 0; }
     PR="$(jq -r '.issue.number' "$GITHUB_EVENT_PATH")"
     ;;
   *)
     PR="${1:-}"
     [ -n "$PR" ] || { log "unknown event; pass a PR number as \$1"; exit 1; }
     ;;
+esac
+# $PR is interpolated into API paths, refspecs (`refs/agy/pr-${PR}`) and a `gh` invocation, so it
+# is validated once here rather than trusted at each of those sites. From an event payload it is a
+# jq-parsed number and safe; from the `*)` branch above it is `$1`, i.e. whatever a hand-run or a
+# future caller passed. "Practically safe" is a property of today's callers, not of the variable.
+case "$PR" in
+  ''|*[!0-9]*) log "invalid PR number '${PR}'; expected digits only"; exit 1 ;;
 esac
 log "reviewing ${REPO}#${PR}"
 
@@ -281,7 +344,8 @@ esac
 # read-only bytes that become prompt text and are never executed. So the fallback
 # does not widen the trust boundary the workflow already sets: whatever governs
 # whether a given PR's diff is allowed to reach agy at all (the workflow `if:`
-# author-association gate; see the trust model at the agy invocation below) is
+# pre-filter plus `agy_has_write_access` above; see the trust model at the agy
+# invocation below) is
 # unchanged, and this only changes HOW an already-permitted diff is obtained when
 # it is too large for the API. `refs/agy/*` are private namespaces (cannot clobber
 # a real branch) and are removed on exit. Auth goes through `http.extraheader` for
@@ -320,9 +384,19 @@ if ! gh pr diff "$PR" --repo "$REPO" > "$diff_file" 2>"$diff_err"; then
     # `bearer` is what Actions' GITHUB_TOKEN accepts; a personal token from
     # `gh auth token` is rejected ("remote: invalid credentials"), so a hand-run
     # falls through to git's ambient credentials. Neither path persists anything.
+    #
+    # The header is supplied through GIT_CONFIG_* (git >= 2.31), NOT `git -c`. Identical
+    # config, different exposure: `git -c "http.extraheader=...bearer $TOKEN"` puts the token
+    # in the process's argv, and `/proc/<pid>/cmdline` is WORLD-READABLE on Linux — any
+    # concurrent job or any local process can read it for the lifetime of the fetch. This
+    # runner is a shared workstation, so that window is real. `/proc/<pid>/environ` is
+    # restricted to the same UID, so moving the secret from argv to the environment is what
+    # actually closes it. Do not "simplify" this back to `git -c`.
     if [ -n "${GH_TOKEN:-}" ] \
-       && git -c "http.extraheader=AUTHORIZATION: bearer ${GH_TOKEN}" fetch --no-tags --quiet \
-              origin "${fetch_refspecs[@]}" 2>/dev/null; then
+       && GIT_CONFIG_COUNT=1 \
+          GIT_CONFIG_KEY_0="http.extraheader" \
+          GIT_CONFIG_VALUE_0="AUTHORIZATION: bearer ${GH_TOKEN}" \
+          git fetch --no-tags --quiet origin "${fetch_refspecs[@]}" 2>/dev/null; then
       :
     elif git fetch --no-tags --quiet origin "${fetch_refspecs[@]}"; then
       log "fetched PR refs using git's ambient credentials (token header not accepted)"
@@ -343,12 +417,16 @@ if ! gh pr diff "$PR" --repo "$REPO" > "$diff_file" 2>"$diff_err"; then
     merge_base="$(git merge-base "$base_local" "$pr_ref" 2>/dev/null || true)"
     if [ -z "$merge_base" ]; then
       head_sha="$(jq -r '.headRefOid // empty' "$meta_file")"
-      # Percent-encode the branch name for the URL path. NOT for the `/` in a
-      # `<type>/<short-desc>` branch -- GitHub's compare endpoint accepts those
-      # raw, verified against a real slashed branch, returning the same SHA
-      # either way. It is for `%` and `#`, which git permits in a ref name and
-      # which a URL does not survive: `%` starts an escape and `#` truncates the
-      # path at the fragment. Both would fail silently into the `|| true`.
+      # Percent-encode the branch name for the URL path. `@uri` encodes EVERY reserved
+      # character, `/` included -- `ci/foo` becomes `ci%2Ffoo`, verified with
+      # `jq -rn --arg v 'ci/foo' '$v|@uri'`. GitHub's compare endpoint resolves the
+      # escaped form back to the branch, so a `<type>/<short-desc>` name works either
+      # way and the encoding is harmless there.
+      #
+      # It is NOT harmless to skip: `%` and `#` are legal in a git ref name and a raw
+      # URL does not survive them -- `%` starts an escape sequence and `#` truncates
+      # the path at the fragment. Either would fail silently into the `|| true` below,
+      # which is exactly the class of bug this whole path exists to avoid.
       base_enc="$(jq -rn --arg v "$base_ref" '$v|@uri')"
       api_base="$(gh api "repos/${REPO}/compare/${base_enc}...${head_sha}" \
                     --jq '.merge_base_commit.sha' 2>/dev/null || true)"
@@ -375,6 +453,15 @@ fi
 if ! have_text "$diff_file"; then log "empty diff; nothing to review"; exit 0; fi
 
 truncated=""
+# `head -c` is a BYTE cut and can slice a multi-byte UTF-8 sequence in half. That is accepted, not
+# overlooked: the UTF-8 scrub further down (`iconv -c`, python3 fallback) removes any partial
+# sequence before the prompt reaches agy, so the split never escapes this file.
+#
+# A line-aware cut would avoid creating the split, but cannot honour a byte ceiling — and the
+# ceiling is the actual constraint, since this bounds what is handed to a model with a hard context
+# limit. One minified-asset line in a diff can exceed the whole budget by itself, so "cut at a line
+# boundary" degenerates to either overshooting the cap or emitting nothing. Exact where the limit is
+# real, tolerant where the damage is already handled.
 if [ "$(wc -c < "$diff_file")" -gt "$MAX_DIFF_BYTES" ]; then
   head -c "$MAX_DIFF_BYTES" "$diff_file" > "$diff_file.cut" && mv "$diff_file.cut" "$diff_file"
   truncated=$'\n\n> Note: the diff exceeded '"${MAX_DIFF_BYTES}"$' bytes and was truncated for this review.'
@@ -708,7 +795,16 @@ fi
 # costs only the archive, never the review.
 prior_id=""
 prior_body_file="$(mktemp)"
-if prior_json="$(gh api "repos/${REPO}/issues/${PR}/comments" --paginate 2>/dev/null)"; then
+# `--paginate` emits one top-level JSON array PER PAGE, concatenated — not one merged array.
+# jq then runs the filter once per array, so `[ ... ] | first | .id` yields one id per page
+# that matches rather than one id overall. On a thread short enough to fit a single page that
+# is invisible; past 30 comments, if a fallback POST has ever left a second marked comment
+# behind, `prior_id` becomes multi-line, `--argjson id` rejects it, and the in-place edit
+# silently degrades into a duplicate post — exactly on the long threads where the archive
+# matters most. `jq -s add` merges the pages into the single array the filter assumes.
+# (`gh api --slurp` does this too, but only on gh >= 2.42; this works on any version.)
+if prior_json="$(gh api "repos/${REPO}/issues/${PR}/comments" --paginate 2>/dev/null \
+                  | jq -s 'add // []' 2>/dev/null)"; then
   prior_id="$(printf '%s' "$prior_json" | jq -r --arg marker "$MARKER" "$SELECT_OURS_JQ" 2>/dev/null || true)"
   if [ -n "$prior_id" ] && [ "$prior_id" != "null" ]; then
     printf '%s' "$prior_json" \

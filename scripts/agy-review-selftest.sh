@@ -2,8 +2,15 @@
 #
 # agy-review-selftest.sh -- guards the comment-selection logic in `agy-review.sh`.
 #
-# Why this exists: that filter decides which PR comments the bot DELETES, and it has been wrong
-# twice, both times invisibly.
+# Why this exists: that filter decides which existing comment the bot EDITS IN PLACE — the one
+# whose body carries the archive of every prior review round. Pick the wrong one and a round is
+# overwritten; pick none and the round is orphaned as a duplicate post. It has been wrong twice,
+# both times invisibly.
+#
+# The two histories below are from the earlier design, which posted a fresh comment and deleted
+# the previous one. That design is gone — nothing is deleted now — but the failures are recorded
+# verbatim because they are what the fixtures are shaped to catch, and both remain reachable
+# against an edit-in-place filter for the same underlying reasons.
 #
 #   1. The just-posted comment was not reliably excluded. `new_comment_id` came from re-querying
 #      the comment list, which races GitHub's read replication; on a miss the exclusion became
