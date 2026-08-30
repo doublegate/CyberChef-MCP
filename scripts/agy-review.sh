@@ -270,6 +270,13 @@ case "${GITHUB_EVENT_NAME:-}" in
     [ -n "$PR" ] || { log "unknown event; pass a PR number as \$1"; exit 1; }
     ;;
 esac
+# $PR is interpolated into API paths, refspecs (`refs/agy/pr-${PR}`) and a `gh` invocation, so it
+# is validated once here rather than trusted at each of those sites. From an event payload it is a
+# jq-parsed number and safe; from the `*)` branch above it is `$1`, i.e. whatever a hand-run or a
+# future caller passed. "Practically safe" is a property of today's callers, not of the variable.
+case "$PR" in
+  ''|*[!0-9]*) log "invalid PR number '${PR}'; expected digits only"; exit 1 ;;
+esac
 log "reviewing ${REPO}#${PR}"
 
 # Remove every temp file on exit. Pre-declared so the trap is safe under `set -u` even if the
@@ -377,9 +384,19 @@ if ! gh pr diff "$PR" --repo "$REPO" > "$diff_file" 2>"$diff_err"; then
     # `bearer` is what Actions' GITHUB_TOKEN accepts; a personal token from
     # `gh auth token` is rejected ("remote: invalid credentials"), so a hand-run
     # falls through to git's ambient credentials. Neither path persists anything.
+    #
+    # The header is supplied through GIT_CONFIG_* (git >= 2.31), NOT `git -c`. Identical
+    # config, different exposure: `git -c "http.extraheader=...bearer $TOKEN"` puts the token
+    # in the process's argv, and `/proc/<pid>/cmdline` is WORLD-READABLE on Linux — any
+    # concurrent job or any local process can read it for the lifetime of the fetch. This
+    # runner is a shared workstation, so that window is real. `/proc/<pid>/environ` is
+    # restricted to the same UID, so moving the secret from argv to the environment is what
+    # actually closes it. Do not "simplify" this back to `git -c`.
     if [ -n "${GH_TOKEN:-}" ] \
-       && git -c "http.extraheader=AUTHORIZATION: bearer ${GH_TOKEN}" fetch --no-tags --quiet \
-              origin "${fetch_refspecs[@]}" 2>/dev/null; then
+       && GIT_CONFIG_COUNT=1 \
+          GIT_CONFIG_KEY_0="http.extraheader" \
+          GIT_CONFIG_VALUE_0="AUTHORIZATION: bearer ${GH_TOKEN}" \
+          git fetch --no-tags --quiet origin "${fetch_refspecs[@]}" 2>/dev/null; then
       :
     elif git fetch --no-tags --quiet origin "${fetch_refspecs[@]}"; then
       log "fetched PR refs using git's ambient credentials (token header not accepted)"
