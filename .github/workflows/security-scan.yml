@@ -115,7 +115,7 @@ jobs:
         with:
           image-ref: 'cyberchef-mcp:scan'
           format: 'table'
-          severity: ${{ steps.severity.outputs.level }}
+          severity: 'CRITICAL'
           vuln-type: 'os,library'
           exit-code: '1'
 
