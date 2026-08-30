@@ -35,9 +35,12 @@ updates:
         applies-to: version-updates
         dependency-type: "development"
         update-types: ["minor", "patch"]
+      # Restricted to minor+patch so a MAJOR security update still arrives as its own PR,
+      # matching the majors-get-individual-review policy stated at the top of this file.
       security-patches:
         applies-to: security-updates
         patterns: ["*"]
+        update-types: ["minor", "patch"]
     ignore:
       # The `version` field tracks the upstream CyberChef release, not our own semver, and
       # the operation/core dependency set is adopted wholesale from upstream by the
@@ -82,3 +85,7 @@ updates:
       - "docker"
     commit-message:
       prefix: "build(docker)"
+    groups:
+      docker-minor-patch:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]
