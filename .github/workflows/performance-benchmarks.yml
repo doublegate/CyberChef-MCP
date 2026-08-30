@@ -17,6 +17,13 @@ on:
       - 'benchmarks/**'
   workflow_dispatch:
 
+# GITHUB_TOKEN defaults to read-only in this repository, so the "comment results" step
+# below 403s with "Resource not accessible by integration" -- which failed the whole
+# workflow on every PR. Least privilege: read the code, write one PR comment.
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   benchmark:
     name: Run Performance Benchmarks
@@ -46,24 +53,64 @@ jobs:
         run: npx grunt configTests
 
       - name: Run benchmarks
-        run: npm run benchmark
+        id: bench
+        run: |
+          set -o pipefail
+          npm run benchmark 2>&1 | tee benchmark-output.txt
 
+      # `continue-on-error`: this step REPORTS, it does not gate. Previously a failure to post
+      # a comment failed the whole workflow, so a permissions problem in the reporting path
+      # showed up as a red "Run Performance Benchmarks" check even though every benchmark had
+      # passed. A build gate should fail on the build, never on its own commentary.
       - name: Comment benchmark results on PR
         if: github.event_name == 'pull_request'
+        continue-on-error: true
         uses: actions/github-script@v7
         with:
           script: |
-            const comment = `
-            ## Performance Benchmark Results
+            const fs = require("fs");
 
-            Benchmarks have been run for this PR. Check the workflow logs for detailed results.
+            // Carry the actual numbers. The previous body said only "Benchmarks have been run
+            // ... check the workflow logs", which is a notification that a thing happened
+            // rather than a result -- it cost an API call and a comment to convey nothing.
+            let output = "";
+            try {
+              output = fs.readFileSync("benchmark-output.txt", "utf8").trim();
+            } catch {
+              output = "(benchmark output was not captured)";
+            }
 
-            **Note:** Compare with baseline to detect performance regressions.
-            `;
+            // GitHub rejects comment bodies over 65536 characters. Keep the TAIL, since these
+            // benchmarks print their summary last.
+            const LIMIT = 60000;
+            let truncated = false;
+            if (output.length > LIMIT) {
+              output = output.slice(-LIMIT);
+              truncated = true;
+            }
 
-            github.rest.issues.createComment({
+            const body = [
+              "## Performance Benchmark Results",
+              "",
+              truncated ? "_Output truncated to the last 60,000 characters._\n" : "",
+              "<details><summary>Full benchmark output</summary>",
+              "",
+              "```",
+              output,
+              "```",
+              "",
+              "</details>",
+              "",
+              "> No baseline comparison is performed yet, so these numbers are informational and",
+              "> this check cannot fail on a regression. Automated regression detection is tracked",
+              "> for the v2.0.0 release work.",
+            ].join("\n");
+
+            // `await` matters: without it a rejected promise became an unhandled rejection that
+            // took the job down with an opaque stack instead of a readable failure.
+            await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: comment
+              body
             });
