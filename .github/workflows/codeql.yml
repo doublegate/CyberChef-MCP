@@ -3,9 +3,9 @@ name: "CodeQL Analysis"
 on:
   workflow_dispatch:
   push:
-    branches: [ master ]
+    branches: [ master, 'release/**' ]
   pull_request:
-    branches: [ master ]
+    branches: [ master, 'release/**' ]
     types: [synchronize, opened, reopened]
   schedule:
     - cron: '22 17 * * 5'

@@ -2,7 +2,7 @@ name: Build and Test MCP Server
 
 on:
   push:
-    branches: [ "master" ]
+    branches: [ "master", "release/**" ]
     paths:
       - 'src/node/**'
       - 'src/core/**'
@@ -11,7 +11,7 @@ on:
       - 'Dockerfile.mcp'
       - '.github/workflows/mcp-docker-build.yml'
   pull_request:
-    branches: [ "master" ]
+    branches: [ "master", "release/**" ]
     paths:
       - 'src/node/**'
       - 'src/core/**'
