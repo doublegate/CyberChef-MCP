@@ -197,14 +197,10 @@ jobs:
           # chmods a file the default branch does not have yet. Observed exactly
           # once, on the PR that introduced `_agy_comment_body.sh`.
           #
-          # The two required files are chmod'd unconditionally; anything added later
-          # is chmod'd only if present, so the workflow stays compatible with both
-          # the old and the new script set. A genuinely missing required file still
-          # fails loudly -- `agy-review.sh` sources it and dies -- rather than being
-          # papered over here.
+          # Only the two files that are EXECUTED need the bit. `_agy_comment_body.sh` is
+          # sourced, never executed, so it never needed chmod -- it was carried along by a
+          # loop that also had only one item to iterate. Both are now gone. A genuinely
+          # missing required file still fails loudly: `agy-review.sh` sources it and dies,
+          # rather than being papered over here.
           chmod +x scripts/agy-review.sh scripts/_agy_print.sh
-          for opt in scripts/_agy_comment_body.sh; do
-            [ -f "$opt" ] && chmod +x "$opt"
-          done
-          true
           scripts/agy-review.sh

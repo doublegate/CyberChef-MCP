@@ -56,9 +56,11 @@ PRs in the current series belong to the **v2.0.0 release train** (see
 - **These rules describe JavaScript** (`src/**`, `tests/**`). Do not apply them to other
   languages. **4-space indentation** (upstream CyberChef style, not 2); CamelCase for objects
   and namespaces, camelCase for functions and variables.
-- **Shell (`scripts/*.sh`) follows shell convention instead**: 2-space bodies, `snake_case`
-  functions and variables, `set -euo pipefail`. Flagging these as style violations is a false
-  positive — it has happened, so it is called out here rather than left to inference.
+- **Shell (`scripts/*.sh`) follows shell convention instead**: 2-space bodies, `set -euo
+  pipefail`, `snake_case` for functions and locals, and `SCREAMING_SNAKE_CASE` for globals
+  and configuration (`AGY_MODEL`, `SELECT_OURS_JQ`) — the standard shell distinction between
+  the two scopes, not an inconsistency. Flagging any of this as a style violation is a false
+  positive; it has happened twice, so it is spelled out here rather than left to inference.
 - JSON imports use `with { type: "json" }`, never the deprecated `assert`.
 - No emojis in code, comments, commits, or docs.
 - Prefer vanilla JS; do not add a framework dependency without justification.

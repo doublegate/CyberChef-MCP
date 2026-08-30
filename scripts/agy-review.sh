@@ -400,12 +400,16 @@ if ! gh pr diff "$PR" --repo "$REPO" > "$diff_file" 2>"$diff_err"; then
     merge_base="$(git merge-base "$base_local" "$pr_ref" 2>/dev/null || true)"
     if [ -z "$merge_base" ]; then
       head_sha="$(jq -r '.headRefOid // empty' "$meta_file")"
-      # Percent-encode the branch name for the URL path. NOT for the `/` in a
-      # `<type>/<short-desc>` branch -- GitHub's compare endpoint accepts those
-      # raw, verified against a real slashed branch, returning the same SHA
-      # either way. It is for `%` and `#`, which git permits in a ref name and
-      # which a URL does not survive: `%` starts an escape and `#` truncates the
-      # path at the fragment. Both would fail silently into the `|| true`.
+      # Percent-encode the branch name for the URL path. `@uri` encodes EVERY reserved
+      # character, `/` included -- `ci/foo` becomes `ci%2Ffoo`, verified with
+      # `jq -rn --arg v 'ci/foo' '$v|@uri'`. GitHub's compare endpoint resolves the
+      # escaped form back to the branch, so a `<type>/<short-desc>` name works either
+      # way and the encoding is harmless there.
+      #
+      # It is NOT harmless to skip: `%` and `#` are legal in a git ref name and a raw
+      # URL does not survive them -- `%` starts an escape sequence and `#` truncates
+      # the path at the fragment. Either would fail silently into the `|| true` below,
+      # which is exactly the class of bug this whole path exists to avoid.
       base_enc="$(jq -rn --arg v "$base_ref" '$v|@uri')"
       api_base="$(gh api "repos/${REPO}/compare/${base_enc}...${head_sha}" \
                     --jq '.merge_base_commit.sha' 2>/dev/null || true)"
