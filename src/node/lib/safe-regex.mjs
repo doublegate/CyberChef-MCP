@@ -55,6 +55,52 @@ import { createInputError } from "../errors.mjs";
 const MAX_PATTERN_LENGTH = Number(process.env.CYBERCHEF_MAX_REGEX_LENGTH) || 1000;
 
 /**
+ * Do two alternation branches overlap — can they match the same text?
+ *
+ * Exact overlap detection is language-inclusion and not something to attempt here. These three
+ * cases cover the shapes that actually appear in ReDoS patterns, and each is decidable by
+ * inspection:
+ *
+ *   identical      (a|a)      both branches accept the same string
+ *   prefix         (a|ab)     one accepts a prefix of what the other accepts
+ *   quantified     (a+|b)     a variable-length branch can absorb what a fixed one matches
+ *
+ * @param {string} left - One branch's source.
+ * @param {string} right - Another branch's source.
+ * @returns {boolean} True if the two can match overlapping text.
+ */
+function branchesOverlap(left, right) {
+    const a = left.trim(), b = right.trim();
+    if (a === "" || b === "") return true;              // an empty branch matches everywhere
+    if (a === b) return true;                            // (a|a)
+    if (a.startsWith(b) || b.startsWith(a)) return true; // (a|ab)
+    // A quantifier makes a branch variable-length, so it can consume text the other branch
+    // would also accept -- the (a+|b)+ family.
+    return /[+*]|\{\d+,\d*\}/.test(a) || /[+*]|\{\d+,\d*\}/.test(b);
+}
+
+/**
+ * Is there a quantified alternation group whose branches can overlap?
+ *
+ * @param {string} pattern - The regex source.
+ * @returns {boolean} True if such a group is present.
+ */
+function hasOverlappingQuantifiedAlternation(pattern) {
+    // Groups containing a top-level `|` and followed by a quantifier. The trailing `[?]?`
+    // deliberately ALLOWS the lazy form: `(a|a)+?` is as catastrophic as `(a|a)+`.
+    const GROUP = /\(([^()]*\|[^()]*)\)\s*(?:[+*]|\{\d+,\d*\})\??/g;
+    for (const m of pattern.matchAll(GROUP)) {
+        const branches = m[1].split("|");
+        for (let i = 0; i < branches.length; i++) {
+            for (let j = i + 1; j < branches.length; j++) {
+                if (branchesOverlap(branches[i], branches[j])) return true;
+            }
+        }
+    }
+    return false;
+}
+
+/**
  * Structural shapes that cause exponential (not merely slow) backtracking.
  *
  * Each entry is deliberately narrow. A broad "contains nested quantifiers" test rejects
@@ -70,11 +116,25 @@ const CATASTROPHIC_SHAPES = [
         why: "a quantified group whose body is also quantified, e.g. (a+)+"
     },
     {
-        // (a|a)+ , (a|ab)* -- quantified alternation whose branches can match the same text,
-        // so the engine has exponentially many ways to split the input.
+        // (a|a)+ , (a|ab)* -- quantified alternation whose branches can match the SAME text,
+        // giving the engine exponentially many ways to split the input.
+        //
+        // This one cannot be a plain regex, and the attempt to make it one was wrong in both
+        // directions (measured):
+        //   * `(foo|bar)+` and `(cat|dog)*` were REJECTED. Disjoint branches cannot overlap, so
+        //     these are linear and completely ordinary. A screen that rejects them is a screen
+        //     someone switches off.
+        //   * `(a|a)+?` was ALLOWED, because the rule carried a `(?![?+])` guard that skipped
+        //     lazy quantifiers. Laziness changes the ORDER the engine explores, not the size of
+        //     the search space. Measured on 26 a's plus a failing character:
+        //         (a|a)+   5383ms        (a|a)+?   5163ms
+        //         (a+)+    2974ms        (a+)+?    2906ms
+        //     Lazy is not meaningfully cheaper. The guard was a bypass: append one `?`.
+        //
+        // So overlap is what matters, and it is decided per pattern rather than by shape alone.
         id: "quantified-alternation",
-        re: /\([^)]*\|[^)]*\)\s*[+*]\s*(?![?+])/,
-        why: "a quantified alternation with potentially overlapping branches, e.g. (a|ab)+"
+        detect: hasOverlappingQuantifiedAlternation,
+        why: "a quantified alternation whose branches can match the same text, e.g. (a|ab)+"
     },
     {
         // {n,m} repetition applied to an already-quantified group.
@@ -102,7 +162,8 @@ function screenRegexPattern(pattern) {
     }
 
     for (const shape of CATASTROPHIC_SHAPES) {
-        if (shape.re.test(pattern)) {
+        const hit = shape.detect ? shape.detect(pattern) : shape.re.test(pattern);
+        if (hit) {
             return { safe: false, shape: shape.id, reason: shape.why };
         }
     }

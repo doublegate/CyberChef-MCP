@@ -6,7 +6,7 @@
  * The predecessor module shipped with NO tests -- its own security report left "Add
  * security-focused unit tests for SafeRegex" unchecked -- which is exactly why an upstream sync
  * could strip every call site without anything going red. The suite below is written so that
- * cannot happen again: the "stays wired up" block fails if the screen is ever disconnected from
+ * this cannot happen again: the "stays wired up" block fails if the screen is ever disconnected from
  * the dispatch path, and the "covers the operations that compile user patterns" block fails if
  * the argument-detection heuristic stops matching the operations it exists to protect.
  *
@@ -49,9 +49,30 @@ describe("screenRegexPattern", () => {
     });
 
     it("rejects quantified alternation with overlapping branches", () => {
-        const v = screenRegexPattern("(a|ab)+");
-        expect(v.safe).toBe(false);
-        expect(v.shape).toBe("quantified-alternation");
+        for (const p of ["(a|ab)+", "(a|a)+", "(a+|b)+"]) {
+            const v = screenRegexPattern(p);
+            expect(v.safe, `expected unsafe: ${p}`).toBe(false);
+            expect(v.shape).toBe("quantified-alternation");
+        }
+    });
+
+    it("rejects LAZY quantifiers too — laziness is not a mitigation", () => {
+        // Measured on 26 a's plus a failing character:
+        //   (a|a)+  5383ms   (a|a)+?  5163ms
+        //   (a+)+   2974ms   (a+)+?   2906ms
+        // An earlier version of this screen carried a `(?![?+])` guard that skipped the lazy
+        // forms, so appending a single `?` bypassed it entirely.
+        for (const p of ["(a|a)+?", "(a|ab)*?", "(a+)+?"]) {
+            expect(screenRegexPattern(p).safe, `lazy bypass: ${p}`).toBe(false);
+        }
+    });
+
+    it("allows quantified alternation whose branches are DISJOINT", () => {
+        // These are linear and entirely ordinary. An earlier version rejected them, which is
+        // the failure mode that gets a screen switched off by whoever trips over it.
+        for (const p of ["(foo|bar)+", "(cat|dog)*", "(GET|POST|PUT)+"]) {
+            expect(screenRegexPattern(p), `false positive: ${p}`).toEqual({ safe: true });
+        }
     });
 
     it("rejects bounded repetition wrapping a quantified group", () => {

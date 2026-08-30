@@ -12,11 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   Two things make this different from its predecessor rather than a reinstatement:
   - It lives in the **fork-owned MCP layer**, outside every sync allowlist, so no upstream sync can disconnect it. The original sat in `src/core/` and was silently stripped.
-  - It ships with **24 tests**, including a regression guard that fails if the screen is ever unwired from the dispatch path and a coverage check that fails if the argument heuristic stops matching the operations that compile user patterns. The original had none, which is why its removal went unnoticed for four releases.
+  - It ships with **26 tests**, including a regression guard that fails if the screen is ever unwired from the dispatch path and a coverage check that fails if the argument heuristic stops matching the operations that compile user patterns. The original had none, which is why its removal went unnoticed for four releases.
 
   The old module's "timeout-based validation (100ms)" is deliberately **not** reimplemented: catastrophic backtracking blocks the event loop, so no JavaScript timer can fire while it runs. The same applies to `CYBERCHEF_OPERATION_TIMEOUT`, which gives no protection against ReDoS — screening before execution is the only thing that works single-threaded. Configurable via `CYBERCHEF_MAX_REGEX_LENGTH` (default 1000).
-
-### Added
 - **Antigravity PR reviewer**: `.github/workflows/antigravity-review.yml` plus `scripts/agy-review.sh` and helpers run a first-pass adversarial review on every same-repo PR, and on `/agy-review` from a maintainer. Runs on a self-hosted runner against a Google AI Ultra OAuth session, so it costs no metered API spend. Restores the automated PR review lost when Gemini Code Assist for GitHub was retired.
 - **Repository style guide for reviewers**: `.github/agy-review.md` gives the reviewer this project's conventions (fork hygiene for `src/core/**`, generated files, MCP-layer rules) instead of generic advice.
 
