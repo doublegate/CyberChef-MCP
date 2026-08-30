@@ -11,15 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Antigravity PR reviewer**: `.github/workflows/antigravity-review.yml` plus `scripts/agy-review.sh` and helpers run a first-pass adversarial review on every same-repo PR, and on `/agy-review` from a maintainer. Runs on a self-hosted runner against a Google AI Ultra OAuth session, so it costs no metered API spend. Restores the automated PR review lost when Gemini Code Assist for GitHub was retired.
 - **Repository style guide for reviewers**: `.github/agy-review.md` gives the reviewer this project's conventions (fork hygiene for `src/core/**`, generated files, MCP-layer rules) instead of generic advice.
 
+### Changed
+- **Upstream Monitor Schedule**: Changed cron from every 6 hours to weekly (Sundays at noon UTC) to reduce unnecessary CI runs
+
 ### Fixed
 - **Node runtime warnings on startup, now zero.** Two classes, both traced to a source rather than silenced:
   - `[DEP0040] DeprecationWarning: The 'punycode' module is deprecated` — raised by our own `FromPunycode.mjs`/`ToPunycode.mjs`, which imported the bare specifier `punycode`. For unprefixed names Node resolves builtins ahead of `node_modules`, so this always bound to the deprecated built-in. Fixed by adopting the userland `punycode.js` package — exactly what upstream did in v11.4.0, so the next sync confirms this change rather than reverting it.
   - `Warning: Accessing non-existent property 'b2u'/'u2b'/'Pair' of module exports inside circular dependency` — a circular `require` inside `kbpgp`. Our pin was an exact `2.1.15` while upstream uses `^2.1.18`; matching that range resolves to 2.1.19, which no longer emits them.
 
-### Changed
-- **Upstream Monitor Schedule**: Changed cron from every 6 hours to weekly (Sundays at noon UTC) to reduce unnecessary CI runs
 
-### Fixed
 - **Documentation**: Corrected `ENABLE_WORKERS` env var references to `CYBERCHEF_ENABLE_WORKERS` across README.md, CLAUDE.md, and release notes
 - **Documentation**: Updated upstream monitor schedule references from "every 6 hours" to "weekly" in README.md
 - **Documentation**: Updated Dockerfile base image references from `node:18-alpine`/`node:22-alpine` to Chainguard distroless in architecture docs and CLAUDE.md
