@@ -15,7 +15,7 @@ name: Security Scan
 
 on:
   push:
-    branches: [master]
+    branches: [master, 'release/**']
     paths:
       - 'src/**'
       - 'package.json'
@@ -23,7 +23,7 @@ on:
       - 'Dockerfile.mcp'
       - '.github/workflows/security-scan.yml'
   pull_request:
-    branches: [master]
+    branches: [master, 'release/**']
     paths:
       - 'src/**'
       - 'package.json'

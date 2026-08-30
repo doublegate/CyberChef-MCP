@@ -5,6 +5,9 @@ on:
   push:
     branches:
     - master
+    # The release train is long-lived: without this it accumulates dozens of
+    # commits with no CI at all, and a master->release merge is validated by nothing.
+    - 'release/**'
     paths:
       - 'src/core/**'
       - 'src/node/**'
