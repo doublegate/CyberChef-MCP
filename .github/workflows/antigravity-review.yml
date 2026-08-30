@@ -86,6 +86,44 @@ jobs:
           # supplies the token per command via `http.extraheader` rather than persisting it.
           persist-credentials: false
 
+      # BOOTSTRAP ONLY. On the very first install in a repo the scripts exist on the PR
+      # branch but not yet on the default branch, so the run step below chmods files that
+      # are not there and the job dies before it can review anything. Observed on
+      # CyberChef-MCP PR #41, and predicted by Copilot review on that same PR.
+      #
+      # The trust model above is preserved, not weakened. This fires ONLY when the default
+      # branch genuinely has no reviewer yet AND the PR head is in this same repository, so
+      # it could only have been pushed by someone who already has write access. A fork PR
+      # never reaches this step and can never supply the script that runs on the self-hosted
+      # runner. Once the first PR merges, the default branch has the scripts, `hashFiles` is
+      # non-empty, and this step never fires again for the life of the repo.
+      - name: Bootstrap reviewer from PR head (first install only)
+        id: agy_bootstrap
+        if: >-
+          hashFiles('scripts/agy-review.sh') == '' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+          path: .agy-bootstrap
+
+      - name: Install bootstrapped reviewer
+        if: steps.agy_bootstrap.outcome == 'success'
+        run: |
+          set -eu
+          echo "::notice::Default branch has no reviewer yet; bootstrapping from the PR head."
+          mkdir -p scripts
+          cp .agy-bootstrap/scripts/agy-review.sh \
+             .agy-bootstrap/scripts/_agy_print.sh \
+             .agy-bootstrap/scripts/_agy_comment_body.sh scripts/
+          # The style guide is read from the workspace too, and is equally absent on a first install.
+          if [ -f .agy-bootstrap/.github/agy-review.md ] && [ ! -f .github/agy-review.md ]; then
+            mkdir -p .github && cp .agy-bootstrap/.github/agy-review.md .github/
+          fi
+          rm -rf .agy-bootstrap
+
       - name: Run Antigravity review
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
