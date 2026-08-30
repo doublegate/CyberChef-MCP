@@ -27,7 +27,9 @@ PRs in the current series belong to the **v2.0.0 release train** (see
   `GPL-3.0-or-later` as a combined work; upstream files keep their original headers.
 - Ported code from a reference project (`ref-proj/*`) must carry an
   `SPDX-License-Identifier` and a provenance comment naming source project, file, and commit,
-  plus a row in `THIRD-PARTY-NOTICES.md`.
+  plus a row in `THIRD-PARTY-NOTICES.md` (that file does not exist yet — it arrives with the
+  GPL-3.0-or-later relicense PR, along with `NOTICE` and `LICENSE.Apache-2.0`; until then this
+  rule applies only to newly ported code, of which there is none).
 
 ## MCP-layer conventions
 
