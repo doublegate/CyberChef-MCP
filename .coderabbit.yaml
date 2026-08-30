@@ -16,10 +16,12 @@
 # result is worse than a crash, so extra nitpicks are worth not missing the one
 # comment that matters.
 
-language: en-US
+# en-GB, not the en-US default: .cspell.json already declares "en,en-gb" and this is a
+# fork of a GCHQ project, whose src/core prose is predominantly British English.
+language: en-GB
 
 tone_instructions: >-
-  Precise, technical language. No emojis or poems. Prioritize correctness of
+  Precise, technical language. No emojis or poems. Prioritise correctness of
   cryptographic and data-transformation output, and fork hygiene, over style nits
   that ESLint already catches in CI.
 
