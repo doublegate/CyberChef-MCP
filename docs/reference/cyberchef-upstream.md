@@ -406,8 +406,7 @@ Several upstream files have been patched for MCP compatibility:
 | `src/core/lib/Magic.mjs` | `assert {type: "json"}` → `with {type: "json"}` only. No SafeRegex import; that claim was false. | No — upstream adopted `with` in v11.x, so this resolves itself on sync. |
 | `src/core/Recipe.mjs` | JSON-import syntax only. No error-handling changes. | No — same as above. |
 | `src/node/api.mjs` | JSON-import syntax only. No streaming support; streaming lives in `src/node/streaming.mjs`, which is fork-owned and outside the sync. | No — same as above. |
-| `src/core/lib/SafeRegex.mjs` | **Removed in v2.0.0.** Was fork-only and unreferenced; a sync had already stripped its call sites. | n/a — see the [incident record](../security/2026-08-30-saferegex-reverted-by-upstream-sync.md). |
-| Various operations | Regex safety patches | Security hardening |
+| `src/core/lib/SafeRegex.mjs` | **Removed.** Was fork-only and unreferenced; a sync had already stripped its call sites. | n/a — see the [incident record](../security/2026-08-30-saferegex-reverted-by-upstream-sync.md). |
 
 ### Compatibility Considerations
 

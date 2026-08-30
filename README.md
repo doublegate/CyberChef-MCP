@@ -445,7 +445,7 @@ This project implements comprehensive security hardening with continuous improve
         *   **Withdrawn — this protection is no longer present.** The fix worked by importing a
             `SafeRegex.mjs` helper into the affected operations. Those operations live under
             `src/core/operations/`, which `upstream-sync.yml` copies verbatim from upstream, so a
-            later sync removed every import. The module was removed in v2.0.0 rather than left as
+            later sync removed every import. The module has been removed rather than left as
             dead code claiming a protection it no longer provided.
         *   See [the incident record](docs/security/2026-08-30-saferegex-reverted-by-upstream-sync.md)
             for the verification and the general rule it establishes: a hand-edit inside
