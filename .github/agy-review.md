@@ -53,8 +53,12 @@ PRs in the current series belong to the **v2.0.0 release train** (see
 ## Conventions
 
 - Conventional Commits (`feat|fix|docs|refactor|test|chore|perf|build|ci`).
-- **4-space indentation** (upstream CyberChef style, not 2). CamelCase for objects and
-  namespaces, camelCase for functions and variables.
+- **These rules describe JavaScript** (`src/**`, `tests/**`). Do not apply them to other
+  languages. **4-space indentation** (upstream CyberChef style, not 2); CamelCase for objects
+  and namespaces, camelCase for functions and variables.
+- **Shell (`scripts/*.sh`) follows shell convention instead**: 2-space bodies, `snake_case`
+  functions and variables, `set -euo pipefail`. Flagging these as style violations is a false
+  positive — it has happened, so it is called out here rather than left to inference.
 - JSON imports use `with { type: "json" }`, never the deprecated `assert`.
 - No emojis in code, comments, commits, or docs.
 - Prefer vanilla JS; do not add a framework dependency without justification.

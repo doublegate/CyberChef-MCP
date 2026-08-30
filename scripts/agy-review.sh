@@ -174,6 +174,18 @@ MAX_BODY_BYTES="${MAX_BODY_BYTES:-60000}"
 # (an HTML comment, invisible when rendered) in a PR comment and have this bot edit it. Only
 # ever touch our own bot's comments. `first` picks the OLDEST match, so if duplicates exist
 # from an older version of this script, the canonical thread is the one that keeps growing.
+#
+# COUPLING, stated because it is invisible otherwise: the `github-actions[bot]` login pin assumes
+# the review is posted with `GITHUB_TOKEN` from Actions, which is the only path the workflow has.
+# Move this to a GitHub App or a PAT and the filter stops finding its own comments — it will post
+# a fresh review every round instead of editing one, and the archive stops accumulating.
+#
+# Do not "fix" that in advance by dropping the login and matching on `.user.type == "Bot"` plus the
+# marker. Under a PAT the comment's type is `"User"`, not `"Bot"`, so that clause fails in the same
+# scenario; and the marker is an HTML comment, so any bot that quotes or summarises a PR comment
+# carries it along, which would let this script PATCH over ANOTHER bot's comment. Losing a review
+# that way is worse than posting a duplicate. Change this filter when the auth changes, not before,
+# and match on whatever identity the new credential actually presents.
 # >>> SELFTEST-EXTRACT: ours-comment filter
 SELECT_OURS_JQ='[ .[]
   | select(.user.type == "Bot" and .user.login == "github-actions[bot]")
