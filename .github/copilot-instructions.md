@@ -41,7 +41,7 @@ This repository hosts the **Model Context Protocol (MCP) Server** adaptation of 
 - **Core Operations:** `src/core/operations/` - Individual CyberChef operation implementations
 
 ### Technology Stack
-- **Runtime:** Node.js v22+ (Alpine Linux in Docker)
+- **Runtime:** Node.js v22+ (Chainguard distroless, Wolfi-based, in Docker - NOT Alpine)
 - **Protocol:** Model Context Protocol (MCP) via `@modelcontextprotocol/sdk`
 - **Validation:** `zod` and `zod-to-json-schema` for input validation
 - **Build System:** Grunt (legacy config generation) + NPM Scripts
@@ -97,7 +97,9 @@ This generates:
 
 ### Production Docker Image
 - **File:** `Dockerfile.mcp`
-- **Base Image:** `cgr.dev/chainguard/node` (distroless, digest-pinned; Node 26.x). NOT node:22-alpine.
+- **Base Image:** `cgr.dev/chainguard/node` (distroless, Wolfi-based). NOT node:22-alpine.
+  On this branch both stages still use the floating `latest` / `latest-dev` tags; digest pinning
+  lands with the v2.0.0 release branch.
 - **Key Steps:**
   1. Install dependencies with `npm ci --ignore-scripts`
   2. Apply SlowBuffer patches to `avsc` and `buffer-equal-constant-time`
