@@ -304,7 +304,8 @@ esac
 # read-only bytes that become prompt text and are never executed. So the fallback
 # does not widen the trust boundary the workflow already sets: whatever governs
 # whether a given PR's diff is allowed to reach agy at all (the workflow `if:`
-# author-association gate; see the trust model at the agy invocation below) is
+# pre-filter plus `agy_has_write_access` above; see the trust model at the agy
+# invocation below) is
 # unchanged, and this only changes HOW an already-permitted diff is obtained when
 # it is too large for the API. `refs/agy/*` are private namespaces (cannot clobber
 # a real branch) and are removed on exit. Auth goes through `http.extraheader` for
