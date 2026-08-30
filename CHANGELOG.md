@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Antigravity PR reviewer**: `.github/workflows/antigravity-review.yml` plus `scripts/agy-review.sh` and helpers run a first-pass adversarial review on every same-repo PR, and on `/agy-review` from a maintainer. Runs on a self-hosted runner against a Google AI Ultra OAuth session, so it costs no metered API spend. Restores the automated PR review lost when Gemini Code Assist for GitHub was retired.
 - **Repository style guide for reviewers**: `.github/agy-review.md` gives the reviewer this project's conventions (fork hygiene for `src/core/**`, generated files, MCP-layer rules) instead of generic advice.
 
+### Removed
+- **`src/core/lib/SafeRegex.mjs`** (138 lines, added v1.4.1): dead code. The module was never self-acting — it worked by having operations import `createSafeRegExp` — and a later run of `upstream-sync.yml` overwrote those operations verbatim from upstream, removing every import. Nothing in the tree referenced it. Reviving it would mean re-adding imports that the next sync strips again, so it is removed rather than restored. Any future regex hardening must live in the fork-owned MCP layer under `src/node/`, where the sync cannot reach it, or be contributed upstream.
+
+### Fixed
+- **Documentation asserting a security protection that no longer existed.** `README.md` described SafeRegex as an active mitigation; `docs/reference/cyberchef-upstream.md` — the *live* upstream-sync guide — instructed maintainers to re-apply "SafeRegex imports" after each sync and listed a table of four "MCP patches" of which **three did not exist** (`Magic.mjs`, `Recipe.mjs` and `api.mjs` differed from upstream only by JSON-import syntax, not by the changes claimed). Both corrected against the actual tree. Historical reports keep their text and carry a pointer to the incident record at `docs/security/2026-08-30-saferegex-reverted-by-upstream-sync.md`.
+- **The one real fork patch is now documented as such.** `src/core/Utils.mjs` escapes backslashes before double quotes, replacing upstream's `// lgtm [js/incomplete-sanitization]` suppression. Upstream still ships the suppressed version as of v11.4.0, so this is reverted by any sync that widens to `src/core/**` — it is now on the fork-owned manifest instead of being undocumented.
+
 ### Changed
 - **Upstream Monitor Schedule**: Changed cron from every 6 hours to weekly (Sundays at noon UTC) to reduce unnecessary CI runs
 

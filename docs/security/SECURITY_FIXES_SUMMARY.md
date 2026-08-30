@@ -1,5 +1,14 @@
 # Security Vulnerability Fixes - Quick Summary
 
+> [!IMPORTANT]
+> **Superseded in part, 2026-08-30.** This document is kept as the historical record of the work it
+> describes and its text is unchanged. But the `SafeRegex.mjs` mitigation it reports as in place
+> **is no longer in the code**: a later run of `upstream-sync.yml` overwrote the operations that
+> imported it, and the module was removed in v2.0.0. Do not read this file as a statement of current
+> security posture. See
+> [the incident record](./2026-08-30-saferegex-reverted-by-upstream-sync.md).
+
+
 ## Status: ✅ ALL 12 VULNERABILITIES FIXED
 
 **Date:** 2025-12-14

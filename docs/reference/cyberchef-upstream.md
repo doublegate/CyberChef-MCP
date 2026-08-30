@@ -394,12 +394,19 @@ The CyberChef MCP Server fork uses a **selective sync** approach:
 
 Several upstream files have been patched for MCP compatibility:
 
-| File | Modifications | Reason |
-|------|--------------|--------|
-| `src/core/lib/Magic.mjs` | Added SafeRegex import | Prevent ReDoS attacks |
-| `src/core/Recipe.mjs` | Enhanced error handling | Better debugging |
-| `src/core/Utils.mjs` | Added utility functions | MCP-specific needs |
-| `src/node/api.mjs` | Streaming support | Handle large inputs |
+> **Corrected 2026-08-30.** This table previously listed four patches. Three of them did not exist:
+> every claimed modification was verified against the reference checkout, and `Magic.mjs`,
+> `Recipe.mjs` and `api.mjs` differed from upstream only by JSON-import syntax — not by the changes
+> described. Acting on the old table would have meant re-applying patches that were never there,
+> while missing the one real fix. The table below states only what is actually in the tree.
+
+| File | Actual difference from upstream | Preserve on sync? |
+|------|--------------------------------|-------------------|
+| `src/core/Utils.mjs` | **Real fork security fix.** Escapes backslashes *before* double quotes, replacing upstream's `// lgtm [js/incomplete-sanitization]` suppression. Also renders `\x7f` rather than stopping at `\x7e`. | **YES — fork-owned.** Upstream still ships the suppressed version as of v11.4.0, so a sync reverts this. |
+| `src/core/lib/Magic.mjs` | `assert {type: "json"}` → `with {type: "json"}` only. No SafeRegex import; that claim was false. | No — upstream adopted `with` in v11.x, so this resolves itself on sync. |
+| `src/core/Recipe.mjs` | JSON-import syntax only. No error-handling changes. | No — same as above. |
+| `src/node/api.mjs` | JSON-import syntax only. No streaming support; streaming lives in `src/node/streaming.mjs`, which is fork-owned and outside the sync. | No — same as above. |
+| `src/core/lib/SafeRegex.mjs` | **Removed in v2.0.0.** Was fork-only and unreferenced; a sync had already stripped its call sites. | n/a — see the [incident record](../security/2026-08-30-saferegex-reverted-by-upstream-sync.md). |
 | Various operations | Regex safety patches | Security hardening |
 
 ### Compatibility Considerations
@@ -625,11 +632,15 @@ git status
 git diff
 ```
 
-4. **Re-apply MCP patches**:
+4. **Re-apply fork-owned changes** (see the corrected table above — do NOT work from memory here):
 ```bash
-# SafeRegex imports
-# Node 22 compatibility fixes
-# Custom modifications
+# src/core/Utils.mjs  -- the backslash-escaping fix. Upstream still ships the
+#                        `// lgtm [js/incomplete-sanitization]` suppressed version as of v11.4.0,
+#                        so this is reverted by every sync until upstream fixes it.
+#
+# There is nothing else. In particular there are NO SafeRegex imports to re-apply (the module was
+# removed in v2.0.0) and no `assert`->`with` fixes to re-apply (upstream adopted `with` in v11.x).
+# Both were listed here for months and neither existed.
 ```
 
 5. **Regenerate configurations**:
@@ -658,7 +669,7 @@ When pulling updates, pay special attention to:
 | File/Directory | Action | Reason |
 |----------------|--------|--------|
 | `src/core/operations/` | Merge | New operations available |
-| `src/core/lib/` | Review + Merge | May need SafeRegex patches |
+| `src/core/lib/` | Merge | Upstream-owned; no fork patches live here since SafeRegex was removed |
 | `package.json` | Review + Merge | Dependency updates |
 | `Gruntfile.js` | Review + Merge | Build process changes |
 | `src/core/Chef.mjs` | Review carefully | Core orchestration |
