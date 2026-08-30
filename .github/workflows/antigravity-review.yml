@@ -127,8 +127,22 @@ jobs:
           set -eu
           # Fails closed: an API error, an unknown login, or any role below `write` leaves
           # `writer` unset, and the checkout below does not run.
-          perm="$(gh api "repos/${GITHUB_REPOSITORY}/collaborators/${PR_AUTHOR}/permission" \
-                    --jq '.permission // empty' 2>/dev/null || true)"
+          #
+          # The failure REASON is surfaced, not swallowed. Denying silently makes "this person
+          # has no write access" (intended, one PR affected) indistinguishable from "the token
+          # lost its scope" (the bootstrap is dead for everyone) — an outage that reads as a
+          # decision. Redacted first: this log is public.
+          if perm="$(gh api "repos/${GITHUB_REPOSITORY}/collaborators/${PR_AUTHOR}/permission" \
+                       --jq '.permission // empty' 2>perm_err.txt)"; then
+            :
+          else
+            reason="$(tr '\n' ' ' < perm_err.txt \
+                        | sed -E 's/(gh[pousr]|github_pat)_[A-Za-z0-9_]+/<redacted-token>/g' \
+                        | cut -c1-300)"
+            echo "::warning::Reviewer bootstrap permission lookup failed for ${PR_AUTHOR}: ${reason}"
+            perm=""
+          fi
+          rm -f perm_err.txt
           case "$perm" in
             admin|maintain|write)
               echo "writer=true" >> "$GITHUB_OUTPUT" ;;

@@ -196,14 +196,35 @@ REPO="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY not set}"
 #
 # Fails CLOSED: any API error, missing token, or unrecognised role denies. A reviewer that
 # stops running is a visible annoyance; one that runs for the wrong person is not.
+#
+# But fail-closed makes the error TEXT load-bearing, which is why stderr is captured and logged
+# rather than sent to /dev/null. Denying and swallowing the reason makes two very different
+# situations look identical in the log: "this person genuinely has no write access" (working as
+# intended, one user affected) and "the token lost its scope / the API is rate-limited" (the
+# reviewer is now dead for EVERYONE and nothing says so). The first is a decision; the second is
+# an outage wearing a decision's clothes, and it would sit undiagnosed until someone noticed
+# reviews had quietly stopped.
 agy_has_write_access() {
   _login="${1:-}"
   [ -n "$_login" ] || { log "no login to check for write access"; return 1; }
-  _perm="$(gh api "repos/${REPO}/collaborators/${_login}/permission" \
-             --jq '.permission // empty' 2>/dev/null || true)"
+  _perm_err="$(mktemp)"
+  if _perm="$(gh api "repos/${REPO}/collaborators/${_login}/permission" \
+                --jq '.permission // empty' 2>"$_perm_err")"; then
+    rm -f "$_perm_err"
+  else
+    # Redacted before logging. gh does not echo credentials in its error text today, but this
+    # log lands in a PUBLIC Actions log, and "today" is not a property worth betting a token on.
+    log "permission lookup for '${_login}' FAILED: $(tr '\n' ' ' < "$_perm_err" \
+          | sed -E 's/(gh[pousr]|github_pat)_[A-Za-z0-9_]+/<redacted-token>/g' \
+          | cut -c1-400)"
+    log "denying by default. A 404 here is an ordinary non-collaborator; a 401/403 or a rate"
+    log "limit means the token is the problem and EVERY review will skip until it is fixed."
+    rm -f "$_perm_err"
+    return 1
+  fi
   case "$_perm" in
     admin|maintain|write) return 0 ;;
-    *) log "user '${_login}' has repository permission '${_perm:-<none/unknown>}'; write required"
+    *) log "user '${_login}' has repository permission '${_perm:-<none>}'; write required"
        return 1 ;;
   esac
 }
