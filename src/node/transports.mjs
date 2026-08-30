@@ -1,11 +1,13 @@
 /**
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
  * MCP Transport Factory for CyberChef.
  *
  * Provides stdio (default) or Streamable HTTP transport based on
  * the CYBERCHEF_TRANSPORT environment variable.
  *
  * @author DoubleGate
- * @license Apache-2.0
+ * @license GPL-3.0-or-later
  */
 
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";

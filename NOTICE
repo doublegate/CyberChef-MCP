@@ -1,0 +1,47 @@
+CyberChef-MCP
+Copyright (c) 2024-2026 DoubleGate
+
+This product is a derivative work of CyberChef.
+
+  CyberChef
+  Copyright (c) 2016 Crown Copyright (Government Communications Headquarters, GCHQ)
+  https://github.com/gchq/CyberChef
+  Licensed under the Apache License, Version 2.0.
+
+================================================================================
+Licensing of the combined work
+================================================================================
+
+As of version 2.0.0, CyberChef-MCP as a whole is distributed under the
+GNU General Public License, version 3 or later (GPL-3.0-or-later). See LICENSE.
+
+This is not a relicensing of GCHQ's code, and no such relicensing is claimed or
+would be possible. Files inherited from upstream CyberChef remain under the
+Apache License 2.0 and retain their original copyright and licence headers; the
+full text of that licence, together with the original combined notice that
+preceded this change, is preserved in LICENSE.Apache-2.0.
+
+What has changed is the licence of the *combined* work. The Apache License 2.0
+is one-way compatible with GPLv3: Apache-2.0 material may be incorporated into a
+GPLv3 work, and the result distributed under GPLv3. (Apache-2.0 is not
+compatible with GPLv2, which is one of the reasons version 3 was required here.)
+
+Versions 1.9.x and earlier remain available under the Apache License 2.0 and are
+unaffected by this change.
+
+================================================================================
+Why GPL-3.0-or-later specifically
+================================================================================
+
+Version 2.0.0 incorporates algorithms ported from reference security tools whose
+licences constrain the choice. The decision is recorded in
+docs/adr/0001-relicense-to-gpl-3-0-or-later.md; in brief:
+
+  - katana is GPL-3.0-or-later, which rules out GPLv2.
+  - John the Ripper is GPL-2.0-or-later, so it may be used under GPLv3.
+  - Upstream CyberChef is Apache-2.0, compatible with GPLv3 but not GPLv2.
+
+GPL-3.0-or-later is the only licence that admits all three simultaneously.
+
+Per-component attribution for every incorporated third-party work is listed in
+THIRD-PARTY-NOTICES.md.

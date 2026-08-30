@@ -1,9 +1,11 @@
 /**
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
  * Recipe validation module for CyberChef MCP Server.
  * Provides Zod schemas and validation logic for recipe management.
  *
  * @author DoubleGate
- * @license Apache-2.0
+ * @license GPL-3.0-or-later
  */
 
 import { z } from "zod";

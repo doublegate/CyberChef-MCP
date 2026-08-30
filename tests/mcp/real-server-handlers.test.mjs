@@ -1,11 +1,13 @@
 /**
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
  * Tests for Real MCP Server Handlers
  *
  * These tests import the actual mcp-server module and test the registered handlers
  * to improve coverage of the request handling code.
  *
  * @author DoubleGate
- * @license Apache-2.0
+ * @license GPL-3.0-or-later
  */
 
 import { describe, it, expect } from "vitest";

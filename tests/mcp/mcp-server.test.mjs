@@ -1,10 +1,12 @@
 /**
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
  * Test suite for CyberChef MCP Server Core Functions
  *
  * Tests for server utilities and integration using actual mcp-server.mjs exports
  *
  * @author DoubleGate
- * @license Apache-2.0
+ * @license GPL-3.0-or-later
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";

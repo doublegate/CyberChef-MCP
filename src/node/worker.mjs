@@ -1,11 +1,13 @@
 /**
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
  * Worker thread script for CyberChef operations.
  *
  * Executed within Piscina worker threads to offload CPU-intensive
  * operations from the main event loop.
  *
  * @author DoubleGate
- * @license Apache-2.0
+ * @license GPL-3.0-or-later
  */
 
 import { bake } from "./index.mjs";

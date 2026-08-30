@@ -1,4 +1,6 @@
 /**
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
  * MCP Server Validation Test Suite
  *
  * Comprehensive tests for CyberChef MCP Server to ensure:
@@ -9,7 +11,7 @@
  * 5. No breaking changes detected vs baseline
  *
  * @author DoubleGate
- * @license Apache-2.0
+ * @license GPL-3.0-or-later
  */
 
 

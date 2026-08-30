@@ -1,10 +1,12 @@
 /**
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
  * Worker Pool Tests
  *
  * Tests for the Piscina-based worker thread pool.
  *
  * @author DoubleGate
- * @license Apache-2.0
+ * @license GPL-3.0-or-later
  */
 
 import { describe, it, expect, afterAll } from "vitest";
