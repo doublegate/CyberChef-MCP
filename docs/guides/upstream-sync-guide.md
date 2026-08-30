@@ -32,6 +32,16 @@ CyberChef-MCP/
 - **Preserved Files:** MCP-specific modifications (package.json, Gruntfile.js, etc.)
 - **Reference Directory:** `ref-proj/CyberChef/` contains full upstream for comparison
 
+**Direction: pull only, permanently.** As of v2.0.0 this project is distributed under
+GPL-3.0-or-later while upstream CyberChef is Apache-2.0. GCHQ cannot accept GPLv3 code into an
+Apache-2.0 project, so changes can no longer be contributed back upstream — the sync is one-way by
+licence, not merely by convention. See [ADR 0001](../adr/0001-relicense-to-gpl-3-0-or-later.md).
+
+A practical consequence: a bug found in a synced upstream operation must be reported to
+`gchq/CyberChef` and fixed there. Patching it locally both diverges this fork and is silently
+reverted by the next sync. Fixes that cannot wait belong in the MCP layer under `src/node/`, not in
+`src/core/`.
+
 ## Workflows
 
 ### 1. upstream-monitor.yml

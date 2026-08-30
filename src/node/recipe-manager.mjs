@@ -1,9 +1,11 @@
 /**
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
  * Recipe manager module for CyberChef MCP Server.
  * Provides high-level recipe operations, import/export, and execution.
  *
  * @author DoubleGate
- * @license Apache-2.0
+ * @license GPL-3.0-or-later
  */
 
 import { bake } from "./index.mjs";

@@ -9,7 +9,7 @@ By running this server, you enable AI assistants (like Claude, Cursor AI, and ot
 ![CyberChef MCP Banner](images/CyberChef-MCP_Banner-Logo.jpg)
 
 [![MCP Enabled](https://img.shields.io/badge/MCP-Enabled-blue)](https://modelcontextprotocol.io/)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
 [![Docker Version](https://img.shields.io/github/v/release/doublegate/CyberChef-MCP?logo=docker&label=docker)](https://github.com/doublegate/CyberChef-MCP/releases)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](https://nodejs.org/)
 [![Security Scan](https://github.com/doublegate/CyberChef-MCP/actions/workflows/security-scan.yml/badge.svg)](https://github.com/doublegate/CyberChef-MCP/actions/workflows/security-scan.yml)
@@ -731,6 +731,24 @@ If you find this project useful, consider supporting its development:
 
 ## Licensing
 
-CyberChef is released under the [Apache 2.0 Licence](https://www.apache.org/licenses/LICENSE-2.0) and is covered by [Crown Copyright](https://www.nationalarchives.gov.uk/information-management/re-using-public-sector-information/uk-government-licensing-framework/crown-copyright/).
+**As of v2.0.0, CyberChef-MCP is licensed under [GPL-3.0-or-later](LICENSE).** Versions 1.9.x and
+earlier remain Apache-2.0 and are unaffected.
 
-This MCP server adapter maintains the same Apache 2.0 license.
+Upstream CyberChef is released under the
+[Apache 2.0 Licence](https://www.apache.org/licenses/LICENSE-2.0) and is covered by
+[Crown Copyright](https://www.nationalarchives.gov.uk/information-management/re-using-public-sector-information/uk-government-licensing-framework/crown-copyright/).
+Files inherited from upstream keep their Apache-2.0 headers; the full text is preserved in
+[`LICENSE.Apache-2.0`](LICENSE.Apache-2.0). This is not a relicensing of GCHQ's code — it is the
+*combined work* that is GPLv3, which Apache-2.0's one-way compatibility with GPLv3 permits.
+
+The change was forced by v2.0.0 incorporating algorithms from GPL-licensed reference tools:
+**katana** is GPL-3.0-or-later (ruling out GPLv2) and **John the Ripper** is GPL-2.0-or-later, while
+Apache-2.0 is compatible with GPLv3 but *not* GPLv2. GPL-3.0-or-later is the only licence that
+admits all three. The reasoning is recorded in
+[ADR 0001](docs/adr/0001-relicense-to-gpl-3-0-or-later.md), and per-component attribution is in
+[`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
+
+**What this means for you:** running CyberChef-MCP — including serving it over HTTP — carries no
+obligation, as GPLv3 has no network-use clause. Distributing a *derivative* of it does: that must
+also be GPLv3. If your policy precludes GPLv3, stay on the v1.9.x line, which remains Apache-2.0
+and receives security-only patches through its LTS window.

@@ -1,4 +1,6 @@
 /**
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
  * Test suite for CyberChef MCP Server v1.7.0 Features
  *
  * Tests for:
@@ -9,7 +11,7 @@
  * - Resource Quotas
  *
  * @author DoubleGate
- * @license Apache-2.0
+ * @license GPL-3.0-or-later
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";

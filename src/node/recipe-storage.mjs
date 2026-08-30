@@ -1,9 +1,11 @@
 /**
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
  * Recipe storage module for CyberChef MCP Server.
  * Provides JSON file-based storage with atomic writes and in-memory caching.
  *
  * @author DoubleGate
- * @license Apache-2.0
+ * @license GPL-3.0-or-later
  */
 
 import { promises as fs } from "fs";

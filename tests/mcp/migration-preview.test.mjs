@@ -1,4 +1,6 @@
 /**
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
  * Test suite for CyberChef MCP Migration Preview Tool
  *
  * Tests for:
@@ -8,7 +10,7 @@
  * - v1.8.0 tool handlers
  *
  * @author DoubleGate
- * @license Apache-2.0
+ * @license GPL-3.0-or-later
  */
 
 import { describe, it, expect, beforeEach } from "vitest";

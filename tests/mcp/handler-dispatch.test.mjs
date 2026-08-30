@@ -1,10 +1,12 @@
 /**
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
  * Handler Dispatch Tests for MCP Server
  *
  * Tests all handler branches in the CallTool request handler.
  *
  * @author DoubleGate
- * @license Apache-2.0
+ * @license GPL-3.0-or-later
  */
 
 import { describe, it, expect, beforeEach } from "vitest";

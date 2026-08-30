@@ -1,11 +1,13 @@
 /**
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
  * Worker Thread Pool Manager for CyberChef MCP Server.
  *
  * Uses Piscina to manage a pool of worker threads for CPU-intensive
  * operations, keeping the main event loop responsive.
  *
  * @author DoubleGate
- * @license Apache-2.0
+ * @license GPL-3.0-or-later
  */
 
 import { fileURLToPath } from "node:url";

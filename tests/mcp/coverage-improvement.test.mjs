@@ -1,11 +1,13 @@
 /**
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
  * Coverage Improvement Tests for CyberChef MCP Server
  *
  * Tests specifically designed to increase coverage for mcp-server.mjs
  * Focuses on edge cases, error paths, and configuration variations
  *
  * @author DoubleGate
- * @license Apache-2.0
+ * @license GPL-3.0-or-later
  */
 
 import { describe, it, expect, beforeEach } from "vitest";

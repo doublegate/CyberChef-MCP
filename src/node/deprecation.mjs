@@ -1,4 +1,6 @@
 /**
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
  * CyberChef MCP Deprecation Warning System
  *
  * Runtime deprecation warnings for APIs changing in v2.0.0.
@@ -6,7 +8,7 @@
  * and migration guidance.
  *
  * @author DoubleGate
- * @license Apache-2.0
+ * @license GPL-3.0-or-later
  * @version 1.8.0
  */
 
