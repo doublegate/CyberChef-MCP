@@ -28,7 +28,13 @@
 # -----------------------------------------------------------------------------
 # Stage 1: Build Stage (using -dev variant with shell and build tools)
 # -----------------------------------------------------------------------------
-FROM cgr.dev/chainguard/node:latest-dev AS builder
+# Pinned by digest, not by the floating `latest-dev` tag. Chainguard's free tier
+# publishes no versioned Node tags, so `latest` is the only handle - and it silently
+# follows Node majors. Once it moves to Node 27 an unpinned build would violate the
+# `engines: >=24 <27` constraint with no diff to show for it. Dependabot's docker
+# ecosystem keeps these digests current.
+# cgr.dev/chainguard/node:latest-dev -- Node 26.8.1 as of 2026-08-30
+FROM cgr.dev/chainguard/node@sha256:f4dd1e04dbada55fc5cad085582ea58bc06fb6e798fbfea0b48166fd1b084f86 AS builder
 
 # Run as root for build operations (Chainguard -dev includes root user)
 USER root
@@ -82,7 +88,9 @@ RUN rm -rf \
 # -----------------------------------------------------------------------------
 # Stage 2: Runtime Stage (distroless, minimal attack surface)
 # -----------------------------------------------------------------------------
-FROM cgr.dev/chainguard/node:latest
+# cgr.dev/chainguard/node:latest -- Node 26.8.1 as of 2026-08-30. Digest-pinned for the
+# same reason as the builder stage above.
+FROM cgr.dev/chainguard/node@sha256:4ceaf4f09bee701783f7a1b1859d8c6efcda900096115836514f43d96d1dc0d0
 
 # Security: Add metadata labels
 LABEL org.opencontainers.image.title="CyberChef MCP Server" \
