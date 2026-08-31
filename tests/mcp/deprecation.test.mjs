@@ -1,4 +1,6 @@
 /**
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
  * Test suite for CyberChef MCP Deprecation Warning System
  *
  * Tests for:
@@ -10,10 +12,10 @@
  * - Recipe transformation
  *
  * @author DoubleGate
- * @license Apache-2.0
+ * @license GPL-3.0-or-later
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
     DEPRECATION_CODES,
     emitDeprecation,
@@ -26,12 +28,15 @@ import {
     hasWarned,
     getWarningCount,
     getToolName,
+    isWithdrawn,
+    WITHDRAWN_CODES,
     stripToolPrefix,
     analyzeRecipeCompatibility,
     transformRecipeToV2,
     areSuppressed,
     isV2CompatibilityMode
 } from "../../src/node/deprecation.mjs";
+import { getLogger } from "../../src/node/logger.mjs";
 
 describe("Deprecation Warning System", () => {
     let originalSuppressEnv;
@@ -85,8 +90,44 @@ describe("Deprecation Warning System", () => {
                 expect(value).toHaveProperty("description");
                 expect(value).toHaveProperty("alternative");
                 expect(value).toHaveProperty("removalVersion");
-                expect(value.removalVersion).toBe("2.0.0");
+                // A WITHDRAWN code has no removal version, because nothing is being removed.
+                // Asserting "2.0.0" across the board would force a withdrawn entry to keep
+                // claiming a removal that is not happening.
+                if (value.withdrawn) {
+                    expect(value.removalVersion).toBeNull();
+                } else {
+                    expect(value.removalVersion).toBe("2.0.0");
+                }
             });
+        });
+
+        it("marks exactly DEP001, DEP007 and DEP008 as withdrawn", () => {
+            // The `cyberchef_` prefix is permanent. These three announced its removal since
+            // v1.8.0 and were reversed on measurement: dropping the prefix saves 2.6% of the
+            // tools/list payload, collides 19 tool names in MCP's flat namespace, and breaks
+            // every existing integration.
+            const withdrawn = Object.values(DEPRECATION_CODES)
+                .filter(d => d.withdrawn)
+                .map(d => d.code)
+                .sort();
+            expect(withdrawn).toEqual(["DEP001", "DEP007", "DEP008"]);
+
+            // The other five are untouched and still describe real v2.0.0 changes.
+            for (const code of ["DEP002", "DEP003", "DEP004", "DEP005", "DEP006"]) {
+                expect(DEPRECATION_CODES[code].withdrawn).toBeUndefined();
+            }
+        });
+
+        it("never tells a user to migrate away from a name that is staying", () => {
+            for (const code of ["DEP001", "DEP007", "DEP008"]) {
+                const dep = DEPRECATION_CODES[code];
+                expect(dep.description).toContain("WITHDRAWN");
+                expect(dep.description).toContain("NOT");
+                expect(dep.alternative).toContain("No action required");
+                // The pre-withdrawal text promised a rename. If any of it comes back, this fails.
+                expect(dep.description).not.toContain("will be removed");
+                expect(dep.description).not.toContain("will be renamed");
+            }
         });
 
         it("should have 8 deprecation codes for v1.8.0", () => {
@@ -261,7 +302,8 @@ describe("Deprecation Warning System", () => {
 
             expect(detail.code).toBe("DEP001");
             expect(detail.feature).toBe("Tool naming convention");
-            expect(detail.removalVersion).toBe("2.0.0");
+            // null, not "2.0.0" -- DEP001 is withdrawn, so there is no removal version.
+            expect(detail.removalVersion).toBeNull();
         });
     });
 
@@ -302,18 +344,107 @@ describe("Deprecation Warning System", () => {
         });
     });
 
+    describe("withdrawn codes - emit behaviour", () => {
+        it("emits ONE info notice, and no warn or error, even in v2 compatibility mode", () => {
+            // The behaviour, not the metadata. V2_COMPATIBILITY_MODE is the mode someone enables
+            // to find out what v2.0.0 will break; reporting a WITHDRAWN change there as an error
+            // tells them to migrate away from a name that is staying, which is worse than silence.
+            process.env.V2_COMPATIBILITY_MODE = "true";
+            const logger = getLogger();
+            const info = vi.spyOn(logger, "info").mockImplementation(() => {});
+            const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+            const error = vi.spyOn(logger, "error").mockImplementation(() => {});
+
+            try {
+                expect(emitDeprecation("DEP001")).toBe(true);
+                // Second call is deduplicated, as for any code.
+                expect(emitDeprecation("DEP001")).toBe(false);
+
+                expect(info).toHaveBeenCalledTimes(1);
+                expect(warn).not.toHaveBeenCalled();
+                expect(error).not.toHaveBeenCalled();
+
+                const [meta, message] = info.mock.calls[0];
+                expect(meta.withdrawn).toBe(true);
+                expect(meta.deprecationCode).toBe("DEP001");
+                expect(message).toContain("[WITHDRAWN]");
+                expect(message).toContain("NOT happening");
+                expect(message).not.toContain("[DEPRECATION");
+            } finally {
+                info.mockRestore();
+                warn.mockRestore();
+                error.mockRestore();
+            }
+        });
+
+        it("still emits a real deprecation as an error in v2 compatibility mode", () => {
+            // The counterpart: withdrawing three codes must not have softened the other five.
+            process.env.V2_COMPATIBILITY_MODE = "true";
+            const logger = getLogger();
+            const error = vi.spyOn(logger, "error").mockImplementation(() => {});
+            const info = vi.spyOn(logger, "info").mockImplementation(() => {});
+
+            try {
+                emitDeprecation("DEP005");
+                expect(error).toHaveBeenCalledTimes(1);
+                expect(error.mock.calls[0][1]).toContain("[DEPRECATION ERROR]");
+                expect(info).not.toHaveBeenCalled();
+            } finally {
+                error.mockRestore();
+                info.mockRestore();
+            }
+        });
+    });
+
+    describe("isWithdrawn", () => {
+        it("is true for the three withdrawn codes and false for the rest", () => {
+            for (const code of ["DEP001", "DEP007", "DEP008"]) {
+                expect(isWithdrawn(code)).toBe(true);
+            }
+            for (const code of ["DEP002", "DEP003", "DEP004", "DEP005", "DEP006"]) {
+                expect(isWithdrawn(code)).toBe(false);
+            }
+        });
+
+        it("is false for an unknown code rather than throwing", () => {
+            expect(isWithdrawn("DEP999")).toBe(false);
+        });
+
+        it("is false for every non-string input, explicitly rather than by accident", () => {
+            // Without a typeof guard, isWithdrawn(undefined) looks up the KEY "undefined" -- which
+            // happens to be absent, so it happens to return false. These pin the guard, not the
+            // coincidence.
+            for (const value of [undefined, null, 0, 1, true, {}, [], () => {}, Symbol("DEP001")]) {
+                expect(isWithdrawn(value)).toBe(false);
+            }
+        });
+
+        it("agrees with the exported WITHDRAWN_CODES list", () => {
+            // Two sources of the same fact; they must not drift.
+            expect([...WITHDRAWN_CODES].sort()).toEqual(
+                Object.values(DEPRECATION_CODES).filter(d => d.withdrawn).map(d => d.code).sort()
+            );
+        });
+    });
+
     describe("getToolName", () => {
-        it("should return prefixed name in v1 mode", () => {
+        it("returns the prefixed name", () => {
             expect(getToolName("to_base64")).toBe("cyberchef_to_base64");
         });
 
-        it("should return unprefixed name in v2 mode", () => {
+        it("STILL returns the prefixed name in v2 compatibility mode", () => {
+            // This asserts the withdrawal of DEP001. V2_COMPATIBILITY_MODE previews what v2.0.0
+            // will change -- and v2.0.0 does not change this, so a preview that strips the prefix
+            // would be previewing something that will never exist.
             process.env.V2_COMPATIBILITY_MODE = "true";
-            expect(getToolName("to_base64")).toBe("to_base64");
+            expect(getToolName("to_base64")).toBe("cyberchef_to_base64");
+            expect(getToolName("md5")).toBe("cyberchef_md5");
         });
 
-        it("should respect forV2 override", () => {
-            expect(getToolName("to_base64", true)).toBe("to_base64");
+        it("ignores an explicit forV2 override", () => {
+            // The parameter is kept rather than removed: it is exported and callers pass it, so
+            // changing the arity would be a breaking change to avoid a no-op.
+            expect(getToolName("to_base64", true)).toBe("cyberchef_to_base64");
             expect(getToolName("to_base64", false)).toBe("cyberchef_to_base64");
         });
     });

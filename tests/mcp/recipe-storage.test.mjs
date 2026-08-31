@@ -1,16 +1,17 @@
 /**
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
  * Test suite for CyberChef Recipe Storage
  *
  * @author DoubleGate
- * @license Apache-2.0
+ * @license GPL-3.0-or-later
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { RecipeStorage } from "../../src/node/recipe-storage.mjs";
 import { promises as fs } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
-import { randomUUID } from "crypto";
 
 describe("RecipeStorage", () => {
     let storage;
@@ -19,9 +20,11 @@ describe("RecipeStorage", () => {
 
     beforeEach(async () => {
         // Create temp directory for tests
-        testDir = join(tmpdir(), `cyberchef-test-${randomUUID()}`);
+        // mkdtemp, not join(tmpdir(), random) + mkdir. mkdtemp creates the directory atomically
+        // with mode 0700 and its own random suffix, so there is no window in which the path exists
+        // but is not yet owner-only -- which is the difference js/insecure-temporary-file is about.
+        testDir = await fs.mkdtemp(join(tmpdir(), "cyberchef-test-"));
         testFile = join(testDir, "recipes.json");
-        await fs.mkdir(testDir, { recursive: true });
 
         storage = new RecipeStorage(testFile);
     });
@@ -72,6 +75,99 @@ describe("RecipeStorage", () => {
             await fs.writeFile(testFile, "invalid json", "utf8");
 
             await expect(storage.load()).rejects.toThrow();
+        });
+    });
+
+    describe("save - temp file hardening", () => {
+        const storageData = () => ({
+            version: "1.0.0",
+            recipes: [],
+            lastModified: new Date().toISOString()
+        });
+
+        it("does NOT write through a predictable `<path>.tmp` sibling", async () => {
+            // The predictable name was the finding: anything able to write to the storage
+            // directory could pre-create `<path>.tmp`, or symlink it elsewhere, and the save would
+            // follow it. CYBERCHEF_RECIPE_STORAGE is caller-supplied, so the directory is not
+            // necessarily private.
+            //
+            // Pre-creating the OLD name must no longer interfere with a save, and must not be
+            // consumed by it.
+            const predictable = `${testFile}.tmp`;
+            await fs.writeFile(predictable, "squatted", "utf8");
+
+            await storage.save(storageData());
+
+            // The save succeeded...
+            const saved = JSON.parse(await fs.readFile(testFile, "utf8"));
+            expect(saved.version).toBe("1.0.0");
+
+            // ...and left the squatted file untouched, i.e. never used it.
+            expect(await fs.readFile(predictable, "utf8")).toBe("squatted");
+        });
+
+        it("leaves no temp files behind", async () => {
+            await storage.save(storageData());
+            const leftovers = (await fs.readdir(testDir)).filter(f => f.endsWith(".tmp"));
+            expect(leftovers).toEqual([]);
+        });
+
+        it("removes its staging file when the save FAILS", async () => {
+            // The success path is not the interesting one. Make the rename fail and assert nothing
+            // is left behind -- randomised names cannot be overwritten by the next save, so a leak
+            // here accumulates rather than self-healing.
+            const renameSpy = vi.spyOn(fs, "rename").mockRejectedValueOnce(new Error("boom"));
+            try {
+                await expect(storage.save(storageData())).rejects.toThrow();
+            } finally {
+                renameSpy.mockRestore();
+            }
+            expect((await fs.readdir(testDir)).filter(f => f.endsWith(".tmp"))).toEqual([]);
+        });
+
+        it("sweeps a stale orphan from an earlier interrupted save", async () => {
+            // Covers what the catch cannot: a process killed between the write and the rename.
+            const orphan = `${testFile}.deadbeefdeadbeef.tmp`;
+            await fs.writeFile(orphan, "{}", "utf8");
+            const old = new Date(Date.now() - 2 * 60 * 60 * 1000);
+            await fs.utimes(orphan, old, old);
+
+            await storage.save(storageData());
+
+            await expect(fs.access(orphan)).rejects.toThrow();
+        });
+
+        it("does NOT sweep a recent temp file, which may be a concurrent save", async () => {
+            const fresh = `${testFile}.feedfacefeedface.tmp`;
+            await fs.writeFile(fresh, "{}", "utf8");
+
+            await storage.save(storageData());
+
+            // Still there: a one-hour floor is well beyond any live write.
+            await expect(fs.access(fresh)).resolves.toBeUndefined();
+        });
+
+        it("ignores a DIRECTORY that matches the temp-file pattern", async () => {
+            // opendir yields Dirents, so a matching directory is skipped by type rather than
+            // reaching unlink() and throwing EISDIR.
+            const dirTrap = `${testFile}.0123456789abcdef.tmp`;
+            await fs.mkdir(dirTrap);
+            const old = new Date(Date.now() - 2 * 60 * 60 * 1000);
+            await fs.utimes(dirTrap, old, old);
+
+            await storage.save(storageData());
+
+            // Still there, and the save succeeded.
+            await expect(fs.access(dirTrap)).resolves.toBeUndefined();
+            expect(JSON.parse(await fs.readFile(testFile, "utf8")).version).toBe("1.0.0");
+        });
+
+        it("writes the storage file owner-only", async () => {
+            // A recipe can carry keys and IVs, so the default 0666-minus-umask is too generous.
+            await storage.save(storageData());
+            const { mode } = await fs.stat(testFile);
+            // Low 9 bits: owner rw, group/other nothing.
+            expect(mode & 0o777).toBe(0o600);
         });
     });
 

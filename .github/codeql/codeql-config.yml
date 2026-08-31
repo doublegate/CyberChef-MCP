@@ -1,0 +1,37 @@
+# CodeQL configuration for CyberChef-MCP.
+#
+# The MCP layer (`src/node/**`) and everything else this fork authors stays fully analysed. The
+# only adjustment is one query filter, and it is deliberately narrow.
+name: "CyberChef-MCP CodeQL config"
+
+queries:
+  - uses: security-and-quality
+
+query-filters:
+  # js/incomplete-sanitization -- excluded, with evidence.
+  #
+  # All three instances fire on `src/core/**`, which is mirrored VERBATIM from GCHQ CyberChef.
+  # This fork cannot fix them: hand-edits there are overwritten by the next upstream sync (see
+  # docs/security/2026-08-30-saferegex-reverted-by-upstream-sync.md for the incident where a
+  # security mitigation vanished exactly that way).
+  #
+  # More to the point, the flagged code is NOT vulnerable, and this was measured rather than
+  # assumed. `Utils.parseRecipeConfig` is the strongest case: CodeQL flags the `.replace(/"/g, ...)`
+  # on line 1025 for "not escaping backslash characters", but upstream v11.4.0 added
+  # `Utils._validatePrettyRecipe()`, which rejects malformed input BEFORE that line runs:
+  #
+  #     A(\')          -> REJECTED: Invalid recipe
+  #     A(\\')         -> REJECTED: Invalid recipe
+  #     A('a\'b')      -> REJECTED: Invalid recipe
+  #     A('\\','x')    -> parsed as two legitimate args, not an injection
+  #
+  # CodeQL analyses that line in isolation and cannot see the validator's guarantee.
+  #
+  # This fork tried the "obvious" fix -- escaping backslashes first -- as patches/fork/02. It
+  # applied cleanly, was WRONG, and broke upstream's own test for escaped quotes and backslashes
+  # with `SyntaxError: Bad escaped character in JSON`. Suppressing the rule is the correct
+  # response here; "fixing" it demonstrably makes the parser incorrect.
+  #
+  # Revisit if this rule ever fires on `src/node/**`, which this fork does own.
+  - exclude:
+      id: js/incomplete-sanitization

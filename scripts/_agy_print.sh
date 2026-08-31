@@ -8,10 +8,12 @@
 # working around agy issue #76 where `-p` drops stdout on a non-TTY.)
 set -euo pipefail
 
-# `${1:-}` rather than `$1`: under `set -u` a bare `$1` with no arguments aborts with
-# "$1: unbound variable", which says nothing about what this script wanted. This is the script a
-# person is most likely to invoke by hand while debugging a review, so it gets a real usage line.
-if [ -z "${1:-}" ]; then
+# `$# -eq 0` rather than `[ -z "${1:-}" ]`: both avoid the bare `$1` that aborts under `set -u`
+# with "$1: unbound variable", but only the arity test distinguishes "no argument" from "an empty
+# argument". `_agy_print.sh ""` is a caller passing a bad path, and it should get the readability
+# error below rather than a usage message implying it passed nothing. This is the script a person
+# is most likely to invoke by hand while debugging a review, so the diagnostics matter.
+if [ $# -eq 0 ]; then
   printf 'usage: %s <prompt_file> [agy flags...]\n' "${0##*/}" >&2
   printf '  Reads the prompt from <prompt_file> and execs `agy --print` with it.\n' >&2
   printf '  Normally invoked by agy-review.sh through `script -qfec`, not directly.\n' >&2

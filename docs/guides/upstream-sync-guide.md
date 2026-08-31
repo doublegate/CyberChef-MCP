@@ -2,7 +2,20 @@
 
 ## Overview
 
-CyberChef-MCP maintains a fork relationship with GCHQ/CyberChef while removing web UI components and focusing on the MCP server implementation. This guide explains the selective sync model and automated workflows.
+CyberChef-MCP maintains a fork relationship with GCHQ/CyberChef while removing web UI components and focusing on the MCP server implementation. This guide explains the sync model and automated workflows.
+
+> **Current state (v2.0.0):** upstream base **v11.4.0**, 504 operations. The sync is a whole-tree
+> `rsync -a --delete` mirror of `src/core/**` plus six upstream-owned `src/node/*.mjs` files, with
+> fork changes carried as `patches/fork/*.patch` re-applied afterwards, and an allowlist scope check
+> that fails the run on anything out of scope.
+>
+> **The sync is permanently one-way (pull only).** As of v2.0.0 the combined work is
+> GPL-3.0-or-later, and GCHQ will not accept GPLv3 into an Apache-2.0 project, so MCP-layer
+> improvements cannot be contributed back. This codifies what was already practice.
+>
+> Version numbers in the *example* blocks below (v10.19.4, v10.19.5, 464 operations) are
+> illustrative of the workflow's output format and are deliberately left as written; they are not
+> a statement of current state.
 
 ## Architecture
 
@@ -48,6 +61,16 @@ CyberChef-MCP/
 the clearest illustration: upstream deleted `src/core/lib/ImageManipulation.mjs` and refactored
 `BlurImage`/`SharpenImage` to use `jimp` directly. Syncing operations without `lib/` orphans the
 library; syncing `lib/` without operations breaks the build. The tree has to move atomically.
+
+**Direction: pull only, permanently.** As of v2.0.0 this project is distributed under
+GPL-3.0-or-later while upstream CyberChef is Apache-2.0. GCHQ cannot accept GPLv3 code into an
+Apache-2.0 project, so changes can no longer be contributed back upstream — the sync is one-way by
+licence, not merely by convention. See [ADR 0001](../adr/0001-relicense-to-gpl-3-0-or-later.md).
+
+A practical consequence: a bug found in a synced upstream operation must be reported to
+`gchq/CyberChef` and fixed there. Patching it locally both diverges this fork and is silently
+reverted by the next sync. Fixes that cannot wait belong in the MCP layer under `src/node/`, not in
+`src/core/`.
 
 ## Workflows
 

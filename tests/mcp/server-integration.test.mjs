@@ -1,12 +1,15 @@
 /**
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
  * Integration Tests for MCP Server Request Handlers
  *
  * Tests the actual MCP protocol handlers to improve coverage
  *
  * @author DoubleGate
- * @license Apache-2.0
+ * @license GPL-3.0-or-later
  */
 
+import { expectValidVersion } from "./helpers/version.mjs";
 import { describe, it, expect } from "vitest";
 import OperationConfig from "../../src/core/config/OperationConfig.json" with {type: "json"};
 
@@ -199,7 +202,7 @@ describe("MCP Server Integration Tests", () => {
     describe("Configuration Constants", () => {
         it("should export VERSION", async () => {
             const { VERSION } = await import("../../src/node/mcp-server.mjs");
-            expect(VERSION).toBe("1.9.0");
+            expectValidVersion(VERSION);
         });
 
         it("should export configuration constants", async () => {

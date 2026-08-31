@@ -28,13 +28,21 @@
 # -----------------------------------------------------------------------------
 # Stage 1: Build Stage (using -dev variant with shell and build tools)
 # -----------------------------------------------------------------------------
-# Pinned by digest, not by tag. Chainguard's public catalog only publishes `latest` and
-# `latest-dev`, so a version tag is not available -- but Chainguard does not delete images, so
-# an old digest keeps pulling. That makes the digest the only reproducible reference, and it is
-# what Chainguard themselves recommend for public-tier users. `.github/dependabot.yml` runs the
-# `docker` ecosystem weekly, so the pin is bumped by a bot rather than left to rot -- which is
-# the failure mode a bare `latest` is usually chosen to avoid.
-# Digest as of 2026-08-31: Node v26.8.1.
+# Pinned by digest, not by the floating tag. Two independent reasons, both load-bearing:
+#
+#   * Reproducibility. Chainguard's public catalog publishes only `latest` and `latest-dev`, so a
+#     version tag is not available and the digest is the only stable handle. Chainguard does not
+#     delete images, so an old digest keeps pulling, and pinning is what Chainguard themselves
+#     recommend for public-tier users.
+#   * Version drift. `latest` silently follows Node MAJORS. Once it moves to Node 27 an unpinned
+#     build would violate `engines: ">=24 <27"` with no diff to show for it.
+#
+# The staleness risk that normally argues for a floating tag is covered by the `docker` ecosystem
+# in `.github/dependabot.yml`, which bumps these weekly.
+#
+# The `:tag@sha256:` form is deliberate over a bare `@sha256:` -- it records which tag the digest
+# came from, which is otherwise unrecoverable from the file.
+# cgr.dev/chainguard/node:latest-dev -- Node v26.8.1, digest resolved 2026-08-31
 FROM cgr.dev/chainguard/node:latest-dev@sha256:4cd2bedce5955f933c8dca76df9bdff301505f3d0994c1e7e829a01e1718e650 AS builder
 
 # Run as root for build operations (Chainguard -dev includes root user)
@@ -89,13 +97,15 @@ RUN rm -rf \
 # -----------------------------------------------------------------------------
 # Stage 2: Runtime Stage (distroless, minimal attack surface)
 # -----------------------------------------------------------------------------
+# cgr.dev/chainguard/node:latest -- Node v26.8.1, digest resolved 2026-08-31.
+# Digest-pinned for the same two reasons as the builder stage above.
 FROM cgr.dev/chainguard/node:latest@sha256:a422ef283675c760d801378646f2a7fdc96f4e2023121a247e215ed3cd39f199
 
 # Security: Add metadata labels
 LABEL org.opencontainers.image.title="CyberChef MCP Server" \
       org.opencontainers.image.description="MCP server exposing 463 CyberChef operations as AI tools" \
       org.opencontainers.image.vendor="DoubleGate" \
-      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.licenses="GPL-3.0-or-later" \
       org.opencontainers.image.source="https://github.com/doublegate/CyberChef-MCP" \
       org.opencontainers.image.documentation="https://github.com/doublegate/CyberChef-MCP/blob/master/docs/user_guide.md"
 
@@ -113,6 +123,24 @@ COPY --from=builder --chown=65532:65532 /app /app
 # scanner that does not model stage boundaries. Trivy DS-0002 flagged exactly that. Depending on
 # a base image's default for something this important was the weaker choice regardless.
 USER 65532:65532
+
+# Streamable HTTP transport (opt-in; stdio remains the default).
+#
+# Documentation only -- EXPOSE publishes nothing by itself, and the server does not listen at all
+# unless CYBERCHEF_TRANSPORT=http. It is here so `docker inspect` and registry UIs report the port
+# a reader would otherwise have to find in the source.
+#
+#   docker run --rm -i -p 3000:3000 \
+#     -e CYBERCHEF_TRANSPORT=http \
+#     -e CYBERCHEF_HTTP_HOST=0.0.0.0 \
+#     ghcr.io/doublegate/cyberchef-mcp_v2:latest
+#
+# CYBERCHEF_HTTP_HOST defaults to 127.0.0.1, which inside a container means "unreachable from the
+# host" -- 0.0.0.0 is required for a published port. When binding 0.0.0.0, set
+# CYBERCHEF_ALLOWED_HOSTS to the names clients use (e.g. "localhost:3000,127.0.0.1:3000") to turn
+# on DNS-rebinding protection; without it a browser page can be made to reach the server through a
+# rebound name.
+EXPOSE 3000
 
 # Security: Set TMPDIR to use /tmp (writable via tmpfs in read-only mode)
 ENV TMPDIR=/tmp

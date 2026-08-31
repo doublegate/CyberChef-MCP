@@ -16,6 +16,9 @@
 # result is worse than a crash, so extra nitpicks are worth not missing the one
 # comment that matters.
 
+# en-US is this project's convention. Note .cspell.json (upstream's file) declares
+# "en,en-gb", which loads BOTH dictionaries - so American spellings pass the grammar
+# check and upstream's British prose in src/core does too. Nothing conflicts.
 language: en-US
 
 tone_instructions: >-
@@ -151,8 +154,10 @@ reviews:
     - path: "src/core/**"
       instructions: >
         Synced verbatim from upstream gchq/CyberChef. Do not suggest style,
-        naming or refactoring changes here; they would be reverted by the next
-        sync. Only comment if the change itself looks wrong for the sync.
+        naming, spelling or refactoring changes here; they would be reverted by the
+        next sync. In particular this project is en-US but GCHQ writes British
+        English, so British spellings in these files are correct and must not be
+        flagged. Only comment if the change itself looks wrong for the sync.
     - path: ".github/workflows/**"
       instructions: >
         Self-hosted runners are used for the `agy` review job, so a workflow that

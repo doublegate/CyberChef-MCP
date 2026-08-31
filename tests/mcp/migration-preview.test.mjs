@@ -1,4 +1,6 @@
 /**
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
  * Test suite for CyberChef MCP Migration Preview Tool
  *
  * Tests for:
@@ -8,12 +10,11 @@
  * - v1.8.0 tool handlers
  *
  * @author DoubleGate
- * @license Apache-2.0
+ * @license GPL-3.0-or-later
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
 import {
-    VERSION,
     analyzeRecipeCompatibility,
     transformRecipeToV2,
     getDeprecationStats,
@@ -28,12 +29,6 @@ import {
 describe("v1.8.0 Features - Migration Preview", () => {
     beforeEach(() => {
         resetDeprecations();
-    });
-
-    describe("VERSION", () => {
-        it("should be 1.9.0", () => {
-            expect(VERSION).toBe("1.9.0");
-        });
     });
 
     describe("DEPRECATION_CODES", () => {
@@ -289,9 +284,11 @@ describe("v1.8.0 Features - Migration Preview", () => {
             expect(getToolName("md5", false)).toBe("cyberchef_md5");
         });
 
-        it("should return unprefixed name in v2 mode", () => {
-            expect(getToolName("to_base64", true)).toBe("to_base64");
-            expect(getToolName("md5", true)).toBe("md5");
+        it("STILL returns the prefixed name in v2 mode - DEP001 was withdrawn", () => {
+            // The `cyberchef_` prefix is permanent, so the v2 "preview" is the same as today.
+            // Previewing a rename that is not happening is worse than previewing nothing.
+            expect(getToolName("to_base64", true)).toBe("cyberchef_to_base64");
+            expect(getToolName("md5", true)).toBe("cyberchef_md5");
         });
     });
 

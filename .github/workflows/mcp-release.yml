@@ -9,8 +9,13 @@ on:
 env:
   GHCR_REGISTRY: ghcr.io
   DOCKERHUB_REGISTRY: docker.io
-  # Using 'cyberchef-mcp_v1' as requested for the package name
-  GHCR_IMAGE_NAME: ${{ github.repository_owner }}/cyberchef-mcp_v1
+  # The GHCR package name is MAJOR-VERSIONED and is derived from the tag, in the
+  # "Resolve the GHCR package name" step below -- it is not fixed here.
+  #
+  # `_v1` is FROZEN from v2.0.0: its existing tags stay pullable, and the v1.9.x maintenance
+  # branch keeps publishing security-only patches there until ~Mar 2027, under Apache-2.0. v2.x
+  # publishes to `_v2`, which is GPL-3.0-or-later. Hard-coding `_v1` here would have pushed the
+  # relicensed, breaking-change v2.0.0 image into the package promising the opposite of both.
   # Docker Hub image name (assumes username/repo format - update with your Docker Hub namespace)
   # Example: if your Docker Hub username is 'myusername', this becomes 'myusername/cyberchef-mcp'
   DOCKERHUB_IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/cyberchef-mcp
@@ -55,11 +60,32 @@ jobs:
       # =============================================================================
       # Metadata Extraction: Generate tags and labels for both registries
       # =============================================================================
+      # =============================================================================
+      # GHCR package name: cyberchef-mcp_v<MAJOR>, derived from the tag being built
+      # =============================================================================
+      - name: Resolve the GHCR package name
+        id: ghcr-name
+        run: |
+          set -euo pipefail
+          ref="${GITHUB_REF_NAME}"
+          # workflow_dispatch has no tag, so fall back to the version the tree declares.
+          if [[ "$ref" =~ ^v([0-9]+)\. ]]; then
+            major="${BASH_REMATCH[1]}"
+          else
+            major="$(node -p "require('./package.json').mcpVersion.split('.')[0]")"
+            echo "::notice::no v<major> tag on '$ref'; using mcpVersion major $major"
+          fi
+          case "$major" in
+            ''|*[!0-9]*) echo "::error::could not resolve a numeric major from '$ref'"; exit 1 ;;
+          esac
+          echo "name=${GITHUB_REPOSITORY_OWNER}/cyberchef-mcp_v${major}" >> "$GITHUB_OUTPUT"
+          echo "Publishing to GHCR package cyberchef-mcp_v${major}"
+
       - name: Extract metadata for GHCR
         id: meta-ghcr
         uses: docker/metadata-action@v6
         with:
-          images: ${{ env.GHCR_REGISTRY }}/${{ env.GHCR_IMAGE_NAME }}
+          images: ${{ env.GHCR_REGISTRY }}/${{ steps.ghcr-name.outputs.name }}
           tags: |
             type=semver,pattern={{major}}
             type=semver,pattern={{major}}.{{minor}}

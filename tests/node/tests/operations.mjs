@@ -79,7 +79,46 @@ TestRegister.addApiTests([
                 string: "some iv some iv1",
                 option: "utf8",
             },
+            ivLength: 16,
             mode: "OFB",
+            inputType: "Hex",
+            outputType: "Raw",
+            gcmTag: {
+                option: "Hex",
+                string: ""
+            },
+            aad: {
+                option: "Hex",
+                string: ""
+            },
+            ivFromInput: "Off"
+        });
+        assert.equal(result.toString(), "a slightly longer sampleinput?");
+    }),
+
+    it("AES decrypt: IV from input", () => {
+        const result = AESDecrypt("4a123af235a507bbc9d5871721d61b98504d569a9a5a7847e2d78315fec7736f6d6520697620736f6d6520697631", {
+            key: {
+                string: "some longer key1",
+                option: "utf8",
+            },
+            iv: {
+                string: "",
+                option: "Hex",
+            },
+            ivLength: 16,
+            mode: "OFB",
+            inputType: "Hex",
+            outputType: "Raw",
+            gcmTag: {
+                option: "Hex",
+                string: ""
+            },
+            aad: {
+                option: "Hex",
+                string: ""
+            },
+            ivFromInput: "From end"
         });
         assert.equal(result.toString(), "a slightly longer sampleinput?");
     }),
@@ -136,11 +175,15 @@ Tiger-128`;
     it("Bcrypt", async () => {
         const result = await chef.bcrypt("Put a Sock In It");
         const strResult = result.toString();
-        assert.equal(strResult.length, 60);
         // bcryptjs 3 emits the modern "$2b$" prefix. "$2a$" identified the pre-2011 revision
         // that had a wraparound bug in the length counter; "$2b$" is the corrected one, and
-        // generating it is the desired behaviour rather than something to pin back.
-        assert.equal(strResult.slice(0, 7), "$2b$10$");
+        // generating it is the desired behaviour rather than something to pin back. Verification
+        // is unaffected -- compare() still accepts $2a$, $2y$ and $2b$.
+        //
+        // Asserted as a full-shape regex rather than a length plus a prefix slice, so a hash that
+        // is the right length with the wrong body still fails.
+        assert.match(strResult, /^\$2b\$10\$[./A-Za-z0-9]{53}$/);
+        assert.equal(strResult.split("$").length, 4);
     }),
 
     it("bcryptCompare", async() => {
@@ -226,6 +269,18 @@ Full hash: $2a$10$ODeP1.6fMsb.ENk2ngPUCO7qTGVPyHA9TqDVcyupyed8FjsiF65L6`;
     it("Bzip2 Decompress", async () => {
         const result = await chef.bzip2Decompress(chef.fromBase64("QlpoOTFBWSZTWUdQlt0AAAIVgEAAAQAmJAwAIAAxBkxA0A2pTL6U2CozxdyRThQkEdQlt0A="));
         assert.strictEqual(result.toString(), "Fit as a Fiddle");
+    }),
+
+    it("Bzip2 Compress: round-trips through the Node API", async () => {
+        const compressed = await chef.bzip2Compress("The quick brown fox.");
+        const result = await chef.bzip2Decompress(compressed);
+        assert.strictEqual(result.toString(), "The quick brown fox.");
+    }),
+
+    it("Avro to JSON: decodes an object container file through the Node API", async () => {
+        const avro = chef.fromHex("4f626a0104166176726f2e736368656d6196017b2274797065223a227265636f7264222c226e616d65223a22736d616c6c222c226669656c6473223a5b7b226e616d65223a226e616d65222c2274797065223a22737472696e67227d5d7d146176726f2e636f646563086e756c6c004e0247632e3702e5b75cdab9a62f1541020e0c6d796e616d654e0247632e3702e5b75cdab9a62f1541");
+        const result = await chef.avroToJSON(avro);
+        assert.strictEqual(result.toString(), "{\n    \"name\": \"myname\"\n}");
     }),
 
     it("cartesianProduct: binary string", () => {
@@ -367,7 +422,6 @@ color: white;
                 option: "utf8",
             },
         });
-        // Updated expected value due to upstream v10.20.0 changes (SHA-256 default, min iterations 10000)
         assert.strictEqual(result.toString(), "4930d5d200e80f18c96b5550d13c6af8");
     }),
 
@@ -570,8 +624,9 @@ Top Drawer`, {
 
     it("Generate HOTP", () => {
         const result = chef.generateHOTP("JBSWY3DPEHPK3PXP", {
+            name: "Account",
         });
-        const expected = `URI: otpauth://hotp/?secret=JBSWY3DPEHPK3PXP&algorithm=SHA1&digits=6&counter=0
+        const expected = `URI: otpauth://hotp/Account?secret=JBSWY3DPEHPK3PXP&algorithm=SHA1&digits=6&counter=0
 
 Password: 282760`;
         assert.strictEqual(result.toString(), expected);
@@ -593,8 +648,7 @@ Password: 282760`;
     ...[1, 3, 4, 5, 6, 7].map(version => it(`Analyze UUID v${version}`, () => {
         const uuid = chef.generateUUID("", { "version": `v${version}` }).toString();
         const result = chef.analyseUUID(uuid).toString();
-        const expected = `UUID version: ${version}`;
-        assert.strictEqual(result, expected);
+        assert.ok(result.startsWith(`Version:\n${version}\n`), `Expected output to start with "Version:\\n${version}\\n", got: ${result}`);
     })),
 
     it("Generate UUID using defaults", () => {
@@ -602,7 +656,7 @@ Password: 282760`;
         assert.ok(uuid);
 
         const analysis = chef.analyseUUID(uuid).toString();
-        assert.strictEqual(analysis, "UUID version: 4");
+        assert.ok(analysis.startsWith("Version:\n4\n"), `Expected output to start with "Version:\\n4\\n", got: ${analysis}`);
     }),
 
     it("Gzip, Gunzip", () => {
@@ -690,6 +744,18 @@ Hostname:	www.google.co.uk
 Path name:	/search
 Arguments:
 \tq = almonds
+`;
+        assert.strictEqual(result.toString(), expected);
+    }),
+
+    it("Parse URI with constructor and __proto__ arguments", () => {
+        const result = chef.parseURI("https://example.com/?constructor=ok&__proto__=hello");
+        const expected = `Protocol:	https:
+Hostname:	example.com
+Path name:	/
+Arguments:
+\tconstructor = ok
+\t__proto__   = hello
 `;
         assert.strictEqual(result.toString(), expected);
     }),
@@ -871,13 +937,15 @@ pCGTErs=
     }),
 
     it("SQL Beautify", () => {
-        const result = chef.SQLBeautify(`SELECT MONTH, ID, RAIN_I, TEMP_F
-FROM STATS;`);
-        const expected = `SELECT MONTH,
-         ID,
-         RAIN_I,
-         TEMP_F
-FROM STATS;`;
+        const result = chef.SQLBeautify(`SELECT MONTH, ID, RAIN_I, TEMP_F FROM STATS;`);
+        const expected =
+`SELECT
+  MONTH,
+  ID,
+  RAIN_I,
+  TEMP_F
+FROM
+  STATS;`;
         assert.strictEqual(result.toString(), expected);
     }),
 

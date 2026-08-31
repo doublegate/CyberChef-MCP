@@ -51,7 +51,7 @@ Programmatically generated tools for every supported CyberChef operation.
 
 ### 3. Containerization (`Dockerfile.mcp`)
 A specialized Docker build for the server.
--   **Base:** Chainguard distroless Node.js 22 (`cgr.dev/chainguard/node:latest`).
+-   **Base:** Chainguard distroless Node.js (`cgr.dev/chainguard/node`), **pinned by digest** rather than by the floating `latest` tag — Chainguard's public catalog publishes no version tags, and `latest` silently follows Node majors, which would eventually violate `engines: ">=24 <27"` with no diff to show for it. Dependabot's `docker` ecosystem bumps the pin weekly. Node v26.8.1 at time of writing.
 -   **Context:** Multi-stage build; copies `src/`, `package.json`.
 -   **Command:** `node src/node/mcp-server.mjs`.
 -   **Security:** Non-root (UID 65532), zero-CVE baseline, read-only filesystem support.

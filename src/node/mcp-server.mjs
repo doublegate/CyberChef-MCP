@@ -1,8 +1,10 @@
 /**
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
  * MCP Server entry point.
  *
  * @author DoubleGate
- * @license Apache-2.0
+ * @license GPL-3.0-or-later
  */
 
 import { bake, help } from "./index.mjs";
@@ -11,7 +13,6 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprot
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import OperationConfig from "../core/config/OperationConfig.json" with {type: "json"};
-import { createHash } from "crypto";
 
 // New v1.5.0 imports
 import {
@@ -26,7 +27,6 @@ import {
     logRequestComplete,
     logRequestError,
     logCache,
-    logMemory,
     logServerStart
 } from "./logger.mjs";
 import {
@@ -65,542 +65,29 @@ import {
     DEPRECATION_CODES
 } from "./deprecation.mjs";
 
+// Extracted subsystems. These were inline classes and helpers in this file until the
+// v2.0.0 decomposition. Behaviour is unchanged, and they are re-exported unchanged at
+// the bottom of this file so the existing test surface keeps working untouched.
+import {
+    VERSION, MAX_INPUT_SIZE, OPERATION_TIMEOUT, STREAMING_THRESHOLD, ENABLE_STREAMING,
+    ENABLE_WORKERS, CACHE_MAX_SIZE, CACHE_MAX_ITEMS, BATCH_MAX_SIZE, BATCH_ENABLED,
+    TELEMETRY_ENABLED, RATE_LIMIT_ENABLED, RATE_LIMIT_REQUESTS, RATE_LIMIT_WINDOW,
+    CACHE_ENABLED, V2_COMPATIBILITY_MODE, SUPPRESS_DEPRECATIONS
+} from "./lib/config.mjs";
+import { LRUCache } from "./lib/cache.mjs";
+import { MemoryMonitor } from "./lib/memory.mjs";
+import { TelemetryCollector } from "./lib/telemetry.mjs";
+import { RateLimiter } from "./lib/rate-limit.mjs";
+import { ResourceQuotaTracker } from "./lib/quota.mjs";
+import { BatchProcessor } from "./lib/batch.mjs";
+import { sanitizeToolName, mapArgsToZod, resolveArgValue, validateInputSize } from "./lib/tool-schema.mjs";
+
 // Performance configuration (configurable via environment variables)
-const VERSION = "1.9.0";
-const MAX_INPUT_SIZE = parseInt(process.env.CYBERCHEF_MAX_INPUT_SIZE, 10) || 100 * 1024 * 1024; // 100MB default
-const OPERATION_TIMEOUT = parseInt(process.env.CYBERCHEF_OPERATION_TIMEOUT, 10) || 30000; // 30s default
-const STREAMING_THRESHOLD = parseInt(process.env.CYBERCHEF_STREAMING_THRESHOLD, 10) || 10 * 1024 * 1024; // 10MB default
-const ENABLE_STREAMING = process.env.CYBERCHEF_ENABLE_STREAMING !== "false"; // Enabled by default
-const ENABLE_WORKERS = process.env.CYBERCHEF_ENABLE_WORKERS === "true"; // Disabled by default (workers not yet implemented)
-const CACHE_MAX_SIZE = parseInt(process.env.CYBERCHEF_CACHE_MAX_SIZE, 10) || 100 * 1024 * 1024; // 100MB default
-const CACHE_MAX_ITEMS = parseInt(process.env.CYBERCHEF_CACHE_MAX_ITEMS, 10) || 1000;
 
 // v1.7.0 configuration
-const BATCH_MAX_SIZE = parseInt(process.env.CYBERCHEF_BATCH_MAX_SIZE, 10) || 100;
-const BATCH_ENABLED = process.env.CYBERCHEF_BATCH_ENABLED !== "false"; // Enabled by default
-const TELEMETRY_ENABLED = process.env.CYBERCHEF_TELEMETRY_ENABLED === "true"; // Disabled by default (privacy-first)
-const RATE_LIMIT_ENABLED = process.env.CYBERCHEF_RATE_LIMIT_ENABLED === "true"; // Disabled by default
-const RATE_LIMIT_REQUESTS = parseInt(process.env.CYBERCHEF_RATE_LIMIT_REQUESTS, 10) || 100;
-const RATE_LIMIT_WINDOW = parseInt(process.env.CYBERCHEF_RATE_LIMIT_WINDOW, 10) || 60000; // 60 seconds
-const CACHE_ENABLED = process.env.CYBERCHEF_CACHE_ENABLED !== "false"; // Enabled by default
 
 // v1.8.0 configuration
-const V2_COMPATIBILITY_MODE = process.env.V2_COMPATIBILITY_MODE === "true"; // Disabled by default
-const SUPPRESS_DEPRECATIONS = process.env.CYBERCHEF_SUPPRESS_DEPRECATIONS === "true"; // Disabled by default
 
-/**
- * Simple LRU Cache for operation results.
- */
-class LRUCache {
-    /**
-     * Create a new LRU cache.
-     *
-     * @param {number} maxSize - Maximum total size in bytes.
-     * @param {number} maxItems - Maximum number of items.
-     */
-    constructor(maxSize = CACHE_MAX_SIZE, maxItems = CACHE_MAX_ITEMS) {
-        this.cache = new Map();
-        this.maxSize = maxSize;
-        this.maxItems = maxItems;
-        this.currentSize = 0;
-    }
-
-    /**
-     * Generate a cache key from operation parameters.
-     *
-     * @param {string} operation - Operation name.
-     * @param {string} input - Input data.
-     * @param {Array} args - Operation arguments.
-     * @returns {string} SHA256 hash of the parameters.
-     */
-    getCacheKey(operation, input, args) {
-        const hash = createHash("sha256");
-        hash.update(operation);
-        hash.update(input.substring(0, 1000)); // Use first 1KB for hash
-        hash.update(JSON.stringify(args));
-        return hash.digest("hex");
-    }
-
-    /**
-     * Get a value from the cache.
-     *
-     * @param {string} key - Cache key.
-     * @returns {any} Cached value or null if not found.
-     */
-    get(key) {
-        if (!this.cache.has(key)) return null;
-        const item = this.cache.get(key);
-        // Move to end (most recently used)
-        this.cache.delete(key);
-        this.cache.set(key, item);
-        return item.value;
-    }
-
-    /**
-     * Store a value in the cache.
-     *
-     * @param {string} key - Cache key.
-     * @param {any} value - Value to cache.
-     */
-    set(key, value) {
-        const size = Buffer.byteLength(JSON.stringify(value));
-
-        // Don't cache if value is too large
-        if (size > this.maxSize / 10) return;
-
-        // Evict oldest items if needed
-        while (this.cache.size >= this.maxItems || this.currentSize + size > this.maxSize) {
-            const oldestKey = this.cache.keys().next().value;
-            const oldItem = this.cache.get(oldestKey);
-            this.currentSize -= oldItem.size;
-            this.cache.delete(oldestKey);
-        }
-
-        this.cache.set(key, { value, size });
-        this.currentSize += size;
-    }
-
-    /**
-     * Clear the cache.
-     */
-    clear() {
-        this.cache.clear();
-        this.currentSize = 0;
-    }
-
-    /**
-     * Get cache statistics.
-     *
-     * @returns {Object} Cache statistics including items, size, maxSize, maxItems.
-     */
-    getStats() {
-        return {
-            items: this.cache.size,
-            size: this.currentSize,
-            maxSize: this.maxSize,
-            maxItems: this.maxItems
-        };
-    }
-}
-
-/**
- * Memory monitor for resource tracking.
- */
-class MemoryMonitor {
-    /**
-     * Create a new memory monitor.
-     */
-    constructor() {
-        this.lastCheck = Date.now();
-        this.checkInterval = 5000; // Check every 5 seconds
-    }
-
-    /**
-     * Check memory usage and log if interval elapsed.
-     *
-     * @returns {Object|undefined} Memory usage object or undefined if not checked.
-     */
-    check() {
-        const now = Date.now();
-        if (now - this.lastCheck < this.checkInterval) return;
-
-        this.lastCheck = now;
-        const usage = process.memoryUsage();
-
-        // Log memory usage with structured logging
-        logMemory(usage);
-
-        return usage;
-    }
-
-    /**
-     * Get current memory usage.
-     *
-     * @returns {Object} Memory usage object.
-     */
-    getUsage() {
-        return process.memoryUsage();
-    }
-}
-
-/**
- * Telemetry collector for usage analytics (v1.7.0).
- * Privacy-first: no input/output data is captured.
- */
-class TelemetryCollector {
-    /**
-     * Create a new telemetry collector.
-     */
-    constructor() {
-        this.metrics = [];
-        this.maxMetrics = 10000; // Keep last 10k metrics
-    }
-
-    /**
-     * Record a tool execution metric.
-     *
-     * @param {Object} metric - Metric object.
-     */
-    record(metric) {
-        if (!TELEMETRY_ENABLED) return;
-
-        this.metrics.push({
-            tool: metric.tool,
-            duration: metric.duration,
-            inputSize: metric.inputSize,
-            outputSize: metric.outputSize,
-            success: metric.success,
-            cached: metric.cached || false,
-            timestamp: Date.now()
-        });
-
-        // Limit metrics array size
-        if (this.metrics.length > this.maxMetrics) {
-            this.metrics.shift();
-        }
-    }
-
-    /**
-     * Export all collected metrics.
-     *
-     * @returns {Array} Array of metric objects.
-     */
-    exportMetrics() {
-        return [...this.metrics];
-    }
-
-    /**
-     * Get telemetry statistics.
-     *
-     * @returns {Object} Statistics object.
-     */
-    getStats() {
-        if (this.metrics.length === 0) {
-            return {
-                totalCalls: 0,
-                successRate: 0,
-                avgDuration: 0,
-                cacheHitRate: 0
-            };
-        }
-
-        const successCount = this.metrics.filter(m => m.success).length;
-        const cachedCount = this.metrics.filter(m => m.cached).length;
-        const totalDuration = this.metrics.reduce((sum, m) => sum + m.duration, 0);
-
-        return {
-            totalCalls: this.metrics.length,
-            successRate: (successCount / this.metrics.length * 100).toFixed(2) + "%",
-            avgDuration: Math.round(totalDuration / this.metrics.length) + "ms",
-            cacheHitRate: (cachedCount / this.metrics.length * 100).toFixed(2) + "%"
-        };
-    }
-
-    /**
-     * Clear all metrics.
-     */
-    clear() {
-        this.metrics = [];
-    }
-}
-
-/**
- * Rate limiter using sliding window algorithm (v1.7.0).
- */
-class RateLimiter {
-    /**
-     * Create a new rate limiter.
-     *
-     * @param {number} maxRequests - Maximum requests per window.
-     * @param {number} windowMs - Window size in milliseconds.
-     */
-    constructor(maxRequests = RATE_LIMIT_REQUESTS, windowMs = RATE_LIMIT_WINDOW) {
-        this.maxRequests = maxRequests;
-        this.windowMs = windowMs;
-        this.requests = new Map(); // connectionId -> [timestamps]
-    }
-
-    /**
-     * Check if request is allowed.
-     *
-     * @param {string} connectionId - Connection identifier.
-     * @returns {Object} Result with allowed flag and retry-after time.
-     */
-    checkLimit(connectionId = "default") {
-        if (!RATE_LIMIT_ENABLED) {
-            return { allowed: true, retryAfter: 0 };
-        }
-
-        const now = Date.now();
-        const timestamps = this.requests.get(connectionId) || [];
-
-        // Remove old timestamps outside the window
-        const validTimestamps = timestamps.filter(ts => now - ts < this.windowMs);
-
-        if (validTimestamps.length >= this.maxRequests) {
-            const oldestTimestamp = validTimestamps[0];
-            const retryAfter = Math.ceil((oldestTimestamp + this.windowMs - now) / 1000);
-            return { allowed: false, retryAfter };
-        }
-
-        // Add current timestamp
-        validTimestamps.push(now);
-        this.requests.set(connectionId, validTimestamps);
-
-        return { allowed: true, retryAfter: 0 };
-    }
-
-    /**
-     * Get rate limit statistics.
-     *
-     * @returns {Object} Statistics object.
-     */
-    getStats() {
-        const connections = this.requests.size;
-        let totalRequests = 0;
-        for (const timestamps of this.requests.values()) {
-            totalRequests += timestamps.length;
-        }
-
-        return {
-            enabled: RATE_LIMIT_ENABLED,
-            maxRequests: this.maxRequests,
-            windowMs: this.windowMs,
-            activeConnections: connections,
-            totalTrackedRequests: totalRequests
-        };
-    }
-
-    /**
-     * Clear all tracked requests.
-     */
-    clear() {
-        this.requests.clear();
-    }
-}
-
-/**
- * Resource quota tracker (v1.7.0).
- */
-class ResourceQuotaTracker {
-    /**
-     * Create a new resource quota tracker.
-     */
-    constructor() {
-        this.concurrentOps = 0;
-        this.maxConcurrentOps = parseInt(process.env.CYBERCHEF_MAX_CONCURRENT_OPS, 10) || 10;
-        this.totalOps = 0;
-        this.totalInputSize = 0;
-        this.totalOutputSize = 0;
-    }
-
-    /**
-     * Acquire a quota slot.
-     *
-     * @returns {boolean} True if slot acquired, false if quota exceeded.
-     */
-    acquire() {
-        if (this.concurrentOps >= this.maxConcurrentOps) {
-            return false;
-        }
-        this.concurrentOps++;
-        this.totalOps++;
-        return true;
-    }
-
-    /**
-     * Release a quota slot.
-     */
-    release() {
-        this.concurrentOps = Math.max(0, this.concurrentOps - 1);
-    }
-
-    /**
-     * Track data sizes.
-     *
-     * @param {number} inputSize - Input data size in bytes.
-     * @param {number} outputSize - Output data size in bytes.
-     */
-    trackData(inputSize, outputSize) {
-        this.totalInputSize += inputSize;
-        this.totalOutputSize += outputSize;
-    }
-
-    /**
-     * Get quota information.
-     *
-     * @returns {Object} Quota information.
-     */
-    getInfo() {
-        return {
-            concurrentOperations: this.concurrentOps,
-            maxConcurrentOperations: this.maxConcurrentOps,
-            totalOperations: this.totalOps,
-            totalInputSize: this.totalInputSize,
-            totalOutputSize: this.totalOutputSize,
-            inputSizeMB: (this.totalInputSize / 1024 / 1024).toFixed(2),
-            outputSizeMB: (this.totalOutputSize / 1024 / 1024).toFixed(2),
-            maxInputSizeMB: (MAX_INPUT_SIZE / 1024 / 1024).toFixed(2)
-        };
-    }
-
-    /**
-     * Reset statistics.
-     */
-    reset() {
-        this.totalOps = 0;
-        this.totalInputSize = 0;
-        this.totalOutputSize = 0;
-    }
-}
-
-/**
- * Batch processor for executing multiple operations (v1.7.0).
- */
-class BatchProcessor {
-    /**
-     * Execute a batch of operations.
-     *
-     * @param {Array} operations - Array of operation objects.
-     * @param {string} mode - Execution mode: "parallel" or "sequential".
-     * @param {Object} context - Execution context.
-     * @returns {Promise<Object>} Batch results.
-     */
-    async executeBatch(operations, mode = "parallel", context = {}) {
-        if (!BATCH_ENABLED) {
-            throw createInputError("Batch processing is disabled", { batchSize: operations.length });
-        }
-
-        if (!Array.isArray(operations) || operations.length === 0) {
-            throw createInputError("Operations must be a non-empty array", { received: typeof operations });
-        }
-
-        if (operations.length > BATCH_MAX_SIZE) {
-            throw createInputError(
-                `Batch size (${operations.length}) exceeds maximum allowed size (${BATCH_MAX_SIZE})`,
-                { batchSize: operations.length, maxBatchSize: BATCH_MAX_SIZE }
-            );
-        }
-
-        const results = [];
-        const errors = [];
-        let successCount = 0;
-
-        if (mode === "parallel") {
-            // Execute all operations in parallel
-            const promises = operations.map(async (op, index) => {
-                try {
-                    const result = await this.executeOperation(op, { ...context, index });
-                    return { index, success: true, result };
-                } catch (error) {
-                    return { index, success: false, error: error.message || String(error) };
-                }
-            });
-
-            const outcomes = await Promise.all(promises);
-
-            outcomes.forEach(outcome => {
-                if (outcome.success) {
-                    results.push({ index: outcome.index, result: outcome.result });
-                    successCount++;
-                } else {
-                    errors.push({ index: outcome.index, error: outcome.error });
-                }
-            });
-
-        } else if (mode === "sequential") {
-            // Execute operations one by one
-            for (let i = 0; i < operations.length; i++) {
-                try {
-                    const result = await this.executeOperation(operations[i], { ...context, index: i });
-                    results.push({ index: i, result });
-                    successCount++;
-                } catch (error) {
-                    errors.push({ index: i, error: error.message || String(error) });
-                    // Continue with next operation (partial success)
-                }
-            }
-        } else {
-            throw createInputError(`Invalid mode: ${mode}. Must be "parallel" or "sequential"`, { mode });
-        }
-
-        return {
-            total: operations.length,
-            successful: successCount,
-            failed: errors.length,
-            results,
-            errors,
-            mode
-        };
-    }
-
-    /**
-     * Execute a single operation from batch.
-     *
-     * @param {Object} op - Operation object.
-     * @param {Object} context - Execution context.
-     * @returns {Promise<any>} Operation result.
-     */
-    async executeOperation(op, context) {
-        if (!op.tool || !op.tool.startsWith("cyberchef_")) {
-            throw new Error(`Invalid tool name: ${op.tool}`);
-        }
-
-        if (!op.arguments || typeof op.arguments !== "object") {
-            throw new Error("Operation arguments must be an object");
-        }
-
-        // Validate input if present
-        if (op.arguments.input) {
-            validateInputSize(op.arguments.input);
-        }
-
-        // Extract operation name
-        const toolName = op.tool;
-
-        // Handle bake operation
-        if (toolName === "cyberchef_bake") {
-            const result = await executeWithTimeoutAndRetry(
-                () => bake(op.arguments.input, op.arguments.recipe),
-                OPERATION_TIMEOUT,
-                { ...context, maxRetries: RetryConfig.MAX_RETRIES }
-            );
-            return typeof result.value === "string" ? result.value : JSON.stringify(result.value);
-        }
-
-        // Handle search operation
-        if (toolName === "cyberchef_search") {
-            const results = help(op.arguments.query);
-            return JSON.stringify(results, null, 2);
-        }
-
-        // Handle standard operations
-        const opName = Object.keys(OperationConfig).find(k => sanitizeToolName(k) === toolName);
-        if (!opName) {
-            throw new Error(`Operation not found: ${toolName}`);
-        }
-
-        const opConfig = OperationConfig[opName];
-        const recipeArgs = [];
-
-        if (opConfig.args) {
-            opConfig.args.forEach(argDef => {
-                const argName = argDef.name.toLowerCase().replace(/ /g, "_");
-                const userVal = op.arguments[argName];
-                recipeArgs.push(resolveArgValue(argDef, userVal));
-            });
-        }
-
-        const recipe = [{ op: opName, args: recipeArgs }];
-        const result = await executeWithTimeoutAndRetry(
-            () => bake(op.arguments.input, recipe),
-            OPERATION_TIMEOUT,
-            { ...context, maxRetries: RetryConfig.MAX_RETRIES }
-        );
-
-        return typeof result.value === "string" ? result.value : JSON.stringify(result.value);
-    }
-}
 
 // Global instances
 const operationCache = new LRUCache();
@@ -625,149 +112,12 @@ const server = new Server(
     }
 );
 
-/**
- * Sanitize tool name to be MCP compatible.
- *
- * @param {string} name - The original operation name.
- * @returns {string|null} The sanitized name or null if invalid.
- */
-function sanitizeToolName(name) {
-    if (!name) return null;
-    const sanitized = "cyberchef_" + name.toLowerCase()
-        .replace(/[^a-z0-9_]/g, "_")
-        .replace(/_+/g, "_")
-        .replace(/^_|_$/g, "");
-    if (sanitized === "cyberchef_") return null;
-    return sanitized;
-}
-
-/**
- * Map CyberChef arguments to Zod schema.
- *
- * @param {Array} args - The arguments from OperationConfig.
- * @returns {Object} The Zod schema object.
- */
-function mapArgsToZod(args) {
-    const schema = {};
-    args.forEach((arg) => {
-        const name = arg.name.toLowerCase().replace(/ /g, "_");
-        let zodType;
-        let description = arg.type || "";
-
-        switch (arg.type) {
-            case "boolean":
-                zodType = z.boolean();
-                break;
-            case "number":
-            case "integer":
-                zodType = z.number();
-                break;
-            case "option":
-                // Strict enum
-                if (Array.isArray(arg.value) && arg.value.length > 0) {
-                    const options = arg.value.map(v => {
-                        if (typeof v === "string") return v;
-                        return v.name || String(v);
-                    });
-                    zodType = z.enum([options[0], ...options.slice(1)]);
-                } else {
-                    zodType = z.string();
-                }
-                break;
-            case "editableOption":
-                // String, but we will try to match option names in execution
-                zodType = z.string();
-                if (Array.isArray(arg.value) && arg.value.length > 0) {
-                    const options = arg.value.map(v => (typeof v === "string" ? v : v.name)).join(", ");
-                    description += ` (Options: ${options})`;
-                }
-                break;
-            default:
-                zodType = z.string();
-        }
-
-        zodType = zodType.optional().describe(description);
-        schema[name] = zodType;
-    });
-
-    schema.input = z.string().describe("The input data to process");
-    return schema;
-}
-
-/**
- * Resolve argument value handling defaults and options.
- *
- * @param {Object} argDef - The argument definition.
- * @param {any} userValue - The user provided value.
- * @returns {any} The resolved value.
- */
-function resolveArgValue(argDef, userValue) {
-    // 1. Handle Defaults if userValue is undefined
-    if (userValue === undefined) {
-        const defaultVal = argDef.value; // Fallback
-
-        if (Array.isArray(argDef.value)) {
-            const idx = argDef.defaultIndex !== undefined ? argDef.defaultIndex : 0;
-            if (argDef.value[idx] !== undefined) {
-                const opt = argDef.value[idx];
-                // Use .value if present, else .name/string
-                return (typeof opt === "object" && opt.value !== undefined) ? opt.value : (opt.name || opt);
-            }
-        }
-        return defaultVal;
-    }
-
-    // 2. Handle User Provided Value
-    // If it's an option/editableOption, we might need to map name -> value
-    if ((argDef.type === "option" || argDef.type === "editableOption") && Array.isArray(argDef.value)) {
-        // Try to find a match by Name
-        const match = argDef.value.find(v => {
-            const optName = (typeof v === "string") ? v : v.name;
-            return optName === userValue;
-        });
-
-        if (match) {
-            return (typeof match === "object" && match.value !== undefined) ? match.value : (match.name || match);
-        }
-
-        // If not found
-        if (argDef.type === "option") {
-            // For strict option, if it's not in the list, we still return userValue
-            // (zod validation passed, so it matches one of the names, so it SHOULD have been found above).
-            return userValue;
-        }
-
-        // For editableOption, if not found, treat as custom value
-        return userValue;
-    }
-
-    return userValue;
-}
-
-/**
- * Check if input exceeds maximum allowed size.
- *
- * @param {string} input - The input data.
- * @throws {CyberChefMCPError} If input is too large.
- */
-function validateInputSize(input) {
-    const size = Buffer.byteLength(input, "utf8");
-    if (size > MAX_INPUT_SIZE) {
-        throw createInputError(
-            `Input size (${Math.round(size / 1024 / 1024)}MB) exceeds maximum allowed size (${Math.round(MAX_INPUT_SIZE / 1024 / 1024)}MB)`,
-            {
-                inputSize: size,
-                maxSize: MAX_INPUT_SIZE
-            }
-        );
-    }
-}
 
 // Note: withTimeout and executeWithStreaming have been replaced by:
 // - executeWithTimeoutAndRetry in retry.mjs
 // - executeWithStreamingStrategy in streaming.mjs
 
-server.setRequestHandler(ListToolsRequestSchema, async () => {
+const handleListTools = async () => {
     const tools = [
         {
             name: "cyberchef_bake",
@@ -989,9 +339,9 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     });
 
     return { tools };
-});
+};
 
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
+const handleCallTool = async (request, extra, ownerServer = server) => {
     const { name, arguments: args } = request.params;
 
     // Start request tracking
@@ -1405,6 +755,27 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     // Extract progress token from MCP request metadata
                     const progressToken = request.params?._meta?.progressToken;
 
+                    // Route progress notifications back to THE CONNECTION THAT ASKED, not to the
+                    // module-level server.
+                    //
+                    // With one process-wide server that distinction did not exist. It does now:
+                    // an HTTP session owns its own Server instance, so passing the singleton here
+                    // would send this session's progress to a stdio server that is not connected
+                    // at all -- silently, since sendProgress swallows its own errors. The SDK
+                    // hands every request handler an `extra.sendNotification` bound to the right
+                    // connection, which is the routing this needs.
+                    //
+                    // Passed as a FUNCTION, not as a stand-in Server object. An earlier revision
+                    // built `{ notification: ... }` here, which would break the moment
+                    // executeWithStreamingProgress touched any other Server member; handing it the
+                    // one capability it actually uses removes that coupling entirely.
+                    //
+                    // The fallback keeps the module server for callers that invoke the handler
+                    // directly without an `extra` (the existing unit tests do exactly that).
+                    const sendNotification = typeof extra?.sendNotification === "function" ?
+                        extra.sendNotification :
+                        (n => ownerServer.notification(n));
+
                     // Execute with streaming progress support
                     result = await executeWithStreamingProgress({
                         bakeFunction: bake,
@@ -1412,7 +783,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                         input: args.input,
                         recipeArgs,
                         recipe,
-                        server,
+                        sendNotification,
                         progressToken,
                         streamingEnabled: ENABLE_STREAMING,
                         streamingThreshold: STREAMING_THRESHOLD,
@@ -1488,7 +859,69 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         // Return formatted error
         return mcpError.toMCPError();
     }
-});
+};
+
+/**
+ * Build a fresh MCP `Server` with every request handler registered.
+ *
+ * WHY A FACTORY AND NOT THE MODULE SINGLETON
+ * ------------------------------------------
+ * A `Server` carries per-connection lifecycle state -- most importantly whether `initialize`
+ * has already been negotiated. Sharing one across HTTP clients is what produced issue #36:
+ * the first client's handshake marked the instance initialized, and every later client's
+ * `initialize` was rejected with `Invalid Request: Server already initialized`.
+ *
+ * The SDK hardened the same class of bug in GHSA-345p-7cg4-v4c7 -- sharing server or transport
+ * instances between clients leaks state across them -- so a per-session pair is the required
+ * shape, not merely the tidier one.
+ *
+ * Everything a session should NOT own stays module-level and shared on purpose: the operation
+ * cache, telemetry, rate limiter and quota tracker are process-wide resources, and giving each
+ * session its own would silently defeat all four.
+ *
+ * @returns {Server} A new server instance with the tools handlers attached.
+ */
+function createMcpServer() {
+    const instance = new Server(
+        {
+            name: "cyberchef-mcp",
+            version: VERSION,
+        },
+        {
+            capabilities: {
+                tools: {},
+            },
+        }
+    );
+    registerHandlers(instance);
+    return instance;
+}
+
+/**
+ * Attach every request handler to a server instance.
+ *
+ * ONE registration site, used by both the module singleton and every per-session instance. Listing
+ * the handlers twice is how an HTTP session silently loses a capability that stdio has: the two
+ * lists drift, nothing fails, and the only symptom is a method that works over one transport and
+ * not the other. Adding a handler here reaches both by construction.
+ *
+ * @param {Server} instance - The server to attach handlers to.
+ * @returns {Server} The same instance, for chaining.
+ */
+function registerHandlers(instance) {
+    instance.setRequestHandler(ListToolsRequestSchema, handleListTools);
+    // The instance is bound in as the notification FALLBACK. `extra.sendNotification` remains the
+    // primary path -- it is the SDK's documented per-request routing and is correct by
+    // construction -- but if a future SDK reshapes `extra`, the fallback must not quietly become
+    // "the module singleton", which for an HTTP session is precisely the bug this PR fixes,
+    // returning silently. Bound this way it degrades to *this session's* server instead.
+    instance.setRequestHandler(CallToolRequestSchema, (req, extra) => handleCallTool(req, extra, instance));
+    return instance;
+}
+
+// The module-level instance backs stdio, which is single-connection by construction, and is what
+// the existing test suite drives. HTTP builds its own per session.
+registerHandlers(server);
 
 /**
  * Start the MCP Server.
@@ -1505,8 +938,44 @@ async function runServer() {
         await initWorkerPool();
     }
 
-    const { transport } = await createTransport();
-    await server.connect(transport);
+    // HTTP builds a Server per session inside createTransport (issue #36), so there is no
+    // process-wide transport to connect and `transport` comes back null. Connecting the module
+    // singleton here would recreate the shared-instance bug the factory exists to avoid.
+    const { transport, closeAll } = await createTransport({ createServer: createMcpServer });
+    if (transport) {
+        await server.connect(transport);
+    }
+
+    // Shut down cleanly on a signal. Without this, SIGTERM (which is what `docker stop` sends)
+    // killed the process with sessions still open and the listener still bound: clients saw a
+    // dropped connection rather than a closed session, and the container took the full stop
+    // timeout to exit because keep-alive sockets held the loop open.
+    //
+    // Registered only when there is something to close, so stdio -- where the process ending IS
+    // the teardown -- keeps its current behaviour and its default signal handling.
+    if (typeof closeAll === "function") {
+        let shuttingDown = false;
+        // POSIX exit status for a signal death: 128 + signum. Exiting 0 tells a supervisor the
+        // process stopped of its own accord, which is not what happened -- systemd, Docker and
+        // anything reading $? cannot then distinguish "asked to stop" from "finished".
+        const SIGNAL_NUMBERS = { SIGINT: 2, SIGTERM: 15 };
+        const shutdown = (signal) => {
+            // Guard against a second signal arriving mid-teardown and re-entering closeAll.
+            if (shuttingDown) return;
+            shuttingDown = true;
+            const logger = getLogger();
+            logger.info(`${signal} received: closing HTTP sessions and listener`);
+            closeAll()
+                .catch(err => logger.error(`shutdown failed: ${err.message}`))
+                .finally(() => process.exit(128 + (SIGNAL_NUMBERS[signal] ?? 0)));
+        };
+        // `once` per signal, AND the boolean. They cover different cases and neither is
+        // redundant: `once` stops a repeated SIGINT from re-entering, the boolean stops a SIGINT
+        // followed by a SIGTERM from doing so -- which is exactly what an impatient operator or a
+        // supervisor escalating from TERM to INT produces.
+        process.once("SIGINT", () => shutdown("SIGINT"));
+        process.once("SIGTERM", () => shutdown("SIGTERM"));
+    }
 
     // Log server startup with configuration
     logServerStart({
@@ -1629,5 +1098,7 @@ export {
     executeWithStreamingProgress,
     // v1.9.0 exports - re-export transport functions
     createTransport,
-    getTransportType
+    getTransportType,
+    // v2.0.0 export - per-session server factory for the HTTP transport (issue #36)
+    createMcpServer
 };

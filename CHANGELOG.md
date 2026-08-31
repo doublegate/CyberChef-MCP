@@ -7,16 +7,142 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [2.0.0] - 2026-08-31
+
+Upstream **v11.4.0** (504 operations) · **GPL-3.0-or-later** · Node `>=24 <27` · **zero open
+security alerts**. Full notes: [`docs/releases/v2.0.0.md`](docs/releases/v2.0.0.md); migration:
+[`docs/v2.0.0-breaking-changes.md`](docs/v2.0.0-breaking-changes.md).
+
 ### Added
-- **`patches/fork/` — fork changes to upstream-owned files, re-applied after every sync.** Three patches, each verified to apply to pristine v11.4.0: `crypto.randomBytes` instead of `Math.random()` for GOST cryptographic randomness (upstream still ships `Math.random()`), backslash-before-quote escaping in `Utils.parsePrettyRecipe` (upstream still ships the `lgtm [js/incomplete-sanitization]`-suppressed version), and this fork's scoped `@natlibfi/loglevel-message-prefix` dependency.
-
-  **A patch that no longer applies fails the sync.** That is the alarm missing when a ReDoS mitigation was silently reverted by a sync and stayed gone for four releases. Patches also beat a protected-file list: `Utils.mjs` gains upstream's new `_validatePrettyRecipe` *and* keeps our escaping fix, where protecting the file wholesale would have discarded upstream's improvement.
-
-
+- **ReDoS screening for user-supplied regular expressions** (`src/node/lib/safe-regex.mjs`), replacing the removed `src/core/lib/SafeRegex.mjs`. Screens regex-bearing arguments in `resolveArgValue` — the single point every user argument passes through, covering single-operation tools, `cyberchef_bake` and batch execution with one hook — and rejects catastrophic-backtracking shapes before the pattern is ever executed.
+  Two things make this different from its predecessor rather than a reinstatement:
+  - It lives in the **fork-owned MCP layer**, outside every sync allowlist, so no upstream sync can disconnect it. The original sat in `src/core/` and was silently stripped.
+  - It ships with **26 tests**, including a regression guard that fails if the screen is ever unwired from the dispatch path and a coverage check that fails if the argument heuristic stops matching the operations that compile user patterns. The original had none, which is why its removal went unnoticed for four releases.
+  The old module's "timeout-based validation (100ms)" is deliberately **not** reimplemented: catastrophic backtracking blocks the event loop, so no JavaScript timer can fire while it runs. The same applies to `CYBERCHEF_OPERATION_TIMEOUT`, which gives no protection against ReDoS — screening before execution is the only thing that works single-threaded. Configurable via `CYBERCHEF_MAX_REGEX_LENGTH` (default 1000).
 - **Antigravity PR reviewer**: `.github/workflows/antigravity-review.yml` plus `scripts/agy-review.sh` and helpers run a first-pass adversarial review on every same-repo PR, and on `/agy-review` from a maintainer. Runs on a self-hosted runner against a Google AI Ultra OAuth session, so it costs no metered API spend. Restores the automated PR review lost when Gemini Code Assist for GitHub was retired.
 - **Repository style guide for reviewers**: `.github/agy-review.md` gives the reviewer this project's conventions (fork hygiene for `src/core/**`, generated files, MCP-layer rules) instead of generic advice.
+- **`patches/fork/` — fork changes to upstream-owned files, re-applied after every sync.** Three patches, each verified to apply to pristine v11.4.0: `crypto.randomBytes` instead of `Math.random()` for GOST cryptographic randomness (upstream still ships `Math.random()`), backslash-before-quote escaping in `Utils.parsePrettyRecipe` (upstream still ships the `lgtm [js/incomplete-sanitization]`-suppressed version), and this fork's scoped `@natlibfi/loglevel-message-prefix` dependency.
+  **A patch that no longer applies fails the sync.** That is the alarm missing when a ReDoS mitigation was silently reverted by a sync and stayed gone for four releases. Patches also beat a protected-file list: `Utils.mjs` gains upstream's new `_validatePrettyRecipe` *and* keeps our escaping fix, where protecting the file wholesale would have discarded upstream's improvement.
+
+### Changed
+- **BREAKING (reversal): DEP001, DEP007 and DEP008 are WITHDRAWN — the `cyberchef_` prefix is permanent.** Since v1.8.0 these three warned that `cyberchef_to_base64` would become `to_base64` and that `cyberchef_bake`/`cyberchef_search` would be renamed. That is not happening, in v2.0.0 or later.
+
+  Measured before deciding: removing the prefix saves **1,208 of 183,115 bytes** in the `tools/list` payload — **2.6%** of roughly 45,800 tokens — while making **19 tool names collide** in MCP's flat per-session namespace (`bake search md5 sha1 sha2 hash filter sort merge diff reverse unique fork jump label comment register subtract parse_uri`), and breaking every existing integration. Nearly every other connected MCP server plausibly defines `search`; the prefix is what makes exposing it safe at all. The real context cost is the 483-tool surface, not the name length.
+
+  Withdrawing breaks nobody: no code can depend on a name that has never shipped. **If you renamed tool calls in anticipation, revert them.**
+
+  At runtime these codes now emit a one-time `[WITHDRAWN]` notice at **info**, and are deliberately *not* elevated to errors under `V2_COMPATIBILITY_MODE` — that mode exists to preview what v2.0.0 breaks, and reporting a withdrawn change there would tell users to migrate away from a name that is staying. `getToolName()` returns the prefixed name in every mode, including an explicit `forV2 = true`. `docs/v2.0.0-breaking-changes.md` is rewritten around the reversal, and `docs/releases/v1.8.0.md` carries a dated correction rather than being rewritten.
+
+- **Upstream CyberChef 10.19.4 → 11.4.0.** 505 operation files (was 464); `OperationConfig` holds 504, and the difference is an upstream duplicate, not a loss — `GeneratePrime.mjs` and `RandomPrime.mjs` are **byte-identical** and both declare `this.name = "Pseudo-Random Prime Generator"`, so one shadows the other harmlessly. Tool baseline regenerated: 465 → 506.
+- **Node floor is now 24.** Added `engines: {"node": ">=24 <27"}`, matching upstream exactly.
+- **Dependency set adopted from upstream**, including two breaking majors that cost nothing because the code that uses them is mirrored: `jimp` 0.22 → 1.6 (no fork-owned code uses it) and `js-yaml` 4 → 5. The `overrides` pin holding `js-yaml` at `^4.1.1` was **removed** — leaving it would have silently defeated the upgrade while installing cleanly.
+- **`src/node/recipe-manager.mjs` migrated to js-yaml 5** named imports. It is fork-owned, so the mirror could not do it: `import yaml from "js-yaml"` is `undefined` under v5, which fails at call time rather than import time.
+- **`argSelector` argument type supported** (`src/node/lib/tool-schema.mjs`). 19 operations use it, including AES Encrypt/Decrypt; without a case they would have offered a free-text field where only fixed modes are valid.
+- **Upstream-owned test suites were adopted from v11.4.0** (`tests/{lib,node,operations,samples}`). Upstream migrated these to `await assert.rejects(...)` for the async `bake()`; our stale copies still used `assert.throws`. `tests/mcp/` remains fork-owned and untouched.
+
+  **This was a one-time adoption during the v11.4.0 landing, not an ongoing mirror** — an earlier wording said "are now mirrored too", which is not what `upstream-sync.yml` does. Its mirror covers `src/core/**` plus six upstream-owned `src/node/*.mjs` files, and its scope check *fails the run* on anything outside that allowlist plus `tests/mcp/baseline.json`. So `tests/` is fork-owned for sync purposes and a local assertion fix there is stable. The distinction matters: the wrong wording would send the next maintainer looking for a fork patch to protect an edit that nothing threatens.
+- **`Gruntfile.js` runs `generateHTMLEntities.mjs`.** v11.4.0 introduced a **sixth** generated file, `src/core/lib/HTMLEntities.mjs`. Without it `FromHTMLEntity.mjs` imports a module that does not exist, `generateConfig` dies, and `OperationConfig.json` is left as the literal `[]` — an MCP server with zero tools, from a Grunt run that reports success.
+
+- **BREAKING — Licence: Apache-2.0 → GPL-3.0-or-later.** Applies to v2.0.0 and later. Versions
+  1.9.x and earlier remain Apache-2.0 and are unaffected.
+  v2.0.0 incorporates algorithms from reference security tools whose licences constrain the choice:
+  **katana** is GPL-3.0-or-later (which rules out GPLv2), **John the Ripper** is GPL-2.0-or-later
+  (usable under GPLv3), and upstream CyberChef is Apache-2.0 (compatible with GPLv3, *not* GPLv2).
+  GPL-3.0-or-later is the only licence admitting all three.
+  This is **not** a relicensing of GCHQ's code. Upstream files keep their Apache-2.0 headers and
+  copyright; only the combined work changes licence, as Apache-2.0's one-way compatibility with
+  GPLv3 permits. The previous combined notice is preserved as `LICENSE.Apache-2.0`.
+  **What it means for you:** running CyberChef-MCP, including serving it over HTTP, carries no
+  obligation — GPLv3 has no network-use clause. Distributing a *derivative* must also be GPLv3. If
+  your policy precludes GPLv3, remain on the v1.9.x line, which stays Apache-2.0 through its LTS
+  window. See [ADR 0001](docs/adr/0001-relicense-to-gpl-3-0-or-later.md) and
+  `THIRD-PARTY-NOTICES.md`.
+- **Upstream Monitor Schedule**: Changed cron from every 6 hours to weekly (Sundays at noon UTC) to reduce unnecessary CI runs
+- **BREAKING (output format): `Bcrypt` now emits the `$2b$` prefix, not `$2a$`.** `bcryptjs` 2.x → 3.x changes the revision identifier it *generates*. `$2a$` marks the pre-2011 revision whose length counter had a wraparound bug; `$2b$` is the corrected one, so generating it is the desired behaviour rather than something to pin back.
+
+  **Verification is unaffected** — `bcryptjs` still accepts `$2a$`, `$2b$` and `$2y$` on compare, so `Bcrypt Compare` and `Bcrypt Parse` keep working against every previously-generated hash. Only newly *generated* hashes change, and only in the two-character revision tag. Anything asserting a literal `$2a$` prefix on this operation's output needs updating; `tests/node/tests/operations.mjs` was.
+- **`.gitignore` corrected.** Added `.env` / `.env.*` (with `!.env.example`), `dist/`, `*.log`. Removed stale entries: `travis.log` (this project has never used Travis) and `tests/browser/output/*` (the web app went in v1.7.1, and the sync now fails if it returns). `ref-proj/` is no longer ignored — it is a declared submodule tracked as a gitlink, and ignoring a tracked path is what forced `git add -f` in two workflows. Every remaining entry is annotated with why it exists.
+- **Upstream sync widened from `src/core/operations/*.mjs` to the whole synced tree.** The old mechanism compared flat basenames in one directory, which cannot express a major-version jump. Measured 10.19.4 → 11.4.0: 449 files identical, **112 differing, 61 added upstream, 1 removed upstream**. It now mirrors all of `src/core/**` plus the six upstream-owned `src/node/*.mjs` files with `rsync -a --delete`, so additions, modifications and deletions apply atomically.
+  The deletion case is why atomicity matters: upstream removed `src/core/lib/ImageManipulation.mjs` and refactored `BlurImage`/`SharpenImage` to use `jimp` directly. Syncing operations without `lib/` orphans the library; syncing `lib/` without operations breaks the build.
+- **Sync scope is now verified with an allowlist rather than a denylist.** The previous check enumerated forbidden paths, so it only caught mistakes someone had thought of. Anything outside the declared scope now fails the run.
+
+### Removed
+- **Fork patch `02-utils-escape-backslashes`.** Upstream fixed the underlying incomplete-sanitization issue in v11.4.0 with `Utils._validatePrettyRecipe()` and a corrected parsing regex. The patch still applied cleanly — and was still wrong, double-escaping what upstream now handles and breaking upstream's own new test. A clean apply is not evidence a patch is still needed.
+
+- **`src/core/lib/SafeRegex.mjs`** (138 lines, added v1.4.1): dead code. The module was never self-acting — it worked by having operations import `createSafeRegExp` — and a later run of `upstream-sync.yml` overwrote those operations verbatim from upstream, removing every import. Nothing in the tree referenced it. Reviving it would mean re-adding imports that the next sync strips again, so it is removed rather than restored. Any future regex hardening must live in the fork-owned MCP layer under `src/node/`, where the sync cannot reach it, or be contributed upstream.
+- **`src/core/config/OperationConfig.json` is no longer tracked.** It was gitignored *and* committed at the same time — the only such file in the repository — because `upstream-sync.yml` force-added it on every run. It is generated from the operations by `npx grunt configTests`, so a committed copy is a 1.7MB derived artefact whose diff cannot be meaningfully reviewed and which goes stale the moment an operation changes. Every CI workflow, the Dockerfile and the documented local setup already regenerate it. The force-add is removed from the sync.
+
+### Fixed
+- **A root MCP endpoint (`CYBERCHEF_HTTP_PATH=/`) 404'd every request.** The request path and the configured path were normalized *separately*, and only the request side mapped an empty result back to `/` — so a configured `/` became the empty string while a request for it became `/`, and the one path that could never work was the root. Both sides now share `normalizeEndpointPath()`, which is the point of extracting it.
+- **Streamable HTTP transport now serves multiple clients** ([#36](https://github.com/doublegate/CyberChef-MCP/issues/36)). The HTTP branch created **one** `StreamableHTTPServerTransport` for the whole process and routed every request from every client into it. The SDK marks a transport initialized on the first `initialize` it sees and rejects any further one, so the first client to connect worked and every one after it got `{"code":-32600,"message":"Invalid Request: Server already initialized"}`. Many clients probe the endpoint before their formal handshake, so a single client could burn the one available initialize on its own probe and then reject itself.
+
+  Rewritten as a session map: each session gets its own MCP `Server` **and** its own transport, created on an unsessioned `initialize` and routed thereafter by the `Mcp-Session-Id` header. This is the shape the SDK's own advisory GHSA-345p-7cg4-v4c7 requires — sharing server or transport instances between clients leaks state across them — not merely the tidier one.
+
+  Browser clients get CORS handling: an `OPTIONS` preflight is answered (it used to 405, so a browser client's POST was never sent), with allow headers emitted only for an origin on `CYBERCHEF_ALLOWED_ORIGINS`. Default-deny is deliberate — `Access-Control-Allow-Origin: *` on a server that may bind `0.0.0.0` is how a hostile page reaches a local MCP server. The response carries `Access-Control-Expose-Headers: Mcp-Session-Id`, without which the browser hides the session id from the page's JavaScript and every follow-up request 400s.
+
+  **Session creation is capped** (`CYBERCHEF_MAX_SESSIONS`, default 100). An `initialize` is unauthenticated and creates a `Server` + transport retained for the full session timeout, and session creation sits outside the operation rate limiter and the resource quota tracker — both govern *tool calls*, which by definition only happen once a session exists. Unbounded, a loop of `initialize` requests exhausts the process (CWE-400). Slots are reserved before the await so a concurrent burst cannot all pass the check before any lands, and released on every failure path.
+
+  Also added: `DELETE /mcp` teardown, idle-session reaping (`CYBERCHEF_SESSION_TIMEOUT`, 30 min), a bounded request body (`CYBERCHEF_HTTP_MAX_BODY`, 4 MiB), `405` for unsupported methods, `404` rather than a silently-fresh session for an unknown session id, opt-in DNS-rebinding protection (`CYBERCHEF_ALLOWED_HOSTS`), and `EXPOSE 3000` with HTTP usage documented in `Dockerfile.mcp`. New guide: `docs/guides/http-transport.md`.
+
+  Verified end to end against the container: reproduced on the published `cyberchef-mcp_v1:latest` (client 1 succeeds, client 2 returns the reported error verbatim) and fixed on the new build (three clients, three distinct sessions, full `initialize` → `tools/list` → `tools/call` → `DELETE` → `404` lifecycle). `transports.mjs` coverage went from **36.84% to 94.69%** lines — the untested lines 36-57 were exactly where the defect lived, which is not a coincidence.
+
+- **The Docker build was silently running a failed config step.** `.dockerignore` excluded `tests/`, but `src/core/config/scripts/generateOpsIndex.mjs` (upstream's file, byte-identical) now writes two indexes and `readdir`s `tests/operations/tests/` unconditionally — so `npx grunt configTests` died with `ENOENT` inside the image build. It was invisible because the Gruntfile chained its config scripts with `;`, making the chain's exit status that of a trailing `echo`; the ops index had already been written, so the image built green with the error discarded. Chaining with `&&` surfaced it.
+
+  Fixed by not excluding `tests/` from the build context rather than by hand-editing the mirrored generator, which the next sync would revert. The image is unaffected either way — the builder stage `rm -rf`s `tests` before the runtime stage copies `/app` — so this costs 3.7 MB of build context and nothing in the shipped image. `test-results/` and `ref-proj/` are now excluded too: listing `/app` in the built image showed both had been shipping, `ref-proj` being a second full copy of the CyberChef source tree.
+- **`View Bit Plane: malformed PNG` expectation updated for jimp 1.6.1.** 1.6.0 reported `unrecognised content at end of stream` (from the PNG decoder, which was still entered); 1.6.1 rejects the buffer earlier with `Could not find MIME for Buffer`. Upstream pins jimp at exactly `1.6.0` and still asserts the old text. Both are correct reports of the same malformed input and the operation still fails closed with an `OperationError`, so this is an assertion update, not a behaviour regression.
+- **Benchmark results now update one comment instead of appending a new one per push** (#56). The `report` job called `issues.createComment` unconditionally, which was invisible only because the step had been 403ing since it was written. It now finds its previous comment by a hidden `<!-- performance-benchmark-results -->` marker and calls `updateComment`, falling back to a plain create on any lookup failure — a duplicate comment is noise, failing to report is worse.
+
+  The lookup uses `github.paginate`, which returns one flat array across all pages. That is deliberate: `listComments` and `gh api --paginate` both emit one array **per page**, so a `.find()` written for a single array silently misses the marker on a long thread and degrades into exactly the duplicate posting this fixes — a failure already reproduced and fixed once in `scripts/agy-review.sh`.
+- **`AGY_DRY_RUN` no longer deletes the prompt it exists to show you** (#49). The EXIT trap fires on the dry-run block's `exit 0`, so the one mode whose purpose is "let me look at the assembled prompt" removed it on the way out. It now keeps the prompt and the on-disk diff handoff, cleans up everything else, and logs their paths to stderr so a `> prompt.txt` redirect still captures only the prompt.
+- **`scripts/_agy_print.sh` prints a usage line instead of `$1: unbound variable`** (#49), and rejects an unreadable prompt file with a clear message. It is the script most likely to be run by hand while debugging a review — and for the same reason it now reads the prompt with `$(<file)` rather than `$(cat "$file")`, since `cat` parses a leading `-` in the path as an option (`cat -notes.txt` → `cat: invalid option -- 'n'`).
+- **The reviewer's cleanup trap no longer passes empty operands to `rm -f`** (#49). `rm -f ""` is silent on GNU coreutils — which is why this never surfaced on the Linux runner — but BSD/macOS `rm` writes to stderr. `${v:+"$v"}` expands to no operand at all rather than an empty one.
+- **Documentation asserting a security protection that no longer existed.** `README.md` described SafeRegex as an active mitigation; `docs/reference/cyberchef-upstream.md` — the *live* upstream-sync guide — instructed maintainers to re-apply "SafeRegex imports" after each sync and listed a table of four "MCP patches" of which **three did not exist** (`Magic.mjs`, `Recipe.mjs` and `api.mjs` differed from upstream only by JSON-import syntax, not by the changes claimed). Both corrected against the actual tree. Historical reports keep their text and carry a pointer to the incident record at `docs/security/2026-08-30-saferegex-reverted-by-upstream-sync.md`.
+- **The one real fork patch is now documented as such.** `src/core/Utils.mjs` escapes backslashes before double quotes, replacing upstream's `// lgtm [js/incomplete-sanitization]` suppression. Upstream still ships the suppressed version as of v11.4.0, so this is reverted by any sync that widens to `src/core/**` — it is now on the fork-owned manifest instead of being undocumented.
+- **Node runtime warnings on startup, now zero.** Two classes, both traced to a source rather than silenced:
+  - `[DEP0040] DeprecationWarning: The 'punycode' module is deprecated` — raised by our own `FromPunycode.mjs`/`ToPunycode.mjs`, which imported the bare specifier `punycode`. For unprefixed names Node resolves builtins ahead of `node_modules`, so this always bound to the deprecated built-in. Fixed by adopting the userland `punycode.js` package — exactly what upstream did in v11.4.0, so the next sync confirms this change rather than reverting it.
+  - `Warning: Accessing non-existent property 'b2u'/'u2b'/'Pair' of module exports inside circular dependency` — a circular `require` inside `kbpgp`. Our pin was an exact `2.1.15` while upstream uses `^2.1.18`; matching that range resolves to 2.1.19, which no longer emits them.
+- **Documentation**: Corrected `ENABLE_WORKERS` env var references to `CYBERCHEF_ENABLE_WORKERS` across README.md, CLAUDE.md, and release notes
+- **Documentation**: Updated upstream monitor schedule references from "every 6 hours" to "weekly" in README.md
+- **Documentation**: Updated Dockerfile base image references from `node:18-alpine`/`node:22-alpine` to Chainguard distroless in architecture docs and CLAUDE.md
+- **Documentation**: Updated coverage threshold references in CLAUDE.md to match current thresholds (75% lines/stmts, 90% functions, 70% branches)
+- **Documentation**: Expanded MCP tools listing and CI/CD workflow table in CLAUDE.md
 
 ### Security
+- **DNS-rebinding protection is now ON by default for the HTTP transport.** It was opt-in, on the
+  stated reasoning that "the default bind is loopback, where it adds nothing". That reasoning was
+  backwards: DNS rebinding exists *specifically* to reach loopback and private addresses, using the
+  victim's own browser as a proxy the firewall cannot see. A page on `evil.example` whose DNS is
+  rebound to `127.0.0.1` reaches the server with `Host: evil.example`, and because the browser
+  considers that request same-origin with the page, **no preflight is sent** — so the CORS
+  default-deny never comes into it — and the response is readable by the attacker's script. Since
+  `initialize` needs no session id, such a page could open a session and drive every tool, on a
+  server whose recipe storage touches the filesystem.
+
+  With nothing configured, the server now answers only to `localhost`, `127.0.0.1` and `[::1]`,
+  each with and without its port, and returns `403 Invalid Host header` otherwise. The allowlist is
+  resolved after `listen()` so that an ephemeral port (`port: 0`) is covered. `CYBERCHEF_ALLOWED_HOSTS`
+  still replaces the defaults for a non-loopback bind, and `CYBERCHEF_ALLOWED_HOSTS=*` disables the
+  check outright with a startup warning. Four tests speak raw HTTP with a forged `Host`, because
+  `fetch` will not let a caller set one and the forged header is the whole attack.
+
+  **Breaking for one configuration:** a server bound to `0.0.0.0` and reached by a LAN name or IP
+  now needs `CYBERCHEF_ALLOWED_HOSTS` set. That is the secure-by-default trade, and it is what the
+  MCP specification asks for.
+
+- **Recipe storage no longer writes through a predictable temp file.** `save()` staged the new
+  content in `<path>.tmp`, a fixed sibling name. Anything able to write to the storage directory
+  could pre-create or symlink it, and the write would follow — and `CYBERCHEF_RECIPE_STORAGE` is
+  caller-supplied, so that directory is not necessarily private. The staging file now carries a
+  random suffix and is created with `flag: "wx"`, so a pre-created path fails the write instead of
+  capturing it, and with `mode: 0o600`, since a saved recipe can carry keys and IVs. Raised by
+  CodeQL (`js/insecure-temporary-file`, high) on the v2.0.0 release merge.
+
+  Randomising the name removed one property the fixed `.tmp` had for free — a leaked file was
+  overwritten by the next save, so leaks self-healed — so `save()` now also sweeps staging files
+  older than an hour. The existing `catch` already unlinks on any observable error; this covers the
+  case it cannot, a process killed between the write and the rename.
 - **CVE-2026-42615 (HIGH, CVSS 7.2, CWE-79) — XSS in `Show Base64 offsets`.** Upstream built the operation's `<span>`-annotated output by concatenating attacker-influenced text into an HTML string; the vector is the **Alphabet** argument, whose characters land inside span bodies and inside the single-quoted `title='...'` tooltip attribute. Fixed by adopting upstream v11.4.0's file byte-for-byte — the entire diff is `Utils.escapeHtml()` around each interpolated segment — and pinned by `tests/mcp/cve-regressions.test.mjs`, which fails against the pre-fix file (7 span bodies carried raw `<`, `>` and `"`).
 
   Exposure for this fork was nil, and the record says so: `DishHTML.toArrayBuffer()` strips tags and unescapes entities before any Node-API or MCP consumer sees the value, so the CVE is a web-UI issue. Taken because the image also ships `src/core` for direct use, and because converging on upstream is cheaper than diverging from it.
@@ -27,47 +153,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`.trivyignore` added** — one entry, `CVE-2025-14505` (elliptic ≤ 6.6.1), with a written justification: no fixed version exists anywhere, and it reaches the tree only through `crypto-browserify`, a webpack *browser* polyfill whose `crypto` alias is never applied on Node. Wired in through an explicit `trivyignores:` input rather than trivy's cwd default.
 - **`SECURITY.md` corrected.** The supported-versions table still named 1.2.x as current, five releases stale, and it documented UID **1001 `cyberchef`** while the image has run as UID **65532 `nonroot`** since the move to Chainguard.
 - **Full disposition recorded** in `docs/security/2026-08-31-open-alert-sweep.md`: every open alert fixed, suppressed with a justification, or dismissed with a reason — including the three CodeQL alerts on upstream-identical files, and why the intended `codeql-config.yml` scoping turned out not to be expressible.
-
-### Changed
-- **BREAKING (output format): `Bcrypt` now emits the `$2b$` prefix, not `$2a$`.** `bcryptjs` 2.x → 3.x changes the revision identifier it *generates*. `$2a$` marks the pre-2011 revision whose length counter had a wraparound bug; `$2b$` is the corrected one, so generating it is the desired behaviour rather than something to pin back.
-
-  **Verification is unaffected** — `bcryptjs` still accepts `$2a$`, `$2b$` and `$2y$` on compare, so `Bcrypt Compare` and `Bcrypt Parse` keep working against every previously-generated hash. Only newly *generated* hashes change, and only in the two-character revision tag. Anything asserting a literal `$2a$` prefix on this operation's output needs updating; `tests/node/tests/operations.mjs` was.
-- **`.gitignore` corrected.** Added `.env` / `.env.*` (with `!.env.example`), `dist/`, `*.log`. Removed stale entries: `travis.log` (this project has never used Travis) and `tests/browser/output/*` (the web app went in v1.7.1, and the sync now fails if it returns). `ref-proj/` is no longer ignored — it is a declared submodule tracked as a gitlink, and ignoring a tracked path is what forced `git add -f` in two workflows. Every remaining entry is annotated with why it exists.
-- **Upstream sync widened from `src/core/operations/*.mjs` to the whole synced tree.** The old mechanism compared flat basenames in one directory, which cannot express a major-version jump. Measured 10.19.4 → 11.4.0: 449 files identical, **112 differing, 61 added upstream, 1 removed upstream**. It now mirrors all of `src/core/**` plus the six upstream-owned `src/node/*.mjs` files with `rsync -a --delete`, so additions, modifications and deletions apply atomically.
-
-  The deletion case is why atomicity matters: upstream removed `src/core/lib/ImageManipulation.mjs` and refactored `BlurImage`/`SharpenImage` to use `jimp` directly. Syncing operations without `lib/` orphans the library; syncing `lib/` without operations breaks the build.
-- **Sync scope is now verified with an allowlist rather than a denylist.** The previous check enumerated forbidden paths, so it only caught mistakes someone had thought of. Anything outside the declared scope now fails the run.
-
-
-- **Upstream Monitor Schedule**: Changed cron from every 6 hours to weekly (Sundays at noon UTC) to reduce unnecessary CI runs
-
-### Removed
-- **`src/core/config/OperationConfig.json` is no longer tracked.** It was gitignored *and* committed at the same time — the only such file in the repository — because `upstream-sync.yml` force-added it on every run. It is generated from the operations by `npx grunt configTests`, so a committed copy is a 1.7MB derived artefact whose diff cannot be meaningfully reviewed and which goes stale the moment an operation changes. Every CI workflow, the Dockerfile and the documented local setup already regenerate it. The force-add is removed from the sync.
-
-
-- **`src/core/lib/SafeRegex.mjs`** (138 lines, added v1.4.1): dead code. The module was never self-acting — it worked by having operations import `createSafeRegExp` — and a later run of `upstream-sync.yml` overwrote those operations verbatim from upstream, removing every import. Nothing in the tree referenced it. Reviving it would mean re-adding imports that the next sync strips again, so it is removed rather than restored. Any future regex hardening must live in the fork-owned MCP layer under `src/node/`, where the sync cannot reach it, or be contributed upstream.
-
-### Fixed
-- **Benchmark results now update one comment instead of appending a new one per push** (#56). The `report` job called `issues.createComment` unconditionally, which was invisible only because the step had been 403ing since it was written. It now finds its previous comment by a hidden `<!-- performance-benchmark-results -->` marker and calls `updateComment`, falling back to a plain create on any lookup failure — a duplicate comment is noise, failing to report is worse.
-
-  The lookup uses `github.paginate`, which returns one flat array across all pages. That is deliberate: `listComments` and `gh api --paginate` both emit one array **per page**, so a `.find()` written for a single array silently misses the marker on a long thread and degrades into exactly the duplicate posting this fixes — a failure already reproduced and fixed once in `scripts/agy-review.sh`.
-- **`AGY_DRY_RUN` no longer deletes the prompt it exists to show you** (#49). The EXIT trap fires on the dry-run block's `exit 0`, so the one mode whose purpose is "let me look at the assembled prompt" removed it on the way out. It now keeps the prompt and the on-disk diff handoff, cleans up everything else, and logs their paths to stderr so a `> prompt.txt` redirect still captures only the prompt.
-- **`scripts/_agy_print.sh` prints a usage line instead of `$1: unbound variable`** (#49), and rejects an unreadable prompt file with a clear message. It is the script most likely to be run by hand while debugging a review — and for the same reason it now reads the prompt with `$(<file)` rather than `$(cat "$file")`, since `cat` parses a leading `-` in the path as an option (`cat -notes.txt` → `cat: invalid option -- 'n'`).
-- **The reviewer's cleanup trap no longer passes empty operands to `rm -f`** (#49). `rm -f ""` is silent on GNU coreutils — which is why this never surfaced on the Linux runner — but BSD/macOS `rm` writes to stderr. `${v:+"$v"}` expands to no operand at all rather than an empty one.
-- **Documentation asserting a security protection that no longer existed.** `README.md` described SafeRegex as an active mitigation; `docs/reference/cyberchef-upstream.md` — the *live* upstream-sync guide — instructed maintainers to re-apply "SafeRegex imports" after each sync and listed a table of four "MCP patches" of which **three did not exist** (`Magic.mjs`, `Recipe.mjs` and `api.mjs` differed from upstream only by JSON-import syntax, not by the changes claimed). Both corrected against the actual tree. Historical reports keep their text and carry a pointer to the incident record at `docs/security/2026-08-30-saferegex-reverted-by-upstream-sync.md`.
-- **The one real fork patch is now documented as such.** `src/core/Utils.mjs` escapes backslashes before double quotes, replacing upstream's `// lgtm [js/incomplete-sanitization]` suppression. Upstream still ships the suppressed version as of v11.4.0, so this is reverted by any sync that widens to `src/core/**` — it is now on the fork-owned manifest instead of being undocumented.
-
-
-- **Node runtime warnings on startup, now zero.** Two classes, both traced to a source rather than silenced:
-  - `[DEP0040] DeprecationWarning: The 'punycode' module is deprecated` — raised by our own `FromPunycode.mjs`/`ToPunycode.mjs`, which imported the bare specifier `punycode`. For unprefixed names Node resolves builtins ahead of `node_modules`, so this always bound to the deprecated built-in. Fixed by adopting the userland `punycode.js` package — exactly what upstream did in v11.4.0, so the next sync confirms this change rather than reverting it.
-  - `Warning: Accessing non-existent property 'b2u'/'u2b'/'Pair' of module exports inside circular dependency` — a circular `require` inside `kbpgp`. Our pin was an exact `2.1.15` while upstream uses `^2.1.18`; matching that range resolves to 2.1.19, which no longer emits them.
-
-
-- **Documentation**: Corrected `ENABLE_WORKERS` env var references to `CYBERCHEF_ENABLE_WORKERS` across README.md, CLAUDE.md, and release notes
-- **Documentation**: Updated upstream monitor schedule references from "every 6 hours" to "weekly" in README.md
-- **Documentation**: Updated Dockerfile base image references from `node:18-alpine`/`node:22-alpine` to Chainguard distroless in architecture docs and CLAUDE.md
-- **Documentation**: Updated coverage threshold references in CLAUDE.md to match current thresholds (75% lines/stmts, 90% functions, 70% branches)
-- **Documentation**: Expanded MCP tools listing and CI/CD workflow table in CLAUDE.md
 
 ## [1.9.0] - 2026-02-05
 

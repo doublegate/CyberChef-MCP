@@ -34,8 +34,28 @@ the region a patch touches, the sync stops and a human decides.
 | patch | file | why it exists | still needed at v11.4.0 |
 |---|---|---|---|
 | `01-gost-secure-random.patch` | `src/core/vendor/gost/gostRandom.mjs` | Upstream falls back to `Math.floor(256 * Math.random())` for cryptographic randomness. This substitutes `crypto.randomBytes`, and throws rather than silently using a non-CSPRNG. | **Yes** — verified, upstream still ships `Math.random()` here. |
-| `02-utils-escape-backslashes.patch` | `src/core/Utils.mjs` | `parsePrettyRecipe` escapes `"` but not `\`, so a backslash can escape the escaping. Upstream suppresses the finding with `// lgtm [js/incomplete-sanitization]` rather than fixing it. | **Yes** — verified, upstream still ships the suppressed version. |
 | `03-chefworker-scoped-loglevel.patch` | `src/core/ChefWorker.js` | This fork depends on `@natlibfi/loglevel-message-prefix`, a maintained scoped fork, rather than upstream's unscoped `loglevel-message-prefix`. | **Yes** — a deliberate dependency substitution. |
+| `04-test-fixture-no-web-assets.patch` | `tests/node/tests/operations.mjs` | The "Scan for embedded files" test reads `src/web/static/images/cook_male-32x32.png`. This fork removed the web app in v1.7.1, so that asset does not exist. Repointed at `tests/node/sampleData/pic.jpg`, which the adjacent EXIF test already uses. The assertion only checks the output's prefix, so any binary file satisfies it. | **Yes** — while this fork ships no web assets. |
+
+### Dropped: `02-utils-escape-backslashes`
+
+Removed while landing v11.4.0, and the reason is the most useful lesson in this directory.
+
+That patch escaped `\` before `"` in `Utils.parsePrettyRecipe`, because upstream escaped only `"`
+and marked the gap `// lgtm [js/incomplete-sanitization]`. Upstream has now **fixed it properly**:
+v11.4.0 added `Utils._validatePrettyRecipe()` and rewrote the parsing regex to handle escapes
+(`'[^'\\]*(?:\\.[^'\\]*)*'`, and `([^\\]|(?:\\\\)+)'` for closing quotes). The `lgtm`
+comment survives on the line above, but the logic around it is new.
+
+**The patch still applied cleanly, and was still wrong.** Applying cleanly only means the
+surrounding context is unchanged; it says nothing about whether the fix is still needed. Ours
+double-escaped what upstream's regex now handles, and broke upstream's own new test —
+`Utils: should parse escaped quotes and backslashes in pretty recipes` — with
+`SyntaxError: Bad escaped character in JSON at position 3`.
+
+So: **a clean apply is not a green light.** The sync's patch step catches context drift; only the
+test suite catches a patch whose purpose has evaporated. Run the full suite after every sync, and
+when a patch's upstream cause is fixed, delete the patch.
 
 Two earlier fork edits were **dropped as obsolete** rather than carried forward: `assert {type: "json"}`
 → `with {type: "json"}` in `Magic.mjs`, `Recipe.mjs`, `ChefWorker.js` and `api.mjs`. Upstream adopted

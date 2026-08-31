@@ -46,6 +46,17 @@ TestRegister.addTests([
         ]
     },
     {
+        name: "Generate Image: empty mode",
+        input: "",
+        expectedOutput: "Mode cannot be empty.",
+        recipeConfig: [
+            {
+                op: "Generate Image",
+                args: ["", 8, 64]
+            }
+        ]
+    },
+    {
         name: "Extract EXIF: nothing",
         input: "",
         expectedOutput: "Found 0 tags.\n",
@@ -227,6 +238,30 @@ TestRegister.addTests([
             {
                 op: "To Hex",
                 args: ["None"]
+            }
+        ]
+    },
+    {
+        name: "View Bit Plane: malformed PNG",
+        input: PNG_HEX.replace("49484452", "49424452"),
+        // jimp 1.6.1 changed the message it produces for a buffer it cannot identify:
+        // 1.6.0 reported "unrecognised content at end of stream" (from the PNG decoder, which
+        // was still entered), 1.6.1 rejects the buffer earlier with "Could not find MIME for
+        // Buffer". Upstream v11.4.0 pins jimp at exactly 1.6.0 and therefore still asserts the
+        // old text; this fork is on ^1.6.1.
+        //
+        // Both are correct reports of the same malformed input, so this is an assertion update
+        // rather than a behaviour regression -- the operation still fails closed with an
+        // OperationError instead of processing the corrupt image.
+        expectedOutput: "Error loading image. (Error: Could not find MIME for Buffer)",
+        recipeConfig: [
+            {
+                op: "From Hex",
+                args: ["None"]
+            },
+            {
+                op: "View Bit Plane",
+                args: ["Red", 0]
             }
         ]
     },

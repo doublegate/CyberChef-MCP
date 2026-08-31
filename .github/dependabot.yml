@@ -1,84 +1,77 @@
-# Dependabot version updates.
+# Dependabot configuration for CyberChef-MCP.
 #
-# Until now this repository had NO dependabot.yml, so it received only the automatic *security*
-# updates GitHub enables by default. That is why its dependency debt reached 194 open alerts:
-# nothing was ever bumped for currency, only for a published CVE, and a package that drifts far
-# enough behind eventually cannot be patched without a major bump.
+# Before this file existed the repository received only Dependabot *security* updates
+# (which are on by default and need no config). That is why the alert backlog reached
+# 194 with no corresponding version-update PRs. This adds proactive version updates for
+# all three ecosystems the project actually uses.
 #
-# Design notes, because the defaults are wrong for this repo in two directions:
-#
-#  * GROUPED, because ungrouped npm updates on a 1,700-package tree open a wall of PRs that
-#    nobody reviews, and an unreviewed dependency PR is worse than no PR.
-#  * MAJORS ARE NEVER GROUPED FOR RUNTIME DEPENDENCIES. A grouped major is unreviewable -- the
-#    whole point of a major is that it needs individual judgement -- so those arrive one at a
-#    time. Dev-tooling majors ARE grouped, because that tree cannot reach the shipped image and
-#    reviewing eslint or vitest majors one PR at a time is pure overhead.
-#  * Cooldown is raised above GitHub's 3-day default for majors and minors. This project consumes
-#    cryptography and parser libraries where a bad release is a real hazard, and nothing here is
-#    urgent enough to justify being the first to find out. Security updates ignore cooldown
-#    entirely, which is the behaviour we want.
+# Grouping keeps the PR volume sane: minor+patch bumps are batched per ecosystem, while
+# majors are raised individually so each breaking change gets its own review.
 version: 2
 
 updates:
-  # --- npm ------------------------------------------------------------------------------------
+  # ---------------------------------------------------------------- npm
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
       interval: "weekly"
       day: "sunday"
-      time: "05:00"
+      time: "06:00"
       timezone: "Etc/UTC"
-    open-pull-requests-limit: 8
+    open-pull-requests-limit: 10
+    versioning-strategy: "increase"
     labels:
       - "dependencies"
-      - "javascript"
+      - "npm"
     commit-message:
       prefix: "build(deps)"
       prefix-development: "build(deps-dev)"
-      include: "scope"
+    # Cooldown, raised above GitHub's 3-day default. This project consumes cryptography and
+    # parser libraries where a bad release is a real hazard, and nothing here is urgent enough to
+    # justify being the first to find out. Security updates ignore cooldown entirely, which is
+    # exactly the behaviour wanted: a published CVE should not wait out a safety margin.
     cooldown:
       default-days: 3
       semver-major-days: 14
       semver-minor-days: 7
       semver-patch-days: 3
     groups:
-      # Runtime dependencies, patch + minor only. Majors fall through to individual PRs.
       production-minor-patch:
         applies-to: version-updates
         dependency-type: "production"
         update-types: ["minor", "patch"]
-      # Dev tooling churns constantly and cannot affect the shipped image, so it is grouped more
-      # aggressively -- majors included.
-      development:
+      development-minor-patch:
         applies-to: version-updates
         dependency-type: "development"
-        update-types: ["major", "minor", "patch"]
-      # Security updates are grouped separately so a security PR is never mixed with routine
-      # currency churn and can be reviewed and merged on its own.
-      security:
+        update-types: ["minor", "patch"]
+      # Restricted to minor+patch so a MAJOR security update still arrives as its own PR,
+      # matching the majors-get-individual-review policy stated at the top of this file.
+      security-patches:
         applies-to: security-updates
         patterns: ["*"]
-    # No `ignore` entries. An earlier draft ignored major bumps of
-    # @natlibfi/loglevel-message-prefix "so Dependabot cannot undo patches/fork/03" -- which was
-    # simply wrong: Dependabot bumps VERSIONS and cannot rewrite a scoped package name back to the
-    # unscoped upstream one. The entry protected nothing. Majors on runtime dependencies are
-    # already ungrouped, so this one arrives as its own reviewable PR like any other.
+        update-types: ["minor", "patch"]
+    ignore:
+      # The `version` field tracks the upstream CyberChef release, not our own semver, and
+      # the operation/core dependency set is adopted wholesale from upstream by the
+      # upstream-sync workflow. Letting Dependabot bump these independently would fight
+      # that sync and desynchronise us from the pinned upstream base.
+      - dependency-name: "grunt"
+      - dependency-name: "grunt-*"
 
-  # --- GitHub Actions -------------------------------------------------------------------------
-  # This is the one that would have caught the outage that killed Security Scan for ~5 months:
-  # `aquasecurity/trivy-action@0.28.0` was retagged away upstream and every run died at
-  # "Set up job" with an unresolvable action. Actions drift silently and fail loudly.
+  # ------------------------------------------------------- github-actions
+  # The 0.28.0 -> v0.36.0 trivy-action breakage that took Security Scan down for months
+  # is exactly what this ecosystem catches.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
       day: "sunday"
-      time: "05:00"
+      time: "06:00"
       timezone: "Etc/UTC"
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
-      - "ci/cd"
+      - "github-actions"
     commit-message:
       prefix: "ci(deps)"
     groups:
@@ -86,18 +79,22 @@ updates:
         applies-to: version-updates
         update-types: ["minor", "patch"]
 
-  # --- Docker ---------------------------------------------------------------------------------
-  # Dockerfile.mcp only; the root web-app Dockerfile was removed in v1.7.1.
+  # -------------------------------------------------------------- docker
+  # Tracks the Chainguard base images in Dockerfile.mcp.
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
       interval: "weekly"
       day: "sunday"
-      time: "05:00"
+      time: "06:00"
       timezone: "Etc/UTC"
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 5
     labels:
       - "dependencies"
-      - "security"
+      - "docker"
     commit-message:
       prefix: "build(docker)"
+    groups:
+      docker-minor-patch:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]

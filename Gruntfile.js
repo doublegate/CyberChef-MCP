@@ -248,7 +248,7 @@ module.exports = function (grunt) {
             configs: ["*.{js,mjs}"],
             core: ["src/core/**/*.{js,mjs}", "!src/core/vendor/**/*", "!src/core/operations/legacy/**/*"],
             web: ["src/web/**/*.{js,mjs}", "!src/web/static/**/*"],
-            node: ["src/node/**/*.{js,mjs}"],
+            node: ["src/node/**/*.{js,mjs}", "!src/node/index.mjs"],
             tests: ["tests/**/*.{js,mjs}"],
         },
         webpack: {
@@ -400,6 +400,12 @@ module.exports = function (grunt) {
                 command: chainCommands([
                     "echo '\n--- Regenerating config files. ---'",
                     "echo [] > src/core/config/OperationConfig.json",
+                    // Added for upstream v11.4.0, which introduced a SIXTH generated file:
+                    // src/core/lib/HTMLEntities.mjs, gitignored upstream and produced here.
+                    // Without this, FromHTMLEntity.mjs imports a module that does not exist and
+                    // generateConfig dies -- leaving OperationConfig.json as the literal `[]`
+                    // written on the line above, i.e. an MCP server with zero tools.
+                    `node ${nodeFlags} src/core/config/scripts/generateHTMLEntities.mjs`,
                     `node ${nodeFlags} src/core/config/scripts/generateOpsIndex.mjs`,
                     `node ${nodeFlags} src/core/config/scripts/generateConfig.mjs`,
                     "echo '--- Config scripts finished. ---\n'"

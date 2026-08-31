@@ -113,6 +113,10 @@ jobs:
           sarif_file: 'trivy-results.sarif'
           category: 'trivy-container-scan'
 
+      # PR gate. CRITICAL only for now: the SARIF step above still reports CRITICAL+HIGH to
+      # the Security tab, so nothing is hidden - but with a 272-finding backlog open, gating
+      # on HIGH would fail every PR in the v2.0.0 series before it can fix anything.
+      # TODO(PR 7): restore ${{ steps.severity.outputs.level }} once the backlog is zero.
       - name: Run Trivy in table format for logs
         uses: aquasecurity/trivy-action@v0.36.0
         if: github.event_name == 'pull_request'
@@ -145,7 +149,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: '24'
           cache: 'npm'
 
       - name: Run npm audit

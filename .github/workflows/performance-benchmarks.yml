@@ -174,7 +174,7 @@ jobs:
             // array PER PAGE, so a `.find()` written for a single array silently misses the marker
             // on a long thread and degrades into exactly the duplicate-posting this fixes. That
             // failure was reproduced in scripts/agy-review.sh before being fixed there.
-            let existing = null;
+            let existing;
             try {
               const comments = await github.paginate(github.rest.issues.listComments, {
                 issue_number: context.issue.number,

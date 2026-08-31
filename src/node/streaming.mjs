@@ -1,8 +1,10 @@
 /**
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
  * MCP Streaming Protocol Implementation for CyberChef.
  *
  * @author DoubleGate
- * @license Apache-2.0
+ * @license GPL-3.0-or-later
  */
 
 import { logStreaming } from "./logger.mjs";
@@ -404,7 +406,13 @@ export function executeWithStreamingStrategy(bakeFunction, operation, input, arg
  * @param {string} options.input - Input data.
  * @param {Array} options.recipeArgs - Operation arguments.
  * @param {Array} options.recipe - Full recipe array [{op, args}].
- * @param {Object} options.server - MCP Server instance (for sending notifications).
+ * @param {Object} [options.server] - DEPRECATED shim: an object with a `notification()` method.
+ *   Prefer `sendNotification`. Retained so existing callers and tests keep working.
+ * @param {Function} [options.sendNotification] - Sends one MCP notification on the connection that
+ *   made the request. This is the SDK's own per-request `extra.sendNotification`, and it is the
+ *   correct thing to pass: a `Server` INSTANCE is ambiguous once there is more than one of them
+ *   (an HTTP session owns its own), and passing the wrong one sends progress into a connection
+ *   nobody is listening on -- silently, since notification failures here are best-effort.
  * @param {string|number|undefined} options.progressToken - MCP progress token from request.
  * @param {boolean} options.streamingEnabled - Whether streaming is enabled globally.
  * @param {number} options.streamingThreshold - Size threshold for streaming.
@@ -419,6 +427,7 @@ export async function executeWithStreamingProgress({
     recipeArgs,
     recipe,
     server,
+    sendNotification,
     progressToken,
     streamingEnabled,
     streamingThreshold,
@@ -447,9 +456,18 @@ export async function executeWithStreamingProgress({
     logStreaming(operation, { inputSize, strategy: strategy.type, progressToken });
 
     // Send initial progress notification
+    // Prefer the explicit function; fall back to the legacy `server.notification` shape. Taking a
+    // FUNCTION rather than a Server instance is the point: it is unambiguous about which
+    // connection is being notified, and it removes any temptation to hand this a partial
+    // stand-in object that breaks the moment another Server member is touched.
+    const notify = typeof sendNotification === "function" ?
+        sendNotification :
+        (server ? (n => server.notification(n)) : null);
+
     const sendProgress = async (progress, total, message) => {
+        if (!notify) return;
         try {
-            await server.notification({
+            await notify({
                 method: "notifications/progress",
                 params: {
                     progressToken,

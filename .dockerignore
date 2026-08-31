@@ -19,10 +19,34 @@ docker-compose*.yml
 *.md
 !package.json
 
-# Test files
-tests
+# Test artifacts. `tests/` itself is NOT excluded, deliberately.
+#
+# `src/core/config/scripts/generateOpsIndex.mjs` (upstream's file, byte-identical) writes two
+# indexes: src/core/operations/index.mjs and tests/operations/index.mjs. It readdir's
+# tests/operations/tests/ unconditionally, so excluding `tests` from the build context makes
+# `npx grunt configTests` die with ENOENT.
+#
+# That was previously invisible: the Gruntfile chained its config scripts with `;`, so the chain's
+# exit status was the trailing `echo` and the failure was swallowed -- the image built "green" with
+# the ops index already written and the error discarded. Chaining with `&&` surfaced it.
+#
+# The image is unaffected either way: Dockerfile.mcp's builder stage `rm -rf`s `tests` before the
+# runtime stage copies /app, so this costs 3.7 MB of build context and nothing in the final image.
+# Excluding it instead would mean hand-editing an upstream-mirrored file, which the next sync
+# reverts.
+
+# Test and coverage OUTPUT, as opposed to the `tests` sources above. These are produced by a local
+# `npm run test:coverage` / `npm test` run and are pure build-context weight -- nothing in the
+# image reads them, and a stale local copy would be silently baked into the layer.
 coverage
 .nyc_output
+test-results
+
+# The upstream reference checkout. A populated `ref-proj/CyberChef` is a second full copy of the
+# source tree; it exists only so the sync can three-way diff against upstream and has no business
+# in a build context. Spotted by listing /app in the built image, where it had survived because
+# the builder stage's `rm -rf` list never named it.
+ref-proj
 
 # IDE and OS files
 *.log

@@ -1,8 +1,10 @@
 /**
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
  * Test suite for CyberChef Recipe Manager
  *
  * @author DoubleGate
- * @license Apache-2.0
+ * @license GPL-3.0-or-later
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
@@ -11,7 +13,6 @@ import { RecipeStorage } from "../../src/node/recipe-storage.mjs";
 import { promises as fs } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
-import { randomUUID } from "crypto";
 
 describe("RecipeManager", () => {
     let manager;
@@ -21,9 +22,11 @@ describe("RecipeManager", () => {
 
     beforeEach(async () => {
         // Create temp storage for tests
-        testDir = join(tmpdir(), `cyberchef-test-${randomUUID()}`);
+        // mkdtemp, not join(tmpdir(), random) + mkdir. mkdtemp creates the directory atomically
+        // with mode 0700 and its own random suffix, so there is no window in which the path exists
+        // but is not yet owner-only -- which is the difference js/insecure-temporary-file is about.
+        testDir = await fs.mkdtemp(join(tmpdir(), "cyberchef-test-"));
         testFile = join(testDir, "recipes.json");
-        await fs.mkdir(testDir, { recursive: true });
 
         storage = new RecipeStorage(testFile);
         manager = new RecipeManager(storage);
