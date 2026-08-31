@@ -101,6 +101,10 @@ jobs:
           vuln-type: 'os,library'
           scanners: 'vuln,secret,misconfig'
           timeout: '10m'
+          # Stated explicitly rather than relying on trivy's cwd default, so that a change to the
+          # working directory cannot silently un-suppress a documented, justified finding -- or,
+          # worse, silently suppress nothing while the file suggests otherwise.
+          trivyignores: '.trivyignore'
 
       - name: Upload Trivy scan results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v4
@@ -118,6 +122,11 @@ jobs:
           severity: 'CRITICAL'
           vuln-type: 'os,library'
           exit-code: '1'
+          # Same ignore file as the SARIF steps. It changes nothing today -- the only entry is a
+          # LOW and this step filters to CRITICAL -- but a gate and a report that disagree about
+          # what is suppressed is a trap for whoever reads them next, and the mismatch would appear
+          # silently the first time a CRITICAL is ever justified here.
+          trivyignores: '.trivyignore'
 
   dependency-scan:
     name: Dependency Vulnerability Scan
@@ -166,6 +175,7 @@ jobs:
           severity: ${{ steps.severity.outputs.level }}
           vuln-type: 'library'
           scanners: 'vuln'
+          trivyignores: '.trivyignore'
 
       - name: Upload filesystem scan results
         uses: github/codeql-action/upload-sarif@v4

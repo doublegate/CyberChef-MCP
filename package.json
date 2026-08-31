@@ -59,7 +59,6 @@
     "babel-plugin-polyfill-corejs3": "^1.0.0",
     "babel-plugin-polyfill-regenerator": "^1.0.0",
     "base64-loader": "^1.0.0",
-    "chromedriver": "^152.0.0",
     "cli-progress": "^3.12.0",
     "colors": "^1.4.0",
     "compression-webpack-plugin": "^12.0.0",
@@ -74,7 +73,6 @@
     "grunt": "^1.6.1",
     "grunt-concurrent": "^3.0.0",
     "grunt-contrib-clean": "~2.0.1",
-    "grunt-contrib-connect": "^5.0.1",
     "grunt-contrib-copy": "~1.0.0",
     "grunt-contrib-watch": "^1.1.0",
     "grunt-eslint": "^27.0.0",
@@ -85,7 +83,6 @@
     "imports-loader": "^5.0.0",
     "mini-css-extract-plugin": "2.10.2",
     "modify-source-webpack-plugin": "^4.1.0",
-    "nightwatch": "^3.6.3",
     "postcss": "^8.4.38",
     "postcss-css-variables": "^0.19.0",
     "postcss-import": "^17.0.0",
@@ -211,8 +208,6 @@
     "coverage": "npm run test:coverage",
     "benchmark": "node --experimental-modules benchmarks/operation-benchmarks.mjs",
     "testnodeconsumer": "npx grunt testnodeconsumer",
-    "testui": "npx grunt testui",
-    "testuidev": "npx nightwatch --env=dev",
     "lint": "npx grunt lint",
     "lint:grammar": "cspell ./src",
     "postinstall": "npx grunt exec:fixCryptoApiImports && npx grunt exec:fixSnackbarMarkup && npx grunt exec:fixJimpModule && npx grunt exec:fixSerializeJavascript && npx grunt exec:fixLoglevelMessagePrefix",
@@ -226,6 +221,7 @@
     "ws": ">=5.2.4",
     "js-yaml": "^4.1.1",
     "serialize-javascript": ">=6.0.2",
-    "qs": ">=6.14.1"
+    "qs": ">=6.14.1",
+    "minimatch@3": "^3.1.5"
   }
 }
