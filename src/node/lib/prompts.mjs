@@ -28,6 +28,8 @@
  * @license GPL-3.0-or-later
  */
 
+import { createInputError } from "../errors.mjs";
+
 /**
  * The prompt catalogue.
  *
@@ -232,10 +234,16 @@ export function listPrompts() {
 export function getPrompt(name, args = {}) {
     const prompt = PROMPTS.find(p => p.name === name);
     if (!prompt) {
-        const err = new Error(
-            `Unknown prompt: ${name}. Available: ${PROMPTS.map(p => p.name).join(", ")}`);
-        err.knownPrompts = PROMPTS.map(p => p.name);
-        throw err;
+        // Structured, like every other error this server raises -- AND with the useful part in
+        // the message. Measured rather than assumed: the SDK converts a throw from a prompt or
+        // resource handler into a JSON-RPC error carrying only `message`, and `data` arrives
+        // null. So the context object is for this server's own logs, and anything the CALLER
+        // needs in order to recover has to be in the text.
+        const available = PROMPTS.map(p => p.name).join(", ");
+        throw createInputError(`Unknown prompt: ${name}. Available: ${available}`, {
+            prompt: name,
+            available: PROMPTS.map(p => p.name)
+        });
     }
 
     // Checked here rather than left to the operation: a prompt rendered without its data is a
@@ -246,7 +254,11 @@ export function getPrompt(name, args = {}) {
         .map(a => a.name)
         .filter(n => args[n] === undefined || args[n] === "");
     if (missing.length) {
-        throw new Error(`Prompt "${name}" requires: ${missing.join(", ")}`);
+        throw createInputError(`Prompt "${name}" requires: ${missing.join(", ")}`, {
+            prompt: name,
+            missing,
+            required: (prompt.arguments || []).filter(a => a.required).map(a => a.name)
+        });
     }
 
     return {

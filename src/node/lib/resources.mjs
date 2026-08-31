@@ -26,6 +26,8 @@
  * @license GPL-3.0-or-later
  */
 
+import { createInputError } from "../errors.mjs";
+
 /** The scheme this server serves. */
 const SCHEME = "recipe://";
 
@@ -83,11 +85,21 @@ export async function listResources(manager) {
  */
 export async function readResource(manager, uri) {
     if (typeof uri !== "string" || !uri.startsWith(SCHEME)) {
-        throw new Error(`Unsupported resource URI: ${uri}. This server serves ${SCHEME}<id>.`);
+        // The scheme goes in the MESSAGE, not only in the context: the SDK turns a throw from a
+        // resource handler into a JSON-RPC error carrying `message` alone, with `data` null, so
+        // context reaches this server's logs and never reaches the caller.
+        throw createInputError(
+            `Unsupported resource URI: ${uri}. This server serves ${SCHEME}<id>.`, {
+                uri,
+                supported: `${SCHEME}<id>`,
+                hint: "cyberchef_recipe_list reports the ids this server serves."
+            });
     }
 
     const id = uri.slice(SCHEME.length);
-    if (!id) throw new Error(`No recipe id in URI: ${uri}`);
+    if (!id) {
+        throw createInputError(`No recipe id in URI: ${uri}`, { uri, supported: `${SCHEME}<id>` });
+    }
 
     // `getRecipe` throws a structured "Recipe not found" for an unknown id, which is the right
     // error and needs no translation here.

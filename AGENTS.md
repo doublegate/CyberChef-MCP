@@ -25,7 +25,7 @@ server. Exposes 504 operations (encryption, encoding, compression, forensics) as
 
 | Metric | Value |
 |--------|-------|
-| MCP Version | 2.2.0 (single source: `package.json` `mcpVersion`, read by `src/node/lib/config.mjs`) |
+| MCP Version | 2.2.0 (single source: `package.json` `version`, read by `src/node/lib/config.mjs`). `mcpVersion` was removed in v2.2.0 -- npm requires `version` to be the published version, so the upstream base moved to `cyberchefUpstreamVersion`. |
 | Upstream base | CyberChef **v11.4.0** |
 | Operations / tools | 504 operations. `tools/list` is an **index** by default (~24 tools, ~3.4k tokens); `CYBERCHEF_TOOL_SURFACE=curated\|all` for ~102 (~19.2k) or all 527 (~98.5k). All 504 reachable via `cyberchef_bake` + the three navigation tools. Every tool carries annotations + a title. |
 | Licence | **GPL-3.0-or-later** (from v2.0.0; v1.9.x and earlier are Apache-2.0) |
