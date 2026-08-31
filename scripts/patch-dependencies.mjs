@@ -31,7 +31,7 @@
  * @license GPL-3.0-or-later
  */
 
-import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, readdirSync, existsSync } from "node:fs";
 import { join, dirname, parse } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
@@ -85,12 +85,26 @@ let skipped = 0;
  */
 function patch(pkgName, relPath, edit, label) {
     const dir = packageDir(pkgName);
-    const file = dir && join(dir, relPath);
-    if (!file || !existsSync(file)) {
+    if (!dir) {
         skipped++;
         return;
     }
-    const before = readFileSync(file, "utf8");
+    const file = join(dir, relPath);
+
+    // Read and handle the failure, rather than `existsSync` then read. Checking first is a
+    // time-of-check/time-of-use race (CodeQL js/file-system-race) -- the exploit path here is thin,
+    // since anyone able to swap a file in node_modules mid-install can simply edit it, but the
+    // race-free form is also one syscall shorter and says what it means: try, and cope if it is
+    // not there.
+    let before;
+    try {
+        before = readFileSync(file, "utf8");
+    } catch (err) {
+        if (err.code !== "ENOENT" && err.code !== "ENOTDIR") throw err;
+        skipped++;
+        return;
+    }
+
     const after = edit(before);
     if (after === null || after === before) return;
     writeFileSync(file, after);
@@ -106,10 +120,18 @@ function patch(pkgName, relPath, edit, label) {
  */
 function walk(dir) {
     const found = [];
-    for (const entry of readdirSync(dir)) {
-        if (entry === ".git") continue;
-        const full = join(dir, entry);
-        if (statSync(full).isDirectory()) found.push(...walk(full));
+    let entries;
+    try {
+        entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+        return found;      // absent or unreadable: nothing to patch, which is not an error
+    }
+    for (const entry of entries) {
+        if (entry.name === ".git") continue;
+        const full = join(dir, entry.name);
+        // `withFileTypes` avoids a second stat() per entry, and avoids stat-ing a path that may
+        // have gone away since the directory was listed.
+        if (entry.isDirectory()) found.push(...walk(full));
         else found.push(full);
     }
     return found;
@@ -119,9 +141,10 @@ function walk(dir) {
 //    `from "./foo"` -> `from "./foo.mjs"`, leaving anything already suffixed alone.
 const cryptoApiDir = packageDir("crypto-api");
 const cryptoApiSrc = cryptoApiDir && join(cryptoApiDir, "src");
-if (cryptoApiSrc && existsSync(cryptoApiSrc)) {
+const cryptoApiFiles = cryptoApiSrc ? walk(cryptoApiSrc) : [];
+if (cryptoApiFiles.length) {
     let files = 0;
-    for (const file of walk(cryptoApiSrc)) {
+    for (const file of cryptoApiFiles) {
         const before = readFileSync(file, "utf8");
         const after = before.replace(/from "(\.[^"]*)";/g, (whole, spec) =>
             (spec.endsWith(".mjs") ? whole : `from "${spec}.mjs";`));
