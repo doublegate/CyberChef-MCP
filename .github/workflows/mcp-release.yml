@@ -249,22 +249,29 @@ jobs:
           fi
 
           # A JWT from username+token. The description endpoint does not accept the token directly.
-          jwt="$(curl -sS -X POST https://hub.docker.com/v2/users/login \
+          #
+          # `|| true` on the pipeline is load-bearing under `set -euo pipefail`: without it a
+          # transient network failure in `curl` fails the whole job, which is the opposite of this
+          # step's intent. The emptiness check below is what decides whether to continue, so a
+          # failed curl and a rejected login take the same path -- a warning, not a broken release.
+          jwt="$(curl -sS --max-time 30 -X POST https://hub.docker.com/v2/users/login \
                    -H 'Content-Type: application/json' \
                    -d "$(jq -n --arg u "$DOCKERHUB_USERNAME" --arg p "$DOCKERHUB_TOKEN" \
-                          '{username:$u,password:$p}')" | jq -r '.token // empty')"
+                          '{username:$u,password:$p}')" 2>/dev/null | jq -r '.token // empty' || true)"
           if [ -z "$jwt" ]; then
             echo "::warning::could not authenticate to Docker Hub; skipping the description sync"
             exit 0
           fi
 
+          # Same reasoning as the login above: a failed PATCH must warn, not fail the release. An
+          # empty `code` (curl itself died) falls through to the warning branch.
           code="$(jq -n --rawfile full "$DESC_FILE" \
                     --arg short "MCP server exposing all 504 GCHQ CyberChef operations as AI tools" \
                     '{full_description:$full, description:$short}' \
-                  | curl -sS -o /dev/null -w '%{http_code}' \
+                  | curl -sS --max-time 60 -o /dev/null -w '%{http_code}' \
                       -X PATCH "https://hub.docker.com/v2/repositories/${DOCKERHUB_IMAGE_NAME}/" \
                       -H "Authorization: JWT ${jwt}" \
-                      -H 'Content-Type: application/json' --data @-)"
+                      -H 'Content-Type: application/json' --data @- || true)"
           if [ "$code" = "200" ]; then
             echo "Docker Hub description updated from $DESC_FILE"
           else

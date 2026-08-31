@@ -59,8 +59,11 @@ verified, not asserted: walking every category reaches 504/504 and describes 504
 Prefer the old behaviour? One variable:
 
 ```bash
--e CYBERCHEF_TOOL_SURFACE=all        # all 524 tools, ~86,000 tokens
--e CYBERCHEF_TOOL_SURFACE=curated    # ~100 tools, ~16,600 tokens
+# All 524 tools, ~86,000 tokens per tools/list
+docker run -i --rm -e CYBERCHEF_TOOL_SURFACE=all parobek/cyberchef-mcp:latest
+
+# A middle ground: ~100 tools, ~16,600 tokens
+docker run -i --rm -e CYBERCHEF_TOOL_SURFACE=curated parobek/cyberchef-mcp:latest
 ```
 
 ## Tags
