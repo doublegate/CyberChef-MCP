@@ -341,7 +341,7 @@ const handleListTools = async () => {
     return { tools };
 };
 
-const handleCallTool = async (request, extra) => {
+const handleCallTool = async (request, extra, ownerServer = server) => {
     const { name, arguments: args } = request.params;
 
     // Start request tracking
@@ -774,7 +774,7 @@ const handleCallTool = async (request, extra) => {
                     // directly without an `extra` (the existing unit tests do exactly that).
                     const sendNotification = typeof extra?.sendNotification === "function" ?
                         extra.sendNotification :
-                        (n => server.notification(n));
+                        (n => ownerServer.notification(n));
 
                     // Execute with streaming progress support
                     result = await executeWithStreamingProgress({
@@ -910,7 +910,12 @@ function createMcpServer() {
  */
 function registerHandlers(instance) {
     instance.setRequestHandler(ListToolsRequestSchema, handleListTools);
-    instance.setRequestHandler(CallToolRequestSchema, handleCallTool);
+    // The instance is bound in as the notification FALLBACK. `extra.sendNotification` remains the
+    // primary path -- it is the SDK's documented per-request routing and is correct by
+    // construction -- but if a future SDK reshapes `extra`, the fallback must not quietly become
+    // "the module singleton", which for an HTTP session is precisely the bug this PR fixes,
+    // returning silently. Bound this way it degrades to *this session's* server instead.
+    instance.setRequestHandler(CallToolRequestSchema, (req, extra) => handleCallTool(req, extra, instance));
     return instance;
 }
 

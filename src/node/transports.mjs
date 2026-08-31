@@ -461,8 +461,10 @@ export async function createTransport(options = {}) {
                 if (entry.lastSeen < cutoff) closeSessionDetached(id, "idle timeout");
             }
         }, DEFAULT_SESSION_SWEEP_MS);
-        // Do not hold the event loop open for the sweeper alone.
-        sweeper.unref?.();
+        // Do not hold the event loop open for the sweeper alone. Unconditional call: `unref` has
+        // been on Timeout since node 0.9, far below this package's `engines: >=24` floor, so the
+        // optional-call was guarding against nothing.
+        sweeper.unref();
 
         httpServer.listen(port, host, () => {
             logger.info(`Streamable HTTP transport listening on ${host}:${port}`);
