@@ -1,5 +1,10 @@
 # Security Audit Report
 
+> **This is a dated snapshot, not the current state.** It records the December 2025 audit and is
+> kept for history. For the current disposition of every open Dependabot and code-scanning alert —
+> what was fixed, what is suppressed and why, and what is dismissed with reasons — see
+> [2026-08-31-open-alert-sweep.md](2026-08-31-open-alert-sweep.md).
+
 **Date:** December 8, 2025  
 **Project:** CyberChef-MCP  
 **Version:** 10.19.4  

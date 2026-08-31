@@ -28,13 +28,22 @@
 # -----------------------------------------------------------------------------
 # Stage 1: Build Stage (using -dev variant with shell and build tools)
 # -----------------------------------------------------------------------------
-# Pinned by digest, not by the floating `latest-dev` tag. Chainguard's free tier
-# publishes no versioned Node tags, so `latest` is the only handle - and it silently
-# follows Node majors. Once it moves to Node 27 an unpinned build would violate the
-# `engines: >=24 <27` constraint with no diff to show for it. Dependabot's docker
-# ecosystem keeps these digests current.
-# cgr.dev/chainguard/node:latest-dev -- Node 26.8.1 as of 2026-08-30
-FROM cgr.dev/chainguard/node@sha256:f4dd1e04dbada55fc5cad085582ea58bc06fb6e798fbfea0b48166fd1b084f86 AS builder
+# Pinned by digest, not by the floating tag. Two independent reasons, both load-bearing:
+#
+#   * Reproducibility. Chainguard's public catalog publishes only `latest` and `latest-dev`, so a
+#     version tag is not available and the digest is the only stable handle. Chainguard does not
+#     delete images, so an old digest keeps pulling, and pinning is what Chainguard themselves
+#     recommend for public-tier users.
+#   * Version drift. `latest` silently follows Node MAJORS. Once it moves to Node 27 an unpinned
+#     build would violate `engines: ">=24 <27"` with no diff to show for it.
+#
+# The staleness risk that normally argues for a floating tag is covered by the `docker` ecosystem
+# in `.github/dependabot.yml`, which bumps these weekly.
+#
+# The `:tag@sha256:` form is deliberate over a bare `@sha256:` -- it records which tag the digest
+# came from, which is otherwise unrecoverable from the file.
+# cgr.dev/chainguard/node:latest-dev -- Node v26.8.1, digest resolved 2026-08-31
+FROM cgr.dev/chainguard/node:latest-dev@sha256:4cd2bedce5955f933c8dca76df9bdff301505f3d0994c1e7e829a01e1718e650 AS builder
 
 # Run as root for build operations (Chainguard -dev includes root user)
 USER root
@@ -88,9 +97,9 @@ RUN rm -rf \
 # -----------------------------------------------------------------------------
 # Stage 2: Runtime Stage (distroless, minimal attack surface)
 # -----------------------------------------------------------------------------
-# cgr.dev/chainguard/node:latest -- Node 26.8.1 as of 2026-08-30. Digest-pinned for the
-# same reason as the builder stage above.
-FROM cgr.dev/chainguard/node@sha256:4ceaf4f09bee701783f7a1b1859d8c6efcda900096115836514f43d96d1dc0d0
+# cgr.dev/chainguard/node:latest -- Node v26.8.1, digest resolved 2026-08-31.
+# Digest-pinned for the same two reasons as the builder stage above.
+FROM cgr.dev/chainguard/node:latest@sha256:a422ef283675c760d801378646f2a7fdc96f4e2023121a247e215ed3cd39f199
 
 # Security: Add metadata labels
 LABEL org.opencontainers.image.title="CyberChef MCP Server" \
@@ -105,6 +114,15 @@ WORKDIR /app
 # Copy built application from builder stage
 # Chainguard's nonroot user (UID 65532) owns the files
 COPY --from=builder --chown=65532:65532 /app /app
+
+# Security: run as the unprivileged `nonroot` user, stated explicitly.
+#
+# The Chainguard runtime image already defaults to UID 65532, so this changes nothing at run
+# time -- but the builder stage above declares `USER root`, and a Dockerfile whose LAST `USER`
+# directive is `root` is indistinguishable from a genuinely root-running image to any reader or
+# scanner that does not model stage boundaries. Trivy DS-0002 flagged exactly that. Depending on
+# a base image's default for something this important was the weaker choice regardless.
+USER 65532:65532
 
 # Security: Set TMPDIR to use /tmp (writable via tmpfs in read-only mode)
 ENV TMPDIR=/tmp

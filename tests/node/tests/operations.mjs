@@ -175,6 +175,13 @@ Tiger-128`;
     it("Bcrypt", async () => {
         const result = await chef.bcrypt("Put a Sock In It");
         const strResult = result.toString();
+        // bcryptjs 3 emits the modern "$2b$" prefix. "$2a$" identified the pre-2011 revision
+        // that had a wraparound bug in the length counter; "$2b$" is the corrected one, and
+        // generating it is the desired behaviour rather than something to pin back. Verification
+        // is unaffected -- compare() still accepts $2a$, $2y$ and $2b$.
+        //
+        // Asserted as a full-shape regex rather than a length plus a prefix slice, so a hash that
+        // is the right length with the wrong body still fails.
         assert.match(strResult, /^\$2b\$10\$[./A-Za-z0-9]{53}$/);
         assert.equal(strResult.split("$").length, 4);
     }),
