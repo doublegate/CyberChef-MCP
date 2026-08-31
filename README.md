@@ -82,7 +82,7 @@ The server exposes CyberChef operations as MCP tools:
     *   Configurable pool size, idle timeout, and minimum input size for worker routing
 
 ### Technical Highlights
-*   **Dockerized**: Runs as a lightweight, self-contained Docker container based on Chainguard distroless Node.js (v26.8.1 at time of writing), **pinned by digest** and bumped weekly by Dependabot (~90MB compressed, 70% smaller attack surface than traditional images).
+*   **Dockerized**: Runs as a lightweight, self-contained Docker container based on Chainguard distroless Node.js (v26.8.1 at time of writing), **pinned by digest** and bumped weekly by Dependabot (~196 MB as a gzipped `docker save` tarball, 726 MB on disk; the attack surface is the point rather than the size -- no shell, no package manager, and a Wolfi base rebuilt daily).
 *   **Dual-Registry Publishing**: Images published to both Docker Hub and GitHub Container Registry (GHCR) for maximum accessibility and Docker Scout health score optimization.
 *   **Supply Chain Attestations**: SBOM and provenance attestations attached to Docker Hub images for enhanced security transparency and compliance (SLSA Build Level 3).
 *   **Dual Transport** (v1.9.0; **per-session HTTP since v2.0.0**): Stdio (default) or Streamable HTTP via `CYBERCHEF_TRANSPORT=http`. Every HTTP client gets its own session and its own MCP server instance, with CORS, DNS-rebinding protection and a session cap. See the [HTTP Transport Guide](docs/guides/http-transport.md).
@@ -124,7 +124,7 @@ docker run -i --rm cyberchef-mcp
 
 For environments without direct GHCR access, download the pre-built Docker image tarball from the [latest release](https://github.com/doublegate/CyberChef-MCP/releases/latest):
 
-1.  **Download the tarball** (approximately 90MB compressed):
+1.  **Download the tarball** (approximately 196 MB compressed; measured, not estimated):
     ```bash
     # Download from GitHub Releases
     wget https://github.com/doublegate/CyberChef-MCP/releases/download/v2.0.0/cyberchef-mcp-v2.0.0-docker-image.tar.gz
@@ -756,7 +756,12 @@ For contributions to the core CyberChef operations, please credit the original [
 *   **Container Registries**:
     *   **Docker Hub** (Primary): [doublegate/cyberchef-mcp](https://hub.docker.com/r/doublegate/cyberchef-mcp) - With Docker Scout health scores and attestations
     *   **GHCR** (Secondary): [ghcr.io/doublegate/cyberchef-mcp_v2](https://github.com/doublegate/CyberChef-MCP/pkgs/container/cyberchef-mcp_v2) — v2.x
-    *   **GHCR (v1, frozen)**: [ghcr.io/doublegate/cyberchef-mcp_v1](https://github.com/doublegate/CyberChef-MCP/pkgs/container/cyberchef-mcp_v1) — remains pullable and receives security-only patches on the `v1.9.x` line. It is Apache-2.0 and still has the single process-wide HTTP transport that [#36](https://github.com/doublegate/CyberChef-MCP/issues/36) reported — so only one HTTP client can connect at a time. That is fixed in v2.x, not backported.
+    *   **GHCR (v1, frozen)**: [ghcr.io/doublegate/cyberchef-mcp_v1](https://github.com/doublegate/CyberChef-MCP/pkgs/container/cyberchef-mcp_v1)
+        *   Remains pullable; receives security-only patches on the `v1.9.x` line until ~March 2027.
+        *   Apache-2.0, not GPL-3.0-or-later.
+        *   Still has the single process-wide HTTP transport that
+            [#36](https://github.com/doublegate/CyberChef-MCP/issues/36) reported, so **only one
+            HTTP client can connect at a time**. Fixed in v2.x, not backported.
 *   **Issue Tracker**: [GitHub Issues](https://github.com/doublegate/CyberChef-MCP/issues)
 
 ## Support

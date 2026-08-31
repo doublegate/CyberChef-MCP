@@ -15,7 +15,7 @@ This guide provides instructions for installing and using the CyberChef MCP serv
 
     **Option 2: Download Pre-built Tarball (Offline Installation)**
     ```bash
-    # Download from GitHub Releases (approximately 270MB compressed)
+    # Download from GitHub Releases (approximately 196 MB compressed)
     wget https://github.com/doublegate/CyberChef-MCP/releases/download/v2.0.0/cyberchef-mcp-v2.0.0-docker-image.tar.gz
 
     # Load into Docker
