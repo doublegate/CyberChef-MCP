@@ -247,7 +247,10 @@ export async function createTransport(options = {}) {
         const csv = (value, envName) => {
             const raw = value ?? process.env[envName];
             if (!raw) return undefined;
-            const list = Array.isArray(raw) ? raw : raw.split(",");
+            // `String(raw)` rather than `raw.split`: `value` comes from a programmatic caller, so a
+            // number or boolean reaches here and `(3000).split` is a TypeError thrown during
+            // construction -- a config typo taking the server down instead of being ignored.
+            const list = Array.isArray(raw) ? raw : String(raw).split(",");
             const cleaned = list.map(h => String(h).trim()).filter(Boolean);
             return cleaned.length ? cleaned : undefined;
         };

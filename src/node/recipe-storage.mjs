@@ -26,7 +26,7 @@ const BACKUP_ENABLED = process.env.CYBERCHEF_RECIPE_BACKUP !== "false"; // Enabl
  * Well beyond any live write -- a save completes in milliseconds -- so a concurrent save's
  * staging file is never a candidate. Module scope rather than per-call: it is a constant.
  */
-const STALE_TEMP_AFTER_MS = 60 * 60 * 1000;
+const STALE_TEMP_AFTER_MS = 60 * 60 * 1000; // 1 hour
 
 /**
  * Storage schema version.
