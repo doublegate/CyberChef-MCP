@@ -43,7 +43,7 @@
 # The `:tag@sha256:` form is deliberate over a bare `@sha256:` -- it records which tag the digest
 # came from, which is otherwise unrecoverable from the file.
 # cgr.dev/chainguard/node:latest-dev -- Node v26.8.1, digest resolved 2026-08-31
-FROM cgr.dev/chainguard/node:latest-dev@sha256:4cd2bedce5955f933c8dca76df9bdff301505f3d0994c1e7e829a01e1718e650 AS builder
+FROM cgr.dev/chainguard/node:latest-dev@sha256:e2fa61befbde3556bd8a2ea15b11791c257aee8857f6b7e56337b66c9829cdc5 AS builder
 
 # Run as root for build operations (Chainguard -dev includes root user)
 USER root
@@ -99,7 +99,7 @@ RUN rm -rf \
 # -----------------------------------------------------------------------------
 # cgr.dev/chainguard/node:latest -- Node v26.8.1, digest resolved 2026-08-31.
 # Digest-pinned for the same two reasons as the builder stage above.
-FROM cgr.dev/chainguard/node:latest@sha256:a422ef283675c760d801378646f2a7fdc96f4e2023121a247e215ed3cd39f199
+FROM cgr.dev/chainguard/node:latest@sha256:f819ce9bc54ff2a771a6849ec8453aaab9bb697873f3f6b91039ed07a3626748
 
 # Security: Add metadata labels
 LABEL org.opencontainers.image.title="CyberChef MCP Server" \
