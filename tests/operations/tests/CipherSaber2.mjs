@@ -8,15 +8,33 @@
  */
 import TestRegister from "../../lib/TestRegister.mjs";
 
+// The two Encrypt cases hex-encode their output before asserting on its length.
+//
+// CipherSaber2 prepends a 10-byte random IV, so the only stable property of the ciphertext is its
+// SIZE -- but the original assertions (`/.{21}/s`, `/.{10}/s`) counted CHARACTERS of a string the
+// harness produced from those random bytes. When two of them happened to form a decodable
+// multi-byte sequence, the string came out shorter than the byte count and the test failed on
+// nothing. Observed in CI: 10 random bytes rendering as `,áiɉwA$5` -- 8 characters, because
+// C9 89 decoded to a single U+0249.
+//
+// Appending `To Hex` makes the assertion count bytes, which is what it always meant. It is also
+// strictly stronger: `/.{10}/s` is unanchored and passes on anything at least 10 characters long,
+// whereas `/^[0-9a-f]{20}$/` pins the length exactly. Verified over 1,000 runs of each case.
+
 TestRegister.addTests([
     {
         name: "CipherSaber2 Encrypt",
         input: "Hello World",
-        expectedMatch: /.{21}/s,
+        // 11 bytes of input + a 10-byte IV = 21 bytes = 42 hex characters.
+        expectedMatch: /^[0-9a-f]{42}$/,
         recipeConfig: [
             {
                 op: "CipherSaber2 Encrypt",
                 args: [{ "option": "Latin1", "string": "test" }, 20],
+            },
+            {
+                op: "To Hex",
+                args: ["None"],
             },
         ],
     },
@@ -37,11 +55,16 @@ TestRegister.addTests([
     {
         name: "CipherSaber2 Encrypt",
         input: "",
-        expectedMatch: /.{10}/s,
+        // No input, so the output is exactly the 10-byte IV = 20 hex characters.
+        expectedMatch: /^[0-9a-f]{20}$/,
         recipeConfig: [
             {
                 op: "CipherSaber2 Encrypt",
                 args: [{ "option": "Latin1", "string": "" }, 20],
+            },
+            {
+                op: "To Hex",
+                args: ["None"],
             },
         ],
     },
