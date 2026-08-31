@@ -1,0 +1,88 @@
+--- a/src/core/lib/Hash.mjs
++++ b/src/core/lib/Hash.mjs
+@@ -8,7 +8,8 @@
+  */
+ 
+ import Utils from "../Utils.mjs";
+-import CryptoApi from "crypto-api/src/crypto-api.mjs";
++// FORK CHANGE (patches/fork/08): vendored crypto-api -- see src/vendor/crypto-api/README.md
++import CryptoApi from "../../vendor/crypto-api/crypto-api.mjs";
+ 
+ 
+ /**
+--- a/src/core/lib/SM2.mjs
++++ b/src/core/lib/SM2.mjs
+@@ -8,8 +8,9 @@
+ import OperationError from "../errors/OperationError.mjs";
+ import { fromHex } from "../lib/Hex.mjs";
+ import Utils from "../Utils.mjs";
+-import Sm3 from "crypto-api/src/hasher/sm3.mjs";
+-import {toHex} from "crypto-api/src/encoder/hex.mjs";
++// FORK CHANGE (patches/fork/08): vendored crypto-api -- see src/vendor/crypto-api/README.md
++import Sm3 from "../../vendor/crypto-api/hasher/sm3.mjs";
++import {toHex} from "../../vendor/crypto-api/encoder/hex.mjs";
+ import r from "jsrsasign";
+ 
+ /**
+--- a/src/core/operations/DeriveHKDFKey.mjs
++++ b/src/core/operations/DeriveHKDFKey.mjs
+@@ -7,7 +7,8 @@
+ import Operation from "../Operation.mjs";
+ import Utils from "../Utils.mjs";
+ import OperationError from "../errors/OperationError.mjs";
+-import CryptoApi from "crypto-api/src/crypto-api.mjs";
++// FORK CHANGE (patches/fork/08): vendored crypto-api -- see src/vendor/crypto-api/README.md
++import CryptoApi from "../../vendor/crypto-api/crypto-api.mjs";
+ 
+ /**
+  * Derive HKDF Key operation
+--- a/src/core/operations/FlaskSessionSign.mjs
++++ b/src/core/operations/FlaskSessionSign.mjs
+@@ -4,7 +4,8 @@
+  */
+ 
+ import Operation from "../Operation.mjs";
+-import CryptoApi from "crypto-api/src/crypto-api.mjs";
++// FORK CHANGE (patches/fork/08): vendored crypto-api -- see src/vendor/crypto-api/README.md
++import CryptoApi from "../../vendor/crypto-api/crypto-api.mjs";
+ import Utils from "../Utils.mjs";
+ import { toBase64 } from "../lib/Base64.mjs";
+ import OperationError from "../errors/OperationError.mjs";
+--- a/src/core/operations/FlaskSessionVerify.mjs
++++ b/src/core/operations/FlaskSessionVerify.mjs
+@@ -5,7 +5,8 @@
+ 
+ import Operation from "../Operation.mjs";
+ import OperationError from "../errors/OperationError.mjs";
+-import CryptoApi from "crypto-api/src/crypto-api.mjs";
++// FORK CHANGE (patches/fork/08): vendored crypto-api -- see src/vendor/crypto-api/README.md
++import CryptoApi from "../../vendor/crypto-api/crypto-api.mjs";
+ import Utils from "../Utils.mjs";
+ import { toBase64, fromBase64 } from "../lib/Base64.mjs";
+ 
+--- a/src/core/operations/HMAC.mjs
++++ b/src/core/operations/HMAC.mjs
+@@ -6,7 +6,8 @@
+ 
+ import Operation from "../Operation.mjs";
+ import Utils from "../Utils.mjs";
+-import CryptoApi from "crypto-api/src/crypto-api.mjs";
++// FORK CHANGE (patches/fork/08): vendored crypto-api -- see src/vendor/crypto-api/README.md
++import CryptoApi from "../../vendor/crypto-api/crypto-api.mjs";
+ 
+ /**
+  * HMAC operation
+--- a/src/core/operations/SM3.mjs
++++ b/src/core/operations/SM3.mjs
+@@ -6,8 +6,9 @@
+ 
+ import Operation from "../Operation.mjs";
+ import Utils from "../Utils.mjs";
+-import Sm3 from "crypto-api/src/hasher/sm3.mjs";
+-import {toHex} from "crypto-api/src/encoder/hex.mjs";
++// FORK CHANGE (patches/fork/08): vendored crypto-api -- see src/vendor/crypto-api/README.md
++import Sm3 from "../../vendor/crypto-api/hasher/sm3.mjs";
++import {toHex} from "../../vendor/crypto-api/encoder/hex.mjs";
+ 
+ /**
+  * SM3 operation

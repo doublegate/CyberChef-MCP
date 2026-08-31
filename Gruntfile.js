@@ -468,17 +468,6 @@ module.exports = function (grunt) {
                 ]),
                 stdout: false,
             },
-            fixCryptoApiImports: {
-                command: function () {
-                    switch (process.platform) {
-                        case "darwin":
-                            return `find ./node_modules/crypto-api/src/ \\( -type d -name .git -prune \\) -o -type f -print0 | xargs -0 sed -i '' -e '/\\.mjs/!s/\\(from "\\.[^"]*\\)";/\\1.mjs";/g'`;
-                        default:
-                            return `find ./node_modules/crypto-api/src/ \\( -type d -name .git -prune \\) -o -type f -print0 | xargs -0 sed -i -e '/\\.mjs/!s/\\(from "\\.[^"]*\\)";/\\1.mjs";/g'`;
-                    }
-                },
-                stdout: false
-            },
             fixSnackbarMarkup: {
                 command: function () {
                     switch (process.platform) {

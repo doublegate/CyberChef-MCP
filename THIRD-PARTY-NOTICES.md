@@ -17,6 +17,23 @@ upstream code. Those files keep their Apache-2.0 headers and are **not** to be h
 are synced verbatim by `.github/workflows/upstream-sync.yml`. The full Apache-2.0 text is preserved
 in `LICENSE.Apache-2.0`.
 
+## Vendored source
+
+Third-party source carried in-tree rather than installed, because the published package cannot be
+loaded as shipped. Each vendored tree keeps its own licence file and a `README.md` recording the
+provenance, the exact modification made, and the condition under which it should be deleted.
+
+| Work | Copyright | Licence | Vendored at | Source |
+|---|---|---|---|---|
+| **crypto-api** 0.8.5 | © 2015 Nikolay Fedorov | MIT | `src/vendor/crypto-api/` | <https://github.com/nf404/crypto-api> |
+
+`crypto-api@0.8.5` declares a `main` entry that is absent from its own tarball, and its ESM sources
+use extensionless relative imports that Node's resolver rejects. Upstream CyberChef works around the
+second problem with a `postinstall` rewrite inside `node_modules`; since npm 12 blocks dependency
+install scripts by default, that workaround cannot reach anyone installing this server from the
+registry. The vendored copy is byte-identical apart from appending `.mjs` to relative import
+specifiers in 16 files. See `src/vendor/crypto-api/README.md`.
+
 ## Reference tools incorporated in v2.0.0
 
 Algorithms ported into `src/node/tools/`. Each ported file carries an

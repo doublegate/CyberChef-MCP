@@ -9,6 +9,7 @@ export default [
     {
         ignores: [
             "src/core/vendor/**",
+            "src/vendor/**",
             "src/core/config/OperationConfig.json",
             "src/node/index.mjs",
             "build/**",
