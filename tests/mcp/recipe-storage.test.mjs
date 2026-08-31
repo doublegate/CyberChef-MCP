@@ -147,6 +147,21 @@ describe("RecipeStorage", () => {
             await expect(fs.access(fresh)).resolves.toBeUndefined();
         });
 
+        it("ignores a DIRECTORY that matches the temp-file pattern", async () => {
+            // opendir yields Dirents, so a matching directory is skipped by type rather than
+            // reaching unlink() and throwing EISDIR.
+            const dirTrap = `${testFile}.0123456789abcdef.tmp`;
+            await fs.mkdir(dirTrap);
+            const old = new Date(Date.now() - 2 * 60 * 60 * 1000);
+            await fs.utimes(dirTrap, old, old);
+
+            await storage.save(storageData());
+
+            // Still there, and the save succeeded.
+            await expect(fs.access(dirTrap)).resolves.toBeUndefined();
+            expect(JSON.parse(await fs.readFile(testFile, "utf8")).version).toBe("1.0.0");
+        });
+
         it("writes the storage file owner-only", async () => {
             // A recipe can carry keys and IVs, so the default 0666-minus-umask is too generous.
             await storage.save(storageData());

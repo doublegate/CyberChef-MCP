@@ -147,6 +147,11 @@ export class RecipeStorage {
             // just to find at most a handful of `.tmp` siblings.
             handle = await fs.opendir(dir);
             for await (const entry of handle) {
+                // opendir yields Dirents, so the type is already known -- no extra syscall.
+                // A DIRECTORY matching the pattern would otherwise reach unlink() and throw
+                // EISDIR, which the catch below would then log as a genuine surprise. Skipping
+                // non-files makes that impossible rather than merely handled.
+                if (!entry.isFile()) continue;
                 const name = entry.name;
                 if (!name.startsWith(prefix) || !name.endsWith(".tmp")) continue;
                 const candidate = join(dir, name);
