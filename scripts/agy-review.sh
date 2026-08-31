@@ -137,7 +137,15 @@ AGY_BIN="${AGY_BIN:-agy}"
 command -v "$AGY_BIN" >/dev/null 2>&1 || AGY_BIN="$HOME/.local/bin/agy"
 AGY_MODEL="${AGY_MODEL:-}"                 # empty = agy's configured default (Gemini 3.x Pro)
 AGY_EFFORT="${AGY_EFFORT:-high}"           # low|medium|high
+# Base timeout for a normal review. Scaled up for a large diff further down -- see
+# `scale_timeout_for_diff`. Set AGY_PRINT_TIMEOUT explicitly to pin it and skip the scaling.
+AGY_PRINT_TIMEOUT_EXPLICIT="${AGY_PRINT_TIMEOUT:+set}"
 AGY_PRINT_TIMEOUT="${AGY_PRINT_TIMEOUT:-5m}"
+# Seconds of budget per MiB of diff handed to agy, on top of the base. Reading a 1.6 MB patch and
+# reasoning over it is not work a five-minute budget can absorb, and the failure is indistinguishable
+# from a backend outage: `Error: timeout waiting for response`, three times, with no review.
+AGY_TIMEOUT_SECONDS_PER_MIB="${AGY_TIMEOUT_SECONDS_PER_MIB:-240}"
+AGY_PRINT_TIMEOUT_MAX_SECONDS="${AGY_PRINT_TIMEOUT_MAX_SECONDS:-1800}"
 AGY_DIFF_MODE="${AGY_DIFF_MODE:-auto}"     # auto|inline|file. A diff is passed to agy either inlined
                                            # in the --print prompt, or written to a FILE agy reads with
                                            # its own tools. `auto` inlines a diff that fits under the
@@ -646,6 +654,42 @@ if [ -n "${AGY_DRY_RUN:-}" ]; then
   log "(remove them yourself; every other temp file was cleaned up as usual)"
   exit 0
 fi
+
+# Scale the timeout with the size of the diff agy actually has to read.
+#
+# A fixed 5m is right for an ordinary PR and hopeless for a release merge. Observed on
+# CyberChef-MCP#83 -- 323 files, 39,856 lines, 1.6 MB handed off as a file -- where agy hit the
+# 5m ceiling on all three attempts, twice in a row, at 5m01s each time. The job then failed with
+# `Error: timeout waiting for response`, which is INDISTINGUISHABLE from a backend outage: the
+# guard did its job and refused to post a fake review, but nothing told the reader that the cause
+# was diff size rather than an outage.
+#
+# Deliberately keyed on the diff handed to agy, not on the PR's file count: what costs time is the
+# bytes it must read and reason over.
+#
+# An explicit AGY_PRINT_TIMEOUT wins, so a caller can still pin it.
+scale_timeout_for_diff() {
+  [ -z "$AGY_PRINT_TIMEOUT_EXPLICIT" ] || { log "AGY_PRINT_TIMEOUT set explicitly ($AGY_PRINT_TIMEOUT); not scaling"; return 0; }
+
+  local mib=$(( diff_bytes / 1048576 ))
+  [ "$mib" -ge 1 ] || return 0          # under a MiB: the base budget is ample
+
+  # Base is a duration string ("5m"); convert to seconds so the two can be added.
+  local base_s
+  case "$AGY_PRINT_TIMEOUT" in
+    *m) base_s=$(( ${AGY_PRINT_TIMEOUT%m} * 60 )) ;;
+    *s) base_s="${AGY_PRINT_TIMEOUT%s}" ;;
+    *)  base_s="$AGY_PRINT_TIMEOUT" ;;
+  esac
+
+  local scaled=$(( base_s + mib * AGY_TIMEOUT_SECONDS_PER_MIB ))
+  # Ceiling, so a pathological diff cannot pin the self-hosted runner for an hour.
+  [ "$scaled" -gt "$AGY_PRINT_TIMEOUT_MAX_SECONDS" ] && scaled="$AGY_PRINT_TIMEOUT_MAX_SECONDS"
+
+  AGY_PRINT_TIMEOUT="${scaled}s"
+  log "diff is ${mib} MiB; raised --print-timeout to ${AGY_PRINT_TIMEOUT} (base ${base_s}s + ${mib} x ${AGY_TIMEOUT_SECONDS_PER_MIB}s)"
+}
+scale_timeout_for_diff
 
 # --- run agy headless, under a PTY (works around agy issue #76: -p drops --------
 #     stdout when stdout is not a TTY, e.g. piped/redirected/subprocess) ---------
