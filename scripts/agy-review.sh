@@ -147,26 +147,36 @@ AGY_PRINT_TIMEOUT="${AGY_PRINT_TIMEOUT:-5m}"
 AGY_TIMEOUT_SECONDS_PER_MIB="${AGY_TIMEOUT_SECONDS_PER_MIB:-240}"
 AGY_PRINT_TIMEOUT_MAX_SECONDS="${AGY_PRINT_TIMEOUT_MAX_SECONDS:-1800}"
 
-# Both of the above reach `$(( ... ))`, and bash arithmetic RECURSIVELY EXPANDS variable contents --
-# so a value naming another variable that holds a command substitution executes it:
+# Both of the above reach `$(( ... ))`. They are workflow-set rather than attacker-set, so the
+# validation below is defence in depth rather than a live hole -- but a numeric setting that can
+# run a command is not a property to leave standing because today's callers happen to be trusted.
+# >>> SELFTEST-EXTRACT: numeric env validation
+# Validate and canonicalise a numeric setting that will reach an arithmetic expansion.
 #
-#     V=a; a='$(echo PWNED >&2; echo 7)'; echo $(( V ))    ->  PWNED  /  7
+# @param $1 name of the variable to validate, assigned in place.
+# @param $2 default to fall back to when the value is not a non-negative decimal integer.
 #
-# Verified, not assumed. These are workflow-set rather than attacker-set, so this is defence in
-# depth rather than a live hole -- but a numeric setting that can run a command is not a property
-# to leave standing because today's callers are trusted. Anything not a plain non-negative decimal
-# integer falls back to the default, loudly.
-for _agy_num in AGY_TIMEOUT_SECONDS_PER_MIB AGY_PRINT_TIMEOUT_MAX_SECONDS; do
-  case "${!_agy_num}" in
+# Two distinct hazards, both verified rather than assumed:
+#
+#  1. Bash arithmetic RECURSIVELY EXPANDS variable contents, so a value naming another variable
+#     that holds a command substitution EXECUTES it:
+#         V=a; a='$(echo PWNED >&2; echo 7)'; echo $(( V ))    ->  PWNED  /  7
+#  2. Digits-only is still not safe. `09` is all digits, and bash reads the leading zero as OCTAL:
+#         $(( 1000000 * 09 / 1048576 ))   ->  value too great for base
+#     So a *valid* setting takes the script down under `set -e`. Canonicalising to base 10 here,
+#     once, means no downstream `$(( ))` has to remember `10#`.
+normalise_numeric_env() {
+  local name="$1" default="$2" val="${!1}"
+  case "$val" in
     ""|*[!0-9]*)
-      log "$_agy_num ('${!_agy_num}') is not a non-negative integer; using the default"
-      case "$_agy_num" in
-        AGY_TIMEOUT_SECONDS_PER_MIB)   AGY_TIMEOUT_SECONDS_PER_MIB=240 ;;
-        AGY_PRINT_TIMEOUT_MAX_SECONDS) AGY_PRINT_TIMEOUT_MAX_SECONDS=1800 ;;
-      esac ;;
+      log "$name ('$val') is not a non-negative integer; using the default ($default)"
+      printf -v "$name" '%s' "$default" ;;
+    *) printf -v "$name" '%s' "$(( 10#$val ))" ;;   # safe to expand: verified digits-only above
   esac
-done
-unset _agy_num
+}
+# <<< SELFTEST-EXTRACT
+normalise_numeric_env AGY_TIMEOUT_SECONDS_PER_MIB   240
+normalise_numeric_env AGY_PRINT_TIMEOUT_MAX_SECONDS 1800
 AGY_DIFF_MODE="${AGY_DIFF_MODE:-auto}"     # auto|inline|file. A diff is passed to agy either inlined
                                            # in the --print prompt, or written to a FILE agy reads with
                                            # its own tools. `auto` inlines a diff that fits under the
@@ -347,16 +357,35 @@ agy_refs_created=
 # Everything else is still removed; only these two are spared, and their paths are printed.
 keep_artifacts=
 cleanup() {
-  # Quoted-but-conditional expansion: `rm -f ""` is silent and exits 0 on GNU coreutils, which is
-  # why an unconditional `rm -f "$unset_var"` never showed up on the Linux runner -- but BSD/macOS
-  # `rm` writes "No such file or directory" to stderr for the empty operand. ${v:+"$v"} expands to
-  # nothing at all when $v is empty, so no operand is passed rather than an empty one.
+  # Built as an argv ARRAY rather than as `rm -f ${v:+"$v"} ...`.
+  #
+  # The problem being solved is the EMPTY operand: `rm -f ""` is silent and exits 0 on GNU
+  # coreutils -- which is why an unconditional `rm -f "$unset_var"` never surfaced on the Linux
+  # runner -- but BSD/macOS `rm` writes "No such file or directory" to stderr for it.
+  #
+  # A note for the next reader, because this was raised in review and the intuition is wrong:
+  # `rm -f ${v:+"$v"}` does NOT word-split. Bash honours the quotes inside the `:+` alternate
+  # word, so a path with a space or a glob character survives as one operand. Verified:
+  #
+  #     v='a*b';    rm -f ${v:+"$v"}   ->   + rm -f 'a*b'      (siblings axxb, ayb untouched)
+  #     v='a file'; rm -f ${v:+"$v"}   ->   one operand        (siblings a, file untouched)
+  #
+  # The array is used anyway, for a reason the expansion form genuinely does not cover: it lets
+  # `--` terminate option parsing, so a temp path that begins with `-` is treated as a path
+  # rather than as flags. An array element is also one word by construction, which does not
+  # depend on knowing that `:+` quoting rule.
   local keep_set="${keep_artifacts:-}"
-  rm -f ${diff_file:+"$diff_file"} ${diff_err:+"$diff_err"} ${meta_file:+"$meta_file"} \
-        ${out_file:+"$out_file"} ${raw:+"$raw"} ${body_file:+"$body_file"}
+  local -a doomed=()
+  local f
+  for f in "$diff_file" "$diff_err" "$meta_file" "$out_file" "$raw" "$body_file"; do
+    [ -n "$f" ] && doomed+=("$f")
+  done
   if [ -z "$keep_set" ]; then
-    rm -f ${prompt_file:+"$prompt_file"} ${agy_diff_file:+"$agy_diff_file"}
+    for f in "$prompt_file" "$agy_diff_file"; do
+      [ -n "$f" ] && doomed+=("$f")
+    done
   fi
+  [ ${#doomed[@]} -gt 0 ] && rm -f -- "${doomed[@]}"
   # Remove the gitignored diff-handoff scratch dir once its file is gone. `rmdir` only unlinks an
   # empty dir, so a concurrent run's file (a different $$) is never clobbered; a non-empty dir is
   # gitignored and harmless if left behind.
@@ -708,7 +737,7 @@ duration_to_seconds() {
   case "$n" in ""|*[!0-9]*) return 1 ;; esac         # "m" alone, or "1m2s"
   # `10#` forces base 10. Without it bash reads a leading zero as OCTAL, so a perfectly valid
   # `08m` dies with "value too great for base" -- and `010s` would silently mean 8 seconds.
-  printf '%s' $(( 10#$n * unit ))
+  printf '%s\n' $(( 10#$n * unit ))
 }
 # <<< SELFTEST-EXTRACT
 
@@ -717,7 +746,7 @@ duration_to_seconds() {
 # @param $1 size of the diff handed to agy, in bytes. Passed explicitly rather than read from the
 #           enclosing scope, so the function's inputs are visible at the call site.
 scale_timeout_for_diff() {
-  local bytes="$1"
+  local bytes="${1:-0}"       # explicit default rather than leaning on `$(( ))` treating "" as 0
   [ -z "$AGY_PRINT_TIMEOUT_EXPLICIT" ] || { log "AGY_PRINT_TIMEOUT set explicitly ($AGY_PRINT_TIMEOUT); not scaling"; return 0; }
 
   # Computed from BYTES, not from truncated whole MiB: `mib = bytes / 1048576` in integer

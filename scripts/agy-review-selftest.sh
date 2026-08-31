@@ -53,10 +53,15 @@ extract_filter() {
     | sed "1s/^SELECT_OURS_JQ='//; \$s/'\$//"
 }
 
+# The extracted blocks are eval'd without the rest of agy-review.sh, so any helper they call has
+# to exist here. `normalise_numeric_env` logs its fallback; keep that off the checks' stdout.
+log() { :; }
+
 # Every marked block must exist and be sourceable. A renamed or unbalanced marker would
 # otherwise extract EMPTY, and an empty guard sources fine and asserts nothing -- the same
 # absence-reads-as-agreement failure the markers were adopted to prevent.
-for guard in "service-error guard" "oauth guard" "ours-comment filter" "duration parser"; do
+for guard in "service-error guard" "oauth guard" "ours-comment filter" "duration parser" \
+             "numeric env validation"; do
   blk="$(extract_block "$guard")"
   [ -n "$blk" ] || { echo "FAIL: SELFTEST-EXTRACT block '$guard' is missing or empty" >&2; exit 1; }
   printf '%s\n' "$blk" | bash -n - 2>/dev/null \
@@ -326,6 +331,39 @@ check "duration: leading zero bare"     "10"  "$(duration_to_seconds 010)"
 for bad in m s "" 1m2s 5x -3 " 5m" 5M; do
   check "duration: rejects '$bad'" "1" "$(duration_to_seconds "$bad" >/dev/null 2>&1; echo $?)"
 done
+
+# --- numeric env validation ---------------------------------------------------------------------
+# These values reach `$(( ... ))`. Two separate ways that goes wrong, and digits-only catches only
+# one of them -- which is exactly how the octal case survived the first version of this guard.
+nne() {                                    # run the real function, echo what the variable became
+  local v="$1"; local T="$v"
+  normalise_numeric_env T 240 >/dev/null 2>&1 || echo "CRASHED"
+  printf '%s' "$T"
+}
+check "numeric env: plain integer passes through"   "300"  "$(nne 300)"
+check "numeric env: zero is a legal setting"        "0"    "$(nne 0)"
+# 9, not a crash and not 8: `09` is all digits, so the digits-only check admits it, and bash then
+# reads the leading zero as OCTAL. This is the case the digits-only check alone did NOT cover.
+check "numeric env: leading zero canonicalises"     "9"    "$(nne 09)"
+check "numeric env: many leading zeros"             "8"    "$(nne 0008)"
+check "numeric env: empty falls back"               "240"  "$(nne "")"
+check "numeric env: non-numeric falls back"         "240"  "$(nne 30s)"
+check "numeric env: negative falls back"            "240"  "$(nne -1800)"
+# The injection case: bash arithmetic recursively expands variable contents, so a value NAMING a
+# variable that holds a command substitution would run it. It must never reach `$(( ))`.
+payload='$(echo PWNED; echo 7)'
+check "numeric env: a variable name falls back"     "240"  "$(nne payload)"
+check "numeric env: the payload never runs"         ""     \
+  "$(nne payload 2>&1 >/dev/null | grep -o PWNED || true)"
+
+# And the value it produces must survive the arithmetic it exists to feed.
+T=09; normalise_numeric_env T 240
+# 9. Feeding the RAW `09` to the same expansion dies "value too great for base" under `set -e`,
+# which is the crash this canonicalisation exists to prevent -- asserted directly below.
+check "numeric env: canonical value is arithmetic-safe" "9" \
+  "$(bash -c 'set -e; echo $(( 1048576 * '"$T"' / 1048576 ))' 2>/dev/null || echo CRASHED)"
+check "numeric env: the RAW value would have crashed"   "CRASHED" \
+  "$(bash -c 'set -e; echo $(( 1048576 * 09 / 1048576 ))' 2>/dev/null || echo CRASHED)"
 
 if [ "$fails" -ne 0 ]; then
   echo "$fails check(s) failed" >&2
