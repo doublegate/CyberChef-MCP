@@ -137,7 +137,10 @@ Tiger-128`;
         const result = await chef.bcrypt("Put a Sock In It");
         const strResult = result.toString();
         assert.equal(strResult.length, 60);
-        assert.equal(strResult.slice(0, 7), "$2a$10$");
+        // bcryptjs 3 emits the modern "$2b$" prefix. "$2a$" identified the pre-2011 revision
+        // that had a wraparound bug in the length counter; "$2b$" is the corrected one, and
+        // generating it is the desired behaviour rather than something to pin back.
+        assert.equal(strResult.slice(0, 7), "$2b$10$");
     }),
 
     it("bcryptCompare", async() => {

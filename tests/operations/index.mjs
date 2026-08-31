@@ -11,6 +11,12 @@
  * @license Apache-2.0
  */
 
+// Serves absolute filesystem paths through a wrapped `fetch`, so WASM-backed operations
+// (argon2-browser, jq-web) can load their .wasm without Node's built-in fetch throwing.
+// This is upstream's replacement for the `--no-experimental-fetch` flag, which Node 26
+// rejects outright: "invalid negation because it is not a boolean option".
+import "../lib/wasmFetchPolyfill.mjs";
+
 import { setLongTestFailure, logTestReport } from "../lib/utils.mjs";
 
 import TestRegister from "../lib/TestRegister.mjs";

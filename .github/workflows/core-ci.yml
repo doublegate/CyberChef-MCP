@@ -59,7 +59,7 @@ jobs:
       run: npm run test:coverage
 
     - name: Upload Coverage to Codecov
-      uses: codecov/codecov-action@v5
+      uses: codecov/codecov-action@v7
       if: always()
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
@@ -70,7 +70,7 @@ jobs:
         verbose: true
 
     - name: Upload Test Results to Codecov
-      uses: codecov/codecov-action@v5
+      uses: codecov/codecov-action@v7
       if: always()
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
