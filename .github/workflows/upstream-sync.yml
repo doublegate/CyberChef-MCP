@@ -352,7 +352,7 @@ jobs:
           # Regenerate baseline with new tool inventory
           node --input-type=module << 'EOF'
           import OperationConfig from './src/core/config/OperationConfig.json' with { type: 'json' };
-          import { readFileSync, writeFileSync } from 'fs';
+          import { writeFileSync } from 'fs';
 
           function sanitizeToolName(name) {
               if (!name) return null;
@@ -364,9 +364,10 @@ jobs:
               return sanitized;
           }
 
-          const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
+          // No `version` field. This snapshot records the TOOL INVENTORY, and nothing reads a
+          // version from it -- carrying one only created a second place the product version had to
+          // be bumped, silently disagreeing with package.json whenever it was not.
           const baseline = {
-              version: pkg.mcpVersion,
               timestamp: new Date().toISOString(),
               tool_count: Object.keys(OperationConfig).length + 2,
               tools: {
