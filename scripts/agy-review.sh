@@ -318,16 +318,35 @@ agy_refs_created=
 # Everything else is still removed; only these two are spared, and their paths are printed.
 keep_artifacts=
 cleanup() {
-  # Quoted-but-conditional expansion: `rm -f ""` is silent and exits 0 on GNU coreutils, which is
-  # why an unconditional `rm -f "$unset_var"` never showed up on the Linux runner -- but BSD/macOS
-  # `rm` writes "No such file or directory" to stderr for the empty operand. ${v:+"$v"} expands to
-  # nothing at all when $v is empty, so no operand is passed rather than an empty one.
+  # Built as an argv ARRAY rather than as `rm -f ${v:+"$v"} ...`.
+  #
+  # The problem being solved is the EMPTY operand: `rm -f ""` is silent and exits 0 on GNU
+  # coreutils -- which is why an unconditional `rm -f "$unset_var"` never surfaced on the Linux
+  # runner -- but BSD/macOS `rm` writes "No such file or directory" to stderr for it.
+  #
+  # A note for the next reader, because this was raised in review and the intuition is wrong:
+  # `rm -f ${v:+"$v"}` does NOT word-split. Bash honours the quotes inside the `:+` alternate
+  # word, so a path with a space or a glob character survives as one operand. Verified:
+  #
+  #     v='a*b';    rm -f ${v:+"$v"}   ->   + rm -f 'a*b'      (siblings axxb, ayb untouched)
+  #     v='a file'; rm -f ${v:+"$v"}   ->   one operand        (siblings a, file untouched)
+  #
+  # The array is used anyway, for a reason the expansion form genuinely does not cover: it lets
+  # `--` terminate option parsing, so a temp path that begins with `-` is treated as a path
+  # rather than as flags. An array element is also one word by construction, which does not
+  # depend on knowing that `:+` quoting rule.
   local keep_set="${keep_artifacts:-}"
-  rm -f ${diff_file:+"$diff_file"} ${diff_err:+"$diff_err"} ${meta_file:+"$meta_file"} \
-        ${out_file:+"$out_file"} ${raw:+"$raw"} ${body_file:+"$body_file"}
+  local -a doomed=()
+  local f
+  for f in "$diff_file" "$diff_err" "$meta_file" "$out_file" "$raw" "$body_file"; do
+    [ -n "$f" ] && doomed+=("$f")
+  done
   if [ -z "$keep_set" ]; then
-    rm -f ${prompt_file:+"$prompt_file"} ${agy_diff_file:+"$agy_diff_file"}
+    for f in "$prompt_file" "$agy_diff_file"; do
+      [ -n "$f" ] && doomed+=("$f")
+    done
   fi
+  [ ${#doomed[@]} -gt 0 ] && rm -f -- "${doomed[@]}"
   # Remove the gitignored diff-handoff scratch dir once its file is gone. `rmdir` only unlinks an
   # empty dir, so a concurrent run's file (a different $$) is never clobbered; a non-empty dir is
   # gitignored and harmless if left behind.
