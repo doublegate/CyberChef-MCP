@@ -29,8 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   [`docs/security/2026-08-31-code-scanning-disposition.md`](docs/security/2026-08-31-code-scanning-disposition.md).
   8 fixed in code, 47 dismissed with recorded reasons: 44 are code-quality rules in upstream-owned
   vendored libraries (`src/core/vendor/**`, byte-identical to CyberChef v11.4.0, where a hand-edit
-  is reverted by the next sync), and 3 are upstream files unreachable from the MCP server or absent
-  from the runtime image. None carries a security severity that remains live in the shipped product.
+  is reverted by the next sync). Of the remaining three, `ChefWorker.js` is dismissed as unreachable
+  from the MCP server and `newOperation.mjs` as absent from the runtime image; `FromBCD.mjs` is
+  neither — it is a live operation, dismissed because it is byte-identical to upstream and reported
+  there instead. None carries a security severity that remains live in the shipped product.
 - **Corrected v2.0.0's "zero open code-scanning alerts" claim.** It was measured on the release PR
   and was true there. A PR CodeQL run analyses the merge commit in a diff-informed mode; the push to
   the default branch runs a **full** analysis, and that surfaced 55 pre-existing findings — none

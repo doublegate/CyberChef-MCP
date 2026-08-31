@@ -33,9 +33,11 @@ Two things follow, and both are recorded because the next person will hit them:
 | **Dismissed — upstream operation** | 1 | `src/core/operations/FromBCD.mjs` |
 | **Total** | **55** | |
 
-Of the eight alerts carrying a **security severity**, seven are fixed by deletion and one is
-dismissed as unreachable. No security-severity finding is suppressed while remaining live in the
-shipped product.
+Of the eight alerts carrying a **security severity**: **six are fixed by deletion**
+(`src/web/workers/**`), **one is dismissed as unreachable** (`ChefWorker.js`, the web app's Worker
+entry point) and **one is dismissed as not shipped** (`newOperation.mjs`, developer scaffolding
+absent from the runtime image). No security-severity finding is suppressed while remaining live in
+the shipped product.
 
 ---
 
@@ -73,10 +75,22 @@ Also removed, because they only served that build:
   debug a build for a product this repository does not ship.
 - the `eslint:web` target, which now matches nothing.
 
-Deliberately **not** removed: the `webpack:web`, `copy:standalone`, `zip:standalone` and
-`exec:calcDownloadHash` configuration blocks. They are inert now that no task references them, and
-they share structure with the config `grunt configTests` depends on — untangling them risks breaking
-the one Grunt path this project genuinely uses, for no security benefit.
+Deliberately **not** removed: the `webpack:web`, `webpack-dev-server:start`, `copy:standalone`,
+`zip:standalone` and `exec:calcDownloadHash` configuration blocks.
+
+Precisely what that means, since "inert" would overstate it: **the composite tasks are retired, the
+individual targets are not.** No registered task references them any more, but Grunt lets any target
+be invoked directly, so `npx grunt webpack:web` still runs — and fails, with 12 webpack errors, for
+the same missing-entry-point reason `grunt prod` did. Verified.
+
+Removing them was attempted and reverted. They sit in the same top-level `const` chain as
+`moduleEntryPoints` and the `eslint`/`clean`/`exec` configuration that `grunt configTests`,
+`grunt node` and `grunt testnodeconsumer` depend on, and excising them broke the file
+(`SyntaxError: Missing initializer in const declaration`). Trading a working build file for tidier
+dead configuration is a bad exchange in a security-disposition change, and none of these targets
+carries a code-scanning alert — `src/web/` is deleted, so there is nothing left for them to build.
+
+Worth doing on its own, as a Gruntfile cleanup with its own tests; not worth doing here.
 
 The upstream sync already refuses to reintroduce `src/web/`
 (`upstream-sync.yml` fails the run on it), so this cannot come back by accident.
