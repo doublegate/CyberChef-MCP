@@ -1,0 +1,46 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
+  "name": "io.github.doublegate/cyberchef-mcp",
+  "description": "CyberChef's 504 data-transformation operations -- encryption, encoding, compression, forensics -- as MCP tools, with prompts for common analysis workflows.",
+  "status": "active",
+  "repository": {
+    "url": "https://github.com/doublegate/CyberChef-MCP",
+    "source": "github"
+  },
+  "version": "2.2.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "cyberchef-mcp",
+      "version": "2.2.0",
+      "transport": { "type": "stdio" },
+      "environmentVariables": [
+        {
+          "name": "CYBERCHEF_TOOL_SURFACE",
+          "description": "How many operations appear in tools/list: 'index' (default, ~24 tools), 'curated' (~102) or 'all' (527). Every operation stays reachable via cyberchef_bake regardless.",
+          "isRequired": false,
+          "default": "index"
+        },
+        {
+          "name": "CYBERCHEF_BINARY_OUTPUT",
+          "description": "'base64' returns non-image binary as base64 instead of the default byte-lossless latin1 text.",
+          "isRequired": false,
+          "default": "text"
+        },
+        {
+          "name": "CYBERCHEF_RECIPE_STORAGE",
+          "description": "Path to the saved-recipe store. Defaults to ./recipes.json in the working directory.",
+          "isRequired": false
+        }
+      ]
+    },
+    {
+      "registryType": "oci",
+      "registryBaseUrl": "https://ghcr.io",
+      "identifier": "doublegate/cyberchef-mcp_v2",
+      "version": "2.2.0",
+      "transport": { "type": "stdio" }
+    }
+  ]
+}

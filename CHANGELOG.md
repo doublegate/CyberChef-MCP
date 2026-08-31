@@ -49,6 +49,19 @@ test suite could not see.
   unreachable and silently return the other.
 - **`CYBERCHEF_BINARY_OUTPUT=base64`** returns non-image binary as base64 rather than the default
   latin1 text.
+- **`outputSchema` and `structuredContent`** on `cyberchef_categories` and
+  `cyberchef_list_operations`, so a caller receives a typed object instead of parsing JSON out of a
+  text block. Declared **only** for the tools whose shape this server defines: the 504 operations
+  return whatever CyberChef returns, undocumented and varying per operation, and a schema for that
+  would be a claim rather than a contract -- and a wrong one makes the SDK reject valid results.
+  `content` is still returned alongside, built from the same value so the two cannot disagree.
+- **`cyberchef-migrate`**, a real command at last. `docs/v2.0.0-breaking-changes.md` has told
+  readers to run it since **v1.8.0** and it never existed -- only the two MCP tools were built, and
+  those are reachable only from inside a session, which is no use to someone with a directory of
+  recipe files. It shares its analysis with those tools rather than reimplementing it. It will not
+  rewrite a file without `--write`, keeps a `.bak`, and refuses to overwrite that `.bak` without
+  `--force`: a second run would otherwise replace the backup with the already-migrated file and
+  destroy the only copy of the original.
 
 ### Fixed
 
@@ -101,12 +114,37 @@ test suite could not see.
   the Releases page, not inside the tree, so `[text](../security/foo.md)` 404s for every reader of
   the release. v2.0.0 shipped 8 such links and v2.1.0 shipped 3, all broken.
 
+### Not shipped: npm publishing
+
+The packaging is done and verified -- the package is `cyberchef-mcp` (the `cyberchef` name belongs
+to upstream), `version` now carries the product version with the upstream base moved to
+`cyberchefUpstreamVersion`, with a `files` allowlist, a `prepack` that generates the two gitignored
+files the server cannot start without, two `bin` entries and a `server.json` for the MCP registry.
+`npm pack` produces a correct 12 MB tarball.
+
+It is **not published**, because installing that tarball and running it showed it would not work:
+**npm 12 blocks dependency install scripts by default** (`npm help install-scripts`), and this
+project needs one -- `crypto-api` ships extensionless imports that Node's ESM resolver rejects, so
+without the patch the installed server dies immediately. Confirmed with a minimal probe package
+whose only content was a `postinstall`; it did not run either.
+
+Publishing anyway would ship a package that fails on install for anyone on npm 12+, which is the
+same shape as the `--openssl-legacy-provider` claim this release had to correct. Docker and GHCR
+remain the supported channels. The fix is to stop needing the patch at all, and is v2.3.0 work.
+
+Three defects found doing it are fixed regardless: `postinstall` shelled out to grunt (a
+devDependency a consumer never installs) and `sed`, and is now pure Node with no platform
+branching; the patcher looked in the wrong `node_modules`, since npm runs a dependency's
+`postinstall` in its own directory while dependencies are hoisted to the consumer root; and
+`mcp-server.mjs` had no shebang, so as a `bin` entry the shell tried to run JavaScript as a shell
+script.
+
 ### Metrics
 
 | | v2.1.1 | v2.2.0 |
 |---|---|---|
-| MCP tests | 872 (28 files) | **937 (32 files)** |
-| Coverage (stmts / branch / funcs / lines) | 93.65 / 84.56 / 94.23 / 94.34 | **93.91 / 84.40 / 94.36 / 94.58** |
+| MCP tests | 872 (28 files) | **955 (33 files)** |
+| Coverage (stmts / branch / funcs / lines) | 93.65 / 84.56 / 94.23 / 94.34 | **93.91 / 84.40 / 94.37 / 94.58** |
 | `tools/list` (index surface) | ~2,500 tokens | ~3,400 tokens |
 | Prompts / resources | 0 / 0 | **5 / saved recipes** |
 

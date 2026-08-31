@@ -1,3 +1,8 @@
+#!/usr/bin/env node
+// The shebang matters because this file is a `bin` entry. Without it npm still creates the
+// symlink, and the shell tries to run the JavaScript AS A SHELL SCRIPT:
+//     cyberchef-mcp: line 1: /bin: Is a directory
+// Node strips a shebang before parsing, so it costs nothing on the `import` path.
 /**
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
@@ -82,6 +87,25 @@ function contentSize(content) {
         const payload = typeof block.text === "string" ? block.text : block.data;
         return total + (typeof payload === "string" ? Buffer.byteLength(payload, "utf8") : 0);
     }, 0);
+}
+
+/**
+ * A tool result carrying BOTH a text rendering and the structured object.
+ *
+ * MCP's rule is strict and easy to get half-right: a tool that declares an `outputSchema` MUST
+ * return `structuredContent` matching it, and `content` must still be present for clients that do
+ * not read structured results. Building both from ONE value here means they cannot disagree --
+ * which is the failure that would otherwise be invisible, since a client reading only `content`
+ * would never notice the structured half drifting.
+ *
+ * @param {Object} value - The structured result.
+ * @returns {{content: Array<Object>, structuredContent: Object}} The tool result.
+ */
+function structuredResult(value) {
+    return {
+        content: [{ type: "text", text: JSON.stringify(value, null, 2) }],
+        structuredContent: value
+    };
 }
 
 /**
@@ -332,10 +356,31 @@ const handleListTools = async () => {
             name: "cyberchef_categories",
             description: "List CyberChef's operation categories with counts and examples. " +
                 "Start here to browse what this server can do, then use cyberchef_list_operations.",
-            inputSchema: toInputSchema(z.object({}))
+            inputSchema: toInputSchema(z.object({})),
+            // Declared only for the tools whose shape THIS SERVER defines. The 504 operations are
+            // not given one: their output is whatever CyberChef returns, undocumented and varying
+            // per operation, and inventing a schema for it would be a claim rather than a contract.
+            outputSchema: toInputSchema(z.object({
+                categories: z.array(z.object({
+                    category: z.string(),
+                    operations: z.number(),
+                    examples: z.array(z.string())
+                })),
+                totalOperations: z.number(),
+                usage: z.string()
+            }))
         },
         {
             name: "cyberchef_list_operations",
+            outputSchema: toInputSchema(z.object({
+                category: z.string(),
+                operations: z.array(z.object({
+                    operation: z.string(),
+                    summary: z.string(),
+                    args: z.number()
+                })),
+                next: z.string()
+            })),
             description: "List the operations in one category, with a one-line summary of each. " +
                 "Use cyberchef_describe_operation for full argument schemas.",
             inputSchema: toInputSchema(z.object({
@@ -735,16 +780,16 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
         // hierarchy exists: it keeps 504 operation schemas off the always-loaded payload while
         // leaving every one of them reachable.
         if (name === "cyberchef_categories") {
-            const output = JSON.stringify(categoryIndex(), null, 2);
-            logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
-            return { content: [{ type: "text", text: output }] };
+            const result = structuredResult(categoryIndex());
+            logRequestComplete(requestId, { outputSize: contentSize(result.content) });
+            return result;
         }
 
         if (name === "cyberchef_list_operations") {
             try {
-                const output = JSON.stringify(listOperations(args.category), null, 2);
-                logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
-                return { content: [{ type: "text", text: output }] };
+                const result = structuredResult(listOperations(args.category));
+                logRequestComplete(requestId, { outputSize: contentSize(result.content) });
+                return result;
             } catch (err) {
                 const error = createInputError(err.message, { category: args.category });
                 logRequestError(requestId, error, { tool: name });

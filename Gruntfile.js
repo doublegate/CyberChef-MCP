@@ -444,7 +444,7 @@ module.exports = function (grunt) {
                     `mkdir ${nodeConsumerTestPath}`,
                     `cp tests/node/consumers/* ${nodeConsumerTestPath}`,
                     `cd ${nodeConsumerTestPath}`,
-                    "npm link cyberchef"
+                    "npm link cyberchef-mcp"
                 ]),
                 sync: true
             },

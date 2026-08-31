@@ -1,42 +1,51 @@
 {
-  "name": "cyberchef",
-  "version": "11.4.0",
-  "mcpVersion": "2.2.0",
-  "description": "The Cyber Swiss Army Knife for encryption, encoding, compression and data analysis.",
+  "name": "cyberchef-mcp",
+  "version": "2.2.0",
+  "description": "MCP server exposing CyberChef's 504 data-transformation operations -- encryption, encoding, compression, forensics -- as tools for AI assistants.",
   "author": "n1474335 <n1474335@gmail.com>",
-  "homepage": "https://gchq.github.io/CyberChef",
+  "homepage": "https://github.com/doublegate/CyberChef-MCP#readme",
   "copyright": "Crown copyright 2016 (upstream CyberChef); modifications copyright 2024-2026 DoubleGate",
   "license": "GPL-3.0-or-later",
   "engines": {
     "node": ">=24 <27"
   },
   "keywords": [
-    "cipher",
-    "cypher",
-    "encode",
-    "decode",
-    "encrypt",
-    "decrypt",
+    "ai-tools",
     "base64",
-    "xor",
     "charset",
-    "hex",
-    "encoding",
-    "format",
+    "cipher",
+    "cyberchef",
     "cybersecurity",
+    "cypher",
+    "data analysis",
     "data manipulation",
-    "data analysis"
+    "decode",
+    "decrypt",
+    "dfir",
+    "encode",
+    "encoding",
+    "encrypt",
+    "encryption",
+    "forensics",
+    "format",
+    "hex",
+    "malware-analysis",
+    "mcp",
+    "model-context-protocol",
+    "xor"
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/doublegate/CyberChef-MCP/"
+    "url": "git+https://github.com/doublegate/CyberChef-MCP.git"
   },
   "main": "src/node/wrapper.js",
   "exports": {
     "import": "./src/node/index.mjs",
     "require": "./src/node/wrapper.js"
   },
-  "bugs": "https://github.com/doublegate/CyberChef-MCP/issues",
+  "bugs": {
+    "url": "https://github.com/doublegate/CyberChef-MCP/issues"
+  },
   "browserslist": [
     "Chrome >= 50",
     "Firefox >= 38",
@@ -219,17 +228,32 @@
     "testnodeconsumer": "npx grunt testnodeconsumer",
     "lint": "npx grunt lint",
     "lint:grammar": "cspell ./src",
-    "postinstall": "npx grunt exec:fixCryptoApiImports && npx grunt exec:fixSnackbarMarkup && npx grunt exec:fixJimpModule && npx grunt exec:fixSerializeJavascript && npx grunt exec:fixLoglevelMessagePrefix",
+    "postinstall": "node scripts/patch-dependencies.mjs",
     "newop": "node src/core/config/scripts/newOperation.mjs",
     "minor": "node src/core/config/scripts/newMinorVersion.mjs",
     "getheapsize": "node -e 'console.log(`node heap limit = ${require(\"v8\").getHeapStatistics().heap_size_limit / (1024 * 1024)} Mb`)'",
     "setheapsize": "export NODE_OPTIONS=--max_old_space_size=2048",
-    "mcp": "node src/node/mcp-server.mjs"
+    "mcp": "node src/node/mcp-server.mjs",
+    "prepack": "npx grunt configTests"
   },
   "overrides": {
     "ws": ">=5.2.4",
     "serialize-javascript": ">=6.0.2",
     "qs": ">=6.14.1",
     "minimatch@3": "^3.1.5"
-  }
+  },
+  "cyberchefUpstreamVersion": "11.4.0",
+  "bin": {
+    "cyberchef-mcp": "src/node/mcp-server.mjs",
+    "cyberchef-migrate": "src/node/cli/migrate.mjs"
+  },
+  "files": [
+    "src/core/",
+    "src/node/",
+    "scripts/patch-dependencies.mjs",
+    "NOTICE",
+    "THIRD-PARTY-NOTICES.md",
+    "LICENSE.Apache-2.0",
+    "server.json"
+  ]
 }

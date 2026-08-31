@@ -134,6 +134,15 @@ export default [
     },
     // File-pattern specific overrides
     {
+        // A command-line tool's entire output IS the console. `no-console` exists to stop a
+        // SERVER writing to stdout -- which for an MCP stdio server would corrupt the JSON-RPC
+        // stream, and did, right up to v2.1.0 -- but a CLI has no other channel.
+        files: ["src/node/cli/**/*", "scripts/**/*.mjs"],
+        rules: {
+            "no-console": "off"
+        }
+    },
+    {
         files: ["tests/**/*"],
         rules: {
             "no-unused-expressions": "off",

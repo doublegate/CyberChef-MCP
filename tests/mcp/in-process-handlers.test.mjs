@@ -165,6 +165,44 @@ describe("in-process handlers: tools/list", () => {
         }
     });
 
+    it("declares outputSchema only where this server defines the shape", async () => {
+        const { client, close } = await connected();
+        try {
+            const { tools } = await client.listTools();
+            const withSchema = tools.filter(t => t.outputSchema).map(t => t.name).sort();
+
+            // The 504 operations deliberately have none: their output is whatever CyberChef
+            // returns, undocumented and varying per operation, so a schema would be a claim
+            // rather than a contract -- and a wrong one makes the SDK reject valid results.
+            expect(withSchema).toEqual(["cyberchef_categories", "cyberchef_list_operations"]);
+        } finally {
+            await close();
+        }
+    });
+
+    it("returns structuredContent that satisfies the declared schema", async () => {
+        const { client, close } = await connected();
+        try {
+            // The SDK validates structuredContent against outputSchema, so a mismatch throws
+            // here rather than reaching a caller.
+            const cats = await client.callTool({ name: "cyberchef_categories", arguments: {} });
+            expect(cats.structuredContent.categories.length).toBeGreaterThan(0);
+            expect(typeof cats.structuredContent.totalOperations).toBe("number");
+
+            // `content` must remain, for clients that do not read structured results.
+            expect(cats.content[0].text).toBeTruthy();
+            expect(JSON.parse(cats.content[0].text)).toEqual(cats.structuredContent);
+
+            const listed = await client.callTool({
+                name: "cyberchef_list_operations", arguments: { category: "Compression" }
+            });
+            expect(listed.structuredContent.category).toBe("Compression");
+            expect(listed.structuredContent.operations.length).toBeGreaterThan(0);
+        } finally {
+            await close();
+        }
+    });
+
     it("exposes the navigation index and the executor", async () => {
         const { client, close } = await connected();
         try {

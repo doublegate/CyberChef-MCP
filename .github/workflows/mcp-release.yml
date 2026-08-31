@@ -72,8 +72,8 @@ jobs:
           if [[ "$ref" =~ ^v([0-9]+)\. ]]; then
             major="${BASH_REMATCH[1]}"
           else
-            major="$(node -p "require('./package.json').mcpVersion.split('.')[0]")"
-            echo "::notice::no v<major> tag on '$ref'; using mcpVersion major $major"
+            major="$(node -p "require('./package.json').version.split('.')[0]")"
+            echo "::notice::no v<major> tag on '$ref'; using package.json version major $major"
           fi
           case "$major" in
             ''|*[!0-9]*) echo "::error::could not resolve a numeric major from '$ref'"; exit 1 ;;
