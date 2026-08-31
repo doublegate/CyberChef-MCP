@@ -9,8 +9,10 @@
 #
 #  * GROUPED, because ungrouped npm updates on a 1,700-package tree open a wall of PRs that
 #    nobody reviews, and an unreviewed dependency PR is worse than no PR.
-#  * MAJORS ARE NEVER GROUPED. A grouped major is unreviewable -- the whole point of a major is
-#    that it needs individual judgement. They arrive one at a time or not at all.
+#  * MAJORS ARE NEVER GROUPED FOR RUNTIME DEPENDENCIES. A grouped major is unreviewable -- the
+#    whole point of a major is that it needs individual judgement -- so those arrive one at a
+#    time. Dev-tooling majors ARE grouped, because that tree cannot reach the shipped image and
+#    reviewing eslint or vitest majors one PR at a time is pure overhead.
 #  * Cooldown is raised above GitHub's 3-day default for majors and minors. This project consumes
 #    cryptography and parser libraries where a bad release is a real hazard, and nothing here is
 #    urgent enough to justify being the first to find out. Security updates ignore cooldown
@@ -56,11 +58,11 @@ updates:
       security:
         applies-to: security-updates
         patterns: ["*"]
-    ignore:
-      # Pinned deliberately by this fork; see patches/fork/README.md. Dependabot bumping it back
-      # to the unscoped upstream package would silently undo patch 03.
-      - dependency-name: "@natlibfi/loglevel-message-prefix"
-        update-types: ["version-update:semver-major"]
+    # No `ignore` entries. An earlier draft ignored major bumps of
+    # @natlibfi/loglevel-message-prefix "so Dependabot cannot undo patches/fork/03" -- which was
+    # simply wrong: Dependabot bumps VERSIONS and cannot rewrite a scoped package name back to the
+    # unscoped upstream one. The entry protected nothing. Majors on runtime dependencies are
+    # already ungrouped, so this one arrives as its own reviewable PR like any other.
 
   # --- GitHub Actions -------------------------------------------------------------------------
   # This is the one that would have caught the outage that killed Security Scan for ~5 months:
