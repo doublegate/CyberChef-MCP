@@ -13,7 +13,7 @@
  * @license GPL-3.0-or-later
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from "vitest";
 import { join } from "node:path";
 
 import { dishToText } from "../../src/node/lib/dish-output.mjs";
@@ -129,8 +129,8 @@ describe("rate-limit: the sliding window", () => {
 
     it("reports and clears its state", () => {
         const limiter = new EnabledRateLimiter(10, 60_000);
-        limiter.checkLimit("a");
-        limiter.checkLimit("b");
+        expect(limiter.checkLimit("a").allowed).toBe(true);
+        expect(limiter.checkLimit("b").allowed).toBe(true);
 
         const stats = limiter.getStats();
         expect(stats.activeConnections).toBe(2);
@@ -317,16 +317,15 @@ describe("tool-schema: the input ceiling and argument naming", () => {
     it("rejects input above the limit, naming both sizes", () => {
         // Asserted here rather than through a request: proving it end to end means allocating a
         // >100 MB string and waiting for the server to correctly encode it.
-        const oversized = { length: 0 };
-        // Buffer.byteLength on a string is what the guard measures, so build the smallest thing
-        // that exceeds it rather than a real 100 MB buffer.
+        // Buffer.byteLength on a string is what the guard measures, so stubbing it is enough to
+        // cross the ceiling without allocating a real 100 MB buffer.
         const spy = vi.spyOn(Buffer, "byteLength").mockReturnValue(200 * 1024 * 1024);
         try {
             expect(() => validateInputSize("x")).toThrow(/exceeds maximum allowed size/);
+            expect(() => validateInputSize("x")).toThrow(/100MB/);
         } finally {
             spy.mockRestore();
         }
-        expect(oversized.length).toBe(0);
     });
 
     it("suffixes an argument whose sanitised name would collide with the data parameter", () => {
@@ -338,6 +337,24 @@ describe("tool-schema: the input ceiling and argument naming", () => {
 });
 
 describe("wasm-fetch: the filesystem shim", () => {
+    // `installWasmFetch` replaces `globalThis.fetch` for the whole worker. Vitest isolates by
+    // file, so the blast radius is this file -- but a patched global that outlives the tests that
+    // needed it is exactly the kind of leak that makes an unrelated suite fail confusingly later.
+    // Saved and restored explicitly; the module's own `installed` flag is idempotent, so a later
+    // caller still gets the wrapper it expects.
+    // Scoped to the BLOCK, not to each test: `installWasmFetch` is idempotent by design, so a
+    // per-test restore would leave the module's `installed` flag true with the wrapper gone, and
+    // the next call could not put it back.
+    let originalFetch;
+
+    beforeAll(() => {
+        originalFetch = globalThis.fetch;
+    });
+
+    afterAll(() => {
+        globalThis.fetch = originalFetch;
+    });
+
     it("reports its installation state, and installs at most once", () => {
         const first = installWasmFetch();
         expect(isWasmFetchInstalled()).toBe(true);
@@ -362,8 +379,13 @@ describe("wasm-fetch: the filesystem shim", () => {
         await expect(fetch("/etc/hostname")).rejects.toThrow();
     });
 
-    it("accepts a URL object as well as a string", () => {
+    it("accepts a URL object, not just a string", async () => {
+        installWasmFetch();
+        // The wrapper normalises a URL via `.href` before deciding; the predicate itself only ever
+        // sees a string. Both halves are asserted, because the previous version of this test was
+        // named for the URL case and only exercised the string one.
         expect(_servableWasmPathForTest("https://example.com/x.wasm")).toBeNull();
+        await expect(fetch(new URL("https://127.0.0.1:0/x.wasm"))).rejects.toThrow();
     });
 });
 
