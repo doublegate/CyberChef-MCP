@@ -8,10 +8,18 @@ on:
     # The release train is long-lived: without this it accumulates dozens of
     # commits with no CI at all, and a master->release merge is validated by nothing.
     - 'release/**'
+    # These must include everything the gate's RESULT depends on, not just the product code.
+    # `tests/**` and `vitest.config.mjs` were missing, so a test-only commit could not trigger the
+    # job -- which meant the commit that FIXED the coverage thresholds was unable to demonstrate it,
+    # and, worse, a change that broke a test while touching nothing else would sail through.
     paths:
       - 'src/core/**'
       - 'src/node/**'
+      - 'tests/**'
+      - 'vitest.config.mjs'
+      - 'Gruntfile.js'
       - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/**'
 
 jobs:
