@@ -9,7 +9,7 @@
  */
 
 import { promises as fs } from "fs";
-import { dirname } from "path";
+import { dirname, basename } from "path";
 import { randomUUID, randomBytes } from "crypto";
 import { getLogger } from "./logger.mjs";
 import { createInputError } from "./errors.mjs";
@@ -118,6 +118,44 @@ export class RecipeStorage {
     }
 
     /**
+     * Remove stale staging files left by a save that never completed.
+     *
+     * Randomising the temp name closed a symlink/pre-creation hole, but it also removed a property
+     * the old fixed `<path>.tmp` had for free: a leaked file was overwritten by the next save, so
+     * leaks self-healed. A unique name cannot be overwritten, so a process killed between the
+     * write and the rename now leaves an orphan that stays forever.
+     *
+     * The catch in save() already unlinks on any error it can observe; this covers the case it
+     * cannot -- SIGKILL, a crash, a container stopped mid-write.
+     *
+     * Best-effort throughout: a failure here must never fail a save. The one-hour floor is well
+     * beyond any live write (saves complete in milliseconds), so a concurrent save's staging file
+     * is never a candidate.
+     *
+     * @returns {Promise<void>} Always resolves.
+     */
+    async cleanupStaleTempFiles() {
+        const STALE_AFTER_MS = 60 * 60 * 1000;
+        try {
+            const dir = dirname(this.filePath);
+            const prefix = `${basename(this.filePath)}.`;
+            const cutoff = Date.now() - STALE_AFTER_MS;
+            for (const name of await fs.readdir(dir)) {
+                if (!name.startsWith(prefix) || !name.endsWith(".tmp")) continue;
+                const candidate = `${dir}/${name}`;
+                try {
+                    const { mtimeMs } = await fs.stat(candidate);
+                    if (mtimeMs < cutoff) await fs.unlink(candidate);
+                } catch {
+                    // Vanished or unreadable. Either way, not ours to worry about.
+                }
+            }
+        } catch {
+            // Unreadable directory. The save itself will report the real problem.
+        }
+    }
+
+    /**
      * Save recipes to file with atomic write.
      *
      * @param {Object} storage - Storage object to save.
@@ -169,6 +207,10 @@ export class RecipeStorage {
 
             // Atomic rename
             await fs.rename(tempFile, this.filePath);
+
+            // Sweep orphans from earlier interrupted saves. AFTER the rename, so a failure here
+            // cannot affect the save that just succeeded.
+            await this.cleanupStaleTempFiles();
 
             // Update cache
             this.cache = storage;

@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+
 - **Recipe storage no longer writes through a predictable temp file.** `save()` staged the new
   content in `<path>.tmp`, a fixed sibling name. Anything able to write to the storage directory
   could pre-create or symlink it, and the write would follow — and `CYBERCHEF_RECIPE_STORAGE` is
@@ -15,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   random suffix and is created with `flag: "wx"`, so a pre-created path fails the write instead of
   capturing it, and with `mode: 0o600`, since a saved recipe can carry keys and IVs. Raised by
   CodeQL (`js/insecure-temporary-file`, high) on the v2.0.0 release merge.
+
+  Randomising the name removed one property the fixed `.tmp` had for free — a leaked file was
+  overwritten by the next save, so leaks self-healed — so `save()` now also sweeps staging files
+  older than an hour. The existing `catch` already unlinks on any observable error; this covers the
+  case it cannot, a process killed between the write and the rename.
 
 ## [2.0.0] - 2026-08-31
 

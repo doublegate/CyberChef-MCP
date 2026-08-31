@@ -7,7 +7,7 @@
  * @license GPL-3.0-or-later
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { RecipeStorage } from "../../src/node/recipe-storage.mjs";
 import { promises as fs } from "fs";
 import { join } from "path";
@@ -110,6 +110,41 @@ describe("RecipeStorage", () => {
             await storage.save(storageData());
             const leftovers = (await fs.readdir(testDir)).filter(f => f.endsWith(".tmp"));
             expect(leftovers).toEqual([]);
+        });
+
+        it("removes its staging file when the save FAILS", async () => {
+            // The success path is not the interesting one. Make the rename fail and assert nothing
+            // is left behind -- randomised names cannot be overwritten by the next save, so a leak
+            // here accumulates rather than self-healing.
+            const renameSpy = vi.spyOn(fs, "rename").mockRejectedValueOnce(new Error("boom"));
+            try {
+                await expect(storage.save(storageData())).rejects.toThrow();
+            } finally {
+                renameSpy.mockRestore();
+            }
+            expect((await fs.readdir(testDir)).filter(f => f.endsWith(".tmp"))).toEqual([]);
+        });
+
+        it("sweeps a stale orphan from an earlier interrupted save", async () => {
+            // Covers what the catch cannot: a process killed between the write and the rename.
+            const orphan = `${testFile}.deadbeefdeadbeef.tmp`;
+            await fs.writeFile(orphan, "{}", "utf8");
+            const old = new Date(Date.now() - 2 * 60 * 60 * 1000);
+            await fs.utimes(orphan, old, old);
+
+            await storage.save(storageData());
+
+            await expect(fs.access(orphan)).rejects.toThrow();
+        });
+
+        it("does NOT sweep a recent temp file, which may be a concurrent save", async () => {
+            const fresh = `${testFile}.feedfacefeedface.tmp`;
+            await fs.writeFile(fresh, "{}", "utf8");
+
+            await storage.save(storageData());
+
+            // Still there: a one-hour floor is well beyond any live write.
+            await expect(fs.access(fresh)).resolves.toBeUndefined();
         });
 
         it("writes the storage file owner-only", async () => {
