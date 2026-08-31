@@ -7,7 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **`src/web/` deleted — eight orphaned files that were shipping in the runtime image.** The
+  CyberChef web application was removed in v1.7.1, but eight files survived the cleanup, and the
+  published image carried all of them. Nothing imported them, and the build they belonged to could
+  not run: `src/web/index.js` imports `./stylesheets/index.js`, which does not exist, and
+  `npx grunt prod` failed with 39 webpack errors. They accounted for **six code-scanning alerts,
+  three of them high severity** (`js/remote-property-injection`, `js/missing-origin-check` in
+  browser `postMessage` handlers). Fixed by deletion rather than suppression. The `dev` and `prod`
+  Grunt tasks are replaced by one that explains the web app is gone and points at `npm run mcp` —
+  a task that cannot succeed is worse than an absent one.
+- **Benchmarks allocated 11 MB per run for nothing.** `testData1MB` and `testData10MB` were declared
+  and never used, and `"A".repeat()` builds eagerly. Also corrected the file's `@license Apache-2.0`
+  header, which has been wrong since the v2.0.0 relicense and was the only fork-owned file still
+  carrying it.
+
+### Changed
+
+- **All 55 open code-scanning alerts dispositioned** —
+  [`docs/security/2026-08-31-code-scanning-disposition.md`](docs/security/2026-08-31-code-scanning-disposition.md).
+  8 fixed in code, 47 dismissed with recorded reasons: 44 are code-quality rules in upstream-owned
+  vendored libraries (`src/core/vendor/**`, byte-identical to CyberChef v11.4.0, where a hand-edit
+  is reverted by the next sync). Of the remaining three, `ChefWorker.js` is dismissed as unreachable
+  from the MCP server and `newOperation.mjs` as absent from the runtime image; `FromBCD.mjs` is
+  neither — it is a live operation, dismissed because it is byte-identical to upstream and reported
+  there instead. None carries a security severity that remains live in the shipped product.
+- **Corrected v2.0.0's "zero open code-scanning alerts" claim.** It was measured on the release PR
+  and was true there. A PR CodeQL run analyses the merge commit in a diff-informed mode; the push to
+  the default branch runs a **full** analysis, and that surfaced 55 pre-existing findings — none
+  introduced by v2.0.0. The release notes, README, and ROADMAP now say what was actually measured.
 
 ## [2.1.0] - 2026-08-31
 

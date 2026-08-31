@@ -90,7 +90,7 @@ gantt
 | **v1.7.0** | Advanced Features | Batch processing, telemetry, rate limiting | L | Low | Released |
 | **v1.8.0** | Breaking Changes Prep | Deprecation warnings, migration guides | M | High | Released |
 | **v1.9.0** | Pre-v2.0.0 Polish | Streaming, workers, HTTP transport, security | M | Medium | Released |
-| **v2.0.0** | Major Release | Upstream v11.4.0 (504 ops), GPL-3.0-or-later relicense, Node 24 floor, per-session HTTP transport, zero open security alerts | XL | High | **Released 2026-08-31** |
+| **v2.0.0** | Major Release | Upstream v11.4.0 (504 ops), GPL-3.0-or-later relicense, Node 24 floor, per-session HTTP transport, 272 security findings closed | XL | High | **Released 2026-08-31** |
 | **v2.1.0** | Usability & correctness | Tool-list hierarchy (~97% smaller `tools/list`), Zod 4 schema fix, all 10 flow-control operations working, 31 ciphers + 63 key-taking operations fixed, server-killing crash removed, 60s shutdown hang removed, tutorial + 8 CI-tested examples | L | High | **Released 2026-08-31** |
 
 > **The planned "v2.1.0 Multi-Modal Support" moved to v2.2.0.** The number was taken by an

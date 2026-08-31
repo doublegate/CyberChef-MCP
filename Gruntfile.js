@@ -22,16 +22,34 @@ module.exports = function (grunt) {
     grunt.file.preserveBOM = false;
 
     // Tasks
-    grunt.registerTask("dev",
-        "A persistent task which creates a development build whenever source files are modified.",
-        ["clean:dev", "clean:config", "exec:generateConfig", "concurrent:dev"]);
-
-    grunt.registerTask("prod",
-        "Creates a production-ready build. Use the --msg flag to add a compile message.",
-        [
-            "eslint", "clean:prod", "clean:config", "exec:generateConfig", "findModules", "webpack:web",
-            "copy:standalone", "zip:standalone", "clean:standalone", "exec:calcDownloadHash", "chmod"
-        ]);
+    // The web-app build tasks are GONE, not broken-in-place.
+    //
+    // This fork removed the CyberChef web application in v1.7.1; `src/web/` kept eight orphaned
+    // files that nothing imported, and the templates and stylesheets the build needs
+    // (src/web/html/index.html, src/web/stylesheets/, src/web/static/ga.html) went with it. So
+    // `grunt prod` had not produced a build since v1.7.1 -- it failed with 39 webpack errors,
+    // measured before removing it.
+    //
+    // A task that cannot succeed is worse than an absent one: it invites someone to debug a build
+    // for a product this repository does not ship. These now say so immediately.
+    // `grunt.fail.fatal` -- exits NON-ZERO -- rather than a log line.
+    //
+    // Raised in review, and the reasoning is right: before this change `grunt prod` FAILED, with 39
+    // webpack errors. A stub that prints a message and exits 0 would turn an outdated caller from
+    // red to green while it still produced nothing, which is a worse outcome than the broken build
+    // it replaced. The point of removing the task is to say "this does not exist", and a build
+    // command that does not build must not report success.
+    const webAppRemoved = (name) => grunt.registerTask(name,
+        `Removed: this fork ships an MCP server, not the CyberChef web app (dropped in v1.7.1).`,
+        function () {
+            grunt.fail.fatal(
+                `"${name}" built the CyberChef web application, which this fork removed in v1.7.1.\n` +
+                "  Run the MCP server:            npm run mcp\n" +
+                "  Build the container:           docker build -f Dockerfile.mcp -t cyberchef-mcp .\n" +
+                "  Regenerate operation config:   npm run build   (npx grunt configTests)");
+        });
+    webAppRemoved("dev");
+    webAppRemoved("prod");
 
     grunt.registerTask("node",
         "Compiles CyberChef into a single NodeJS module.",
@@ -247,7 +265,6 @@ module.exports = function (grunt) {
         eslint: {
             configs: ["*.{js,mjs}"],
             core: ["src/core/**/*.{js,mjs}", "!src/core/vendor/**/*", "!src/core/operations/legacy/**/*"],
-            web: ["src/web/**/*.{js,mjs}", "!src/web/static/**/*"],
             node: ["src/node/**/*.{js,mjs}", "!src/node/index.mjs"],
             tests: ["tests/**/*.{js,mjs}"],
         },
