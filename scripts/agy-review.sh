@@ -718,7 +718,7 @@ fi
 # bytes it must read and reason over.
 #
 # An explicit AGY_PRINT_TIMEOUT wins, so a caller can still pin it.
-readonly BYTES_PER_MIB=1048576
+readonly BYTES_PER_MIB=$(( 1024 * 1024 ))
 
 # >>> SELFTEST-EXTRACT: duration parser
 # Parse a duration ("90", "90s", "5m", "1h") to seconds. Echoes nothing and returns 1 if the value
