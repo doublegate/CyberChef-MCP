@@ -960,8 +960,12 @@ async function runServer() {
                 .catch(err => logger.error(`shutdown failed: ${err.message}`))
                 .finally(() => process.exit(0));
         };
-        process.on("SIGINT", () => shutdown("SIGINT"));
-        process.on("SIGTERM", () => shutdown("SIGTERM"));
+        // `once` per signal, AND the boolean. They cover different cases and neither is
+        // redundant: `once` stops a repeated SIGINT from re-entering, the boolean stops a SIGINT
+        // followed by a SIGTERM from doing so -- which is exactly what an impatient operator or a
+        // supervisor escalating from TERM to INT produces.
+        process.once("SIGINT", () => shutdown("SIGINT"));
+        process.once("SIGTERM", () => shutdown("SIGTERM"));
     }
 
     // Log server startup with configuration

@@ -121,6 +121,26 @@ function parseMaybeSse(text) {
     }
 }
 
+/**
+ * Wait for a condition instead of sleeping for a guessed interval.
+ *
+ * A fixed `setTimeout(50)` is a bet that teardown finishes in 50 ms, which is usually true and
+ * occasionally not on a loaded CI runner -- and when it loses, the failure is a confusing
+ * assertion about session count rather than anything about the code under test.
+ *
+ * @param {Function} predicate - Called until it returns truthy.
+ * @param {number} [timeoutMs] - Give up after this long.
+ * @returns {Promise<void>} Resolves when the predicate holds; rejects on timeout.
+ */
+async function waitFor(predicate, timeoutMs = 2000) {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+        if (predicate()) return;
+        if (Date.now() > deadline) throw new Error("waitFor: condition not met within " + timeoutMs + "ms");
+        await new Promise(resolve => setTimeout(resolve, 5));
+    }
+}
+
 describe("Streamable HTTP transport - session lifecycle (issue #36)", () => {
     let handle;
     let base;
@@ -244,8 +264,9 @@ describe("Streamable HTTP transport - session lifecycle (issue #36)", () => {
         });
         expect(del.status).toBeLessThan(400);
 
-        // The teardown is async (onsessionclosed -> closeSession), so give the microtasks a turn.
-        await new Promise(resolve => setTimeout(resolve, 50));
+        // The teardown is async (onsessionclosed -> closeSession), so wait for it rather than
+        // sleeping a guessed interval.
+        await waitFor(() => handle.sessions.size === 0);
         expect(handle.sessions.size).toBe(0);
 
         const after = await post(base, { jsonrpc: "2.0", id: 3, method: "tools/list", params: {} },

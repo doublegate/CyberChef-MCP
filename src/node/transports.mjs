@@ -434,13 +434,21 @@ export async function createTransport(options = {}) {
                 // On 413 the client may still be streaming a body we have already decided to
                 // refuse, so sever the socket rather than keep reading it.
                 //
-                // Plain req.destroy(): sendJsonRpcError has already called res.end(), so the
-                // response is out and no ordering callback is needed. An earlier revision used
-                // `res.end(() => req.destroy())` for that ordering -- harmless (a second end() on
-                // a finished response invokes the callback without throwing, verified) but a
-                // redundant end() that reads like a bug and relies on node tolerating it.
+                // Ordered on `finish`, not called straight away: `req.destroy()` tears down the
+                // SOCKET, which req and res share, so destroying before the response has been
+                // flushed can truncate it into an ECONNRESET -- the client would lose the very
+                // 413 that explains what happened. `finish` fires once the response has been
+                // handed off, and `writableFinished` covers the case where it already has.
+                //
+                // Not `res.end(cb)`: sendJsonRpcError has already ended the response, and a second
+                // end() reads like a bug even though node tolerates it (verified: it invokes the
+                // callback and does not throw).
                 if (status === 413) {
-                    req.destroy();
+                    if (res.writableFinished) {
+                        req.destroy();
+                    } else {
+                        res.once("finish", () => req.destroy());
+                    }
                 }
             }
         });
