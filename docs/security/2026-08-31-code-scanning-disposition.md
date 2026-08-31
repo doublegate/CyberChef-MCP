@@ -202,4 +202,4 @@ docker run --rm --entrypoint find ghcr.io/doublegate/cyberchef-mcp_v2:latest /ap
 
 Note for whoever automates this next: `dismissed_comment` on the code-scanning API is capped at
 **280 characters**, and an over-long comment fails the whole PATCH with an HTTP 422 that is easy to
-swallow. The dismissal comments therefore carry a one-line summary and a pointer to this file.
+miss if stderr is redirected — 47 dismissals failed silently that way before the cap was found. The dismissal comments therefore carry a one-line summary and a pointer to this file.

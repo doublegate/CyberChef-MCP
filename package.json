@@ -207,7 +207,7 @@
     "zod": "^4.4.3"
   },
   "scripts": {
-    "start": "node --openssl-legacy-provider src/node/mcp-server.mjs",
+    "start": "npm run mcp",
     "build": "npx grunt configTests",
     "node": "npx grunt node",
     "repl": "node --no-warnings src/node/repl.mjs",

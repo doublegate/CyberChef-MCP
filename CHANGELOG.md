@@ -36,7 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Corrected v2.0.0's "zero open code-scanning alerts" claim.** It was measured on the release PR
   and was true there. A PR CodeQL run analyses the merge commit in a diff-informed mode; the push to
   the default branch runs a **full** analysis, and that surfaced 55 pre-existing findings — none
-  introduced by v2.0.0. The release notes, README and ROADMAP now say what was actually measured.
+  introduced by v2.0.0. The release notes, README, and ROADMAP now say what was actually measured.
 
 ## [2.1.0] - 2026-08-31
 
