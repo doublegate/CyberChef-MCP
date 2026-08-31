@@ -275,4 +275,55 @@ function validateInputSize(input) {
     }
 }
 
-export { sanitizeToolName, mapArgsToZod, resolveArgValue, validateInputSize, toolArgName };
+/**
+ * Reject argument names the operation does not have.
+ *
+ * WHY THIS IS NOT PEDANTRY
+ * -----------------------
+ * An unknown key used to be silently dropped and the argument's default used instead, so a
+ * misspelling produced a plausible WRONG ANSWER rather than an error. Measured on `Jump`:
+ *
+ *     {label: "top", maximum_jumps: 2}   ->  ["", 10]     // no jump; the recipe silently
+ *                                                          // decoded one round instead of three
+ *     {label_name: "top", maximum_jumps_if_jumping_backwards: 2}  ->  ["top", 2]
+ *
+ * The real names are not guessable -- CyberChef's UI labels sanitise into forms like
+ * `maximum_jumps_if_jumping_backwards` -- so this is a mistake a caller will actually make, and
+ * the result was a recipe that ran, returned data, and was wrong. For a tool used in forensic and
+ * malware work, a silently wrong answer is the worst failure mode available; an error naming the
+ * valid arguments is strictly better than a confident lie.
+ *
+ * @param {string} opName - Operation name, for the message.
+ * @param {Object[]} argDefs - The operation's argument definitions.
+ * @param {Object} named - The caller's named arguments.
+ * @throws {CyberChefMCPError} If any key matches no argument.
+ */
+function assertKnownArgs(opName, argDefs, named) {
+    const valid = new Set();
+    for (const argDef of argDefs) {
+        valid.add(toolArgName(argDef.name));
+        // The raw config name is accepted too, so a recipe written against the CyberChef UI
+        // labels keeps working.
+        valid.add(argDef.name);
+    }
+
+    const unknown = Object.keys(named).filter(k => !valid.has(k));
+    if (!unknown.length) return;
+
+    const accepted = argDefs.map(a => toolArgName(a.name));
+    throw createInputError(
+        `Unknown argument${unknown.length > 1 ? "s" : ""} for "${opName}": ${unknown.join(", ")}`,
+        {
+            operation: opName,
+            unknown,
+            accepted,
+            hint: accepted.length ?
+                `Valid arguments: ${accepted.join(", ")}. Use cyberchef_describe_operation for types and defaults.` :
+                `"${opName}" takes no arguments.`
+        }
+    );
+}
+
+export {
+    sanitizeToolName, mapArgsToZod, resolveArgValue, validateInputSize, toolArgName, assertKnownArgs
+};

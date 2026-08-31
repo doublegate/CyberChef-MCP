@@ -22,7 +22,7 @@ import {
     surfaceMode, configuredAllowlist, isExposed, describeSurface
 } from "../../src/node/lib/tool-surface.mjs";
 import { toCoreRecipe } from "../../src/node/lib/core-recipe.mjs";
-import { validateInputSize, toolArgName } from "../../src/node/lib/tool-schema.mjs";
+import { validateInputSize, toolArgName, assertKnownArgs } from "../../src/node/lib/tool-schema.mjs";
 import {
     installWasmFetch, isWasmFetchInstalled, _servableWasmPathForTest
 } from "../../src/node/lib/wasm-fetch.mjs";
@@ -364,5 +364,44 @@ describe("wasm-fetch: the filesystem shim", () => {
 
     it("accepts a URL object as well as a string", () => {
         expect(_servableWasmPathForTest("https://example.com/x.wasm")).toBeNull();
+    });
+});
+
+describe("tool-schema: rejecting argument names the operation does not have", () => {
+    it("accepts the sanitised name and the raw CyberChef label", () => {
+        const argDefs = [{ name: "Label name" }, { name: "Maximum jumps (if jumping backwards)" }];
+        expect(() => assertKnownArgs("Jump", argDefs, { label_name: "top" })).not.toThrow();
+        expect(() => assertKnownArgs("Jump", argDefs, { "Label name": "top" })).not.toThrow();
+        expect(() => assertKnownArgs("Jump", argDefs, {})).not.toThrow();
+    });
+
+    it("rejects a misspelling instead of silently using the default", () => {
+        // The defect, stated as the thing that was actually wrong: `{label: "top"}` on `Jump`
+        // resolved to `["", 10]`, so the jump never happened and a three-round decode silently
+        // returned one round. A wrong answer that looks right is the worst outcome available.
+        const argDefs = [{ name: "Label name" }, { name: "Maximum jumps (if jumping backwards)" }];
+        expect(() => assertKnownArgs("Jump", argDefs, { label: "top", maximum_jumps: 2 }))
+            .toThrow(/Unknown arguments for "Jump": label, maximum_jumps/);
+    });
+
+    it("names the arguments the operation does accept", () => {
+        // An error that only says "wrong" costs another round trip to find out what is right.
+        try {
+            assertKnownArgs("To Base64", [{ name: "Alphabet" }], { alphabett: "x" });
+            throw new Error("should have thrown");
+        } catch (err) {
+            expect(err.message).toMatch(/Unknown argument for "To Base64": alphabett/);
+            expect(err.context.accepted).toEqual(["alphabet"]);
+            expect(err.context.hint).toMatch(/Valid arguments: alphabet/);
+        }
+    });
+
+    it("says so plainly when an operation takes no arguments at all", () => {
+        try {
+            assertKnownArgs("MD5", [], { rounds: 3 });
+            throw new Error("should have thrown");
+        } catch (err) {
+            expect(err.context.hint).toMatch(/takes no arguments/);
+        }
     });
 });

@@ -240,7 +240,7 @@ import { TelemetryCollector } from "./lib/telemetry.mjs";
 import { RateLimiter } from "./lib/rate-limit.mjs";
 import { ResourceQuotaTracker } from "./lib/quota.mjs";
 import { BatchProcessor } from "./lib/batch.mjs";
-import { sanitizeToolName, mapArgsToZod, resolveArgValue, validateInputSize, toolArgName } from "./lib/tool-schema.mjs";
+import { sanitizeToolName, mapArgsToZod, resolveArgValue, validateInputSize, toolArgName, assertKnownArgs} from "./lib/tool-schema.mjs";
 
 // Performance configuration (configurable via environment variables)
 
@@ -920,6 +920,15 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
                 const recipeArgs = [];
 
                 if (opConfig.args) {
+                    // Same guard as the recipe path: an argument name this operation does not have
+                    // must be an error, not a silently-defaulted value. `input` is excluded because
+                    // it is the data parameter this server adds, not one of the operation's own --
+                    // which is exactly why a colliding argument is renamed to `input_arg`.
+                    const opArgs = Object.fromEntries(
+                        Object.entries(args).filter(([key]) => key !== "input")
+                    );
+                    assertKnownArgs(opName, opConfig.args, opArgs);
+
                     opConfig.args.forEach(argDef => {
                         const userVal = args[toolArgName(argDef.name)];
                         recipeArgs.push(resolveArgValue(argDef, userVal));

@@ -44,7 +44,7 @@
 import Chef from "../../core/Chef.mjs";
 import Utils from "../../core/Utils.mjs";
 import OperationConfig from "../../core/config/OperationConfig.json" with {type: "json"};
-import { resolveArgValue, toolArgName } from "./tool-schema.mjs";
+import { resolveArgValue, toolArgName, assertKnownArgs } from "./tool-schema.mjs";
 import { createInputError } from "../errors.mjs";
 
 /**
@@ -96,6 +96,10 @@ function toPositionalArgs(opName, args) {
     if (Array.isArray(args)) return args;
 
     const named = (args && typeof args === "object") ? args : {};
+
+    // Fail on an argument name the operation does not have, rather than dropping it and using the
+    // default -- which turned a misspelling into a plausible wrong answer. See assertKnownArgs.
+    assertKnownArgs(opName, argDefs, named);
 
     // Callers address arguments by the name in the tool's inputSchema, which is the sanitised form
     // ("Split delimiter" -> "split_delimiter"). Accept the raw config name too, since a recipe
