@@ -408,7 +408,15 @@ describe("Deprecation Warning System", () => {
 
         it("is false for an unknown code rather than throwing", () => {
             expect(isWithdrawn("DEP999")).toBe(false);
-            expect(isWithdrawn(undefined)).toBe(false);
+        });
+
+        it("is false for every non-string input, explicitly rather than by accident", () => {
+            // Without a typeof guard, isWithdrawn(undefined) looks up the KEY "undefined" -- which
+            // happens to be absent, so it happens to return false. These pin the guard, not the
+            // coincidence.
+            for (const value of [undefined, null, 0, 1, true, {}, [], () => {}, Symbol("DEP001")]) {
+                expect(isWithdrawn(value)).toBe(false);
+            }
         });
 
         it("agrees with the exported WITHDRAWN_CODES list", () => {

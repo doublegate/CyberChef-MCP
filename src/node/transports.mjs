@@ -402,6 +402,15 @@ export async function createTransport(options = {}) {
                 // No session id. Only an initialize may open one; anything else is a client that
                 // lost its session id, and answering it on a fresh session would silently give it
                 // a different conversation than the one it thinks it is in.
+                // An empty body earns its own message. It used to fall through to the
+                // session-header error below, which is true but not the useful truth: the caller
+                // sent nothing, and telling them they are missing a header sends them looking in
+                // the wrong place.
+                if (body === undefined) {
+                    sendJsonRpcError(res, 400, -32600, "Invalid Request: empty request body");
+                    return;
+                }
+
                 if (!isInitializeBody(body)) {
                     sendJsonRpcError(
                         res, 400, -32000,
@@ -423,11 +432,15 @@ export async function createTransport(options = {}) {
                     status >= 500 ? "Internal server error" : err.message
                 );
                 // On 413 the client may still be streaming a body we have already decided to
-                // refuse. Answering without severing the socket means continuing to read (and pay
-                // for) an arbitrary amount of data after the decision -- so destroy it, once the
-                // response is actually out.
+                // refuse, so sever the socket rather than keep reading it.
+                //
+                // Plain req.destroy(): sendJsonRpcError has already called res.end(), so the
+                // response is out and no ordering callback is needed. An earlier revision used
+                // `res.end(() => req.destroy())` for that ordering -- harmless (a second end() on
+                // a finished response invokes the callback without throwing, verified) but a
+                // redundant end() that reads like a bug and relies on node tolerating it.
                 if (status === 413) {
-                    res.end(() => req.destroy());
+                    req.destroy();
                 }
             }
         });

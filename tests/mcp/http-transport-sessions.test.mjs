@@ -410,6 +410,21 @@ describe("Streamable HTTP transport - session lifecycle (issue #36)", () => {
         expect(batch.json.id).toBeNull();
     });
 
+    it("400s an EMPTY body with a message about the body, not about a header", async () => {
+        // This used to fall through to "Mcp-Session-Id header required", which is true and
+        // unhelpful: the caller sent nothing, so pointing at a header sends them looking in the
+        // wrong place.
+        const res = await fetch(`${base}/mcp`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Accept": "application/json, text/event-stream" }
+        });
+        expect(res.status).toBe(400);
+        const body = JSON.parse(await res.text());
+        expect(body.error.message).toContain("empty request body");
+        expect(body.error.message).not.toContain("Mcp-Session-Id");
+        expect(handle.sessions.size).toBe(0);
+    });
+
     it("400s a malformed JSON body", async () => {
         const res = await fetch(`${base}/mcp`, {
             method: "POST",

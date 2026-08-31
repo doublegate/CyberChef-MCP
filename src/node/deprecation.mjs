@@ -143,6 +143,10 @@ export const WITHDRAWN_CODES = Object.freeze(["DEP001", "DEP007", "DEP008"]);
  * @returns {boolean} True if the announced change is not happening.
  */
 export function isWithdrawn(code) {
+    // The typeof guard is not ceremony: without it `isWithdrawn(undefined)` looks up the key
+    // "undefined", which happens to be absent and so happens to return false. Correct by accident
+    // is not the same as correct, and this is exported and called on caller-supplied values.
+    if (typeof code !== "string") return false;
     return Boolean(DEPRECATION_CODES[code]?.withdrawn);
 }
 

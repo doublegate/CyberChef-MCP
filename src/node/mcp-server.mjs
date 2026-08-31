@@ -893,6 +893,22 @@ function createMcpServer() {
             },
         }
     );
+    registerHandlers(instance);
+    return instance;
+}
+
+/**
+ * Attach every request handler to a server instance.
+ *
+ * ONE registration site, used by both the module singleton and every per-session instance. Listing
+ * the handlers twice is how an HTTP session silently loses a capability that stdio has: the two
+ * lists drift, nothing fails, and the only symptom is a method that works over one transport and
+ * not the other. Adding a handler here reaches both by construction.
+ *
+ * @param {Server} instance - The server to attach handlers to.
+ * @returns {Server} The same instance, for chaining.
+ */
+function registerHandlers(instance) {
     instance.setRequestHandler(ListToolsRequestSchema, handleListTools);
     instance.setRequestHandler(CallToolRequestSchema, handleCallTool);
     return instance;
@@ -900,8 +916,7 @@ function createMcpServer() {
 
 // The module-level instance backs stdio, which is single-connection by construction, and is what
 // the existing test suite drives. HTTP builds its own per session.
-server.setRequestHandler(ListToolsRequestSchema, handleListTools);
-server.setRequestHandler(CallToolRequestSchema, handleCallTool);
+registerHandlers(server);
 
 /**
  * Start the MCP Server.
