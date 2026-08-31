@@ -73,15 +73,23 @@ describe("Real Server Handler Coverage", () => {
             expect(result).toBeDefined();
         });
 
-        it("should throw on invalid operation", () => {
-            expect(() => bake("test", [
+        it("should reject on invalid operation", async () => {
+            // Upstream v11.4.0 made `bake()` async, so an unknown operation now REJECTS rather
+            // than throwing synchronously. `expect(() => ...).toThrow()` silently passes on a
+            // rejected promise it never awaits, so this had to become a rejection assertion.
+            await expect(bake("test", [
                 { op: "NonExistentOperation", args: [] }
-            ])).toThrow();
+            ])).rejects.toThrow();
         });
 
         it("should handle operations returning objects", async () => {
+            // "Comma", not ",". The Delimiter argument is an `option` whose value is the option
+            // NAME. The literal "," was silently tolerated before v11.4.0; upstream now runs
+            // `validateIngredients()` on every operation and rejects it:
+            //   Delimiter must be one of the following: Space, Comma, Semi-colon, Colon, ...
+            // The test was wrong all along -- the new validation is what surfaced it.
             const result = await bake("test", [
-                { op: "To Decimal", args: [",", false] }
+                { op: "To Decimal", args: ["Comma", false] }
             ]);
             expect(result).toBeDefined();
         });
@@ -269,10 +277,11 @@ describe("Real Server Handler Coverage", () => {
     });
 
     describe("Error Handling Scenarios", () => {
-        it("should handle invalid operation name", () => {
-            expect(() => bake("test", [
+        it("should handle invalid operation name", async () => {
+            // Async since v11.4.0 -- see the note on "should reject on invalid operation".
+            await expect(bake("test", [
                 { op: "This Operation Does Not Exist", args: [] }
-            ])).toThrow();
+            ])).rejects.toThrow();
         });
 
         it("should handle malformed recipe", async () => {

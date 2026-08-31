@@ -212,6 +212,21 @@ TestRegister.addTests([
         ]
     },
     {
+        name: "PGP Sign/Verify: RSA, All bytes",
+        input: ALL_BYTES,
+        expectedMatch: /Signed by PGP key ID: 2ADF8D8C\nPGP fingerprint: 7afe93ff7614167c3fe831fe1b75204b2adf8d8c\nSigned on .*\n----------------------------------\n/,
+        recipeConfig: [
+            {
+                "op": "PGP Sign",
+                "args": [ALICE_PRIVATE, ""]
+            },
+            {
+                "op": "PGP Verify",
+                "args": [ALICE_PUBLIC]
+            }
+        ]
+    },
+    {
         name: "PGP Decrypt and Verify: UTF8, Alice -> Bob",
         input: `-----BEGIN PGP MESSAGE-----
 Version: Keybase OpenPGP v2.1.17
