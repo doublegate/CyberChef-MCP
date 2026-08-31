@@ -24,11 +24,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   imports under `src/web/`, removed in v1.7.1, and resolved them against `self.docURL`, which does
   not exist under Node — so every call failed while the tool stayed advertised. The fonts are now
   vendored at `src/vendor/bmfonts/` and loaded from disk (`patches/fork/10`).
+- **A failing operation on the progress path hung the request.** `streamOperationWithProgress`
+  ended its bake with `.catch(err => { throw err; })` inside a promise nobody held, so the rejection
+  was unhandled *and* `resolve` was never called — the `await` below it waited forever. It now
+  rejects. Verified against a snapshot of the old code, where the new test times out at 30s.
+- **`argSelector` arguments were not validated.** 21 arguments across 19 operations, including AES
+  Encrypt/Decrypt, are a closed set, but `validateOperationArguments` had no case for them, so an
+  invalid mode passed recipe validation and failed later inside the engine with a less useful error.
 - **`terser` was a devDependency but is imported at runtime** by `JavaScript Minify`, so an
   installed package could not start. Moved to `dependencies`.
 
 ### Changed
 
+- **Coverage thresholds raised from 75/70/90/75 to 95/88/96/96**, with `src/node/lib/**` held
+  separately at 99/94/100/99. The old numbers were more than twenty points below actual coverage, so
+  the gate could not fail. `codecov.yml` was corrected to match: project 70% → 95%, patch 75% → 100%,
+  the `mcp-tests` flag widened from two paths to all fork-owned `src/node/**` (twelve modules were
+  absent from flag reporting), and dead configuration removed. `src/node/worker.mjs` is measured for
+  the first time.
 - **`crypto-api` is vendored at `src/vendor/crypto-api/` (MIT) instead of installed.** The published
   package cannot be loaded as shipped: its `main` names an `index` file absent from its own tarball,
   and its ESM sources use extensionless relative imports Node rejects. Patching it required a

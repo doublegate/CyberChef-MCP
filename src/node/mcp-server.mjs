@@ -1286,6 +1286,11 @@ async function runServer() {
     //
     // Registered only when there is something to close, so stdio -- where the process ending IS
     // the teardown -- keeps its current behaviour and its default signal handling.
+    /* v8 ignore start -- signal wiring: the handlers end in process.exit(), so exercising them
+       in-process would kill the test runner. Covering them would mean mocking process.exit and
+       process.once, which asserts that the mocks were called rather than that the server shuts
+       down -- a number, not a guarantee. What is testable IS tested: transports.mjs's closeAll,
+       which is the part that actually closes sessions and severs sockets, has its own tests. */
     if (typeof closeAll === "function") {
         let shuttingDown = false;
         // POSIX exit status for a signal death: 128 + signum. Exiting 0 tells a supervisor the
@@ -1311,6 +1316,7 @@ async function runServer() {
         process.once("SIGINT", () => shutdown("SIGINT"));
         process.once("SIGTERM", () => shutdown("SIGTERM"));
     }
+    /* v8 ignore stop */
 
     // Log server startup with configuration
     logServerStart({

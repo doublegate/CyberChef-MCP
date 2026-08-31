@@ -24,6 +24,7 @@
 
 import { describe, it, expect, afterEach } from "vitest";
 import net from "node:net";
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import { join } from "node:path";
@@ -215,6 +216,72 @@ describe("socket transport", () => {
         open.push(first.closeAll);
         await expect(createTransport({ type: "socket", socketPath: path, createServer: makeServer }))
             .rejects.toThrow(/already served/);
+    });
+});
+
+describe("socket transport: connection lifecycle", () => {
+    it("drops a connection from the set when the peer disconnects", async () => {
+        const path = tmpSocket();
+        const handle = await createTransport({ type: "socket", socketPath: path, createServer: makeServer });
+        open.push(handle.closeAll);
+
+        const { client, socket } = await connectClient(path);
+        expect(handle.connections.size).toBe(1);
+
+        await client.close();
+        socket.destroy();
+        // The pinned server instance is closed alongside the socket. Dropping only the socket
+        // would leak one Server per connection for the process's lifetime.
+        await new Promise(resolve => setTimeout(resolve, 50));
+        expect(handle.connections.size).toBe(0);
+    });
+
+    it("drops a connection that dies with an error, not just one that closes politely", async () => {
+        const path = tmpSocket();
+        const handle = await createTransport({ type: "socket", socketPath: path, createServer: makeServer });
+        open.push(handle.closeAll);
+
+        const socket = net.connect(path);
+        await new Promise((resolve, reject) => {
+            socket.once("connect", resolve);
+            socket.once("error", reject);
+        });
+        expect(handle.connections.size).toBe(1);
+
+        // A client that vanishes mid-conversation, which is the common case in practice and must
+        // not leave the connection counted against the cap forever. `destroy(err)` rather than
+        // `resetAndDestroy()`: an RST is TCP-only and a Unix socket rejects it outright.
+        socket.destroy(new Error("client vanished"));
+        await new Promise(resolve => setTimeout(resolve, 50));
+        expect(handle.connections.size).toBe(0);
+    });
+
+    it("removes a genuinely stale socket file and binds anyway", async () => {
+        const path = tmpSocket();
+        // A crash, reproduced honestly: a child binds the socket and is SIGKILLed. node unlinks the
+        // file on a *clean* close, so closing a server in-process would leave nothing behind and
+        // test nothing. Only a killed process leaves the file with nothing listening — which is the
+        // exact state this branch exists for, and refusing to start in it would mean a crash needs
+        // manual cleanup before the service can come back.
+        const child = spawn(process.execPath, [
+            "-e", `require("net").createServer().listen(${JSON.stringify(path)}, () => console.log("up"))`
+        ]);
+        await new Promise((resolve, reject) => {
+            child.stdout.once("data", resolve);
+            child.once("error", reject);
+        });
+        child.kill("SIGKILL");
+        await new Promise(resolve => child.once("exit", resolve));
+        expect(fs.existsSync(path)).toBe(true);
+
+        const handle = await createTransport({ type: "socket", socketPath: path, createServer: makeServer });
+        open.push(handle.closeAll);
+        const { client } = await connectClient(path);
+        try {
+            expect((await client.listTools()).tools[0].name).toBe("whoami");
+        } finally {
+            await client.close();
+        }
     });
 });
 

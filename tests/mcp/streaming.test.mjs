@@ -239,6 +239,27 @@ describe("streamOperationWithProgress", () => {
         expect(lastResult._meta?.progress).toBe(100);
     });
 
+    it("rejects rather than hanging when the operation fails asynchronously", async () => {
+        // This is what a real `bake` does -- it is async, so it REJECTS; it does not throw
+        // synchronously. The case was untested, and the test below says why in its own comment:
+        // it was written to throw synchronously "to avoid unhandled promise rejection", which is
+        // the defect rather than a property of the code. The progress path used to do
+        // `.catch(err => { throw err; })` inside a promise nobody held, so the rejection was
+        // unhandled AND `resolve` was never called -- the request hung until its timeout instead
+        // of reporting the error.
+        const mockBake = vi.fn(() => Promise.reject(new Error("Operation failed asynchronously")));
+
+        const generator = streamOperationWithProgress(mockBake, "Gzip", "test", []);
+        const seen = [];
+        await expect((async () => {
+            for await (const chunk of generator) seen.push(chunk);
+        })()).rejects.toThrow("Operation failed asynchronously");
+
+        // The initial status still reached the caller before the failure, which is the point of
+        // streaming: the error replaces the remaining output, not what was already sent.
+        expect(seen[0]?._meta?.progress).toBe(0);
+    });
+
     it("should handle errors", async () => {
         // Create a mock that throws synchronously to avoid unhandled promise rejection
         const mockBake = vi.fn().mockImplementation(() => {
