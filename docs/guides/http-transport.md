@@ -41,7 +41,7 @@ CYBERCHEF_TRANSPORT=http npm run mcp
 | `CYBERCHEF_TRANSPORT` | `stdio` | `stdio` or `http`. Nothing listens unless this is `http`. |
 | `CYBERCHEF_HTTP_PORT` | `3000` | Listen port. `0` asks the OS for an ephemeral port. |
 | `CYBERCHEF_HTTP_HOST` | `127.0.0.1` | Bind address. Use `0.0.0.0` in a container. |
-| `CYBERCHEF_ALLOWED_HOSTS` | *(unset)* | Comma-separated `Host` allowlist. Setting it enables DNS-rebinding protection. |
+| `CYBERCHEF_ALLOWED_HOSTS` | *(loopback names)* | Comma-separated `Host` allowlist. **DNS-rebinding protection is on by default**; set this when binding a non-loopback address, or `*` to disable. |
 | `CYBERCHEF_ALLOWED_ORIGINS` | *(unset)* | Comma-separated `Origin` allowlist. Setting it enables CORS. Required by browser clients. |
 | `CYBERCHEF_SESSION_TIMEOUT` | `1800000` | Idle session reap threshold, in ms (30 minutes). |
 | `CYBERCHEF_HTTP_MAX_BODY` | `4194304` | Maximum accepted request body, in bytes (4 MiB). |
@@ -50,15 +50,41 @@ CYBERCHEF_TRANSPORT=http npm run mcp
 
 ### On `CYBERCHEF_ALLOWED_HOSTS`
 
-Off by default, and that default is right for the default bind: on loopback there is no rebinding
-attack to prevent. It becomes worth setting the moment you bind `0.0.0.0`, because a page in a
-user's browser can then be made to resolve an attacker-controlled name to `127.0.0.1` and POST to
-the server as a same-origin request.
+**On by default.** With nothing set, the server answers only to `localhost`, `127.0.0.1` and
+`[::1]`, each with and without its port, and returns `403 Invalid Host header` to anything else.
 
-Set it to the host values clients actually send, including the port:
+An earlier draft of this guide said the check was off by default because "on loopback there is no
+rebinding attack to prevent". That was **backwards**: DNS rebinding exists specifically to reach
+loopback and private addresses, using the victim's own browser as the proxy a firewall cannot see.
+
+1. The victim loads `evil.example`, whose DNS answer carries a 1-second TTL.
+2. The page fetches `http://evil.example:3000/mcp`. The browser re-resolves the name; the attacker
+   now answers `127.0.0.1`.
+3. The request arrives at your server with `Host: evil.example:3000`.
+4. The browser considers this **same-origin with the page** — origin and target are both
+   `http://evil.example:3000` — so it sends no preflight, whatever the `Content-Type`, and the
+   attacker's script can read the response.
+
+Two consequences worth being explicit about. `CYBERCHEF_ALLOWED_ORIGINS` does **not** help: the
+CORS default-deny is never consulted, because the browser never treats this as a cross-origin
+request. And `initialize` requires no session id, so a hostile page can open its own session and
+drive every tool — on a server whose recipe storage reaches the filesystem.
+
+The `Host` header is the one thing in that request that still tells the truth, which is why the
+MCP specification requires validating it.
+
+Binding a non-loopback address means naming the hosts you will reach it by, including the port:
 
 ```bash
-CYBERCHEF_ALLOWED_HOSTS=localhost:3000,127.0.0.1:3000
+CYBERCHEF_HTTP_HOST=0.0.0.0
+CYBERCHEF_ALLOWED_HOSTS=mcp.internal:3000,10.0.0.5:3000
+```
+
+To turn the check off — only sensible behind a proxy that validates `Host` itself — set it
+explicitly. The server logs a warning at startup saying it is off:
+
+```bash
+CYBERCHEF_ALLOWED_HOSTS=*
 ```
 
 The MCP SDK marks its built-in check deprecated in favour of external middleware. It is wired up

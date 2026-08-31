@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **DNS-rebinding protection is now ON by default for the HTTP transport.** It was opt-in, on the
+  stated reasoning that "the default bind is loopback, where it adds nothing". That reasoning was
+  backwards: DNS rebinding exists *specifically* to reach loopback and private addresses, using the
+  victim's own browser as a proxy the firewall cannot see. A page on `evil.example` whose DNS is
+  rebound to `127.0.0.1` reaches the server with `Host: evil.example`, and because the browser
+  considers that request same-origin with the page, **no preflight is sent** — so the CORS
+  default-deny never comes into it — and the response is readable by the attacker's script. Since
+  `initialize` needs no session id, such a page could open a session and drive every tool, on a
+  server whose recipe storage touches the filesystem.
+
+  With nothing configured, the server now answers only to `localhost`, `127.0.0.1` and `[::1]`,
+  each with and without its port, and returns `403 Invalid Host header` otherwise. The allowlist is
+  resolved after `listen()` so that an ephemeral port (`port: 0`) is covered. `CYBERCHEF_ALLOWED_HOSTS`
+  still replaces the defaults for a non-loopback bind, and `CYBERCHEF_ALLOWED_HOSTS=*` disables the
+  check outright with a startup warning. Four tests speak raw HTTP with a forged `Host`, because
+  `fetch` will not let a caller set one and the forged header is the whole attack.
+
+  **Breaking for one configuration:** a server bound to `0.0.0.0` and reached by a LAN name or IP
+  now needs `CYBERCHEF_ALLOWED_HOSTS` set. That is the secure-by-default trade, and it is what the
+  MCP specification asks for.
+
 - **Recipe storage no longer writes through a predictable temp file.** `save()` staged the new
   content in `<path>.tmp`, a fixed sibling name. Anything able to write to the storage directory
   could pre-create or symlink it, and the write would follow — and `CYBERCHEF_RECIPE_STORAGE` is

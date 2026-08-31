@@ -217,9 +217,31 @@ export async function createTransport(options = {}) {
         const sessionTimeoutMs = numeric(
             options.sessionTimeoutMs, "CYBERCHEF_SESSION_TIMEOUT", DEFAULT_SESSION_TIMEOUT_MS);
 
-        // DNS-rebinding protection is opt-in because the default bind is loopback, where it adds
-        // nothing. It matters when the host is 0.0.0.0 -- the configuration the issue reporter
-        // used -- since a browser page can then be made to POST to the server via a rebound name.
+        // DNS-rebinding protection is ON BY DEFAULT.
+        //
+        // An earlier version of this comment said it was opt-in "because the default bind is
+        // loopback, where it adds nothing". That was WRONG, and it had the attack backwards:
+        // DNS rebinding EXISTS to reach loopback and private interfaces, using the victim's own
+        // browser as the proxy that the firewall cannot see.
+        //
+        //   1. The victim loads evil.com, whose DNS answer has a 1-second TTL.
+        //   2. The page fetches http://evil.com:3000/mcp. The browser re-resolves; the attacker
+        //      now answers 127.0.0.1.
+        //   3. The request lands on THIS server, carrying `Host: evil.com:3000`.
+        //   4. The browser considers it SAME-ORIGIN with the page -- origin and target are both
+        //      http://evil.com:3000 -- so there is no preflight, whatever the Content-Type, and
+        //      the response body is readable by the attacker's script.
+        //
+        // So the CORS default-deny below is not a mitigation for this: it is never consulted. And
+        // `initialize` needs no session id, so a hostile page can open a session and drive every
+        // tool -- on a server whose recipe storage touches the filesystem. The Host header is the
+        // only thing that still tells the truth, which is why the MCP spec requires validating it
+        // and why the default is now to do so.
+        //
+        // Binding to a non-loopback address therefore requires naming the hosts you will reach it
+        // by, in CYBERCHEF_ALLOWED_HOSTS. `CYBERCHEF_ALLOWED_HOSTS=*` disables the check outright
+        // and says so in the log, for someone who has put a real proxy in front.
+        //
         // The SDK deprecates its built-in check in favour of external middleware; it is wired here
         // because this server ships without one and "there is no middleware" is not a mitigation.
         const csv = (value, envName) => {
@@ -229,7 +251,10 @@ export async function createTransport(options = {}) {
             const cleaned = list.map(h => String(h).trim()).filter(Boolean);
             return cleaned.length ? cleaned : undefined;
         };
-        const allowedHosts = csv(options.allowedHosts, "CYBERCHEF_ALLOWED_HOSTS");
+        const configuredHosts = csv(options.allowedHosts, "CYBERCHEF_ALLOWED_HOSTS");
+        // `*` is the explicit, logged opt-out. Spelled as a value rather than as a second env var
+        // so that "what hosts are allowed" has exactly one place to look.
+        const hostCheckDisabled = configuredHosts?.length === 1 && configuredHosts[0] === "*";
 
         // CORS is OPT-IN, and off by default on purpose.
         //
@@ -341,16 +366,41 @@ export async function createTransport(options = {}) {
         }
 
         /**
+         * The Host values this server will answer to.
+         *
+         * Resolved lazily rather than at construction because `port: 0` asks the OS for an
+         * ephemeral port, and the real one is not known until the listener is bound. The SDK
+         * compares the whole Host header by exact string, and a browser includes the port
+         * whenever it is not the scheme default -- so every name is listed twice, with and
+         * without it.
+         *
+         * @returns {string[]|undefined} The allowlist, or undefined when the check is disabled.
+         */
+        function effectiveAllowedHosts() {
+            if (hostCheckDisabled) return undefined;
+            if (configuredHosts) return configuredHosts;
+            const bound = httpServer.address();
+            const actualPort = (bound && typeof bound === "object" ? bound.port : null) ?? port;
+            const names = new Set();
+            for (const name of ["localhost", "127.0.0.1", "[::1]"]) {
+                names.add(name);
+                names.add(`${name}:${actualPort}`);
+            }
+            return [...names];
+        }
+
+        /**
          * Build a fresh Server + transport pair and connect them.
          *
          * @returns {Promise<Object>} The connected transport.
          */
         async function newSession() {
             const mcpServer = createServer();
+            const sessionAllowedHosts = effectiveAllowedHosts();
             const transport = new StreamableHTTPServerTransport({
                 sessionIdGenerator: () => randomUUID(),
-                ...(allowedHosts ?
-                    { allowedHosts, enableDnsRebindingProtection: true } :
+                ...(sessionAllowedHosts ?
+                    { allowedHosts: sessionAllowedHosts, enableDnsRebindingProtection: true } :
                     {}),
                 onsessioninitialized: (sessionId) => {
                     sessions.set(sessionId, {
@@ -531,7 +581,13 @@ export async function createTransport(options = {}) {
         httpServer.listen(port, host, () => {
             logger.info(`Streamable HTTP transport listening on ${host}:${port}${mcpPath}`);
             logger.info(`  session timeout: ${Math.round(sessionTimeoutMs / 1000)}s, max sessions: ${maxSessions}`);
-            logger.info(`  DNS rebinding protection: ${allowedHosts ? `on (${allowedHosts.join(", ")})` : "off"}`);
+            const hosts = effectiveAllowedHosts();
+            if (hosts) {
+                logger.info(`  DNS rebinding protection: on (${hosts.join(", ")})`);
+            } else {
+                logger.warn("  DNS rebinding protection: OFF (CYBERCHEF_ALLOWED_HOSTS=*) -- any " +
+                    "website the user visits can drive this server via a rebound hostname");
+            }
             logger.info(`  CORS: ${allowedOrigins ? `on (${allowedOrigins.join(", ")})` : "off -- browser clients need CYBERCHEF_ALLOWED_ORIGINS"}`);
         });
 

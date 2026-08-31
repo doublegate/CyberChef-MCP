@@ -284,8 +284,9 @@ CYBERCHEF_SUPPRESS_DEPRECATIONS=false    # Suppress deprecation warnings
 CYBERCHEF_TRANSPORT=stdio                # Transport type: stdio or http
 CYBERCHEF_HTTP_PORT=3000                 # HTTP transport port
 CYBERCHEF_HTTP_HOST=127.0.0.1            # HTTP bind address (use 0.0.0.0 in a container)
-CYBERCHEF_ALLOWED_HOSTS=                 # Comma-separated Host allowlist; enables DNS-rebinding
-                                         # protection. Set this whenever binding 0.0.0.0.
+CYBERCHEF_ALLOWED_HOSTS=                 # Comma-separated Host allowlist. DNS-rebinding protection
+                                         # is ON by default (loopback names). Set this when binding
+                                         # a non-loopback address; `*` disables the check.
 CYBERCHEF_ALLOWED_ORIGINS=               # Comma-separated Origin allowlist; enables CORS. Required
                                          # by browser MCP clients (e.g. MCP Inspector's web UI).
 CYBERCHEF_SESSION_TIMEOUT=1800000        # Idle HTTP session reap threshold (30 min)
@@ -375,10 +376,15 @@ docker run --rm -p 3000:3000 \
   ghcr.io/doublegate/cyberchef-mcp_v2:latest
 ```
 
-`CYBERCHEF_ALLOWED_HOSTS` is new in v2.0.0 and worth setting whenever the server binds `0.0.0.0`:
-it turns on DNS-rebinding protection, without which a page in the user's browser can be made to
-reach the server through a rebound name. It is optional and off by default, because the default
-bind is loopback where it adds nothing.
+`CYBERCHEF_ALLOWED_HOSTS` is new in v2.0.0. **DNS-rebinding protection is on by default** — with
+nothing set the server answers only to `localhost`, `127.0.0.1` and `[::1]` — so binding a
+non-loopback address means naming the hosts you will reach it by, as the example above does.
+
+Loopback is not an exemption: DNS rebinding exists to reach loopback, by making the victim's
+browser resolve an attacker-controlled name to `127.0.0.1`. The browser then treats the request as
+same-origin, so no preflight is sent and `CYBERCHEF_ALLOWED_ORIGINS` never comes into it. See
+[the HTTP transport guide](docs/guides/http-transport.md#on-cyberchef_allowed_hosts) for the full
+walkthrough.
 
 **Multiple simultaneous clients work from v2.0.0.** Before it, the HTTP transport was a single
 process-wide instance, so the first client to connect succeeded and every one after it was refused

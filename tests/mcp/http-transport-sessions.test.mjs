@@ -17,6 +17,9 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+// Raw http, because `fetch` refuses to let a caller set Host -- and a forged Host is the entire
+// subject of the DNS-rebinding tests below.
+import http from "node:http";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import {
     ListToolsRequestSchema,
@@ -610,6 +613,114 @@ describe("Streamable HTTP transport - session lifecycle (issue #36)", () => {
         expect(handle.sessions.size).toBe(0);
 
         // afterEach calls closeAll again; it must be idempotent rather than throw.
+    });
+});
+
+describe("DNS-rebinding protection", () => {
+    /**
+     * Stand up a transport and wait for it to bind, returning it plus its real origin.
+     *
+     * @param {Object} opts - Extra createTransport options.
+     * @returns {Promise<{handle: Object, base: string, port: number}>} The bound server.
+     */
+    async function boot(opts = {}) {
+        const h = await createTransport({
+            type: "http", port: 0, host: "127.0.0.1",
+            createServer: createTinyServer,
+            ...opts
+        });
+        await new Promise(resolve => {
+            if (h.httpServer.listening) return resolve();
+            h.httpServer.once("listening", resolve);
+        });
+        const port = h.httpServer.address().port;
+        return { handle: h, base: `http://127.0.0.1:${port}`, port };
+    }
+
+    /**
+     * POST an initialize with an explicit, possibly-forged Host header.
+     *
+     * `fetch` will not let a caller override Host, so this speaks HTTP directly -- which is the
+     * only way to reproduce the attack, since the whole point is a Host that does not match the
+     * address the socket actually connected to.
+     *
+     * @param {number} port - Port to connect to on 127.0.0.1.
+     * @param {string} host - The Host header value to send.
+     * @returns {Promise<{status: number, body: string}>} Status line and body.
+     */
+    function postWithHost(port, host) {
+        return new Promise((resolve, reject) => {
+            const payload = JSON.stringify(INITIALIZE);
+            const req = http.request({
+                host: "127.0.0.1",
+                port,
+                path: "/mcp",
+                method: "POST",
+                headers: {
+                    "Host": host,
+                    "Content-Type": "application/json",
+                    "Accept": "application/json, text/event-stream",
+                    "Content-Length": Buffer.byteLength(payload)
+                }
+            }, res => {
+                let body = "";
+                res.setEncoding("utf8");
+                res.on("data", c => {
+                    body += c;
+                });
+                res.on("end", () => resolve({ status: res.statusCode, body }));
+            });
+            req.on("error", reject);
+            req.end(payload);
+        });
+    }
+
+    it("is ON BY DEFAULT and rejects a rebound Host", async () => {
+        // The attack this exists to stop: a page on evil.example whose DNS is rebound to
+        // 127.0.0.1. The browser treats the request as same-origin with itself, so no preflight
+        // is sent and the CORS default-deny is never consulted. The Host header is the only
+        // thing left that still tells the truth.
+        const { handle: h, port } = await boot();
+        try {
+            const res = await postWithHost(port, "evil.example:" + port);
+            expect(res.status).toBe(403);
+            expect(res.body).toMatch(/Invalid Host header/);
+        } finally {
+            await h.closeAll();
+        }
+    });
+
+    it("accepts the loopback names it is actually reached by, with and without the port", async () => {
+        const { handle: h, port } = await boot();
+        try {
+            for (const host of [`127.0.0.1:${port}`, `localhost:${port}`, "127.0.0.1", "localhost"]) {
+                const res = await postWithHost(port, host);
+                expect(res.status, `Host: ${host}`).toBe(200);
+            }
+        } finally {
+            await h.closeAll();
+        }
+    });
+
+    it("honours an explicit allowlist instead of the default", async () => {
+        const { handle: h, port } = await boot({ allowedHosts: ["mcp.internal:9000"] });
+        try {
+            expect((await postWithHost(port, "mcp.internal:9000")).status).toBe(200);
+            // The loopback defaults are REPLACED, not merged -- an explicit list means the
+            // operator has said what they will be reached by.
+            expect((await postWithHost(port, `127.0.0.1:${port}`)).status).toBe(403);
+        } finally {
+            await h.closeAll();
+        }
+    });
+
+    it("can be disabled outright with the explicit `*` opt-out", async () => {
+        const { handle: h, port } = await boot({ allowedHosts: ["*"] });
+        try {
+            expect((await postWithHost(port, "evil.example:" + port)).status).toBe(200);
+        } finally {
+            await h.closeAll();
+        }
     });
 });
 
