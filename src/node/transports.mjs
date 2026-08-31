@@ -105,6 +105,32 @@ export function isInitializeBody(body) {
 }
 
 /**
+ * Normalise the session-id header to a single, trimmed string.
+ *
+ * Node's http module joins duplicate header values with ", " for every header except set-cookie,
+ * so two `Mcp-Session-Id` headers arrive here as the STRING "aaa, bbb" rather than as an array
+ * (verified against node's own parser). That value matches no session, so the request already
+ * failed closed with a 404 -- but it failed for a reason no log line explained.
+ *
+ * Both shapes are handled anyway: `string[]` is what the type signature admits and what a future
+ * Node change or a non-http caller could produce, and a comma is never valid inside a UUID, so
+ * rejecting a joined value outright is strictly better than looking up a string that cannot match.
+ *
+ * @param {string|string[]|undefined} raw - The raw header value.
+ * @returns {string|undefined} A single session id, or undefined if absent or ambiguous.
+ */
+export function normaliseSessionId(raw) {
+    if (raw === undefined || raw === null) return undefined;
+    const value = Array.isArray(raw) ? (raw.length === 1 ? raw[0] : undefined) : raw;
+    if (typeof value !== "string") return undefined;
+    const trimmed = value.trim();
+    // Empty, or a joined duplicate. Treated as "no usable session id" rather than as a lookup that
+    // is guaranteed to miss.
+    if (trimmed === "" || trimmed.includes(",")) return undefined;
+    return trimmed;
+}
+
+/**
  * Write a JSON-RPC error response.
  *
  * @param {import("node:http").ServerResponse} res - The response.
@@ -246,7 +272,7 @@ export async function createTransport(options = {}) {
 
         const httpServer = http.createServer(async (req, res) => {
             try {
-                const sessionId = req.headers[SESSION_HEADER];
+                const sessionId = normaliseSessionId(req.headers[SESSION_HEADER]);
 
                 // GET (server-initiated SSE) and DELETE (explicit teardown) are only meaningful
                 // for an established session, and both are routed purely by header.

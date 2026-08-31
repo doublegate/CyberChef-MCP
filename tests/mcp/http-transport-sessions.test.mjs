@@ -22,7 +22,7 @@ import {
     ListToolsRequestSchema,
     CallToolRequestSchema
 } from "@modelcontextprotocol/sdk/types.js";
-import { createTransport, isInitializeBody } from "../../src/node/transports.mjs";
+import { createTransport, isInitializeBody, normaliseSessionId } from "../../src/node/transports.mjs";
 
 /**
  * A minimal MCP server standing in for the real one.
@@ -263,6 +263,27 @@ describe("Streamable HTTP transport - session lifecycle (issue #36)", () => {
         }
     });
 
+    it("400s a POST carrying a DUPLICATED session header instead of routing it", async () => {
+        const a = await post(base, INITIALIZE);
+        // Two Mcp-Session-Id headers arrive joined as "id, id". Before normalisation that string
+        // was looked up directly -- a guaranteed miss that surfaced as a bare 404 with nothing to
+        // explain it. It is now treated as "no usable session id", so a non-initialize request
+        // gets the 400 that names the actual problem.
+        const res = await fetch(`${base}/mcp`, {
+            method: "POST",
+            headers: [
+                ["Content-Type", "application/json"],
+                ["Accept", "application/json, text/event-stream"],
+                ["mcp-session-id", a.sessionId],
+                ["mcp-session-id", a.sessionId]
+            ],
+            body: JSON.stringify({ jsonrpc: "2.0", id: 5, method: "tools/list", params: {} })
+        });
+        expect(res.status).toBe(400);
+        // The real session is untouched.
+        expect(handle.sessions.size).toBe(1);
+    });
+
     it("405s an unsupported method", async () => {
         const res = await fetch(`${base}/mcp`, { method: "PUT" });
         expect(res.status).toBe(405);
@@ -318,6 +339,31 @@ describe("createTransport - HTTP guard rails", () => {
         await expect(
             createTransport({ type: "http", port: 0, host: "127.0.0.1" })
         ).rejects.toThrow(/createServer factory/);
+    });
+});
+
+describe("normaliseSessionId", () => {
+    it("passes a single trimmed id through", () => {
+        expect(normaliseSessionId("abc")).toBe("abc");
+        expect(normaliseSessionId("  abc  ")).toBe("abc");
+        expect(normaliseSessionId(["abc"])).toBe("abc");
+    });
+
+    it("rejects a DUPLICATED header rather than looking up a value that cannot match", () => {
+        // Node joins duplicate header values with ", " for every header except set-cookie, so two
+        // `Mcp-Session-Id` headers arrive as the string "aaa, bbb" -- verified against node's own
+        // parser. A comma is never valid inside a UUID.
+        expect(normaliseSessionId("aaa, bbb")).toBeUndefined();
+        expect(normaliseSessionId(["aaa", "bbb"])).toBeUndefined();
+    });
+
+    it("treats absent, empty and non-string values as no session", () => {
+        expect(normaliseSessionId(undefined)).toBeUndefined();
+        expect(normaliseSessionId(null)).toBeUndefined();
+        expect(normaliseSessionId("")).toBeUndefined();
+        expect(normaliseSessionId("   ")).toBeUndefined();
+        expect(normaliseSessionId([])).toBeUndefined();
+        expect(normaliseSessionId(42)).toBeUndefined();
     });
 });
 
