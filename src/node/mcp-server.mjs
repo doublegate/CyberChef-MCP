@@ -341,7 +341,7 @@ const handleListTools = async () => {
     return { tools };
 };
 
-const handleCallTool = async (request) => {
+const handleCallTool = async (request, extra) => {
     const { name, arguments: args } = request.params;
 
     // Start request tracking
@@ -755,6 +755,22 @@ const handleCallTool = async (request) => {
                     // Extract progress token from MCP request metadata
                     const progressToken = request.params?._meta?.progressToken;
 
+                    // Route progress notifications back to THE CONNECTION THAT ASKED, not to the
+                    // module-level server.
+                    //
+                    // With one process-wide server that distinction did not exist. It does now:
+                    // an HTTP session owns its own Server instance, so passing the singleton here
+                    // would send this session's progress to a stdio server that is not connected
+                    // at all -- silently, since sendProgress swallows its own errors. The SDK
+                    // hands every request handler an `extra.sendNotification` bound to the right
+                    // connection, which is the routing this needs.
+                    //
+                    // The fallback keeps the module server for callers that invoke the handler
+                    // directly without an `extra` (the existing unit tests do exactly that).
+                    const progressTarget = typeof extra?.sendNotification === "function" ?
+                        { notification: (n) => extra.sendNotification(n) } :
+                        server;
+
                     // Execute with streaming progress support
                     result = await executeWithStreamingProgress({
                         bakeFunction: bake,
@@ -762,7 +778,7 @@ const handleCallTool = async (request) => {
                         input: args.input,
                         recipeArgs,
                         recipe,
-                        server,
+                        server: progressTarget,
                         progressToken,
                         streamingEnabled: ENABLE_STREAMING,
                         streamingThreshold: STREAMING_THRESHOLD,
