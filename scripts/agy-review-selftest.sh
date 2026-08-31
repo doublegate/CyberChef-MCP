@@ -281,6 +281,18 @@ check "a heading MENTIONING an error mid-line is not caught" "NOMATCH" \
 check "a leading-whitespace error is still caught" "MATCH" \
   "$(se '   Error: UNAVAILABLE (code 503)')"
 
+# REGRESSION, observed on CyberChef-MCP PR #72. The guard used to enumerate known backend
+# signatures (UNAVAILABLE, RESOURCE_EXHAUSTED, DEADLINE_EXCEEDED, code 4xx/5xx...). A timeout is
+# none of those, so agy posted this as its entire review and the `review` check went GREEN --
+# reproducing the exact failure the guard exists to prevent, one signature later.
+check "a TIMEOUT error is caught (was not, before the guard stopped enumerating)" "MATCH" \
+  "$(se 'Error: timeout waiting for response')"
+
+# The general form: any leading `Error:` is a failure, whatever follows it. Enumerating failure
+# modes only ever catches the ones already seen, so the guard no longer tries.
+check "an unfamiliar error signature is caught" "MATCH" \
+  "$(se 'Error: something nobody has seen before')"
+
 # The size cap is what separates "the error IS the whole capture" from "a review mentions one".
 long="Error: UNAVAILABLE (code 503) $(head -c 3000 /dev/zero | tr '\0' 'x')"
 check "a long capture opening with an error is not caught" "NOMATCH" "$(se "$long")"
