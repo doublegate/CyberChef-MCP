@@ -56,7 +56,7 @@ extract_filter() {
 # Every marked block must exist and be sourceable. A renamed or unbalanced marker would
 # otherwise extract EMPTY, and an empty guard sources fine and asserts nothing -- the same
 # absence-reads-as-agreement failure the markers were adopted to prevent.
-for guard in "service-error guard" "oauth guard" "ours-comment filter"; do
+for guard in "service-error guard" "oauth guard" "ours-comment filter" "duration parser"; do
   blk="$(extract_block "$guard")"
   [ -n "$blk" ] || { echo "FAIL: SELFTEST-EXTRACT block '$guard' is missing or empty" >&2; exit 1; }
   printf '%s\n' "$blk" | bash -n - 2>/dev/null \
@@ -308,6 +308,19 @@ check "outage + a review   -> do not fail"  "1" \
   "$(backend_outage_should_fail 2 "$TMPD/review"; echo $?)"
 check "no outage + no review -> not THIS guard's job" "1" \
   "$(backend_outage_should_fail 0 "$TMPD/empty"; echo $?)"
+
+
+# --- duration parser ---------------------------------------------------------------------------
+# The point is the REJECTIONS. A value that is not a duration must be refused, not fed into an
+# arithmetic expansion: `$(( 1x + 60 ))` is a SYNTAX ERROR that takes the whole script down under
+# `set -e`, which would turn a mis-set variable into a reviewer that never runs.
+check "duration: bare seconds"     "90"   "$(duration_to_seconds 90)"
+check "duration: explicit seconds" "90"   "$(duration_to_seconds 90s)"
+check "duration: minutes"          "300"  "$(duration_to_seconds 5m)"
+check "duration: hours"            "3600" "$(duration_to_seconds 1h)"
+for bad in m s "" 1m2s 5x -3 " 5m" 5M; do
+  check "duration: rejects '$bad'" "1" "$(duration_to_seconds "$bad" >/dev/null 2>&1; echo $?)"
+done
 
 if [ "$fails" -ne 0 ]; then
   echo "$fails check(s) failed" >&2

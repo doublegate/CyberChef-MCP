@@ -668,28 +668,53 @@ fi
 # bytes it must read and reason over.
 #
 # An explicit AGY_PRINT_TIMEOUT wins, so a caller can still pin it.
+# >>> SELFTEST-EXTRACT: duration parser
+# Parse a duration ("90", "90s", "5m", "1h") to seconds. Echoes nothing and returns 1 if the value
+# is not one of those forms -- deliberately, so a caller can decide, rather than feeding a
+# non-numeric token into an arithmetic expansion where `$(( 1x + 60 ))` is a SYNTAX ERROR that
+# takes the whole script down under `set -e`.
+duration_to_seconds() {
+  local v="$1" n unit
+  case "$v" in
+    *[!0-9smh]*|"") return 1 ;;                      # stray characters, or empty
+    *h) n="${v%h}"; unit=3600 ;;
+    *m) n="${v%m}"; unit=60 ;;
+    *s) n="${v%s}"; unit=1 ;;
+    *)  n="$v";     unit=1 ;;
+  esac
+  case "$n" in ""|*[!0-9]*) return 1 ;; esac         # "m" alone, or "1m2s"
+  printf '%s' $(( n * unit ))
+}
+# <<< SELFTEST-EXTRACT
+
+# Raise --print-timeout in proportion to the diff agy has to read.
+#
+# @param $1 size of the diff handed to agy, in bytes. Passed explicitly rather than read from the
+#           enclosing scope, so the function's inputs are visible at the call site.
 scale_timeout_for_diff() {
+  local bytes="$1"
   [ -z "$AGY_PRINT_TIMEOUT_EXPLICIT" ] || { log "AGY_PRINT_TIMEOUT set explicitly ($AGY_PRINT_TIMEOUT); not scaling"; return 0; }
 
-  local mib=$(( diff_bytes / 1048576 ))
-  [ "$mib" -ge 1 ] || return 0          # under a MiB: the base budget is ample
+  # Computed from BYTES, not from truncated whole MiB: `mib = bytes / 1048576` in integer
+  # arithmetic gives a 1.99 MiB diff exactly one MiB of extra budget, which is the wrong side to
+  # round on for the case this exists to fix.
+  local extra=$(( bytes * AGY_TIMEOUT_SECONDS_PER_MIB / 1048576 ))
+  [ "$extra" -gt 0 ] || return 0        # rounds to nothing: keep the base budget untouched
 
-  # Base is a duration string ("5m"); convert to seconds so the two can be added.
   local base_s
-  case "$AGY_PRINT_TIMEOUT" in
-    *m) base_s=$(( ${AGY_PRINT_TIMEOUT%m} * 60 )) ;;
-    *s) base_s="${AGY_PRINT_TIMEOUT%s}" ;;
-    *)  base_s="$AGY_PRINT_TIMEOUT" ;;
-  esac
+  if ! base_s="$(duration_to_seconds "$AGY_PRINT_TIMEOUT")"; then
+    log "AGY_PRINT_TIMEOUT ('$AGY_PRINT_TIMEOUT') is not a recognised duration; leaving it alone"
+    return 0
+  fi
 
-  local scaled=$(( base_s + mib * AGY_TIMEOUT_SECONDS_PER_MIB ))
+  local scaled=$(( base_s + extra ))
   # Ceiling, so a pathological diff cannot pin the self-hosted runner for an hour.
   [ "$scaled" -gt "$AGY_PRINT_TIMEOUT_MAX_SECONDS" ] && scaled="$AGY_PRINT_TIMEOUT_MAX_SECONDS"
 
   AGY_PRINT_TIMEOUT="${scaled}s"
-  log "diff is ${mib} MiB; raised --print-timeout to ${AGY_PRINT_TIMEOUT} (base ${base_s}s + ${mib} x ${AGY_TIMEOUT_SECONDS_PER_MIB}s)"
+  log "diff is ${bytes} bytes; raised --print-timeout to ${AGY_PRINT_TIMEOUT} (base ${base_s}s + ${extra}s)"
 }
-scale_timeout_for_diff
+scale_timeout_for_diff "$diff_bytes"
 
 # --- run agy headless, under a PTY (works around agy issue #76: -p drops --------
 #     stdout when stdout is not a TTY, e.g. piped/redirected/subprocess) ---------
