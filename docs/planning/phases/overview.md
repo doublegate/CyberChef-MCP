@@ -1,6 +1,6 @@
 # Project Roadmap (bootstrap-era)
 
-> **⚠️ Superseded. This is the ORIGINAL bootstrap plan, not the current roadmap.**
+> **Superseded. This is the ORIGINAL bootstrap plan, not the current roadmap.**
 >
 > It was written before v1.0.0 and describes getting a basic MCP server running. It contradicts
 > [`../ROADMAP.md`](../ROADMAP.md), which is the authoritative planning document, and it does not

@@ -1,6 +1,6 @@
 # CyberChef MCP Server - Task Tracker
 
-> **⚠️ This file is a stale bootstrap-era artefact and is NOT the current task list.**
+> **This file is a stale bootstrap-era artefact and is NOT the current task list.**
 >
 > It was last touched in December 2025, when the current version was v1.1.0, and its per-release
 > checklists were never maintained past that point — v1.2.0 through v2.0.0 all shipped without it

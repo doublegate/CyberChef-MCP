@@ -9,7 +9,6 @@
  * @license GPL-3.0-or-later
  */
 
-import pkg from "../../package.json" with { type: "json" };
 import { describe, it, expect, beforeEach } from "vitest";
 import {
     LRUCache,
@@ -600,7 +599,14 @@ describe("Handler Dispatch Tests", () => {
 
     describe("Server Configuration Exports", () => {
         it("should export all configuration constants", () => {
-            expect(VERSION).toBe(pkg.mcpVersion);
+            // Asserted as a SHAPE, not against pkg.mcpVersion.
+            //
+            // `expect(VERSION).toBe(pkg.mcpVersion)` reads like a test and is a tautology:
+            // config.mjs IS `pkg.mcpVersion`, so the assertion compares a value to itself and can
+            // never fail. What can still go wrong is the export vanishing or package.json carrying
+            // a malformed version, and those are what this checks.
+            expect(typeof VERSION).toBe("string");
+            expect(VERSION).toMatch(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/);
             expect(MAX_INPUT_SIZE).toBeGreaterThan(0);
             expect(OPERATION_TIMEOUT).toBeGreaterThan(0);
             expect(STREAMING_THRESHOLD).toBeGreaterThan(0);

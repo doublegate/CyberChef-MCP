@@ -9,7 +9,6 @@
  * @license GPL-3.0-or-later
  */
 
-import pkg from "../../package.json" with { type: "json" };
 import { describe, it, expect } from "vitest";
 import OperationConfig from "../../src/core/config/OperationConfig.json" with {type: "json"};
 
@@ -202,7 +201,14 @@ describe("MCP Server Integration Tests", () => {
     describe("Configuration Constants", () => {
         it("should export VERSION", async () => {
             const { VERSION } = await import("../../src/node/mcp-server.mjs");
-            expect(VERSION).toBe(pkg.mcpVersion);
+            // Asserted as a SHAPE, not against pkg.mcpVersion.
+            //
+            // `expect(VERSION).toBe(pkg.mcpVersion)` reads like a test and is a tautology:
+            // config.mjs IS `pkg.mcpVersion`, so the assertion compares a value to itself and can
+            // never fail. What can still go wrong is the export vanishing or package.json carrying
+            // a malformed version, and those are what this checks.
+            expect(typeof VERSION).toBe("string");
+            expect(VERSION).toMatch(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/);
         });
 
         it("should export configuration constants", async () => {
