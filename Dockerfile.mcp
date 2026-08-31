@@ -102,12 +102,20 @@ RUN rm -rf \
 FROM cgr.dev/chainguard/node:latest@sha256:f819ce9bc54ff2a771a6849ec8453aaab9bb697873f3f6b91039ed07a3626748
 
 # Security: Add metadata labels
+# Registry metadata. These are what a package page shows, so they are the first thing anyone reads
+# about this image -- and all three of the values below were wrong before v2.1.0:
+#   * the operation count said 463; upstream v11.4.0 has 504
+#   * the documentation URL pointed at docs/user_guide.md, which does not exist -- the file is
+#     docs/guides/user_guide.md, so the label linked to a 404
+#   * nothing described the tool surface, which is the single most surprising thing about the
+#     server: `tools/list` returns ~24 tools, not 524
 LABEL org.opencontainers.image.title="CyberChef MCP Server" \
-      org.opencontainers.image.description="MCP server exposing 463 CyberChef operations as AI tools" \
+      org.opencontainers.image.description="MCP server exposing all 504 GCHQ CyberChef operations as AI tools. tools/list is a compact index (~24 tools); every operation is reachable via cyberchef_bake." \
       org.opencontainers.image.vendor="DoubleGate" \
       org.opencontainers.image.licenses="GPL-3.0-or-later" \
       org.opencontainers.image.source="https://github.com/doublegate/CyberChef-MCP" \
-      org.opencontainers.image.documentation="https://github.com/doublegate/CyberChef-MCP/blob/master/docs/user_guide.md"
+      org.opencontainers.image.url="https://github.com/doublegate/CyberChef-MCP" \
+      org.opencontainers.image.documentation="https://github.com/doublegate/CyberChef-MCP/blob/master/docs/guides/user_guide.md"
 
 WORKDIR /app
 

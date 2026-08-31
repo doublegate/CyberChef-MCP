@@ -226,6 +226,53 @@ jobs:
             echo "Release $TAG_NAME already exists"
           fi
 
+      # =============================================================================
+      # Docker Hub description: synced from the repository, so it cannot drift
+      # =============================================================================
+      # It is NOT generated from the README -- Docker Hub has no such mechanism -- so before this
+      # step it was edited by hand and went stale silently: it advertised v1.4.6 while 1.9.0 was
+      # current, claimed Node 22 for an image running Node 25, said "463 operations" when there
+      # were 504, and carried ~101 relative links that resolve to nothing off GitHub.
+      #
+      # docs/registry/dockerhub-description.md is the source, and every link in it is absolute.
+      - name: Sync the Docker Hub description
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          DOCKERHUB_IMAGE_NAME: ${{ env.DOCKERHUB_IMAGE_NAME }}
+        run: |
+          set -euo pipefail
+          DESC_FILE="docs/registry/dockerhub-description.md"
+          if [ ! -f "$DESC_FILE" ]; then
+            echo "::warning::$DESC_FILE not found; leaving the Docker Hub description as it is"
+            exit 0
+          fi
+
+          # A JWT from username+token. The description endpoint does not accept the token directly.
+          jwt="$(curl -sS -X POST https://hub.docker.com/v2/users/login \
+                   -H 'Content-Type: application/json' \
+                   -d "$(jq -n --arg u "$DOCKERHUB_USERNAME" --arg p "$DOCKERHUB_TOKEN" \
+                          '{username:$u,password:$p}')" | jq -r '.token // empty')"
+          if [ -z "$jwt" ]; then
+            echo "::warning::could not authenticate to Docker Hub; skipping the description sync"
+            exit 0
+          fi
+
+          code="$(jq -n --rawfile full "$DESC_FILE" \
+                    --arg short "MCP server exposing all 504 GCHQ CyberChef operations as AI tools" \
+                    '{full_description:$full, description:$short}' \
+                  | curl -sS -o /dev/null -w '%{http_code}' \
+                      -X PATCH "https://hub.docker.com/v2/repositories/${DOCKERHUB_IMAGE_NAME}/" \
+                      -H "Authorization: JWT ${jwt}" \
+                      -H 'Content-Type: application/json' --data @-)"
+          if [ "$code" = "200" ]; then
+            echo "Docker Hub description updated from $DESC_FILE"
+          else
+            # Not fatal: the image is already published, and a stale description must not fail a
+            # release that otherwise succeeded.
+            echo "::warning::Docker Hub description update returned HTTP $code"
+          fi
+
       - name: Attach tarball to release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
