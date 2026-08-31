@@ -7,7 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **17 image operations returned Node's shared buffer pool instead of the image.** Each ended
+  `run()` with `return imageBuffer.buffer`; a Node `Buffer` is a view, so for a small allocation
+  `.buffer` is the pool. A 129-byte PNG came back as a 65,599-byte ArrayBuffer at byteOffset 32, so
+  `present()` found no magic bytes and threw `Invalid file type.` — and the surplus 65 KB was
+  whatever else the process had recently allocated, which on a multi-caller server is other callers'
+  data. Upstream fixed exactly this in `GenerateImage.mjs` and left the siblings; the same fix is
+  now applied to all 17 (`patches/fork/09`). Affects `Add Text To Image`, `Blur Image`,
+  `Contain Image`, `Convert Image Format`, `Cover Image`, `Crop Image`, `Dither Image`,
+  `Flip Image`, `Image Brightness / Contrast`, `Image Filter`, `Image Hue/Saturation/Lightness`,
+  `Image Opacity`, `Invert Image`, `Normalise Image`, `Resize Image`, `Rotate Image` and
+  `Sharpen Image`.
+- **`Add Text To Image` had never worked in this fork.** It loaded bitmap fonts through webpack-only
+  imports under `src/web/`, removed in v1.7.1, and resolved them against `self.docURL`, which does
+  not exist under Node — so every call failed while the tool stayed advertised. The fonts are now
+  vendored at `src/vendor/bmfonts/` and loaded from disk (`patches/fork/10`).
+- **`terser` was a devDependency but is imported at runtime** by `JavaScript Minify`, so an
+  installed package could not start. Moved to `dependencies`.
+
+### Changed
+
+- **`crypto-api` is vendored at `src/vendor/crypto-api/` (MIT) instead of installed.** The published
+  package cannot be loaded as shipped: its `main` names an `index` file absent from its own tarball,
+  and its ESM sources use extensionless relative imports Node rejects. Patching it required a
+  dependency install script, which npm 12 blocks by default — the last thing blocking npm as a
+  distribution channel. A `--ignore-scripts` install of the packed tarball now starts and serves.
+
+### Added
+
+- `tests/mcp/image-operations.test.mjs` — 19 tests pinning all 17 image operations end to end, plus
+  the operation-boundary assertions that make the buffer-pool defect visible.
 
 ## [2.2.0] - 2026-08-31
 
