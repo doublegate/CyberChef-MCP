@@ -10,7 +10,7 @@
 
 import { promises as fs } from "fs";
 import { dirname } from "path";
-import { randomUUID } from "crypto";
+import { randomUUID, randomBytes } from "crypto";
 import { getLogger } from "./logger.mjs";
 import { createInputError } from "./errors.mjs";
 import { RecipeSchema } from "./recipe-validator.mjs";
@@ -124,7 +124,15 @@ export class RecipeStorage {
      * @returns {Promise<void>}
      */
     async save(storage) {
-        const tempFile = `${this.filePath}.tmp`;
+        // Random suffix, not a fixed `.tmp` sibling.
+        //
+        // `${this.filePath}.tmp` is predictable, so anything that can write to the storage
+        // directory can pre-create it -- or symlink it elsewhere -- and the write below follows
+        // the link. That matters because CYBERCHEF_RECIPE_STORAGE is caller-supplied and may point
+        // at a shared directory; the default `./recipes.json` is not, but a default is not a
+        // guarantee. Paired with the `wx` flag on the write, which fails rather than truncating
+        // when the path already exists, so a pre-created file loses the race instead of winning it.
+        const tempFile = `${this.filePath}.${randomBytes(8).toString("hex")}.tmp`;
 
         try {
             // Ensure directory exists
@@ -150,7 +158,14 @@ export class RecipeStorage {
             storage.lastModified = new Date().toISOString();
 
             // Write to temp file
-            await fs.writeFile(tempFile, JSON.stringify(storage, null, 2), "utf8");
+            await fs.writeFile(tempFile, JSON.stringify(storage, null, 2), {
+                encoding: "utf8",
+                // Exclusive create: fail if the path exists rather than following it.
+                flag: "wx",
+                // Owner-only. The default 0666-minus-umask can leave saved recipes
+                // world-readable, and a recipe can carry keys and IVs.
+                mode: 0o600
+            });
 
             // Atomic rename
             await fs.rename(tempFile, this.filePath);

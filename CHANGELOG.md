@@ -7,8 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet. Add user-visible changes here in the same PR as the change itself — the reviewer
-guidance in `.github/agy-review.md` flags a behaviour change that arrives without one.
+### Security
+- **Recipe storage no longer writes through a predictable temp file.** `save()` staged the new
+  content in `<path>.tmp`, a fixed sibling name. Anything able to write to the storage directory
+  could pre-create or symlink it, and the write would follow — and `CYBERCHEF_RECIPE_STORAGE` is
+  caller-supplied, so that directory is not necessarily private. The staging file now carries a
+  random suffix and is created with `flag: "wx"`, so a pre-created path fails the write instead of
+  capturing it, and with `mode: 0o600`, since a saved recipe can carry keys and IVs. Raised by
+  CodeQL (`js/insecure-temporary-file`, high) on the v2.0.0 release merge.
 
 ## [2.0.0] - 2026-08-31
 

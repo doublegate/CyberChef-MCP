@@ -12,7 +12,6 @@ import { RecipeStorage } from "../../src/node/recipe-storage.mjs";
 import { promises as fs } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
-import { randomUUID } from "crypto";
 
 describe("RecipeStorage", () => {
     let storage;
@@ -21,9 +20,11 @@ describe("RecipeStorage", () => {
 
     beforeEach(async () => {
         // Create temp directory for tests
-        testDir = join(tmpdir(), `cyberchef-test-${randomUUID()}`);
+        // mkdtemp, not join(tmpdir(), random) + mkdir. mkdtemp creates the directory atomically
+        // with mode 0700 and its own random suffix, so there is no window in which the path exists
+        // but is not yet owner-only -- which is the difference js/insecure-temporary-file is about.
+        testDir = await fs.mkdtemp(join(tmpdir(), "cyberchef-test-"));
         testFile = join(testDir, "recipes.json");
-        await fs.mkdir(testDir, { recursive: true });
 
         storage = new RecipeStorage(testFile);
     });
@@ -74,6 +75,49 @@ describe("RecipeStorage", () => {
             await fs.writeFile(testFile, "invalid json", "utf8");
 
             await expect(storage.load()).rejects.toThrow();
+        });
+    });
+
+    describe("save - temp file hardening", () => {
+        const storageData = () => ({
+            version: "1.0.0",
+            recipes: [],
+            lastModified: new Date().toISOString()
+        });
+
+        it("does NOT write through a predictable `<path>.tmp` sibling", async () => {
+            // The predictable name was the finding: anything able to write to the storage
+            // directory could pre-create `<path>.tmp`, or symlink it elsewhere, and the save would
+            // follow it. CYBERCHEF_RECIPE_STORAGE is caller-supplied, so the directory is not
+            // necessarily private.
+            //
+            // Pre-creating the OLD name must no longer interfere with a save, and must not be
+            // consumed by it.
+            const predictable = `${testFile}.tmp`;
+            await fs.writeFile(predictable, "squatted", "utf8");
+
+            await storage.save(storageData());
+
+            // The save succeeded...
+            const saved = JSON.parse(await fs.readFile(testFile, "utf8"));
+            expect(saved.version).toBe("1.0.0");
+
+            // ...and left the squatted file untouched, i.e. never used it.
+            expect(await fs.readFile(predictable, "utf8")).toBe("squatted");
+        });
+
+        it("leaves no temp files behind", async () => {
+            await storage.save(storageData());
+            const leftovers = (await fs.readdir(testDir)).filter(f => f.endsWith(".tmp"));
+            expect(leftovers).toEqual([]);
+        });
+
+        it("writes the storage file owner-only", async () => {
+            // A recipe can carry keys and IVs, so the default 0666-minus-umask is too generous.
+            await storage.save(storageData());
+            const { mode } = await fs.stat(testFile);
+            // Low 9 bits: owner rw, group/other nothing.
+            expect(mode & 0o777).toBe(0o600);
         });
     });
 
