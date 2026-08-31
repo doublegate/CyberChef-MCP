@@ -8,7 +8,7 @@
 
 const assert = require("assert");
 
-require("cyberchef").then(async chef => {
+require("cyberchef-mcp").then(async chef => {
 
     const d = await chef.bake("Testing, 1 2 3", [
         chef.toHex,

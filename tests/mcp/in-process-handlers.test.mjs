@@ -126,6 +126,83 @@ describe("in-process handlers: tools/list", () => {
         }
     });
 
+    it("advertises BOTH argument forms for a recipe step (F-09)", async () => {
+        const { client, close } = await connected();
+        try {
+            // This declared `type: "array"` only -- positional -- while the implementation has
+            // accepted NAMED arguments since DEP005, and named arguments are the entire reason a
+            // model can use these operations correctly. A client that validates outbound arguments
+            // against `inputSchema` therefore could not send the supported form at all, and
+            // `cyberchef_recipe_create` disagreed two tools away by declaring an object.
+            const { tools } = await client.listTools();
+            const args = tools.find(t => t.name === "cyberchef_bake")
+                .inputSchema.properties.recipe.items.properties.args;
+
+            const kinds = (args.anyOf || []).map(s => s.type).sort();
+            expect(kinds).toEqual(["array", "object"]);
+        } finally {
+            await close();
+        }
+    });
+
+    it("runs a recipe step given named, positional or absent arguments", async () => {
+        const { client, close } = await connected();
+        try {
+            const named = await callText(client, "cyberchef_bake", {
+                input: "Hello", recipe: [{ op: "To Base64", args: { alphabet: "A-Za-z0-9+/=" } }]
+            });
+            const positional = await callText(client, "cyberchef_bake", {
+                input: "Hello", recipe: [{ op: "To Base64", args: ["A-Za-z0-9+/="] }]
+            });
+            const omitted = await callText(client, "cyberchef_bake", {
+                input: "Hello", recipe: [{ op: "To Base64" }]
+            });
+            expect(named).toBe("SGVsbG8=");
+            expect(positional).toBe(named);
+            expect(omitted).toBe(named);
+        } finally {
+            await close();
+        }
+    });
+
+    it("declares outputSchema only where this server defines the shape", async () => {
+        const { client, close } = await connected();
+        try {
+            const { tools } = await client.listTools();
+            const withSchema = tools.filter(t => t.outputSchema).map(t => t.name).sort();
+
+            // The 504 operations deliberately have none: their output is whatever CyberChef
+            // returns, undocumented and varying per operation, so a schema would be a claim
+            // rather than a contract -- and a wrong one makes the SDK reject valid results.
+            expect(withSchema).toEqual(["cyberchef_categories", "cyberchef_list_operations"]);
+        } finally {
+            await close();
+        }
+    });
+
+    it("returns structuredContent that satisfies the declared schema", async () => {
+        const { client, close } = await connected();
+        try {
+            // The SDK validates structuredContent against outputSchema, so a mismatch throws
+            // here rather than reaching a caller.
+            const cats = await client.callTool({ name: "cyberchef_categories", arguments: {} });
+            expect(cats.structuredContent.categories.length).toBeGreaterThan(0);
+            expect(typeof cats.structuredContent.totalOperations).toBe("number");
+
+            // `content` must remain, for clients that do not read structured results.
+            expect(cats.content[0].text).toBeTruthy();
+            expect(JSON.parse(cats.content[0].text)).toEqual(cats.structuredContent);
+
+            const listed = await client.callTool({
+                name: "cyberchef_list_operations", arguments: { category: "Compression" }
+            });
+            expect(listed.structuredContent.category).toBe("Compression");
+            expect(listed.structuredContent.operations.length).toBeGreaterThan(0);
+        } finally {
+            await close();
+        }
+    });
+
     it("exposes the navigation index and the executor", async () => {
         const { client, close } = await connected();
         try {
@@ -351,24 +428,45 @@ describe("in-process handlers: recipe management", () => {
         }
     });
 
-    it("reports a draft recipe as invalid rather than crashing (F-02)", async () => {
+    it("validates and tests a DRAFT recipe, with no server-assigned fields (F-02)", async () => {
         const { client, close } = await connected();
         try {
-            // Pins today's behaviour so the F-02 fix is visible as a deliberate change rather
-            // than an accident: validate answers structurally, test throws. They disagree.
-            const validated = await callJson(client, "cyberchef_recipe_validate", {
-                recipe: { name: "draft", operations: [{ op: "To Base64" }] }
-            });
-            expect(validated.valid).toBe(false);
+            // `id`, `version`, `created` and `updated` are assigned by the server when a recipe is
+            // stored. Requiring them here made "check this before I save it" -- the only
+            // interesting use of a validate tool -- impossible: it failed with
+            // `expected string, received undefined` on two values only the server can supply.
+            const draft = { name: "draft", operations: [{ op: "To Base64" }] };
 
-            const tested = await client.callTool({
-                name: "cyberchef_recipe_test",
-                arguments: {
-                    recipe: { name: "draft", operations: [{ op: "To Base64" }] },
-                    testInputs: ["Hello"]
-                }
+            const validated = await callJson(client, "cyberchef_recipe_validate", { recipe: draft });
+            expect(validated.valid).toBe(true);
+            expect(validated.operationCount).toBe(1);
+
+            const tested = await callJson(client, "cyberchef_recipe_test", {
+                recipe: draft,
+                testInputs: ["Hello"]
             });
-            expect(tested.isError).toBe(true);
+            expect(tested.passed).toBe(1);
+            expect(tested.results[0].output).toBe("SGVsbG8=");
+        } finally {
+            await close();
+        }
+    });
+
+    it("still rejects a draft that is genuinely wrong", async () => {
+        const { client, close } = await connected();
+        try {
+            // Relaxing the server-assigned fields must not relax what actually decides whether a
+            // recipe is correct: the operation names, their arguments, and a non-empty list.
+            const badOp = await callJson(client, "cyberchef_recipe_validate", {
+                recipe: { name: "b", operations: [{ op: "Nope" }] }
+            });
+            expect(badOp.valid).toBe(false);
+            expect(badOp.error).toMatch(/Invalid operation name/);
+
+            const empty = await callJson(client, "cyberchef_recipe_validate", {
+                recipe: { name: "e", operations: [] }
+            });
+            expect(empty.valid).toBe(false);
         } finally {
             await close();
         }

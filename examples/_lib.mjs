@@ -12,7 +12,9 @@
  */
 
 import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
+import { dirname, resolve, join } from "node:path";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
@@ -20,6 +22,14 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 
 /** Path to the MCP server entry point, resolved relative to this file rather than to the cwd. */
 export const SERVER = resolve(HERE, "../src/node/mcp-server.mjs");
+
+/**
+ * A throwaway directory for the recipe store, created once per example process.
+ *
+ * Left behind deliberately rather than cleaned up: it lives under the OS temp
+ * directory, and an example that fails mid-run is easier to debug with its store intact.
+ */
+const RECIPE_DIR = mkdtempSync(join(tmpdir(), "cyberchef-example-"));
 
 /**
  * Connect a client to a freshly spawned stdio server.
@@ -34,11 +44,17 @@ export async function connect(name = "example") {
     const client = new Client({ name, version: "1.0.0" }, { capabilities: {} });
     await client.connect(new StdioClientTransport({
         command: process.execPath,
-        // `--openssl-legacy-provider` matches what `npm run mcp` and the Docker image use. A few
-        // operations reach algorithms OpenSSL 3 moved out of its default provider, and without the
-        // flag `Generate all hashes` returns its input unchanged rather than erroring -- so an
-        // example that omitted it would quietly demonstrate the wrong behaviour.
-        args: ["--openssl-legacy-provider", SERVER],
+        // No `--openssl-legacy-provider`. It was here until v2.2.0, with a comment claiming
+        // `Generate all hashes` needed it -- which was wrong twice over: the flag is inert on any
+        // Node without a legacy provider module (including the Docker image, where it printed
+        // "Unable to load legacy provider." and changed nothing), and the one operation that
+        // reached OpenSSL, `LM Hash`, now computes DES in JavaScript instead.
+        args: [SERVER],
+        // The recipe store defaults to `./recipes.json`, so an example that saves a recipe writes
+        // one into the repository root -- which is user data, and may hold keys and IVs, since a
+        // saved recipe carries its arguments. Pointed at a temp directory instead. Example 05 did
+        // this for itself; doing it here makes every example safe by default.
+        env: { ...process.env, CYBERCHEF_RECIPE_STORAGE: join(RECIPE_DIR, "recipes.json") },
         // The server's diagnostics go to stderr; let them through so a reader can see what the
         // server is doing, rather than swallowing the one channel that explains a failure.
         stderr: "inherit"
@@ -49,8 +65,10 @@ export async function connect(name = "example") {
 /**
  * Call a tool and return its first text result.
  *
- * The MCP content array is a list of typed blocks; every CyberChef tool returns a single text
- * block, so unwrapping it here keeps the examples about CyberChef rather than about MCP shapes.
+ * The MCP content array is a list of typed blocks. MOST tools return a single text block, so
+ * unwrapping it here keeps the examples about CyberChef rather than about MCP shapes -- but since
+ * v2.2.0 image and audio operations return `image`/`audio` blocks, which carry `data` and no
+ * `text` at all. Example 09 reads the raw block for those.
  *
  * @param {Client} client - A connected client.
  * @param {string} name - Tool name, including the `cyberchef_` prefix.

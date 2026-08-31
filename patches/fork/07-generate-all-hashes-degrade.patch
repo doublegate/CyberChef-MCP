@@ -1,0 +1,44 @@
+--- a/src/core/operations/GenerateAllHashes.mjs
++++ b/src/core/operations/GenerateAllHashes.mjs
+@@ -119,10 +119,25 @@
+         this.inputStr = Utils.arrayBufferToStr(input, false);
+         this.inputByteArray = new Uint8Array(input);
+ 
+-        let digest, output = "";
++        let output = "";
+         // iterate over each of the hashes
+         this.hashes.forEach(hash => {
+-            digest = this.executeAlgo(hash.algo, hash.inputType, hash.params || []);
++            // FORK CHANGE (patches/fork/07): one algorithm's failure must not discard the rest.
++            //
++            // Every algorithm ran unguarded, so a single throw propagated out of the operation and
++            // the caller lost EVERY hash that had computed correctly. Observed in the shipped
++            // container: `LM Hash` threw `error:0308010C:digital envelope routines::unsupported`
++            // (single DES is legacy-only under OpenSSL 3, and the runtime image carries no legacy
++            // provider) and destroyed the twenty other digests along with it.
++            //
++            // For an operation whose whole purpose is "give me every hash of this", that is the
++            // worst available failure mode. Report the one that failed on its own line instead.
++            let digest;
++            try {
++                digest = this.executeAlgo(hash.algo, hash.inputType, hash.params || []);
++            } catch (err) {
++                digest = `[unavailable: ${err.message || err}]`;
++            }
+             output += this.formatDigest(digest, length, includeNames, hash.name);
+         });
+ 
+@@ -165,7 +180,12 @@
+      * @returns {string}
+      */
+     formatDigest(digest, length, includeNames, name) {
+-        if (length !== "All" && (digest.length * 4) !== parseInt(length, 10))
++        // FORK CHANGE (patches/fork/07): an unavailable-algorithm report is not a digest, so the
++        // length filter must not swallow it. `[unavailable: ...]` has no bit length, so
++        // `digest.length * 4` never matches a requested size and the line vanished for every
++        // length except "All" -- which silently reinstated the failure this patch exists to fix.
++        const unavailable = digest.startsWith("[unavailable:");
++        if (!unavailable && length !== "All" && (digest.length * 4) !== parseInt(length, 10))
+             return "";
+ 
+         if (!includeNames)

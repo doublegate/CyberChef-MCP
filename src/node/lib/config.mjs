@@ -23,7 +23,12 @@ import pkg from "../../../package.json" with { type: "json" };
 // package.json is now the only one: this derives it, the four tests assert against it, and
 // baseline.json no longer carries a version at all -- it records the tool INVENTORY, and nothing
 // ever read a version from it.
-export const VERSION = pkg.mcpVersion;
+//
+// It reads `version`, not `mcpVersion`, from v2.2.0. `version` used to hold the UPSTREAM base
+// (11.4.0) while the product version hid in a bespoke `mcpVersion` -- workable until the package
+// is published, since npm requires `version` to be the version it publishes. The upstream base
+// now lives in `cyberchefUpstreamVersion`, so each number says which one it is.
+export const VERSION = pkg.version;
 export const MAX_INPUT_SIZE = parseInt(process.env.CYBERCHEF_MAX_INPUT_SIZE, 10) || 100 * 1024 * 1024; // 100MB default
 export const OPERATION_TIMEOUT = parseInt(process.env.CYBERCHEF_OPERATION_TIMEOUT, 10) || 30000; // 30s default
 export const STREAMING_THRESHOLD = parseInt(process.env.CYBERCHEF_STREAMING_THRESHOLD, 10) || 10 * 1024 * 1024; // 10MB default

@@ -1,3 +1,8 @@
+#!/usr/bin/env node
+// The shebang matters because this file is a `bin` entry. Without it npm still creates the
+// symlink, and the shell tries to run the JavaScript AS A SHELL SCRIPT:
+//     cyberchef-mcp: line 1: /bin: Is a directory
+// Node strips a shebang before parsing, so it costs nothing on the `import` path.
 /**
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
@@ -9,11 +14,18 @@
 
 import { help } from "./index.mjs";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import {
+    CallToolRequestSchema, ListToolsRequestSchema,
+    ListPromptsRequestSchema, GetPromptRequestSchema,
+    ListResourcesRequestSchema, ReadResourceRequestSchema, ListResourceTemplatesRequestSchema
+} from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import Utils from "../core/Utils.mjs";
 import OperationConfig from "../core/config/OperationConfig.json" with {type: "json"};
-import { dishToText } from "./lib/dish-output.mjs";
+import { toContentBlocks } from "./lib/content-blocks.mjs";
+import { annotationsForOperation, annotationsForMetaTool } from "./lib/tool-annotations.mjs";
+import { listPrompts, getPrompt } from "./lib/prompts.mjs";
+import { listResources, readResource, listResourceTemplates } from "./lib/resources.mjs";
 import { bakeOnCore } from "./lib/core-recipe.mjs";
 import { isExposed, describeSurface } from "./lib/tool-surface.mjs";
 import { categoryIndex, listOperations, describeOperations } from "./lib/tool-catalog.mjs";
@@ -43,6 +55,57 @@ function batchInputSize(operations) {
     } catch {
         return 0;
     }
+}
+
+/**
+ * A human-readable title for one of this server's own tools.
+ *
+ * `cyberchef_recipe_create` reads poorly in a client's tool picker; "Recipe create" does. Derived
+ * rather than tabulated, so a new meta-tool gets a reasonable title without anyone remembering to
+ * add one.
+ *
+ * @param {string} toolName - The tool name, including the `cyberchef_` prefix.
+ * @returns {string} The title.
+ */
+function metaToolTitle(toolName) {
+    const words = toolName.replace(/^cyberchef_/, "").replace(/_/g, " ");
+    return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/**
+ * Byte size of a content-block array, for telemetry and quota accounting.
+ *
+ * Measures what is actually sent rather than only the text: an `image` block's payload is its
+ * base64 `data`, and charging a QR code as 0 bytes would make the quota tracker lie about exactly
+ * the results that are largest.
+ *
+ * @param {Array<Object>} content - MCP content blocks.
+ * @returns {number} Total UTF-8 bytes of the payload fields.
+ */
+function contentSize(content) {
+    return content.reduce((total, block) => {
+        const payload = typeof block.text === "string" ? block.text : block.data;
+        return total + (typeof payload === "string" ? Buffer.byteLength(payload, "utf8") : 0);
+    }, 0);
+}
+
+/**
+ * A tool result carrying BOTH a text rendering and the structured object.
+ *
+ * MCP's rule is strict and easy to get half-right: a tool that declares an `outputSchema` MUST
+ * return `structuredContent` matching it, and `content` must still be present for clients that do
+ * not read structured results. Building both from ONE value here means they cannot disagree --
+ * which is the failure that would otherwise be invisible, since a client reading only `content`
+ * would never notice the structured half drifting.
+ *
+ * @param {Object} value - The structured result.
+ * @returns {{content: Array<Object>, structuredContent: Object}} The tool result.
+ */
+function structuredResult(value) {
+    return {
+        content: [{ type: "text", text: JSON.stringify(value, null, 2) }],
+        structuredContent: value
+    };
 }
 
 /**
@@ -207,7 +270,7 @@ import { TelemetryCollector } from "./lib/telemetry.mjs";
 import { RateLimiter } from "./lib/rate-limit.mjs";
 import { ResourceQuotaTracker } from "./lib/quota.mjs";
 import { BatchProcessor } from "./lib/batch.mjs";
-import { sanitizeToolName, mapArgsToZod, resolveArgValue, validateInputSize, toolArgName } from "./lib/tool-schema.mjs";
+import { sanitizeToolName, mapArgsToZod, resolveArgValue, validateInputSize, toolArgName, assertKnownArgs} from "./lib/tool-schema.mjs";
 
 // Performance configuration (configurable via environment variables)
 
@@ -227,16 +290,31 @@ const batchProcessor = new BatchProcessor();
 // Note: CPU_INTENSIVE_OPERATIONS moved to worker-pool.mjs
 // Note: STREAMING_OPERATIONS is imported from streaming.mjs
 
+/**
+ * What this server advertises it can do.
+ *
+ * ONE declaration, for the same reason `registerHandlers` is one registration site: there are two
+ * places a server is constructed -- the module singleton that backs stdio, and the per-session
+ * factory that backs HTTP -- and two capability lists drift. That is not hypothetical. Adding
+ * prompts and resources updated the factory and left the singleton advertising `tools` only, so
+ * every stdio client (which is most of them) would have been told this server has no prompts while
+ * the handlers sat there answering.
+ *
+ * A capability listed here MUST have a handler in `registerHandlers`; advertising one without a
+ * handler makes a client call something that answers "method not found".
+ */
+const SERVER_CAPABILITIES = {
+    tools: {},
+    prompts: {},
+    resources: {}
+};
+
 const server = new Server(
     {
         name: "cyberchef-mcp",
         version: VERSION,
     },
-    {
-        capabilities: {
-            tools: {},
-        },
-    }
+    { capabilities: SERVER_CAPABILITIES }
 );
 
 
@@ -253,7 +331,24 @@ const handleListTools = async () => {
                 input: z.string().describe("The input data"),
                 recipe: z.array(z.object({
                     op: z.string().describe("Operation name"),
-                    args: z.array(z.any()).optional().describe("Arguments for the operation")
+                    // BOTH forms, because both are supported and only one was advertised.
+                    //
+                    // This declared `z.array(z.any())` -- positional only -- while the
+                    // implementation has accepted named arguments since DEP005, and named
+                    // arguments are the entire reason a model can use these operations correctly.
+                    // A client that validates outbound arguments against `inputSchema` therefore
+                    // could not send the supported form at all, and `cyberchef_recipe_create`
+                    // disagreed with it two tools away by declaring `z.record(z.any())`.
+                    //
+                    // Named is listed first so it reads as the primary form.
+                    args: z.union([
+                        z.record(z.string(), z.any()),
+                        z.array(z.any())
+                    ]).optional().describe(
+                        "Operation arguments. Either named -- {\"key\": \"...\", \"iv\": \"...\"} " +
+                        "-- or positional, as the CyberChef UI writes them. Use " +
+                        "cyberchef_describe_operation for the argument names."
+                    )
                 })).describe("List of operations to perform")
             }))
         },
@@ -261,10 +356,31 @@ const handleListTools = async () => {
             name: "cyberchef_categories",
             description: "List CyberChef's operation categories with counts and examples. " +
                 "Start here to browse what this server can do, then use cyberchef_list_operations.",
-            inputSchema: toInputSchema(z.object({}))
+            inputSchema: toInputSchema(z.object({})),
+            // Declared only for the tools whose shape THIS SERVER defines. The 504 operations are
+            // not given one: their output is whatever CyberChef returns, undocumented and varying
+            // per operation, and inventing a schema for it would be a claim rather than a contract.
+            outputSchema: toInputSchema(z.object({
+                categories: z.array(z.object({
+                    category: z.string(),
+                    operations: z.number(),
+                    examples: z.array(z.string())
+                })),
+                totalOperations: z.number(),
+                usage: z.string()
+            }))
         },
         {
             name: "cyberchef_list_operations",
+            outputSchema: toInputSchema(z.object({
+                category: z.string(),
+                operations: z.array(z.object({
+                    operation: z.string(),
+                    summary: z.string(),
+                    args: z.number()
+                })),
+                next: z.string()
+            })),
             description: "List the operations in one category, with a one-line summary of each. " +
                 "Use cyberchef_describe_operation for full argument schemas.",
             inputSchema: toInputSchema(z.object({
@@ -463,6 +579,12 @@ const handleListTools = async () => {
         }
     ];
 
+    // Annotations for the meta-tools, applied in one pass rather than repeated across 24 literals
+    // -- where they would drift, and where a missing one is invisible.
+    for (const tool of tools) {
+        tool.annotations = annotationsForMetaTool(tool.name, metaToolTitle(tool.name));
+    }
+
     Object.keys(OperationConfig).forEach(opName => {
         // The default surface is `index`, which pre-loads no ordinary operation tools at all;
         // `curated` and `all` pre-load progressively more, and CYBERCHEF_TOOL_ALLOWLIST overrides
@@ -479,7 +601,10 @@ const handleListTools = async () => {
             tools.push({
                 name: toolName,
                 description: summariseDescription(op.description) || opName,
-                inputSchema: toInputSchema(z.object(argsSchema))
+                inputSchema: toInputSchema(z.object(argsSchema)),
+                // Derived from the operation, not the tool name, because that is what the
+                // read-only/idempotent/open-world facts are actually about.
+                annotations: annotationsForOperation(opName)
             });
         } catch (e) {
             // Log schema generation failures for debugging
@@ -528,12 +653,12 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
                 { requestId, maxRetries: RetryConfig.MAX_RETRIES, context: { tool: name } }
             );
 
-            const output = dishToText(result);
-            logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
+            // An image-producing recipe returns an `image` block rather than the empty string
+            // stripping its markup used to yield. See lib/content-blocks.mjs.
+            const content = toContentBlocks(result);
+            logRequestComplete(requestId, { outputSize: contentSize(content) });
 
-            return {
-                content: [{ type: "text", text: output }]
-            };
+            return { content };
         }
 
         if (name === "cyberchef_search") {
@@ -655,16 +780,16 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
         // hierarchy exists: it keeps 504 operation schemas off the always-loaded payload while
         // leaving every one of them reachable.
         if (name === "cyberchef_categories") {
-            const output = JSON.stringify(categoryIndex(), null, 2);
-            logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
-            return { content: [{ type: "text", text: output }] };
+            const result = structuredResult(categoryIndex());
+            logRequestComplete(requestId, { outputSize: contentSize(result.content) });
+            return result;
         }
 
         if (name === "cyberchef_list_operations") {
             try {
-                const output = JSON.stringify(listOperations(args.category), null, 2);
-                logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
-                return { content: [{ type: "text", text: output }] };
+                const result = structuredResult(listOperations(args.category));
+                logRequestComplete(requestId, { outputSize: contentSize(result.content) });
+                return result;
             } catch (err) {
                 const error = createInputError(err.message, { category: args.category });
                 logRequestError(requestId, error, { tool: name });
@@ -878,8 +1003,24 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
                 const recipeArgs = [];
 
                 if (opConfig.args) {
+                    // Same guard as the recipe path: an argument name this operation does not have
+                    // must be an error, not a silently-defaulted value. `input` is excluded because
+                    // it is the data parameter this server adds, not one of the operation's own --
+                    // which is exactly why a colliding argument is renamed to `input_arg`.
+                    const opArgs = Object.fromEntries(
+                        Object.entries(args).filter(([key]) => key !== "input")
+                    );
+                    assertKnownArgs(opName, opConfig.args, opArgs);
+
                     opConfig.args.forEach(argDef => {
-                        const userVal = args[toolArgName(argDef.name)];
+                        // Both spellings, because `assertKnownArgs` ACCEPTS both. Reading only the
+                        // sanitised key meant a raw CyberChef label -- `{"Alphabet": "..."}` --
+                        // passed validation and then resolved to `undefined`, so the operation ran
+                        // on its default. That is the same silently-wrong-answer failure the
+                        // unknown-argument check was added to stop, surviving in the other path.
+                        // `core-recipe.mjs` already does it this way.
+                        const sanitised = args[toolArgName(argDef.name)];
+                        const userVal = sanitised !== undefined ? sanitised : args[argDef.name];
                         recipeArgs.push(resolveArgValue(argDef, userVal));
                     });
                 }
@@ -892,8 +1033,13 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
                     cached = operationCache.get(cacheKey);
                     if (cached) {
                         logCache("hit", { operation: opName, requestId });
-                        const output = typeof cached === "string" ? cached : JSON.stringify(cached);
-                        const outputSize = Buffer.byteLength(output, "utf8");
+                        // Rendered through `toContentBlocks`, exactly as a cache MISS is. The
+                        // cache stores `result.value`, and returning that as a text block meant
+                        // the first call to `cyberchef_generate_qr_code` produced an `image`
+                        // block and every subsequent call produced text -- so the multi-modal fix
+                        // silently stopped applying the moment a result was cached.
+                        const content = toContentBlocks({ value: cached }, opConfig.outputType);
+                        const outputSize = contentSize(content);
 
                         // Track quota
                         quotaTracker.trackData(inputSize, outputSize);
@@ -916,9 +1062,7 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
                             duration
                         });
 
-                        return {
-                            content: [{ type: "text", text: output }]
-                        };
+                        return { content };
                     }
 
                     logCache("miss", { operation: opName, requestId });
@@ -983,8 +1127,11 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
                     logCache("set", { operation: opName, requestId });
                 }
 
-                const output = dishToText(result);
-                const outputSize = Buffer.byteLength(output, "utf8");
+                // `opConfig.outputType` rather than the recipe's, because a direct operation tool
+                // runs exactly one operation -- this is what makes `cyberchef_generate_qr_code`
+                // return the picture instead of "".
+                const content = toContentBlocks(result, opConfig.outputType);
+                const outputSize = contentSize(content);
                 const duration = Date.now() - startTime;
 
                 // Track quota
@@ -1007,9 +1154,7 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
                     duration
                 });
 
-                return {
-                    content: [{ type: "text", text: output }]
-                };
+                return { content };
             } catch (opError) {
                 // Record failed telemetry
                 const duration = Date.now() - startTime;
@@ -1071,11 +1216,7 @@ function createMcpServer() {
             name: "cyberchef-mcp",
             version: VERSION,
         },
-        {
-            capabilities: {
-                tools: {},
-            },
-        }
+        { capabilities: SERVER_CAPABILITIES }
     );
     registerHandlers(instance);
     return instance;
@@ -1100,6 +1241,19 @@ function registerHandlers(instance) {
     // "the module singleton", which for an HTTP session is precisely the bug this PR fixes,
     // returning silently. Bound this way it degrades to *this session's* server instead.
     instance.setRequestHandler(CallToolRequestSchema, (req, extra) => handleCallTool(req, extra, instance));
+
+    // Prompts: the entry points for someone who does not yet know which of 504 operations
+    // they need. See lib/prompts.mjs.
+    instance.setRequestHandler(ListPromptsRequestSchema, () => listPrompts());
+    instance.setRequestHandler(GetPromptRequestSchema, (req) =>
+        getPrompt(req.params.name, req.params.arguments || {}));
+
+    // Resources: saved recipes, browsable without spending a tool call. See lib/resources.mjs.
+    instance.setRequestHandler(ListResourcesRequestSchema, () => listResources(recipeManager));
+    instance.setRequestHandler(ListResourceTemplatesRequestSchema, () => listResourceTemplates());
+    instance.setRequestHandler(ReadResourceRequestSchema, (req) =>
+        readResource(recipeManager, req.params.uri));
+
     return instance;
 }
 
@@ -1286,5 +1440,9 @@ export {
     createTransport,
     getTransportType,
     // v2.0.0 export - per-session server factory for the HTTP transport (issue #36)
-    createMcpServer
+    createMcpServer,
+    // The stdio singleton, exported so a test can read the capabilities it ACTUALLY declares.
+    // Comparing two factory instances would pass through the exact drift worth catching: the two
+    // construction sites disagreeing.
+    server
 };

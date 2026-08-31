@@ -36,3 +36,41 @@ jobs:
       run: |
         npm test
         npm run testnodeconsumer
+
+  # The MCP suite and the coverage gate, on every pull request.
+  #
+  # Neither ran on a PR before. `core-test` above covers lint and the CORE tests; the MCP tests and
+  # `test:coverage` lived only in core-ci.yml, which triggers on PUSH to master or release/** -- so
+  # a PR from an ordinary branch was merged without either ever running.
+  #
+  # That is not theoretical. v2.1.0 was reviewed, merged and tagged while all four coverage
+  # thresholds were failing, because the job that checks them never ran on its PR and only turned
+  # red afterwards, on the push to master.
+  mcp-test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Set node version
+      uses: actions/setup-node@v7
+      with:
+        node-version: '24'
+
+    - name: Install
+      run: |
+        npm install
+        npm run setheapsize
+
+    # avsc still references the removed SlowBuffer; see the note in core-ci.yml.
+    - name: Patch Dependencies
+      run: |
+        sed -i 's/new SlowBuffer/Buffer.alloc/g' node_modules/avsc/lib/types.js
+        sed -i 's/SlowBuffer/Buffer/g' node_modules/buffer-equal-constant-time/index.js
+
+    # OperationConfig.json and src/node/index.mjs are generated and gitignored; the MCP server
+    # cannot start without them.
+    - name: Config Tests
+      run: npx grunt configTests
+
+    - name: MCP Tests with Coverage
+      run: npm run test:coverage

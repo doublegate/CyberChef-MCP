@@ -62,6 +62,7 @@ test-results/
 # server or the examples from a checkout writes one into the repository root. It is user data --
 # and it may hold keys and IVs, since a saved recipe carries its arguments.
 recipes.json
+recipes.json.backup
 recipes.json.bak
 recipes.json.*.tmp
 

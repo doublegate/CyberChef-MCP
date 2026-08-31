@@ -72,7 +72,7 @@ jobs:
         id: current
         run: |
           # Extract mcpVersion from package.json
-          CURRENT_VERSION=$(node -p "require('./package.json').mcpVersion")
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
           echo "version=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
           echo "Current MCP version: $CURRENT_VERSION"
 

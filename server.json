@@ -1,0 +1,23 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
+  "name": "io.github.doublegate/cyberchef-mcp",
+  "description": "CyberChef's 504 data-transformation operations -- encryption, encoding, compression, forensics -- as MCP tools, with prompts for common analysis workflows.",
+  "status": "active",
+  "repository": {
+    "url": "https://github.com/doublegate/CyberChef-MCP",
+    "source": "github"
+  },
+  "version": "2.2.0",
+  "packages": [
+    {
+      "registryType": "oci",
+      "registryBaseUrl": "https://ghcr.io",
+      "identifier": "doublegate/cyberchef-mcp_v2",
+      "version": "2.2.0",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ],
+  "_comment": "The npm package record is deliberately absent: cyberchef-mcp is prepared for publication but NOT published, because npm 12 blocks dependency install scripts by default and this project needs one. Advertising it would send clients to an install that fails. See docs/releases/v2.2.0.md."
+}

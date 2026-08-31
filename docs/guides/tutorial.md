@@ -352,7 +352,53 @@ Runnable: [`examples/05-saved-recipes.mjs`](../../examples/05-saved-recipes.mjs)
 
 ---
 
-## 9. Where to go next
+## 9. Two shortcuts you have not needed yet
+
+Everything above works by calling tools. Two other MCP surfaces exist, and both save you steps.
+
+### Prompts: start here when you do not know what you have
+
+Your client shows these as slash commands or menu entries. Pick one instead of composing the
+workflow yourself:
+
+| Prompt | Use it when |
+|---|---|
+| `analyse-unknown-data` | You have a blob and no idea what it is. |
+| `extract-iocs` | You need indicators out of a document or script, defanged. |
+| `deobfuscate-script` | You have obfuscated PowerShell, JavaScript, VBScript or PHP. |
+| `identify-hash` | You have a hash and need the algorithm. |
+| `decode-chain` | You know roughly what was done and want it unwrapped. |
+
+They encode the order the work is actually done in — `Magic` before guessing, defang before an
+indicator reaches a ticket — which is precisely what section 7 walked you through by hand.
+
+### Results that are not text
+
+Most operations return text. Some do not, and it is worth knowing before a result surprises you:
+
+- **`Generate QR Code`, `Render Image` and the image operations return an `image` block.** The
+  payload is `content[0].data` (base64) with `content[0].mimeType` — not `content[0].text`. A
+  client that renders images will show you the picture.
+- **`Play Media` returns an `audio` block**, the same way.
+- **Compression and encoding operations return bytes as latin1 text**, one character per byte. It
+  looks like mojibake and is exactly reversible. If you would rather have base64, start the server
+  with `CYBERCHEF_BINARY_OUTPUT=base64`.
+
+Try it:
+
+```json
+{"name": "cyberchef_bake",
+ "arguments": {"input": "https://example.com", "recipe": [{"op": "Generate QR Code"}]}}
+```
+
+### Saved recipes are also resources
+
+A recipe you saved in section 8 is readable at `recipe://<id>` without a tool call, so a client can
+browse and attach it like a file. `cyberchef_recipe_list` reports the ids.
+
+---
+
+## 10. Where to go next
 
 | If you want to… | Read |
 |---|---|

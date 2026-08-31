@@ -9,6 +9,150 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Nothing yet.
 
+## [2.2.0] - 2026-08-31
+
+Multi-modal results, and the two MCP surfaces this server never had. Every finding below came from
+driving the **published v2.1.0 container** through 74 discipline cases drawn from real CyberChef
+usage — malware triage, IOC extraction, DFIR, red-team crypto, CTF ciphers, steganography and flow
+control — and from connecting it to a real MCP client, which is what exposed the schema defects the
+test suite could not see.
+
+### Added
+
+- **Images and audio are returned as `image` and `audio` content blocks.** `Generate QR Code`
+  produced a valid PNG and the caller received `""` — its output type is `html`, the payload rides
+  in `<img src="data:image/png;base64,...">`, and the html-to-text conversion deleted the tag
+  carrying the entire result. It had never worked over MCP: v2.0.0 returned `{}` for the same call.
+  `Play Media` lost its audio the same way, leaving **23 characters of player chrome**. One
+  extractor now covers `<img>`, `<audio>` and `<video>`, and magic-number sniffing (PNG/JPEG/GIF/BMP
+  /WebP, WAV/MP3/OGG) catches the binary path where no markup exists. Video is the honest exception:
+  MCP has no video block, so the data URI is returned as text — unreadable, but *recoverable*, which
+  is the whole difference from stripping it.
+- **Tool annotations on all 527 tools**, plus a human-readable `title` ("AES Encrypt" rather than
+  `cyberchef_aes_encrypt`). A client can now skip the approval prompt for a pure operation. The
+  exceptions were measured, not guessed: network reach by grepping for `fetch`/`XMLHttpRequest`
+  (exactly two operations), and non-idempotence by running each candidate **twice** and comparing —
+  which is why `Bcrypt` and `Derive PBKDF2 key` are marked (both generate a random salt) and
+  `Argon2` and `Scrypt` are not (fixed defaults, identical output). `cyberchef_bake` is deliberately
+  marked neither read-only nor non-destructive: it runs caller-supplied recipes, which may contain
+  `HTTP request` with a POST or a DELETE. That costs a prompt on the most-used tool and is still correct — a hint that is convenient
+  and wrong teaches a client to ignore the whole set.
+- **Prompts** (5): `analyse-unknown-data`, `extract-iocs`, `deobfuscate-script`, `identify-hash`,
+  `decode-chain`. The tool surface answers "what can this server do" and never answered "what should
+  I do first", which for 504 operations is a wide gap. Each encodes a real analysis procedure from
+  the upstream recipe corpus — Magic before guessing, entropy before assuming a decode helps, defang
+  before reporting an indicator — rather than restating the tool list.
+- **Resources**: saved recipes at `recipe://<id>`, with a `recipe://{id}` template. A saved recipe
+  is reference material, browsed far more often than executed, and reading one previously cost a
+  `tools/call` a cautious client might prompt for. Keyed by **id, not name**: recipe names are
+  user-supplied and not unique, so a name-keyed URI would make one of two same-named recipes
+  unreachable and silently return the other.
+- **`CYBERCHEF_BINARY_OUTPUT=base64`** returns non-image binary as base64 rather than the default
+  latin1 text.
+- **`outputSchema` and `structuredContent`** on `cyberchef_categories` and
+  `cyberchef_list_operations`, so a caller receives a typed object instead of parsing JSON out of a
+  text block. Declared **only** for the tools whose shape this server defines: the 504 operations
+  return whatever CyberChef returns, undocumented and varying per operation, and a schema for that
+  would be a claim rather than a contract -- and a wrong one makes the SDK reject valid results.
+  `content` is still returned alongside, built from the same value so the two cannot disagree.
+- **`cyberchef-migrate`**, a real command at last. `docs/v2.0.0-breaking-changes.md` has told
+  readers to run it since **v1.8.0** and it never existed -- only the two MCP tools were built, and
+  those are reachable only from inside a session, which is no use to someone with a directory of
+  recipe files. It shares its analysis with those tools rather than reimplementing it. It will not
+  rewrite a file without `--write`, keeps a `.bak`, and refuses to overwrite that `.bak` without
+  `--force`: a second run would otherwise replace the backup with the already-migrated file and
+  destroy the only copy of the original.
+
+### Fixed
+
+- **`LM Hash` failed in the shipped container, taking `Generate all hashes` down with it.** The
+  v2.1.0 notes said `--openssl-legacy-provider` fixed this. The flag **was** set and was **inert**:
+  the runtime image carries no legacy provider module, so Node printed `Unable to load legacy
+  provider.` and changed nothing — the same shape as the SafeRegex incident, a mitigation documented
+  as active that the shipped artefact never carried. Blast radius was one operation, not the twenty
+  it looked like: 20 of 21 hashes pass, because CyberChef implements them in JavaScript. Only
+  `LM Hash` reached OpenSSL, via `ntlm@0.1.3`'s `createCipheriv("DES-ECB")`. Now computed with
+  `node-forge` in pure JavaScript, matching both canonical vectors. The flag is removed from the
+  Dockerfile and both npm scripts; nothing needs it, verified by running all 2,289 operation tests
+  on a host that also lacks the provider.
+- **One failing algorithm no longer discards the other twenty.** `Generate all hashes` ran every
+  algorithm unguarded, so a single throw destroyed every digest that had computed correctly — the
+  worst available failure mode for an operation whose purpose is "give me every hash of this".
+- **A misspelled argument is rejected instead of silently defaulted.** `{label: "top"}` on `Jump`
+  resolved to `["", 10]`, so the jump never happened and a three-round decode silently returned one
+  round, reporting success. CyberChef's UI labels sanitise into forms nobody would guess
+  (`maximum_jumps_if_jumping_backwards`), so this is a mistake a caller will actually make. The
+  error now names both the offending keys and the accepted ones.
+- **`cyberchef_bake` advertised only positional arguments.** Its schema declared `args` as
+  `type: "array"` while the implementation has accepted **named** arguments since DEP005 — the form
+  the whole v2.1.0 usability effort rests on. A client validating outbound arguments against
+  `inputSchema` could not send the supported form at all, and `cyberchef_recipe_create` declared the
+  same concept as an object two tools away. Now `anyOf: [object, array]`.
+- **A draft recipe can be validated.** `cyberchef_recipe_validate` and `_test` required `id` and
+  `version`, which are server-assigned, so they could only check a recipe that had already been
+  saved — the case where checking is least useful.
+- **The stdio server advertised fewer capabilities than the HTTP one.** There are two construction
+  sites, and adding prompts and resources updated only the per-session factory; every stdio client
+  would have been told this server has no prompts while the handlers answered. Both now read one
+  `SERVER_CAPABILITIES`.
+
+### Changed
+
+- **The coverage gate is a merge requirement again, and now runs on pull requests.** It had been red
+  on `master` since the v2.1.0 merge, with all four thresholds failing while 805 tests passed:
+  `core-ci.yml` has no `pull_request` trigger, and its path filter omitted `tests/**`. So v2.1.0 was
+  reviewed, merged and tagged with the gate already failing, because the job that checks it never
+  ran on its PR. A gate that cannot fail before a merge is not a gate.
+- **The request handlers are actually tested.** `handler-dispatch.test.mjs` claimed to test "all
+  handler branches in the CallTool request handler" and tested none of them — `createMcpServer()`
+  was called by **no test in the suite**, so 263 of 309 statements counted as dead code, and the
+  modules exercised only through a spawned server (`tool-catalog.mjs`) measured 2.17% while being
+  covered thoroughly. v8 attributes nothing a child process does to the parent. Fixed by testing the
+  handlers through a real MCP client over `InMemoryTransport`, not by lowering the bar:
+  **74.11% → 93.91% statements, `mcp-server.mjs` 14.51% → 87.70%**.
+- **Release notes get their relative links rewritten at publish time.** A release body renders on
+  the Releases page, not inside the tree, so `[text](../security/foo.md)` 404s for every reader of
+  the release. v2.0.0 shipped 8 such links and v2.1.0 shipped 3, all broken.
+
+### Not shipped: npm publishing
+
+The packaging is done and verified -- the package is `cyberchef-mcp` (the `cyberchef` name belongs
+to upstream), `version` now carries the product version with the upstream base moved to
+`cyberchefUpstreamVersion`, with a `files` allowlist, a `prepack` that generates the two gitignored
+files the server cannot start without, two `bin` entries and a `server.json` for the MCP registry.
+`npm pack` produces a correct 12 MB tarball.
+
+It is **not published**, because installing that tarball and running it showed it would not work:
+**npm 12 blocks dependency install scripts by default** (`npm help install-scripts`), and this
+project needs one -- `crypto-api` ships extensionless imports that Node's ESM resolver rejects, so
+without the patch the installed server dies immediately. Confirmed with a minimal probe package
+whose only content was a `postinstall`; it did not run either.
+
+Publishing anyway would ship a package that fails on install for anyone on npm 12+, which is the
+same shape as the `--openssl-legacy-provider` claim this release had to correct. Docker and GHCR
+remain the supported channels. The fix is to stop needing the patch at all, and is v2.3.0 work.
+
+Three defects found doing it are fixed regardless: `postinstall` shelled out to grunt (a
+devDependency a consumer never installs) and `sed`, and is now pure Node with no platform
+branching; the patcher looked in the wrong `node_modules`, since npm runs a dependency's
+`postinstall` in its own directory while dependencies are hoisted to the consumer root; and
+`mcp-server.mjs` had no shebang, so as a `bin` entry the shell tried to run JavaScript as a shell
+script.
+
+### Metrics
+
+| | v2.1.1 | v2.2.0 |
+|---|---|---|
+| MCP tests | 872 (28 files) | **955 (33 files)** |
+| Coverage (stmts / branch / funcs / lines) | 93.65 / 84.56 / 94.23 / 94.34 | **93.91 / 84.40 / 94.37 / 94.58** |
+| `tools/list` (index surface) | ~2,500 tokens | ~3,400 tokens |
+| Prompts / resources | 0 / 0 | **5 / saved recipes** |
+
+The index surface grew by ~900 tokens because every tool now carries annotations and a title. That
+is the price of letting a client skip approval prompts, and it is stated rather than buried:
+`curated` is ~19,200 tokens and `all` ~98,500, so the index remains far the cheapest surface.
+
+
 ## [2.1.1] - 2026-08-31
 
 Security housekeeping: every open code-scanning alert dispositioned, and the dead web-app tree that
