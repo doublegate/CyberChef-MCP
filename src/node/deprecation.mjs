@@ -19,12 +19,15 @@ import { getLogger } from "./logger.mjs";
  * Each code identifies a specific deprecated feature.
  */
 export const DEPRECATION_CODES = {
+    // WITHDRAWN in v2.0.0. See WITHDRAWN_RATIONALE below -- this is a reversal of a published
+    // promise, and it is stated rather than quietly dropped.
     DEP001: {
         code: "DEP001",
         feature: "Tool naming convention",
-        description: "The 'cyberchef_' prefix will be removed from tool names in v2.0.0",
-        alternative: "Use base64_encode instead of cyberchef_to_base64",
-        removalVersion: "2.0.0"
+        description: "WITHDRAWN: the 'cyberchef_' prefix is NOT being removed. It stays permanently.",
+        alternative: "No action required. Keep using cyberchef_to_base64 and the other prefixed names.",
+        removalVersion: null,
+        withdrawn: true
     },
     DEP002: {
         code: "DEP002",
@@ -61,19 +64,22 @@ export const DEPRECATION_CODES = {
         alternative: "Use explicit operation objects: { op: 'name', args: {...} } instead of shorthand",
         removalVersion: "2.0.0"
     },
+    // WITHDRAWN in v2.0.0, together with DEP001.
     DEP007: {
         code: "DEP007",
         feature: "Meta-tool cyberchef_bake",
-        description: "cyberchef_bake will be renamed to 'bake' in v2.0.0",
-        alternative: "Prepare for tool rename: cyberchef_bake -> bake",
-        removalVersion: "2.0.0"
+        description: "WITHDRAWN: cyberchef_bake is NOT being renamed. It keeps its name.",
+        alternative: "No action required.",
+        removalVersion: null,
+        withdrawn: true
     },
     DEP008: {
         code: "DEP008",
         feature: "Meta-tool cyberchef_search",
-        description: "cyberchef_search will be renamed to 'search' in v2.0.0",
-        alternative: "Prepare for tool rename: cyberchef_search -> search",
-        removalVersion: "2.0.0"
+        description: "WITHDRAWN: cyberchef_search is NOT being renamed. It keeps its name.",
+        alternative: "No action required.",
+        removalVersion: null,
+        withdrawn: true
     }
 };
 
@@ -95,6 +101,53 @@ let sessionStartTime = Date.now();
  */
 export function areSuppressed() {
     return process.env.CYBERCHEF_SUPPRESS_DEPRECATIONS === "true";
+}
+
+/**
+ * Why DEP001, DEP007 and DEP008 were withdrawn.
+ *
+ * These three warned since v1.8.0 that the `cyberchef_` prefix would be removed in v2.0.0. It is
+ * not being removed, and the reversal is recorded here rather than left as an absence, because a
+ * migration promise that quietly stops being mentioned leaves people waiting for a rename that is
+ * never coming.
+ *
+ * Measured against the running server before deciding:
+ *
+ *   * Dropping the prefix saves **1,208 bytes of 183,115** in the `tools/list` payload -- 2.6%.
+ *     The payload is ~45,800 tokens; the prefix is rounding error against it. The real
+ *     context-cost work is curating which tools are exposed at all, not shortening their names.
+ *   * **19 names collide once bare** in MCP's flat per-session namespace: bake, search, md5, sha1,
+ *     sha2, hash, filter, sort, merge, diff, reverse, unique, fork, jump, label, comment,
+ *     register, subtract, parse_uri. Nearly every other connected server plausibly defines
+ *     `search`. The prefix is what makes exposing `search` safe at all.
+ *   * Enacting it would break **every existing integration** for that 2.6%.
+ *
+ * Withdrawing breaks nobody: no code can depend on a name that has never shipped.
+ *
+ * The other five codes (DEP002-DEP006) are unaffected and still describe real v2.0.0 changes.
+ */
+export const WITHDRAWN_RATIONALE =
+    "The 'cyberchef_' prefix is permanent. Removing it would save 2.6% of the tools/list payload " +
+    "(1,208 of 183,115 bytes), collide 19 tool names in MCP's flat namespace, and break every " +
+    "existing integration. Withdrawn in v2.0.0; no action required.";
+
+/**
+ * Codes withdrawn in v2.0.0 -- announced, then reversed on measurement.
+ */
+export const WITHDRAWN_CODES = Object.freeze(["DEP001", "DEP007", "DEP008"]);
+
+/**
+ * Whether a deprecation code was withdrawn rather than enacted.
+ *
+ * @param {string} code - Deprecation code.
+ * @returns {boolean} True if the announced change is not happening.
+ */
+export function isWithdrawn(code) {
+    // The typeof guard is not ceremony: without it `isWithdrawn(undefined)` looks up the key
+    // "undefined", which happens to be absent and so happens to return false. Correct by accident
+    // is not the same as correct, and this is exported and called on caller-supplied values.
+    if (typeof code !== "string") return false;
+    return Boolean(DEPRECATION_CODES[code]?.withdrawn);
 }
 
 /**
@@ -136,9 +189,33 @@ export function emitDeprecation(code, context = "") {
     // Mark as warned
     deprecationWarnings.add(code);
 
-    // Format and emit warning
     const timestamp = new Date().toISOString();
     const logger = getLogger();
+
+    // A WITHDRAWN code is not a deprecation and must never be reported as one -- least of all as
+    // an error under V2_COMPATIBILITY_MODE, which is precisely the mode someone enables to find
+    // out what v2.0.0 will break. Telling them to migrate away from a name that is staying is
+    // worse than saying nothing. It is still announced once, at info, because people were told
+    // this change was coming and are owed the correction.
+    if (dep.withdrawn) {
+        const withdrawnMessage = [
+            `[WITHDRAWN] ${code}: ${dep.feature} -- the announced change is NOT happening.`,
+            `  ${dep.description}`,
+            `  ${dep.alternative}`,
+            `  Why: ${WITHDRAWN_RATIONALE}`,
+            context ? `  Context: ${context}` : null,
+            `  Timestamp: ${timestamp}`
+        ].filter(Boolean).join("\n");
+
+        logger.info({
+            deprecationCode: code,
+            feature: dep.feature,
+            withdrawn: true,
+            context: context || undefined
+        }, withdrawnMessage);
+
+        return true;
+    }
 
     // In v2 compatibility mode, emit as errors instead of warnings
     const logLevel = isV2CompatibilityMode() ? "error" : "warn";
@@ -279,10 +356,13 @@ export function getWarningCount() {
  * @returns {string} The tool name appropriate for current mode.
  */
 export function getToolName(baseName, forV2 = isV2CompatibilityMode()) {
-    if (forV2) {
-        return baseName; // e.g., "to_base64"
-    }
-    return `cyberchef_${baseName}`; // e.g., "cyberchef_to_base64"
+    // `forV2` is accepted and ignored. It used to return the bare name so callers could preview
+    // the v2.0.0 surface -- but DEP001 was WITHDRAWN and the `cyberchef_` prefix is permanent, so
+    // a "v2 preview" that strips it now previews something that will never exist. The parameter is
+    // kept rather than removed because it is exported and callers pass it; changing the arity
+    // would be a breaking change to avoid a no-op.
+    void forV2;
+    return `cyberchef_${baseName}`; // e.g., "cyberchef_to_base64" -- in v2.0.0 too
 }
 
 /**

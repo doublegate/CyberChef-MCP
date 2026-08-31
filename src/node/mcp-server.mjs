@@ -117,7 +117,7 @@ const server = new Server(
 // - executeWithTimeoutAndRetry in retry.mjs
 // - executeWithStreamingStrategy in streaming.mjs
 
-server.setRequestHandler(ListToolsRequestSchema, async () => {
+const handleListTools = async () => {
     const tools = [
         {
             name: "cyberchef_bake",
@@ -339,9 +339,9 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     });
 
     return { tools };
-});
+};
 
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
+const handleCallTool = async (request, extra, ownerServer = server) => {
     const { name, arguments: args } = request.params;
 
     // Start request tracking
@@ -755,6 +755,27 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     // Extract progress token from MCP request metadata
                     const progressToken = request.params?._meta?.progressToken;
 
+                    // Route progress notifications back to THE CONNECTION THAT ASKED, not to the
+                    // module-level server.
+                    //
+                    // With one process-wide server that distinction did not exist. It does now:
+                    // an HTTP session owns its own Server instance, so passing the singleton here
+                    // would send this session's progress to a stdio server that is not connected
+                    // at all -- silently, since sendProgress swallows its own errors. The SDK
+                    // hands every request handler an `extra.sendNotification` bound to the right
+                    // connection, which is the routing this needs.
+                    //
+                    // Passed as a FUNCTION, not as a stand-in Server object. An earlier revision
+                    // built `{ notification: ... }` here, which would break the moment
+                    // executeWithStreamingProgress touched any other Server member; handing it the
+                    // one capability it actually uses removes that coupling entirely.
+                    //
+                    // The fallback keeps the module server for callers that invoke the handler
+                    // directly without an `extra` (the existing unit tests do exactly that).
+                    const sendNotification = typeof extra?.sendNotification === "function" ?
+                        extra.sendNotification :
+                        (n => ownerServer.notification(n));
+
                     // Execute with streaming progress support
                     result = await executeWithStreamingProgress({
                         bakeFunction: bake,
@@ -762,7 +783,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                         input: args.input,
                         recipeArgs,
                         recipe,
-                        server,
+                        sendNotification,
                         progressToken,
                         streamingEnabled: ENABLE_STREAMING,
                         streamingThreshold: STREAMING_THRESHOLD,
@@ -838,7 +859,69 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         // Return formatted error
         return mcpError.toMCPError();
     }
-});
+};
+
+/**
+ * Build a fresh MCP `Server` with every request handler registered.
+ *
+ * WHY A FACTORY AND NOT THE MODULE SINGLETON
+ * ------------------------------------------
+ * A `Server` carries per-connection lifecycle state -- most importantly whether `initialize`
+ * has already been negotiated. Sharing one across HTTP clients is what produced issue #36:
+ * the first client's handshake marked the instance initialized, and every later client's
+ * `initialize` was rejected with `Invalid Request: Server already initialized`.
+ *
+ * The SDK hardened the same class of bug in GHSA-345p-7cg4-v4c7 -- sharing server or transport
+ * instances between clients leaks state across them -- so a per-session pair is the required
+ * shape, not merely the tidier one.
+ *
+ * Everything a session should NOT own stays module-level and shared on purpose: the operation
+ * cache, telemetry, rate limiter and quota tracker are process-wide resources, and giving each
+ * session its own would silently defeat all four.
+ *
+ * @returns {Server} A new server instance with the tools handlers attached.
+ */
+function createMcpServer() {
+    const instance = new Server(
+        {
+            name: "cyberchef-mcp",
+            version: VERSION,
+        },
+        {
+            capabilities: {
+                tools: {},
+            },
+        }
+    );
+    registerHandlers(instance);
+    return instance;
+}
+
+/**
+ * Attach every request handler to a server instance.
+ *
+ * ONE registration site, used by both the module singleton and every per-session instance. Listing
+ * the handlers twice is how an HTTP session silently loses a capability that stdio has: the two
+ * lists drift, nothing fails, and the only symptom is a method that works over one transport and
+ * not the other. Adding a handler here reaches both by construction.
+ *
+ * @param {Server} instance - The server to attach handlers to.
+ * @returns {Server} The same instance, for chaining.
+ */
+function registerHandlers(instance) {
+    instance.setRequestHandler(ListToolsRequestSchema, handleListTools);
+    // The instance is bound in as the notification FALLBACK. `extra.sendNotification` remains the
+    // primary path -- it is the SDK's documented per-request routing and is correct by
+    // construction -- but if a future SDK reshapes `extra`, the fallback must not quietly become
+    // "the module singleton", which for an HTTP session is precisely the bug this PR fixes,
+    // returning silently. Bound this way it degrades to *this session's* server instead.
+    instance.setRequestHandler(CallToolRequestSchema, (req, extra) => handleCallTool(req, extra, instance));
+    return instance;
+}
+
+// The module-level instance backs stdio, which is single-connection by construction, and is what
+// the existing test suite drives. HTTP builds its own per session.
+registerHandlers(server);
 
 /**
  * Start the MCP Server.
@@ -855,8 +938,44 @@ async function runServer() {
         await initWorkerPool();
     }
 
-    const { transport } = await createTransport();
-    await server.connect(transport);
+    // HTTP builds a Server per session inside createTransport (issue #36), so there is no
+    // process-wide transport to connect and `transport` comes back null. Connecting the module
+    // singleton here would recreate the shared-instance bug the factory exists to avoid.
+    const { transport, closeAll } = await createTransport({ createServer: createMcpServer });
+    if (transport) {
+        await server.connect(transport);
+    }
+
+    // Shut down cleanly on a signal. Without this, SIGTERM (which is what `docker stop` sends)
+    // killed the process with sessions still open and the listener still bound: clients saw a
+    // dropped connection rather than a closed session, and the container took the full stop
+    // timeout to exit because keep-alive sockets held the loop open.
+    //
+    // Registered only when there is something to close, so stdio -- where the process ending IS
+    // the teardown -- keeps its current behaviour and its default signal handling.
+    if (typeof closeAll === "function") {
+        let shuttingDown = false;
+        // POSIX exit status for a signal death: 128 + signum. Exiting 0 tells a supervisor the
+        // process stopped of its own accord, which is not what happened -- systemd, Docker and
+        // anything reading $? cannot then distinguish "asked to stop" from "finished".
+        const SIGNAL_NUMBERS = { SIGINT: 2, SIGTERM: 15 };
+        const shutdown = (signal) => {
+            // Guard against a second signal arriving mid-teardown and re-entering closeAll.
+            if (shuttingDown) return;
+            shuttingDown = true;
+            const logger = getLogger();
+            logger.info(`${signal} received: closing HTTP sessions and listener`);
+            closeAll()
+                .catch(err => logger.error(`shutdown failed: ${err.message}`))
+                .finally(() => process.exit(128 + (SIGNAL_NUMBERS[signal] ?? 0)));
+        };
+        // `once` per signal, AND the boolean. They cover different cases and neither is
+        // redundant: `once` stops a repeated SIGINT from re-entering, the boolean stops a SIGINT
+        // followed by a SIGTERM from doing so -- which is exactly what an impatient operator or a
+        // supervisor escalating from TERM to INT produces.
+        process.once("SIGINT", () => shutdown("SIGINT"));
+        process.once("SIGTERM", () => shutdown("SIGTERM"));
+    }
 
     // Log server startup with configuration
     logServerStart({
@@ -979,5 +1098,7 @@ export {
     executeWithStreamingProgress,
     // v1.9.0 exports - re-export transport functions
     createTransport,
-    getTransportType
+    getTransportType,
+    // v2.0.0 export - per-session server factory for the HTTP transport (issue #36)
+    createMcpServer
 };
