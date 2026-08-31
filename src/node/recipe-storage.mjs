@@ -9,7 +9,7 @@
  */
 
 import { promises as fs } from "fs";
-import { dirname, basename } from "path";
+import { dirname, basename, join } from "path";
 import { randomUUID, randomBytes } from "crypto";
 import { getLogger } from "./logger.mjs";
 import { createInputError } from "./errors.mjs";
@@ -136,22 +136,45 @@ export class RecipeStorage {
      */
     async cleanupStaleTempFiles() {
         const STALE_AFTER_MS = 60 * 60 * 1000;
+        const dir = dirname(this.filePath);
+        const prefix = `${basename(this.filePath)}.`;
+        const cutoff = Date.now() - STALE_AFTER_MS;
+        let handle;
         try {
-            const dir = dirname(this.filePath);
-            const prefix = `${basename(this.filePath)}.`;
-            const cutoff = Date.now() - STALE_AFTER_MS;
-            for (const name of await fs.readdir(dir)) {
+            // opendir rather than readdir: this directory is caller-supplied via
+            // CYBERCHEF_RECIPE_STORAGE and may be somewhere large (a home directory, say).
+            // Streaming entries keeps a sweep from materialising an arbitrary listing in memory
+            // just to find at most a handful of `.tmp` siblings.
+            handle = await fs.opendir(dir);
+            for await (const entry of handle) {
+                const name = entry.name;
                 if (!name.startsWith(prefix) || !name.endsWith(".tmp")) continue;
-                const candidate = `${dir}/${name}`;
+                const candidate = join(dir, name);
                 try {
                     const { mtimeMs } = await fs.stat(candidate);
                     if (mtimeMs < cutoff) await fs.unlink(candidate);
-                } catch {
-                    // Vanished or unreadable. Either way, not ours to worry about.
+                } catch (error) {
+                    // Not swallowed: logged. A vanished file (ENOENT) is the ordinary case -- a
+                    // concurrent sweep or the owning process cleaning up -- and is expected rather
+                    // than notable, so it is debug. Anything else is a genuine surprise about a
+                    // path we were about to delete, so it is warn.
+                    const level = error.code === "ENOENT" ? "debug" : "warn";
+                    this.logger[level]({
+                        error: error.message,
+                        code: error.code,
+                        candidate
+                    }, "Could not remove stale recipe-storage temp file");
                 }
             }
-        } catch {
-            // Unreadable directory. The save itself will report the real problem.
+        } catch (error) {
+            // Best-effort by design: a sweep failure must never fail the save that just succeeded.
+            // But it is logged rather than discarded -- an unreadable storage directory is worth
+            // knowing about even when nothing depends on this sweep.
+            this.logger.warn({
+                error: error.message,
+                code: error.code,
+                dir
+            }, "Could not sweep stale recipe-storage temp files");
         }
     }
 
