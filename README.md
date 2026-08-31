@@ -626,7 +626,7 @@ Detailed documentation is organized in the [`docs/`](docs/) directory:
 *   [**Security Fixes Summary**](docs/security/SECURITY_FIXES_SUMMARY.md): Quick reference for recent security improvements
 *   [**v2.0.0 Breaking Changes**](docs/v2.0.0-breaking-changes.md): Comprehensive migration guide for v2.0.0 with deprecation codes, examples, and FAQ
 *   [**Release Notes v2.1.0**](docs/releases/v2.1.0.md): Tool-list hierarchy (~97% smaller `tools/list`), Zod 4 schema fix, all 10 flow-control operations working, AES and 62 other toggleString operations fixed, logs to stderr, 60s shutdown hang removed, tutorial + 8 runnable examples
-*   [**Release Notes v2.0.0**](docs/releases/v2.0.0.md): Upstream v11.4.0 (504 operations), GPL-3.0-or-later relicense, Node 24 floor, per-session HTTP transport (#36), zero open security alerts, 757 MCP tests
+*   [**Release Notes v2.0.0**](docs/releases/v2.0.0.md): Upstream v11.4.0 (504 operations), GPL-3.0-or-later relicense, Node 24 floor, per-session HTTP transport (#36), 272 security findings closed, 757 MCP tests
 *   [**Open-alert disposition**](docs/security/2026-08-31-open-alert-sweep.md): Every Dependabot and code-scanning alert — fixed, suppressed with a justification, or dismissed with a reason
 *   [**Release Notes v1.9.0**](docs/releases/v1.9.0.md): MCP streaming, worker thread pool, HTTP transport, upstream v10.20.0, security updates, 689 tests
 *   [**Release Notes v1.8.0**](docs/releases/v1.8.0.md): Breaking changes preparation - deprecation warnings, migration preview tool, v2.0.0 compatibility mode

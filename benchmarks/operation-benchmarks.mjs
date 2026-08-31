@@ -1,8 +1,10 @@
 /**
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
  * Performance benchmarks for CyberChef MCP operations.
  *
  * @author DoubleGate
- * @license Apache-2.0
+ * @license GPL-3.0-or-later
  */
 
 import { Bench } from "tinybench";
@@ -12,8 +14,9 @@ import { bake } from "../src/node/index.mjs";
 const testData1KB = "A".repeat(1024);
 const testData10KB = "A".repeat(10 * 1024);
 const testData100KB = "A".repeat(100 * 1024);
-const testData1MB = "A".repeat(1024 * 1024);
-const testData10MB = "A".repeat(10 * 1024 * 1024);
+// 1 MB and 10 MB fixtures were declared here and never used by any benchmark. Deleting them is not
+// only a lint tidy-up: `"A".repeat()` builds the string eagerly, so every run allocated 11 MB and
+// then threw it away. Add them back beside the benchmark that needs them, not ahead of it.
 
 /**
  * Timeout wrapper to prevent operations from hanging.
