@@ -196,6 +196,11 @@ export async function createTransport(options = {}) {
             return Number.isNaN(parsed) ? fallback : parsed;
         };
         const port = numeric(options.port, "CYBERCHEF_HTTP_PORT", 3000);
+        // The MCP endpoint path. Configurable rather than hardcoded so the server can be mounted
+        // elsewhere, but checked, so an unrelated request (a browser's GET /favicon.ico) gets a
+        // plain 404 instead of being routed into the transport and answered with the confusing
+        // "Session not found".
+        const mcpPath = options.path || process.env.CYBERCHEF_HTTP_PATH || "/mcp";
         const host = options.host || process.env.CYBERCHEF_HTTP_HOST || "127.0.0.1";
         const maxBodyBytes = numeric(options.maxBodyBytes, "CYBERCHEF_HTTP_MAX_BODY", 4 * 1024 * 1024);
         const sessionTimeoutMs = numeric(
@@ -308,12 +313,12 @@ export async function createTransport(options = {}) {
             try {
                 await entry.transport.close();
             } catch (err) {
-                logger.debug(`session ${sessionId}: transport close failed: ${err.message}`);
+                logger.warn(`session ${sessionId}: transport close failed: ${err.message}`);
             }
             try {
                 await entry.server.close();
             } catch (err) {
-                logger.debug(`session ${sessionId}: server close failed: ${err.message}`);
+                logger.warn(`session ${sessionId}: server close failed: ${err.message}`);
             }
             logger.info(`MCP session closed (${reason}): ${sessionId} [${sessions.size} active]`);
         }
@@ -365,6 +370,14 @@ export async function createTransport(options = {}) {
                 if (req.method === "OPTIONS") {
                     res.writeHead(204, { "Allow": "GET, POST, DELETE, OPTIONS" });
                     res.end();
+                    return;
+                }
+
+                // Path check before anything else, so an unrelated request never reaches session
+                // routing. Query strings are ignored; only the path is significant.
+                const path = (req.url || "").split("?")[0].replace(/\/+$/, "") || "/";
+                if (path !== mcpPath.replace(/\/+$/, "")) {
+                    sendJsonRpcError(res, 404, -32601, `Not Found: the MCP endpoint is ${mcpPath}`);
                     return;
                 }
 
@@ -472,7 +485,7 @@ export async function createTransport(options = {}) {
         sweeper.unref();
 
         httpServer.listen(port, host, () => {
-            logger.info(`Streamable HTTP transport listening on ${host}:${port}`);
+            logger.info(`Streamable HTTP transport listening on ${host}:${port}${mcpPath}`);
             logger.info(`  session timeout: ${Math.round(sessionTimeoutMs / 1000)}s`);
             logger.info(`  DNS rebinding protection: ${allowedHosts ? `on (${allowedHosts.join(", ")})` : "off"}`);
             logger.info(`  CORS: ${allowedOrigins ? `on (${allowedOrigins.join(", ")})` : "off -- browser clients need CYBERCHEF_ALLOWED_ORIGINS"}`);

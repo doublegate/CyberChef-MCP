@@ -305,6 +305,30 @@ describe("Streamable HTTP transport - session lifecycle (issue #36)", () => {
         expect(handle.sessions.size).toBe(1);
     });
 
+    it("404s a request to any other path, without touching session routing", async () => {
+        // A browser hitting GET /favicon.ico used to be routed into the transport and answered
+        // with "Session not found", which points the reader at sessions for a request that was
+        // never about one.
+        const res = await fetch(`${base}/favicon.ico`);
+        expect(res.status).toBe(404);
+        const body = JSON.parse(await res.text());
+        expect(body.error.message).toContain("/mcp");
+        expect(body.error.message).not.toContain("Session not found");
+    });
+
+    it("ignores a query string and a trailing slash on the endpoint path", async () => {
+        const res = await fetch(`${base}/mcp/?foo=bar`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json, text/event-stream"
+            },
+            body: JSON.stringify(INITIALIZE)
+        });
+        expect(res.status).toBe(200);
+        expect(res.headers.get("mcp-session-id")).toBeTruthy();
+    });
+
     it("405s an unsupported method", async () => {
         const res = await fetch(`${base}/mcp`, { method: "PUT" });
         expect(res.status).toBe(405);

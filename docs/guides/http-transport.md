@@ -45,6 +45,7 @@ CYBERCHEF_TRANSPORT=http npm run mcp
 | `CYBERCHEF_ALLOWED_ORIGINS` | *(unset)* | Comma-separated `Origin` allowlist. Setting it enables CORS. Required by browser clients. |
 | `CYBERCHEF_SESSION_TIMEOUT` | `1800000` | Idle session reap threshold, in ms (30 minutes). |
 | `CYBERCHEF_HTTP_MAX_BODY` | `4194304` | Maximum accepted request body, in bytes (4 MiB). |
+| `CYBERCHEF_HTTP_PATH` | `/mcp` | The endpoint path. Anything else gets a plain `404`. |
 
 ### On `CYBERCHEF_ALLOWED_HOSTS`
 
@@ -144,6 +145,7 @@ Real MCP clients handle this. Shell scripts need to strip the `data: ` prefix.
 | Non-`initialize` POST with no session id | `400` — `Mcp-Session-Id header required` |
 | Any request with an unknown/expired session id | `404` — `Session not found` |
 | `GET` or `DELETE` with no/unknown session | `404` |
+| Any path other than `CYBERCHEF_HTTP_PATH` | `404` naming the correct endpoint |
 | `OPTIONS` (CORS preflight) | `204`, with allow headers only for an allowlisted origin |
 | Any method other than GET/POST/DELETE/OPTIONS | `405` with an `Allow` header |
 | Body over `CYBERCHEF_HTTP_MAX_BODY` | `413` |
