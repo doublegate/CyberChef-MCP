@@ -194,14 +194,47 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
         run: |
-          # Check if release exists, create if not
+          # A GitHub Release only makes sense for a TAG.
+          #
+          # This workflow also has a `workflow_dispatch` trigger, and a manual run happens on a
+          # BRANCH -- so `github.ref_name` is `master`, not `v2.1.0`. Without this guard the step
+          # would run `gh release create master --verify-tag`, which fails because no tag named
+          # `master` exists, and on a repository where one did it would publish a release named
+          # after a branch. The image push above is still useful on a manual run; this part is not.
+          if [ "$REF_TYPE" != "tag" ]; then
+            echo "::notice::ref_type is '$REF_TYPE', not 'tag' -- skipping release creation."
+            exit 0
+          fi
+
+          # Check if release exists, create if not.
+          #
+          # The notes come from docs/releases/<tag>.md when that file exists. They used to be the
+          # single line "See CHANGELOG.md for details." -- which is not a link GitHub resolves on a
+          # release page, and which threw away notes the repository had already written: v2.0.0 and
+          # v2.1.0 both shipped with a one-line body while a 200-line release document sat in the
+          # tree. Prior releases had 154-449 line bodies, so this was a silent regression in the
+          # release ceremony rather than a deliberate choice.
+          #
+          # Falling back rather than failing: a hotfix tag cut without a release document should
+          # still publish, and the fallback now points at a URL that actually resolves.
+          NOTES_FILE="docs/releases/${TAG_NAME}.md"
           if ! gh release view "$TAG_NAME" &>/dev/null; then
             echo "Creating release for $TAG_NAME"
-            gh release create "$TAG_NAME" \
-              --title "Release $TAG_NAME" \
-              --notes "See [CHANGELOG.md](CHANGELOG.md) for details." \
-              --verify-tag
+            if [ -f "$NOTES_FILE" ]; then
+              echo "Using release notes from $NOTES_FILE"
+              gh release create "$TAG_NAME" \
+                --title "Release $TAG_NAME" \
+                --notes-file "$NOTES_FILE" \
+                --verify-tag
+            else
+              echo "::warning::$NOTES_FILE not found; publishing with a link to the changelog"
+              gh release create "$TAG_NAME" \
+                --title "Release $TAG_NAME" \
+                --notes "Release notes: [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/master/CHANGELOG.md)" \
+                --verify-tag
+            fi
           else
             echo "Release $TAG_NAME already exists"
           fi
