@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+- **`src/core/config/OperationConfig.json` is no longer tracked.** It was gitignored *and* committed at the same time — the only such file in the repository — because `upstream-sync.yml` force-added it on every run. It is generated from the operations by `npx grunt configTests`, so a committed copy is a 1.7MB derived artefact whose diff cannot be meaningfully reviewed and which goes stale the moment an operation changes. Every CI workflow, the Dockerfile and the documented local setup already regenerate it. The force-add is removed from the sync.
+
+### Changed
+- **`.gitignore` corrected.** Added `.env` / `.env.*` (with `!.env.example`), `dist/`, `*.log`. Removed stale entries: `travis.log` (this project has never used Travis) and `tests/browser/output/*` (the web app went in v1.7.1, and the sync now fails if it returns). `ref-proj/` is no longer ignored — it is a declared submodule tracked as a gitlink, and ignoring a tracked path is what forced `git add -f` in two workflows. Every remaining entry is annotated with why it exists.
+- **Upstream sync widened from `src/core/operations/*.mjs` to the whole synced tree.** The old mechanism compared flat basenames in one directory, which cannot express a major-version jump. Measured 10.19.4 → 11.4.0: 449 files identical, **112 differing, 61 added upstream, 1 removed upstream**. It now mirrors all of `src/core/**` plus the six upstream-owned `src/node/*.mjs` files with `rsync -a --delete`, so additions, modifications and deletions apply atomically.
+
+  The deletion case is why atomicity matters: upstream removed `src/core/lib/ImageManipulation.mjs` and refactored `BlurImage`/`SharpenImage` to use `jimp` directly. Syncing operations without `lib/` orphans the library; syncing `lib/` without operations breaks the build.
+- **Sync scope is now verified with an allowlist rather than a denylist.** The previous check enumerated forbidden paths, so it only caught mistakes someone had thought of. Anything outside the declared scope now fails the run.
+
+### Added
+- **`patches/fork/` — fork changes to upstream-owned files, re-applied after every sync.** Three patches, each verified to apply to pristine v11.4.0: `crypto.randomBytes` instead of `Math.random()` for GOST cryptographic randomness (upstream still ships `Math.random()`), backslash-before-quote escaping in `Utils.parsePrettyRecipe` (upstream still ships the `lgtm [js/incomplete-sanitization]`-suppressed version), and this fork's scoped `@natlibfi/loglevel-message-prefix` dependency.
+
+  **A patch that no longer applies fails the sync.** That is the alarm missing when a ReDoS mitigation was silently reverted by a sync and stayed gone for four releases. Patches also beat a protected-file list: `Utils.mjs` gains upstream's new `_validatePrettyRecipe` *and* keeps our escaping fix, where protecting the file wholesale would have discarded upstream's improvement.
+
 ### Added
 - **Antigravity PR reviewer**: `.github/workflows/antigravity-review.yml` plus `scripts/agy-review.sh` and helpers run a first-pass adversarial review on every same-repo PR, and on `/agy-review` from a maintainer. Runs on a self-hosted runner against a Google AI Ultra OAuth session, so it costs no metered API spend. Restores the automated PR review lost when Gemini Code Assist for GitHub was retired.
 - **Repository style guide for reviewers**: `.github/agy-review.md` gives the reviewer this project's conventions (fork hygiene for `src/core/**`, generated files, MCP-layer rules) instead of generic advice.

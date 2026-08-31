@@ -100,174 +100,174 @@ jobs:
           git checkout -b "$BRANCH_NAME"
           echo "branch=$BRANCH_NAME" >> "$GITHUB_ENV"
 
-      - name: Identify operation changes
+      # Tree-wide change detection. The previous version compared only the flat basenames of
+      # src/core/operations/*.mjs, which is structurally incapable of a 10.x -> 11.x jump: that
+      # release also changes src/core/lib/, src/core/config/, the config generators and the
+      # upstream-owned files in src/node/. Measured against v11.4.0 from a v10.19.4 base:
+      # 449 files identical, 112 differing, 61 added upstream, 1 removed upstream.
+      #
+      # The removed one is instructive. Upstream deleted src/core/lib/ImageManipulation.mjs and
+      # refactored BlurImage/SharpenImage to use jimp directly. A sync that copies operations but
+      # not lib/ leaves an orphan; one that copies lib/ but not operations breaks the build. The
+      # tree has to move atomically, which is the whole reason for widening.
+      - name: Identify upstream changes
         id: changes
         run: |
-          # Find new operations (in ref but not in main)
-          echo "Finding new operations..."
-          NEW_OPS=$(comm -13 \
-            <(find src/core/operations -maxdepth 1 -name '*.mjs' -printf '%f\n' 2>/dev/null | sort) \
-            <(find ref-proj/CyberChef/src/core/operations -maxdepth 1 -name '*.mjs' -printf '%f\n' 2>/dev/null | sort))
-          # No `grep` in this count, deliberately. `grep` exits 1 on zero matches, and zero new
-          # operations is the NORMAL state -- so any `grep` here is one `shell: bash` away from
-          # failing the step every quiet week. (Today the runner is `bash -e` with no pipefail,
-          # confirmed from a run log: `shell: /usr/bin/bash -e {0}`. That makes the old
-          # `grep -v '^$' | wc -l` safe, but only by accident of `wc` masking grep's status.)
-          # Testing emptiness directly is correct under `bash -e` and `bash -eo pipefail` alike.
-          if [ -z "$NEW_OPS" ]; then
-            NEW_COUNT=0
-          else
-            NEW_COUNT=$(printf '%s\n' "$NEW_OPS" | wc -l)
-          fi
-          echo "new_count=$NEW_COUNT" >> "$GITHUB_OUTPUT"
-          echo "Found $NEW_COUNT new operations"
+          set -eu
+          SRC="ref-proj/CyberChef"
+          [ -d "$SRC/src/core" ] || { echo "::error::reference checkout missing $SRC/src/core"; exit 1; }
 
-          # Find modified operations (different checksums)
-          echo "Finding modified operations..."
-          MODIFIED_OPS=""
-          MODIFIED_COUNT=0
-          for op in src/core/operations/*.mjs; do
-            if [ -f "$op" ]; then
-              basename_op=$(basename "$op")
-              ref_op="ref-proj/CyberChef/src/core/operations/$basename_op"
-              if [ -f "$ref_op" ]; then
-                if ! cmp -s "$op" "$ref_op"; then
-                  MODIFIED_OPS="$MODIFIED_OPS$basename_op"$'\n'
-                  MODIFIED_COUNT=$((MODIFIED_COUNT + 1))
-                fi
-              fi
+          # Generated artefacts. Both trees gitignore exactly these five paths, verified identical
+          # between our .gitignore and upstream's, so they are excluded rather than synced.
+          cat > /tmp/sync-excludes.txt <<'EXCLUDES'
+          src/core/config/modules/
+          src/core/config/OperationConfig.json
+          src/core/operations/index.mjs
+          src/node/config/OperationConfig.json
+          src/node/index.mjs
+          EXCLUDES
+
+          is_excluded() {
+            while IFS= read -r ex; do
+              [ -n "$ex" ] || continue
+              case "$1" in "$ex"*) return 0 ;; esac
+            done < /tmp/sync-excludes.txt
+            return 1
+          }
+
+          added=0; modified=0; removed=0
+          : > /tmp/sync-added.txt; : > /tmp/sync-modified.txt; : > /tmp/sync-removed.txt
+
+          # src/core/** plus the six upstream-owned files in src/node/. Everything else in
+          # src/node/ is fork-owned (mcp-server, transports, streaming, recipe-*, worker*,
+          # errors, logger, retry, deprecation) and is never touched by a sync.
+          UPSTREAM_NODE="api.mjs apiUtils.mjs File.mjs NodeDish.mjs NodeRecipe.mjs repl.mjs"
+
+          while IFS= read -r rel; do
+            is_excluded "$rel" && continue
+            if [ ! -f "$rel" ]; then
+              echo "$rel" >> /tmp/sync-added.txt; added=$((added+1))
+            elif ! cmp -s "$SRC/$rel" "$rel"; then
+              echo "$rel" >> /tmp/sync-modified.txt; modified=$((modified+1))
             fi
-          done
-          echo "modified_count=$MODIFIED_COUNT" >> "$GITHUB_OUTPUT"
-          echo "Found $MODIFIED_COUNT modified operations"
+          done <<EOF
+          $(cd "$SRC" && find src/core -type f | sort)
+          $(for f in $UPSTREAM_NODE; do [ -f "$SRC/src/node/$f" ] && echo "src/node/$f"; done)
+          EOF
 
-          # Find deleted operations (in main but not in ref)
-          DELETED_OPS=$(comm -23 \
-            <(find src/core/operations -maxdepth 1 -name '*.mjs' -printf '%f\n' 2>/dev/null | sort) \
-            <(find ref-proj/CyberChef/src/core/operations -maxdepth 1 -name '*.mjs' -printf '%f\n' 2>/dev/null | sort))
-          # See the NEW_COUNT note above: no `grep` in the count, for the same reason.
-          if [ -z "$DELETED_OPS" ]; then
-            DELETED_COUNT=0
-          else
-            DELETED_COUNT=$(printf '%s\n' "$DELETED_OPS" | wc -l)
-          fi
-          echo "deleted_count=$DELETED_COUNT" >> "$GITHUB_OUTPUT"
-          echo "Found $DELETED_COUNT deleted operations"
+          while IFS= read -r rel; do
+            is_excluded "$rel" && continue
+            [ -f "$SRC/$rel" ] || { echo "$rel" >> /tmp/sync-removed.txt; removed=$((removed+1)); }
+          done <<EOF
+          $(find src/core -type f | sort)
+          EOF
 
-          # Save lists to files
-          echo "$NEW_OPS" > /tmp/new_ops.txt
-          echo "$MODIFIED_OPS" > /tmp/modified_ops.txt
-          echo "$DELETED_OPS" > /tmp/deleted_ops.txt
+          {
+            echo "added_count=$added"
+            echo "modified_count=$modified"
+            echo "removed_count=$removed"
+          } >> "$GITHUB_OUTPUT"
 
-          # Determine if sync is needed
-          TOTAL_CHANGES=$((NEW_COUNT + MODIFIED_COUNT + DELETED_COUNT))
-          if [ $TOTAL_CHANGES -gt 0 ]; then
+          if [ "$added" -gt 0 ] || [ "$modified" -gt 0 ] || [ "$removed" -gt 0 ]; then
             echo "needs_sync=true" >> "$GITHUB_OUTPUT"
-            echo "Total changes: $TOTAL_CHANGES"
           else
             echo "needs_sync=false" >> "$GITHUB_OUTPUT"
-            echo "No changes detected"
           fi
+          echo "added=$added modified=$modified removed=$removed"
 
-      - name: Sync operation files
+      - name: Mirror upstream files
         if: steps.changes.outputs.needs_sync == 'true'
         id: sync
         run: |
-          echo "Syncing operation files..."
-          SYNCED_FILES=0
-          FAILED_FILES=0
+          set -eu
+          SRC="ref-proj/CyberChef"
 
-          # Copy new operations
-          while IFS= read -r op; do
-            if [ -n "$op" ]; then
-              echo "Adding new operation: $op"
-              if cp "ref-proj/CyberChef/src/core/operations/$op" "src/core/operations/$op"; then
-                SYNCED_FILES=$((SYNCED_FILES + 1))
-              else
-                echo "Failed to copy $op"
-                FAILED_FILES=$((FAILED_FILES + 1))
-              fi
-            fi
-          done < /tmp/new_ops.txt
+          # rsync rather than a copy loop: it handles additions, modifications and DELETIONS in
+          # one atomic pass. Deletions are what the old per-file loop could not express, and a
+          # partially-applied tree is the failure mode that orphans a library or breaks a build.
+          rsync -a --delete \
+            --exclude='config/modules/' \
+            --exclude='config/OperationConfig.json' \
+            --exclude='operations/index.mjs' \
+            "$SRC/src/core/" src/core/
 
-          # Copy modified operations
-          while IFS= read -r op; do
-            if [ -n "$op" ]; then
-              echo "Updating modified operation: $op"
-              if cp "ref-proj/CyberChef/src/core/operations/$op" "src/core/operations/$op"; then
-                SYNCED_FILES=$((SYNCED_FILES + 1))
-              else
-                echo "Failed to copy $op"
-                FAILED_FILES=$((FAILED_FILES + 1))
-              fi
-            fi
-          done < /tmp/modified_ops.txt
+          for f in api.mjs apiUtils.mjs File.mjs NodeDish.mjs NodeRecipe.mjs repl.mjs; do
+            [ -f "$SRC/src/node/$f" ] && cp "$SRC/src/node/$f" "src/node/$f"
+          done
 
-          # Delete removed operations (with confirmation)
-          while IFS= read -r op; do
-            if [ -n "$op" ]; then
-              echo "Note: Operation removed upstream: $op (keeping in MCP for now)"
-              # We don't auto-delete in case it's still useful for MCP
-            fi
-          done < /tmp/deleted_ops.txt
+          echo "status=success" >> "$GITHUB_OUTPUT"
+          echo "mirrored src/core/** and the six upstream-owned src/node files"
 
-          echo "synced_files=$SYNCED_FILES" >> "$GITHUB_OUTPUT"
-          echo "failed_files=$FAILED_FILES" >> "$GITHUB_OUTPUT"
-
-          if [ $FAILED_FILES -gt 0 ]; then
-            echo "status=partial" >> "$GITHUB_OUTPUT"
-            echo "WARNING: Some files failed to sync"
-          else
-            echo "status=success" >> "$GITHUB_OUTPUT"
-            echo "All files synced successfully"
-          fi
-
-      - name: Verify no excluded files introduced by sync
+      # Re-apply this fork's deliberate changes to upstream-owned files. See patches/fork/README.md.
+      #
+      # FAILING HERE IS CORRECT. A patch that no longer applies means upstream changed the code it
+      # touches, and a human must decide whether the fix is still needed. The alternative -- fuzzing
+      # a patch through, or skipping it -- is exactly how a ReDoS mitigation silently vanished from
+      # this repository for four releases without a single test going red.
+      - name: Re-apply fork patches
         if: steps.changes.outputs.needs_sync == 'true'
         run: |
-          echo "Verifying sync did not introduce excluded files..."
-          EXCLUDED_FOUND=0
-
-          # Check git diff for any new/modified files outside src/core/operations/
-          # The sync should ONLY touch src/core/operations/*.mjs files
-          CHANGED_FILES=$(git diff --name-only HEAD 2>/dev/null || git diff --cached --name-only 2>/dev/null || true)
-          UNEXPECTED_FILES=""
-
-          while IFS= read -r file; do
-            if [ -n "$file" ]; then
-              case "$file" in
-                src/core/operations/*.mjs)
-                  # Expected - operation files are the sync target
-                  ;;
-                src/web/*)
-                  echo "ERROR: Sync introduced src/web/ file: $file"
-                  EXCLUDED_FOUND=1
-                  UNEXPECTED_FILES="$UNEXPECTED_FILES $file"
-                  ;;
-                tests/browser/*)
-                  echo "ERROR: Sync introduced tests/browser/ file: $file"
-                  EXCLUDED_FOUND=1
-                  UNEXPECTED_FILES="$UNEXPECTED_FILES $file"
-                  ;;
-                nightwatch.json|postcss.config.js|.devcontainer/*)
-                  echo "ERROR: Sync introduced excluded file: $file"
-                  EXCLUDED_FOUND=1
-                  UNEXPECTED_FILES="$UNEXPECTED_FILES $file"
-                  ;;
-                *)
-                  echo "Note: Non-operation file changed: $file (reviewing...)"
-                  ;;
-              esac
-            fi
-          done <<< "$CHANGED_FILES"
-
-          if [ $EXCLUDED_FOUND -eq 1 ]; then
-            echo "CRITICAL: Sync introduced excluded files! Reverting sync changes."
-            echo "Unexpected files: $UNEXPECTED_FILES"
+          set -eu
+          applied=0
+          if [ ! -d patches/fork ]; then
+            echo "::error::patches/fork is missing; refusing to sync without the fork patch set"
             exit 1
-          else
-            echo "Verification passed: Sync only modified operation files"
           fi
+          for p in patches/fork/*.patch; do
+            [ -e "$p" ] || continue
+            echo "applying $p"
+            if ! patch -p1 --forward --no-backup-if-mismatch < "$p"; then
+              echo "::error::fork patch failed to apply: $p"
+              echo "::error::Upstream changed the code this patch touches. Do NOT force it through."
+              echo "::error::Read patches/fork/README.md -> 'When a patch fails during a sync'."
+              exit 1
+            fi
+            applied=$((applied + 1))
+          done
+          echo "applied $applied fork patch(es)"
+          if [ "$applied" -eq 0 ]; then
+            echo "::warning::no fork patches were applied -- expected at least one"
+          fi
+
+      # Allowlist, not a denylist. The previous version enumerated forbidden paths (src/web/,
+      # tests/browser/, nightwatch.json, ...), which only catches the specific mistakes someone
+      # thought of. Now anything outside the sync's declared scope fails the run, so a future
+      # widening of the mirror cannot quietly pull in a directory nobody considered.
+      - name: Verify the sync stayed in scope
+        if: steps.changes.outputs.needs_sync == 'true'
+        run: |
+          set -eu
+          UNEXPECTED=""
+          while IFS= read -r file; do
+            [ -n "$file" ] || continue
+            case "$file" in
+              src/core/*) ;;
+              src/node/api.mjs|src/node/apiUtils.mjs|src/node/File.mjs) ;;
+              src/node/NodeDish.mjs|src/node/NodeRecipe.mjs|src/node/repl.mjs) ;;
+              tests/mcp/baseline.json) ;;
+              *) UNEXPECTED="$UNEXPECTED$file
+          " ;;
+            esac
+          done <<EOF
+          $(git diff --name-only HEAD)
+          EOF
+
+          if [ -n "$UNEXPECTED" ]; then
+            echo "::error::sync touched files outside its declared scope:"
+            printf '%s' "$UNEXPECTED" | sed 's/^/  /'
+            echo "::error::Either the mirror is too broad, or these paths belong in the allowlist."
+            exit 1
+          fi
+
+          # The web app was removed from this fork in v1.7.1 and must never return via a sync.
+          for forbidden in src/web tests/browser nightwatch.json postcss.config.js .devcontainer; do
+            if git diff --name-only HEAD | grep -q "^$forbidden"; then
+              echo "::error::sync reintroduced $forbidden, which this fork does not carry"
+              exit 1
+            fi
+          done
+          echo "sync stayed within scope"
+
 
       - name: Install dependencies
         if: steps.changes.outputs.needs_sync == 'true'
@@ -420,8 +420,19 @@ jobs:
           MODIFIED_COUNT: ${{ steps.changes.outputs.modified_count }}
           DELETED_COUNT: ${{ steps.changes.outputs.deleted_count }}
         run: |
-          git add src/core/operations/
-          git add -f src/core/config/OperationConfig.json
+          # The full mirrored scope, not just operations/. Staging only operations/ would
+          # commit an inconsistent tree -- new operations without the lib/ code they import,
+          # and without upstream's deletions.
+          git add -A src/core/
+          for f in api.mjs apiUtils.mjs File.mjs NodeDish.mjs NodeRecipe.mjs repl.mjs; do
+            git add "src/node/$f" 2>/dev/null || true
+          done
+          # OperationConfig.json is deliberately NOT staged. It is generated by
+          # `npx grunt configTests` from the operations this sync just mirrored, so committing it
+          # adds a derived 1.7MB artefact whose diff nobody can review and which goes stale the
+          # moment an operation changes. It was previously force-added here, which is how a
+          # gitignored path ended up tracked. Every CI job, the Dockerfile and the documented
+          # local setup regenerate it.
           git add tests/mcp/baseline.json
 
           COMMIT_MSG="chore(upstream): selective sync from CyberChef $TARGET
