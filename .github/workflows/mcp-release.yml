@@ -98,7 +98,7 @@ jobs:
       # - GitHub Actions Attestations: https://docs.docker.com/build/ci/github-actions/attestations/
       # =============================================================================
       - name: Build and push Docker image to both registries
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: Dockerfile.mcp
