@@ -13,7 +13,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprot
 import { z } from "zod";
 import Utils from "../core/Utils.mjs";
 import OperationConfig from "../core/config/OperationConfig.json" with {type: "json"};
-import { dishToText } from "./lib/dish-output.mjs";
+import { toContentBlocks } from "./lib/content-blocks.mjs";
 import { bakeOnCore } from "./lib/core-recipe.mjs";
 import { isExposed, describeSurface } from "./lib/tool-surface.mjs";
 import { categoryIndex, listOperations, describeOperations } from "./lib/tool-catalog.mjs";
@@ -43,6 +43,23 @@ function batchInputSize(operations) {
     } catch {
         return 0;
     }
+}
+
+/**
+ * Byte size of a content-block array, for telemetry and quota accounting.
+ *
+ * Measures what is actually sent rather than only the text: an `image` block's payload is its
+ * base64 `data`, and charging a QR code as 0 bytes would make the quota tracker lie about exactly
+ * the results that are largest.
+ *
+ * @param {Array<Object>} content - MCP content blocks.
+ * @returns {number} Total UTF-8 bytes of the payload fields.
+ */
+function contentSize(content) {
+    return content.reduce((total, block) => {
+        const payload = typeof block.text === "string" ? block.text : block.data;
+        return total + (typeof payload === "string" ? Buffer.byteLength(payload, "utf8") : 0);
+    }, 0);
 }
 
 /**
@@ -528,12 +545,12 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
                 { requestId, maxRetries: RetryConfig.MAX_RETRIES, context: { tool: name } }
             );
 
-            const output = dishToText(result);
-            logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
+            // An image-producing recipe returns an `image` block rather than the empty string
+            // stripping its markup used to yield. See lib/content-blocks.mjs.
+            const content = toContentBlocks(result);
+            logRequestComplete(requestId, { outputSize: contentSize(content) });
 
-            return {
-                content: [{ type: "text", text: output }]
-            };
+            return { content };
         }
 
         if (name === "cyberchef_search") {
@@ -983,8 +1000,11 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
                     logCache("set", { operation: opName, requestId });
                 }
 
-                const output = dishToText(result);
-                const outputSize = Buffer.byteLength(output, "utf8");
+                // `opConfig.outputType` rather than the recipe's, because a direct operation tool
+                // runs exactly one operation -- this is what makes `cyberchef_generate_qr_code`
+                // return the picture instead of "".
+                const content = toContentBlocks(result, opConfig.outputType);
+                const outputSize = contentSize(content);
                 const duration = Date.now() - startTime;
 
                 // Track quota
@@ -1007,9 +1027,7 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
                     duration
                 });
 
-                return {
-                    content: [{ type: "text", text: output }]
-                };
+                return { content };
             } catch (opError) {
                 // Record failed telemetry
                 const duration = Date.now() - startTime;

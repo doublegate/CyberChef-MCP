@@ -152,31 +152,37 @@ export async function bakeOnCore(input, recipeConfig) {
     // UI applies before rendering the output pane -- rather than the raw internal value.
     const baked = await new Chef().bake(input, recipe, { returnType: "string" });
 
-    // 61 operations declare `html` output, and their presented form is markup meant for a browser
-    // pane. `Magic` is the one that matters most: its answer is a table of candidate decodings,
-    // and delivered as raw `<table class='table table-hover ...'>` it is close to unreadable for
-    // an MCP client and expensive in tokens. Upstream reaches the same conclusion for non-browser
-    // consumers -- `DishHTML.toArrayBuffer()` runs exactly this pair before handing bytes on -- so
-    // this matches the Node API's own treatment of html rather than inventing one.
-    const isHtml = recipe.length > 0 &&
-        OperationConfig[recipe[recipe.length - 1].op]?.outputType === "html";
-    const result = (isHtml && typeof baked.result === "string") ?
-        Utils.unescapeHtml(Utils.stripHtmlTags(baked.result, true)) :
-        baked.result;
-
     if (baked.error) {
         throw createInputError(baked.error.displayStr || String(baked.error), {
             recipe: recipe.map(s => s.op)
         });
     }
 
+    // The output type of the LAST operation is what the caller receives, and the content-block
+    // layer needs it to decide between an image, base64 and text.
+    //
+    // The html->text conversion used to happen HERE, unconditionally, and that is what silently
+    // deleted every image this server could produce: `Generate QR Code` emits
+    // `<img src="data:image/png;base64,...">`, `stripHtmlTags` removes the tag, and the caller got
+    // "". Stripping now lives in `toContentBlocks`, which strips only when the markup is not an
+    // image -- so `Magic` stays readable plain text and the picture survives.
+    const outputType = recipe.length > 0 ?
+        OperationConfig[recipe[recipe.length - 1].op]?.outputType :
+        undefined;
+
     return {
-        value: result,
+        value: baked.result,
+        outputType,
         /**
-         * @returns {string} The presented result.
+         * @returns {string} The presented result, with browser markup reduced to text.
          */
         toString() {
-            return typeof result === "string" ? result : JSON.stringify(result);
+            if (outputType === "html" && typeof baked.result === "string") {
+                // Upstream's own pair, and its own conclusion for non-browser consumers:
+                // `DishHTML.toArrayBuffer()` runs exactly this before handing bytes on.
+                return Utils.unescapeHtml(Utils.stripHtmlTags(baked.result, true));
+            }
+            return typeof baked.result === "string" ? baked.result : JSON.stringify(baked.result);
         }
     };
 }
