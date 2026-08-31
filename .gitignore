@@ -25,6 +25,12 @@ src/core/operations/index.mjs
 src/node/config/OperationConfig.json
 src/node/index.mjs
 
+# Also generated, by src/core/config/scripts/generateHTMLEntities.mjs -- a sixth path, added
+# upstream in v11.4.0 and gitignored there too. Listed here BEFORE its generator reaches this
+# fork (it arrives with the v11.4.0 sync) precisely so the 2,068-line artefact cannot be
+# committed in the interim, which is exactly what happened once and had to be undone.
+src/core/lib/HTMLEntities.mjs
+
 # Secrets. Nothing matching this may ever be committed.
 .env
 .env.*
