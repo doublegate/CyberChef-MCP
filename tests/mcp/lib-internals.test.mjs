@@ -370,7 +370,7 @@ describe("wasm-fetch: the filesystem shim", () => {
 describe("tool-schema: rejecting argument names the operation does not have", () => {
     it("accepts the sanitised name and the raw CyberChef label", () => {
         const argDefs = [{ name: "Label name" }, { name: "Maximum jumps (if jumping backwards)" }];
-        expect(() => assertKnownArgs("Jump", argDefs, { label_name: "top" })).not.toThrow();
+        expect(() => assertKnownArgs("Jump", argDefs, { "label_name": "top" })).not.toThrow();
         expect(() => assertKnownArgs("Jump", argDefs, { "Label name": "top" })).not.toThrow();
         expect(() => assertKnownArgs("Jump", argDefs, {})).not.toThrow();
     });
@@ -380,7 +380,7 @@ describe("tool-schema: rejecting argument names the operation does not have", ()
         // resolved to `["", 10]`, so the jump never happened and a three-round decode silently
         // returned one round. A wrong answer that looks right is the worst outcome available.
         const argDefs = [{ name: "Label name" }, { name: "Maximum jumps (if jumping backwards)" }];
-        expect(() => assertKnownArgs("Jump", argDefs, { label: "top", maximum_jumps: 2 }))
+        expect(() => assertKnownArgs("Jump", argDefs, { "label": "top", "maximum_jumps": 2 }))
             .toThrow(/Unknown arguments for "Jump": label, maximum_jumps/);
     });
 

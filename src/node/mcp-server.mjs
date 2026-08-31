@@ -286,7 +286,24 @@ const handleListTools = async () => {
                 input: z.string().describe("The input data"),
                 recipe: z.array(z.object({
                     op: z.string().describe("Operation name"),
-                    args: z.array(z.any()).optional().describe("Arguments for the operation")
+                    // BOTH forms, because both are supported and only one was advertised.
+                    //
+                    // This declared `z.array(z.any())` -- positional only -- while the
+                    // implementation has accepted named arguments since DEP005, and named
+                    // arguments are the entire reason a model can use these operations correctly.
+                    // A client that validates outbound arguments against `inputSchema` therefore
+                    // could not send the supported form at all, and `cyberchef_recipe_create`
+                    // disagreed with it two tools away by declaring `z.record(z.any())`.
+                    //
+                    // Named is listed first so it reads as the primary form.
+                    args: z.union([
+                        z.record(z.string(), z.any()),
+                        z.array(z.any())
+                    ]).optional().describe(
+                        "Operation arguments. Either named -- {\"key\": \"...\", \"iv\": \"...\"} " +
+                        "-- or positional, as the CyberChef UI writes them. Use " +
+                        "cyberchef_describe_operation for the argument names."
+                    )
                 })).describe("List of operations to perform")
             }))
         },

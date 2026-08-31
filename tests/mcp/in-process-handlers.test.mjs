@@ -126,6 +126,45 @@ describe("in-process handlers: tools/list", () => {
         }
     });
 
+    it("advertises BOTH argument forms for a recipe step (F-09)", async () => {
+        const { client, close } = await connected();
+        try {
+            // This declared `type: "array"` only -- positional -- while the implementation has
+            // accepted NAMED arguments since DEP005, and named arguments are the entire reason a
+            // model can use these operations correctly. A client that validates outbound arguments
+            // against `inputSchema` therefore could not send the supported form at all, and
+            // `cyberchef_recipe_create` disagreed two tools away by declaring an object.
+            const { tools } = await client.listTools();
+            const args = tools.find(t => t.name === "cyberchef_bake")
+                .inputSchema.properties.recipe.items.properties.args;
+
+            const kinds = (args.anyOf || []).map(s => s.type).sort();
+            expect(kinds).toEqual(["array", "object"]);
+        } finally {
+            await close();
+        }
+    });
+
+    it("runs a recipe step given named, positional or absent arguments", async () => {
+        const { client, close } = await connected();
+        try {
+            const named = await callText(client, "cyberchef_bake", {
+                input: "Hello", recipe: [{ op: "To Base64", args: { alphabet: "A-Za-z0-9+/=" } }]
+            });
+            const positional = await callText(client, "cyberchef_bake", {
+                input: "Hello", recipe: [{ op: "To Base64", args: ["A-Za-z0-9+/="] }]
+            });
+            const omitted = await callText(client, "cyberchef_bake", {
+                input: "Hello", recipe: [{ op: "To Base64" }]
+            });
+            expect(named).toBe("SGVsbG8=");
+            expect(positional).toBe(named);
+            expect(omitted).toBe(named);
+        } finally {
+            await close();
+        }
+    });
+
     it("exposes the navigation index and the executor", async () => {
         const { client, close } = await connected();
         try {
