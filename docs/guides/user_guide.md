@@ -242,6 +242,66 @@ and `Magic` all work in recipes from v2.1.0 (before that they were advertised an
 
 Worked examples of all of this live in [`examples/`](../../examples/) and are executed by CI.
 
+### Images, audio and binary results
+
+Not every result is text, and since v2.2.0 the server stops pretending otherwise.
+
+- **Image operations return an `image` content block.** `Generate QR Code`, `Render Image`,
+  `Rotate Image` and the rest put their payload in a `data:` URI; before v2.2.0 the html-to-text
+  conversion deleted it and you received an empty string. Read `content[0].data` (base64) and
+  `content[0].mimeType`, not `content[0].text`.
+- **`Play Media` returns an `audio` block**, the same way and for the same reason.
+- **Video returns its `data:` URI as text.** MCP has no video content block, so the payload is
+  handed over verbatim rather than stripped — unreadable, but recoverable.
+- **Other binary stays as latin1 text by default**, one character per byte. It looks like mojibake
+  and is byte-for-byte reversible: `str.charCodeAt(i)` is `bytes[i]`. Set
+  `CYBERCHEF_BINARY_OUTPUT=base64` if you would rather have base64.
+
+### Tool annotations
+
+Every tool carries `readOnlyHint`, `destructiveHint`, `idempotentHint` and `openWorldHint`, so a
+client can decide whether to ask you before running it. Nearly all 504 operations are pure
+functions: read-only, non-destructive, idempotent, closed-world.
+
+Two things are worth knowing before you configure auto-approval:
+
+- **`cyberchef_bake` is *not* read-only**, deliberately. It runs whatever recipe you hand it, and a
+  recipe may contain `HTTP request` with a POST. If your client prompts on non-read-only tools it
+  will prompt for `cyberchef_bake`. Calling operation tools directly avoids that — each is annotated
+  from its own behaviour, so `cyberchef_to_base64` is read-only and idempotent.
+- **`HTTP request` and `DNS over HTTPS` are the only two operations that reach the network**, and
+  only `HTTP request` can write. They are the two to think hardest about.
+
+---
+
+## Prompts: where to start when you do not know
+
+The tool list tells you what the server can do. It does not tell you what to do first, and with 504
+operations that gap is wide. Prompts are five named workflows your client shows as slash commands or
+menu entries:
+
+| Prompt | Use it when |
+|---|---|
+| `analyse-unknown-data` | You have a blob and do not know what it is. |
+| `extract-iocs` | You need URLs, IPs, emails and domains out of a document or script, defanged. |
+| `deobfuscate-script` | You have obfuscated PowerShell, JavaScript, VBScript or PHP. |
+| `identify-hash` | You have a hash and need to know which algorithm produced it. |
+| `decode-chain` | You know roughly what was done to the data and want it unwrapped. |
+
+Each encodes the order a practitioner would actually work in, not a restatement of the tool list —
+`Magic` before guessing, entropy before assuming a decode will help, defang before an indicator
+reaches a ticket.
+
+## Resources: saved recipes without a tool call
+
+Saved recipes are exposed as MCP resources at `recipe://<id>`, with a `recipe://{id}` template. A
+client can browse, cache and attach them the way it attaches a file, which is usually what you want
+from a saved recipe — reading one no longer costs a tool call your client might prompt for.
+
+The URI is the recipe's **id**, not its name, because names are not unique: two recipes may both be
+called "decode", and a name-keyed URI would silently return the wrong one. `cyberchef_recipe_list`
+reports the ids.
+
 ---
 
 ## Transports: stdio and HTTP
@@ -287,6 +347,7 @@ Browser-based clients additionally need `CYBERCHEF_ALLOWED_ORIGINS`.
 | `CYBERCHEF_MAX_REGEX_LENGTH` | `1000` | ReDoS screen: longest accepted regex pattern. |
 | `CYBERCHEF_ENABLE_STREAMING` | `true` | Progress notifications for large inputs. |
 | `CYBERCHEF_STREAMING_THRESHOLD` | `10485760` | Input size at which streaming engages (10 MB). |
+| `CYBERCHEF_BINARY_OUTPUT` | `text` | `base64` returns non-image binary as base64 instead of the default latin1 text. See "Binary results" below. |
 
 ### Workers
 

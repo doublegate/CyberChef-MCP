@@ -1,6 +1,6 @@
 # CyberChef MCP Server - Product Roadmap
 
-**Current version:** **v2.1.1** (released 2026-08-31) · **Upstream base:** CyberChef v11.4.0
+**Current version:** **v2.2.0** (released 2026-08-31) · **Upstream base:** CyberChef v11.4.0
 **Planned through:** v3.0.0
 **Timeline:** January 2026 - August 2027
 **Last Updated:** 2026-08-31
@@ -91,11 +91,22 @@ gantt
 | **v1.8.0** | Breaking Changes Prep | Deprecation warnings, migration guides | M | High | Released |
 | **v1.9.0** | Pre-v2.0.0 Polish | Streaming, workers, HTTP transport, security | M | Medium | Released |
 | **v2.0.0** | Major Release | Upstream v11.4.0 (504 ops), GPL-3.0-or-later relicense, Node 24 floor, per-session HTTP transport, 272 security findings closed | XL | High | **Released 2026-08-31** |
-| **v2.1.1** | Security housekeeping | All 55 code-scanning alerts dispositioned (8 fixed, 47 dismissed with reasons); dead `src/web/` tree deleted from repo and image; `npm start`/`npm run build` repointed | S | Low | **Released 2026-08-31** |
 | **v2.1.0** | Usability & correctness | Tool-list hierarchy (~97% smaller `tools/list`), Zod 4 schema fix, all 10 flow-control operations working, 31 ciphers + 63 key-taking operations fixed, server-killing crash removed, 60s shutdown hang removed, tutorial + 8 CI-tested examples | L | High | **Released 2026-08-31** |
+| **v2.1.1** | Security housekeeping | All 55 code-scanning alerts dispositioned (8 fixed, 47 dismissed with reasons); dead `src/web/` tree deleted from repo and image; `npm start`/`npm run build` repointed | S | Low | **Released 2026-08-31** |
+| **v2.2.0** | Multi-modal & MCP surfaces | Image/audio content blocks (`Generate QR Code` and `Play Media` had never worked over MCP), tool annotations on all 527 tools, prompts + resources, LM Hash off OpenSSL, unknown arguments rejected rather than silently defaulted, coverage gate restored and made a PR requirement | L | Medium | **Released 2026-08-31** |
 
-> **The planned "v2.1.0 Multi-Modal Support" moved to v2.2.0.** The number was taken by an
-> unplanned release; the work itself is unchanged and still first in Phase 4.
+> **The planned "v2.1.0 Multi-Modal Support" moved to v2.2.0, and shipped there on 2026-08-31.**
+> The number was taken by an unplanned release; the work itself landed intact.
+>
+> It turned out to be a defect fix rather than a feature. `Generate QR Code` and `Play Media`
+> produced valid payloads inside `data:` URIs, and the html-to-text conversion deleted them — so
+> those operations returned an empty string and had *never* worked over MCP. Binary was the
+> opposite: it looked broken and was measured to be byte-for-byte reversible, so it is an opt-in
+> (`CYBERCHEF_BINARY_OUTPUT=base64`) rather than a changed default.
+>
+> v2.2.0 also carried two surfaces that were not on this roadmap and should have been: **tool
+> annotations** and **prompts/resources**. Both were found by using the server through a real MCP
+> client rather than by reading the plan.
 >
 > **v2.1.0 was not planned at all.** It exists because smoke-testing the published v2.0.0 image --
 > calling all 524 tools in turn, and driving the server with a real MCP SDK client rather than the
@@ -118,7 +129,7 @@ gantt
 
 | Release | Theme | Key Features | Effort | Risk |
 |---------|-------|--------------|--------|------|
-| **v2.2.0** | Multi-Modal Support | Binary data handling, image operations, MIME detection | L | Medium |
+| **v2.2.0** | Multi-Modal Support | **Shipped 2026-08-31.** Image and audio content blocks, MIME sniffing, binary base64 opt-in — plus tool annotations, prompts and resources | L | Medium |
 | **v2.3.0** | Advanced Transports | WebSocket, Streamable HTTP, SSE (deprecated) | L | Medium |
 | **v2.4.0** | Plugin Architecture | Plugin system, sandboxed execution, plugin registry | XL | High |
 | **v2.5.0** | Enterprise Features | OAuth 2.1, RBAC, audit logging, multi-tenancy | XL | High |
@@ -303,22 +314,22 @@ After v3.0.0 release:
 ## References
 
 ### Phase Documentation
-- [Phase 1: Foundation](./planning/phase-1-foundation.md) (v1.2.0-v1.4.0)
-- [Phase 2: Enhancement](./planning/phase-2-enhancement.md) (v1.5.0-v1.7.0)
-- [Phase 3: Maturity](./planning/phase-3-maturity.md) (v1.8.0-v2.0.0)
-- [Phase 4: Expansion](./planning/phase-4-expansion.md) (v2.2.0-v2.4.0)
-- [Phase 5: Enterprise](./planning/phase-5-enterprise.md) (v2.4.0-v2.6.0)
-- [Phase 6: Evolution](./planning/phase-6-evolution.md) (v2.7.0-v3.0.0)
+- [Phase 1: Foundation](./phases/phase-1-foundation.md) (v1.2.0-v1.4.0)
+- [Phase 2: Enhancement](./phases/phase-2-enhancement.md) (v1.5.0-v1.7.0)
+- [Phase 3: Maturity](./phases/phase-3-maturity.md) (v1.8.0-v2.0.0)
+- [Phase 4: Expansion](./phases/phase-4-expansion.md) (v2.2.0-v2.4.0)
+- [Phase 5: Enterprise](./phases/phase-5-enterprise.md) (v2.4.0-v2.6.0)
+- [Phase 6: Evolution](./phases/phase-6-evolution.md) (v2.7.0-v3.0.0)
 
 ### Strategy Documents
-- [Multi-Modal Strategy](./planning/MULTI-MODAL-STRATEGY.md)
-- [Plugin Architecture Design](./planning/PLUGIN-ARCHITECTURE-DESIGN.md)
-- [Enterprise Features Plan](./planning/ENTERPRISE-FEATURES-PLAN.md)
-- [Upstream Sync Strategy](./planning/UPSTREAM-SYNC-STRATEGY.md)
-- [Security Hardening Plan](./planning/SECURITY-HARDENING-PLAN.md)
+- [Multi-Modal Strategy](./strategies/MULTI-MODAL-STRATEGY.md)
+- [Plugin Architecture Design](./strategies/PLUGIN-ARCHITECTURE-DESIGN.md)
+- [Enterprise Features Plan](./strategies/ENTERPRISE-FEATURES-PLAN.md)
+- [Upstream Sync Strategy](./strategies/UPSTREAM-SYNC-STRATEGY.md)
+- [Security Hardening Plan](./strategies/SECURITY-HARDENING-PLAN.md)
 
 ### Release Plans
-- [Individual Release Plans](./planning/) (v1.2.0 - v3.0.0)
+- [Individual Release Plans](./future-releases/) (v1.2.0 - v3.0.0)
 
 ---
 

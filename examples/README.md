@@ -15,6 +15,7 @@ as fenced code blocks in a guide.
 | [`06-batch-processing.mjs`](06-batch-processing.mjs) | `cyberchef_batch` — many inputs in one call | nothing |
 | [`07-http-two-clients.mjs`](07-http-two-clients.mjs) | HTTP transport with two concurrent clients | binds a local port |
 | [`08-shell-oneliners.sh`](08-shell-oneliners.sh) | Driving the server from a shell with `jq` | `jq` on PATH |
+| [`09-prompts-and-media.mjs`](09-prompts-and-media.mjs) | Prompts, resources, image/audio blocks and tool annotations | nothing |
 
 ## Running them
 
@@ -37,5 +38,6 @@ npx vitest run tests/mcp/examples.test.mjs
 
 `01` through `03` are the basics and take a minute each. `04` is the one to read if you want to
 see what this server is actually *for* — it chains detection, decoding and extraction the way an
-analyst would. `05` and `06` cover the stateful and bulk paths. `07` matters only if you are
+analyst would. `05` and `06` cover the stateful and bulk paths. `09` covers the surfaces beyond tools — prompts,
+resources, and results that are images or audio rather than text. `07` matters only if you are
 running the HTTP transport.

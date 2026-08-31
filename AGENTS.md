@@ -20,19 +20,20 @@
 <<< MC-PROJECT-START >>>
 ## Project: CyberChef
 
-**CyberChef MCP Server** (v2.1.1) - Fork of GCHQ CyberChef wrapping the Node.js API into an MCP
+**CyberChef MCP Server** (v2.2.0) - Fork of GCHQ CyberChef wrapping the Node.js API into an MCP
 server. Exposes 504 operations (encryption, encoding, compression, forensics) as AI assistant tools.
 
 | Metric | Value |
 |--------|-------|
-| MCP Version | 2.1.1 (single source: `package.json` `mcpVersion`, read by `src/node/lib/config.mjs`) |
+| MCP Version | 2.2.0 (single source: `package.json` `mcpVersion`, read by `src/node/lib/config.mjs`) |
 | Upstream base | CyberChef **v11.4.0** |
-| Operations / tools | 504 operations. `tools/list` is an **index** by default (~24 tools, ~2.5k tokens); `CYBERCHEF_TOOL_SURFACE=curated\|all` for ~100 or all 524. All 504 reachable via `cyberchef_bake` + the three navigation tools. |
+| Operations / tools | 504 operations. `tools/list` is an **index** by default (~24 tools, ~3.4k tokens); `CYBERCHEF_TOOL_SURFACE=curated\|all` for ~102 (~19.2k) or all 527 (~98.5k). All 504 reachable via `cyberchef_bake` + the three navigation tools. Every tool carries annotations + a title. |
 | Licence | **GPL-3.0-or-later** (from v2.0.0; v1.9.x and earlier are Apache-2.0) |
 | Node | `>=24 <27`; image runs Node 26.8.1, digest-pinned |
-| Tests | 798 MCP (25 files) + 241 Node-API + 2,289 operations + 8 CI-executed examples |
-| Coverage | 78.8% lines / 75.1% branches / 90.5% functions overall; `src/node/lib/**` at 95.2% lines |
+| Tests | 937 MCP (32 files) + 241 Node-API + 2,289 operations + 8 CI-executed examples |
+| Coverage | 94.6% lines / 84.4% branches / 94.4% functions overall (thresholds 75/70/90). Gated on **pull requests** since v2.2.0 -- before that `core-ci.yml` had no `pull_request` trigger and its paths omitted `tests/**`, so v2.1.0 was tagged with all four thresholds failing. |
 | Open security alerts | **0** Dependabot, **0** code-scanning (55 dispositioned in v2.1.1) |
+| MCP surfaces | tools + **prompts** (5) + **resources** (`recipe://<id>`), all three declared from one `SERVER_CAPABILITIES` -- there are two server construction sites and two capability lists drift. |
 
 **Focus:** MCP server (`src/node/mcp-server.mjs` + `src/node/lib/**`), not the web app.
 
