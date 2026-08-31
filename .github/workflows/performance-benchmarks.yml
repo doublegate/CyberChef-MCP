@@ -182,7 +182,17 @@ jobs:
                 repo: context.repo.repo,
                 per_page: 100
               });
-              existing = comments.find(c => c.body && c.body.includes(MARKER)) || null;
+              // Match on the marker AND on authorship. The marker alone is not a claim of
+              // ownership: anyone who can comment on the PR could paste it and have this job
+              // overwrite their comment on the next run. Restricting to the Actions bot means the
+              // worst case is an extra comment, never destroying someone else's text.
+              existing = comments.find(c =>
+                c.body &&
+                c.body.includes(MARKER) &&
+                c.user &&
+                c.user.type === "Bot" &&
+                c.user.login === "github-actions[bot]"
+              ) || null;
             } catch (err) {
               // Fall through to a plain create. A duplicate comment is noise; failing to report a
               // benchmark run at all is worse, so a lookup failure must not fail the job.

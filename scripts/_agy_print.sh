@@ -22,4 +22,8 @@ if [ ! -r "$1" ]; then
   exit 2
 fi
 prompt_file="$1"; shift
-exec "${AGY_BIN:-agy}" "$@" --print "$(cat "$prompt_file")"
+# `$(<file)` rather than `$(cat "$file")`: `cat` parses a leading `-` in the path as an option, so
+# `_agy_print.sh -weird-name` fails obscurely -- and this script is now explicitly documented as
+# hand-runnable. The bash redirection form takes the word as a path unconditionally, and reads it
+# in-process rather than forking. Both forms strip trailing newlines identically inside `$( )`.
+exec "${AGY_BIN:-agy}" "$@" --print "$(<"$prompt_file")"
