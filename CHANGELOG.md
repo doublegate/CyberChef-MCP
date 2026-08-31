@@ -37,6 +37,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Protocol revision 2026-07-28**, alongside the 2025 era, over stdio. The server moved from
+  `@modelcontextprotocol/sdk` 1.x to the v2 packages (`@modelcontextprotocol/server`,
+  `@modelcontextprotocol/node`). Existing clients are unaffected: a v1-SDK client still negotiates
+  2025-11-25 against the same handlers, and `tests/mcp/protocol-eras.test.mjs` spawns the real
+  binary once per era to keep it that way. HTTP continues to serve the 2025 era.
 - `tests/mcp/image-operations.test.mjs` — 19 tests pinning all 17 image operations end to end, plus
   the operation-boundary assertions that make the buffer-pool defect visible.
 

@@ -98,7 +98,9 @@ Document in `docs/security/audit.md`:
 
 These packages are critical for production MCP server security:
 
-1. **@modelcontextprotocol/sdk** - Core MCP protocol implementation
+1. **@modelcontextprotocol/server** / **@modelcontextprotocol/node** - Core MCP protocol
+   implementation (SDK v2; `@modelcontextprotocol/sdk` 1.x is a devDependency, kept only so the
+   suite can prove a legacy-era client still connects)
 2. **crypto-js** - Cryptographic operations
 3. **jsonwebtoken** - Authentication tokens
 4. **node-forge** - Cryptographic operations

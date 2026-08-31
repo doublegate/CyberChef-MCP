@@ -13,12 +13,7 @@
  */
 
 import { help } from "./index.mjs";
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import {
-    CallToolRequestSchema, ListToolsRequestSchema,
-    ListPromptsRequestSchema, GetPromptRequestSchema,
-    ListResourcesRequestSchema, ReadResourceRequestSchema, ListResourceTemplatesRequestSchema
-} from "@modelcontextprotocol/sdk/types.js";
+import { Server } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import Utils from "../core/Utils.mjs";
 import OperationConfig from "../core/config/OperationConfig.json" with {type: "json"};
@@ -1234,24 +1229,24 @@ function createMcpServer() {
  * @returns {Server} The same instance, for chaining.
  */
 function registerHandlers(instance) {
-    instance.setRequestHandler(ListToolsRequestSchema, handleListTools);
+    instance.setRequestHandler("tools/list", handleListTools);
     // The instance is bound in as the notification FALLBACK. `extra.sendNotification` remains the
     // primary path -- it is the SDK's documented per-request routing and is correct by
     // construction -- but if a future SDK reshapes `extra`, the fallback must not quietly become
     // "the module singleton", which for an HTTP session is precisely the bug this PR fixes,
     // returning silently. Bound this way it degrades to *this session's* server instead.
-    instance.setRequestHandler(CallToolRequestSchema, (req, extra) => handleCallTool(req, extra, instance));
+    instance.setRequestHandler("tools/call", (req, extra) => handleCallTool(req, extra, instance));
 
     // Prompts: the entry points for someone who does not yet know which of 504 operations
     // they need. See lib/prompts.mjs.
-    instance.setRequestHandler(ListPromptsRequestSchema, () => listPrompts());
-    instance.setRequestHandler(GetPromptRequestSchema, (req) =>
+    instance.setRequestHandler("prompts/list", () => listPrompts());
+    instance.setRequestHandler("prompts/get", (req) =>
         getPrompt(req.params.name, req.params.arguments || {}));
 
     // Resources: saved recipes, browsable without spending a tool call. See lib/resources.mjs.
-    instance.setRequestHandler(ListResourcesRequestSchema, () => listResources(recipeManager));
-    instance.setRequestHandler(ListResourceTemplatesRequestSchema, () => listResourceTemplates());
-    instance.setRequestHandler(ReadResourceRequestSchema, (req) =>
+    instance.setRequestHandler("resources/list", () => listResources(recipeManager));
+    instance.setRequestHandler("resources/templates/list", () => listResourceTemplates());
+    instance.setRequestHandler("resources/read", (req) =>
         readResource(recipeManager, req.params.uri));
 
     return instance;

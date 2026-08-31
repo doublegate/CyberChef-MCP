@@ -34,7 +34,7 @@
  * @license GPL-3.0-or-later
  */
 
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { getLogger } from "./logger.mjs";
 
 /**
@@ -189,6 +189,8 @@ function sendJsonRpcError(res, status, code, message, id = null) {
  * @param {number} options.port - HTTP port (default: 3000).
  * @param {string} options.host - HTTP host (default: "127.0.0.1").
  * @param {Function} options.createServer - Factory returning a fresh MCP `Server` per session.
+ * @param {Object} [options.transport] - stdio only: serve over this transport instead of the
+ *   process's own stdin/stdout. Used by the tests, and by any stdio binding over a socket.
  *   Required for HTTP; a session cannot share one.
  * @param {number} options.maxBodyBytes - Maximum accepted request body (default 4 MiB).
  * @param {number} options.sessionTimeoutMs - Idle-session reap threshold.
@@ -300,8 +302,8 @@ export async function createTransport(options = {}) {
             );
         }
 
-        const { StreamableHTTPServerTransport } = await import(
-            "@modelcontextprotocol/sdk/server/streamableHttp.js"
+        const { NodeStreamableHTTPServerTransport: StreamableHTTPServerTransport } = await import(
+            "@modelcontextprotocol/node"
         );
         const http = await import("node:http");
         const { randomUUID } = await import("node:crypto");
@@ -646,9 +648,34 @@ export async function createTransport(options = {}) {
         return { transport: null, httpServer, sessions, closeAll };
     }
 
-    // Default: stdio. Single connection by construction, so the module-level server is correct.
-    const transport = new StdioServerTransport();
-    return { transport, httpServer: null };
+    // Default: stdio.
+    //
+    // `serveStdio` rather than a bare `StdioServerTransport`, because the era decision lives in the
+    // entry, not in the transport. Measured against SDK v2.0.0: a bare transport plus
+    // `server.connect()` serves the 2025 era only -- a client pinning protocol revision 2026-07-28
+    // fails negotiation outright with ERA_NEGOTIATION_FAILED, because nothing answers its
+    // `server/discover` probe. `serveStdio` classifies the opening exchange, pins ONE instance from
+    // the factory for the connection's lifetime, and serves whichever era the client opened with.
+    //
+    // So this returns `transport: null` for the same reason the HTTP branch does: there is no
+    // process-wide transport to connect any more, and `server.connect(transport)` in `runServer()`
+    // would bypass the entry that makes the modern era reachable.
+    const createServer = options.createServer;
+    if (typeof createServer !== "function") {
+        throw new TypeError(
+            "createTransport({type:'stdio'}) requires a createServer factory: the stdio entry " +
+            "pins one instance per connection and owns the era decision."
+        );
+    }
+    const handle = serveStdio(createServer, {
+        // `options.transport` is how a caller drives the stdio entry WITHOUT touching the
+        // process's own stdin/stdout: the entry defaults to real process stdio, which a test
+        // runner must never hand over. It is also the seam the SDK documents for a stdio binding
+        // over a socket rather than a pipe.
+        ...(options.transport ? { transport: options.transport } : {}),
+        onerror: (err) => logger.error(`stdio transport error: ${err.message}`)
+    });
+    return { transport: null, httpServer: null, closeAll: () => handle.close() };
 }
 
 /**
