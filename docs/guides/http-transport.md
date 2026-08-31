@@ -158,6 +158,26 @@ is the signal for a conforming client to re-initialize. The server deliberately 
 fresh session for an unrecognised id, because that would hand the client a different conversation
 from the one it believes it is in — silently, with no error to notice.
 
+## Exposing it beyond localhost
+
+The defaults assume a local client: loopback bind, no CORS, no `Host` allowlist. Everything in this
+guide works that way with no further setup.
+
+**If the server is reachable from untrusted networks, put a reverse proxy in front of it.** Not
+because anything here is missing a check — the session cap, body limit, `Host` allowlist and origin
+allowlist are all present — but because the things a proxy does well are things this server does not
+do at all:
+
+| Concern | Why the proxy |
+|---|---|
+| Slow-loris and idle-connection exhaustion | Node's HTTP server is deliberately generous with idle sockets; a proxy has tuned header/body timeouts and connection caps |
+| TLS | This server speaks plain HTTP only |
+| Authentication | There is none. `initialize` is unauthenticated by design, which is why `CYBERCHEF_MAX_SESSIONS` exists |
+| Request-rate limiting | `CYBERCHEF_RATE_LIMIT_*` governs **tool calls**, not HTTP requests |
+| `Host` validation | If the proxy validates it, `CYBERCHEF_ALLOWED_HOSTS` is redundant |
+
+Bind the server to loopback and let the proxy be the only thing that talks to it.
+
 ## What is shared and what is not
 
 Per session: the MCP `Server` instance and its transport, i.e. protocol lifecycle state.

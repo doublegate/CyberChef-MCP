@@ -955,6 +955,10 @@ async function runServer() {
     // the teardown -- keeps its current behaviour and its default signal handling.
     if (typeof closeAll === "function") {
         let shuttingDown = false;
+        // POSIX exit status for a signal death: 128 + signum. Exiting 0 tells a supervisor the
+        // process stopped of its own accord, which is not what happened -- systemd, Docker and
+        // anything reading $? cannot then distinguish "asked to stop" from "finished".
+        const SIGNAL_NUMBERS = { SIGINT: 2, SIGTERM: 15 };
         const shutdown = (signal) => {
             // Guard against a second signal arriving mid-teardown and re-entering closeAll.
             if (shuttingDown) return;
@@ -963,7 +967,7 @@ async function runServer() {
             logger.info(`${signal} received: closing HTTP sessions and listener`);
             closeAll()
                 .catch(err => logger.error(`shutdown failed: ${err.message}`))
-                .finally(() => process.exit(0));
+                .finally(() => process.exit(128 + (SIGNAL_NUMBERS[signal] ?? 0)));
         };
         // `once` per signal, AND the boolean. They cover different cases and neither is
         // redundant: `once` stops a repeated SIGINT from re-entering, the boolean stops a SIGINT
