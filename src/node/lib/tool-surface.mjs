@@ -114,7 +114,9 @@ const CURATED_SET = new Set(CURATED_OPERATIONS);
 /**
  * Read the configured surface mode.
  *
- * @returns {"all"|"curated"} The mode, defaulting to "all".
+ * @returns {"index"|"curated"|"all"} The mode. Defaults to "index", and an unrecognised value
+ *   falls back to it rather than erroring -- a typo in an environment variable should not stop the
+ *   server from starting, and the startup log states which surface is actually in force.
  */
 export function surfaceMode() {
     // CYBERCHEF_EXPOSE_ALL_OPS is honoured in both directions, because the v2.0.0 planning

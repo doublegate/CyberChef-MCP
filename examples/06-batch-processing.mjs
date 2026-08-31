@@ -38,8 +38,9 @@ try {
     expect("and the last one matches too", String(got[3]), wanted[3]);
 
     step("A bad input fails ITS item, not the batch");
-    // "not-base64!!" cannot be decoded. Sequential mode makes the ordering deterministic, which
-    // matters when you are correlating results back to inputs.
+    // The middle item fails: "definitely not gzip" is not gzip, so `cyberchef_gunzip` rejects it.
+    // Sequential mode makes the ordering deterministic, which matters when you are correlating
+    // results back to inputs.
     const mixed = JSON.parse(await call(client, "cyberchef_batch", {
         operations: [
             { tool: "cyberchef_from_base64", arguments: { input: "aGVsbG8=" } },

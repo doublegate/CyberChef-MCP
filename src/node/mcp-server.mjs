@@ -464,8 +464,10 @@ const handleListTools = async () => {
     ];
 
     Object.keys(OperationConfig).forEach(opName => {
-        // Curation is opt-in; `all` is still the default. Nothing becomes unreachable either way --
-        // cyberchef_bake runs any operation by name and cyberchef_search finds the name.
+        // The default surface is `index`, which pre-loads no ordinary operation tools at all;
+        // `curated` and `all` pre-load progressively more, and CYBERCHEF_TOOL_ALLOWLIST overrides
+        // the mode entirely. Nothing becomes unreachable under any of them -- cyberchef_bake runs
+        // any operation by name, and the navigation tools find the name and its schema.
         if (!isExposed(opName)) return;
 
         const op = OperationConfig[opName];

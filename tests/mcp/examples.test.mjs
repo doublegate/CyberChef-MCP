@@ -56,18 +56,50 @@ function run(file) {
         const child = spawn(
             isShell ? "bash" : process.execPath,
             [resolve(EXAMPLES_DIR, file)],
-            { cwd: resolve(HERE, "../.."), stdio: ["ignore", "pipe", "pipe"] }
+            {
+                cwd: resolve(HERE, "../.."),
+                stdio: ["ignore", "pipe", "pipe"],
+                // Its own process group, so the kill below reaches a shell example's CHILDREN too.
+                // 08 spawns servers; killing only bash would orphan them.
+                detached: !process.platform.startsWith("win")
+            }
         );
+
         let stdout = "";
         let stderr = "";
+        let timedOut = false;
+
+        // Vitest's per-test timeout fails the TEST; it does not kill a process this file spawned.
+        // Without a kill of our own, a hung example leaves an orphaned server holding a port and
+        // the suite carries on around it. Slightly under the test timeout so this fires first and
+        // the failure says "timed out" rather than surfacing as a generic test timeout.
+        const killer = setTimeout(() => {
+            timedOut = true;
+            try {
+                process.kill(child.pid > 0 && child.spawnargs ? -child.pid : child.pid, "SIGKILL");
+            } catch {
+                child.kill("SIGKILL");
+            }
+        }, TIMEOUT_MS - 15_000);
+
         child.stdout.on("data", d => {
             stdout += d;
         });
         child.stderr.on("data", d => {
             stderr += d;
         });
-        child.on("error", rejectRun);
-        child.on("close", code => resolveRun({ code, stdout, stderr }));
+        child.on("error", err => {
+            clearTimeout(killer);
+            rejectRun(err);
+        });
+        child.on("close", code => {
+            clearTimeout(killer);
+            if (timedOut) {
+                rejectRun(new Error(`${file} timed out after ${(TIMEOUT_MS - 15_000) / 1000}s\n${stdout}`));
+                return;
+            }
+            resolveRun({ code, stdout, stderr });
+        });
     });
 }
 

@@ -45,7 +45,7 @@ try {
     //
     // Take the key from the tool's inputSchema, not from the CyberChef UI label: the UI calls
     // this "Size" and the schema calls it `size`. Reading it is only possible at all because
-    // v2.0.1 fixed the schemas -- before that every tool advertised an empty one.
+    // v2.1.0 fixed the schemas -- before that every tool advertised an empty one.
     // Without the argument, SHA2 defaults to 512.
     const digest = await call(client, "cyberchef_sha2", {
         input: "Hello, CyberChef!",

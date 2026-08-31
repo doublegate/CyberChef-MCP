@@ -17,7 +17,7 @@ import { executeWithTimeoutAndRetry, RetryConfig } from "../retry.mjs";
 import { createInputError } from "../errors.mjs";
 import { dishToText } from "./dish-output.mjs";
 import { bakeOnCore } from "./core-recipe.mjs";
-import { sanitizeToolName, resolveArgValue, validateInputSize } from "./tool-schema.mjs";
+import { sanitizeToolName, resolveArgValue, validateInputSize, toolArgName } from "./tool-schema.mjs";
 
 /**
  * Batch processor for executing multiple operations (v1.7.0).
@@ -157,7 +157,11 @@ class BatchProcessor {
 
         if (opConfig.args) {
             opConfig.args.forEach(argDef => {
-                const argName = argDef.name.toLowerCase().replace(/ /g, "_");
+                // `toolArgName`, not a fourth private copy of the sanitisation. This WAS a
+                // fourth copy, and it had already drifted: it produced `input` where the schema
+                // and the direct-call path produce `input_arg`, so a batched AES call failed
+                // while the identical direct call succeeded.
+                const argName = toolArgName(argDef.name);
                 const userVal = op.arguments[argName];
                 recipeArgs.push(resolveArgValue(argDef, userVal));
             });

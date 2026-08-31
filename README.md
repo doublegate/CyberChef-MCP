@@ -735,7 +735,7 @@ npm run lint
 
 **Test Coverage:**
 The MCP server maintains comprehensive test coverage across 25 test suites:
-- **756 MCP tests**, plus 241 Node-API tests and 2,289 operation tests
+- **798 MCP tests** across 25 suites, plus 241 Node-API tests, 2,289 operation tests and 8 runnable examples executed by CI
 - **Coverage thresholds**: 75% lines/statements, 90% functions, 70% branches
 - **Current coverage**: 78.8% lines, 78.7% statements, 90.5% functions, 75.1% branches
 - `src/node/lib/**` — the fork-owned subsystems extracted in the v2.0.0 decomposition — sits at **95.2% lines**

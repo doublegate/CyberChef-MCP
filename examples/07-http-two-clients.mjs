@@ -80,12 +80,17 @@ try {
     console.log("  listening");
 
     step("Connect TWO clients concurrently");
-    for (const name of ["analyst-a", "analyst-b"]) {
+    // Both handshakes are started before either is awaited. `await` inside the loop would
+    // serialise them, which would quietly stop demonstrating the thing this example is about:
+    // issue #36 was a SECOND initialize being rejected, and overlapping the two is what puts the
+    // per-session transport under the pressure that used to fail.
+    const pending = ["analyst-a", "analyst-b"].map(async name => {
         const c = new Client({ name, version: "1.0.0" }, { capabilities: {} });
         await c.connect(new StreamableHTTPClientTransport(new URL(url)));
-        clients.push(c);
         console.log(`  ${name} connected`);
-    }
+        return c;
+    });
+    clients.push(...await Promise.all(pending));
     expect("both clients connected", clients.length, 2);
 
     step("Each has its own session and its own results");

@@ -34,7 +34,11 @@ export async function connect(name = "example") {
     const client = new Client({ name, version: "1.0.0" }, { capabilities: {} });
     await client.connect(new StdioClientTransport({
         command: process.execPath,
-        args: [SERVER],
+        // `--openssl-legacy-provider` matches what `npm run mcp` and the Docker image use. A few
+        // operations reach algorithms OpenSSL 3 moved out of its default provider, and without the
+        // flag `Generate all hashes` returns its input unchanged rather than erroring -- so an
+        // example that omitted it would quietly demonstrate the wrong behaviour.
+        args: ["--openssl-legacy-provider", SERVER],
         // The server's diagnostics go to stderr; let them through so a reader can see what the
         // server is doing, rather than swallowing the one channel that explains a failure.
         stderr: "inherit"

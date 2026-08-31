@@ -40,17 +40,63 @@
  */
 
 import { readFile } from "node:fs/promises";
+import { resolve, sep, extname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+/**
+ * The only directory a filesystem `fetch` may read from.
+ *
+ * `src/node/lib/wasm-fetch.mjs` -> repository root -> `node_modules`.
+ */
+const NODE_MODULES = resolve(fileURLToPath(new URL("../../../node_modules", import.meta.url)));
 
 /** Guard so repeated imports (or an explicit call in a worker) install the wrapper only once. */
 let installed = false;
 
 /**
- * Wrap `globalThis.fetch` so absolute filesystem paths are served from disk.
+ * May this path be served from disk?
  *
- * Deliberately narrow. Only a value that is unambiguously a local path is intercepted -- an
- * absolute POSIX path, or a Windows drive path -- and everything else, including every real URL,
- * goes to the original `fetch` untouched. A broader rule risks turning a genuine network call into
- * a file read, which would be a far worse bug than the one being fixed.
+ * THIS FUNCTION IS THE SECURITY BOUNDARY, and the first version of this module did not have one.
+ * It served *any* absolute path, which was a local file inclusion: CyberChef ships an "HTTP
+ * request" operation that calls `fetch(url)` with a caller-supplied URL (HTTPRequest.mjs:106), so
+ * a request for `/etc/passwd` came back as the file's contents. Demonstrated before fixing:
+ *
+ *     fetch("/etc/hostname")  ->  "AB-i9"
+ *
+ * Two conditions, both required:
+ *   - the path RESOLVES inside this project's `node_modules`. `path.resolve` normalises `..`
+ *     first, so `/node_modules/../../etc/passwd` is rejected on its resolved form, not its
+ *     spelling; the `sep` suffix stops `node_modules_evil` matching by prefix.
+ *   - the file ends in `.wasm`. The whole purpose is loading WebAssembly payloads, so anything
+ *     else in node_modules -- a `.env` a dependency shipped, a private key in a test fixture --
+ *     is out of scope by construction.
+ *
+ * Anything failing either test is handed to the ORIGINAL fetch, which restores exactly the
+ * behaviour that existed before this module: a bare path is rejected by Node. Failing closed here
+ * costs nothing, because a genuine URL never reaches this check.
+ *
+ * @param {string} candidate - The resource, as a string.
+ * @returns {string|null} The absolute path to read, or null if it must not be read.
+ */
+function servableWasmPath(candidate) {
+    const isPosixPath = candidate.startsWith("/");
+    const isWindowsPath = /^[A-Za-z]:[/\\]/.test(candidate);
+    if (!isPosixPath && !isWindowsPath) return null;
+
+    const resolved = resolve(candidate);
+    const inNodeModules = resolved === NODE_MODULES || resolved.startsWith(NODE_MODULES + sep);
+    if (!inNodeModules) return null;
+    if (extname(resolved).toLowerCase() !== ".wasm") return null;
+
+    return resolved;
+}
+
+/**
+ * Wrap `globalThis.fetch` so a WASM payload inside `node_modules` is served from disk.
+ *
+ * Deliberately narrow -- see `servableWasmPath`, which decides what may be read. Everything else,
+ * including every real URL, goes to the original `fetch` untouched. A broader rule turns a genuine
+ * network call into a file read, which is a far worse bug than the one being fixed.
  *
  * @returns {boolean} True if the wrapper was installed by this call.
  */
@@ -61,17 +107,16 @@ export function installWasmFetch() {
     const originalFetch = globalThis.fetch;
 
     globalThis.fetch = async function wasmAwareFetch(resource, options) {
-        const asString = typeof resource === "string" ? resource :
-            (resource instanceof URL ? resource.href : String(resource));
+        // `String()` on a string is a no-op, so the extra ternary the first version had bought
+        // nothing.
+        const asString = resource instanceof URL ? resource.href : String(resource);
+        const wasmPath = servableWasmPath(asString);
 
-        const isPosixPath = asString.startsWith("/");
-        const isWindowsPath = /^[A-Za-z]:[/\\]/.test(asString);
-
-        if (isPosixPath || isWindowsPath) {
+        if (wasmPath) {
             // A failure here must still surface as a rejected fetch, NOT as a thrown error from a
             // different call stack -- the whole point is to keep this off the process-wide
             // unhandledRejection path that aborts the process.
-            const buffer = await readFile(asString);
+            const buffer = await readFile(wasmPath);
             return new Response(buffer, {
                 status: 200,
                 headers: { "Content-Type": "application/wasm" }
@@ -82,6 +127,17 @@ export function installWasmFetch() {
     };
 
     return true;
+}
+
+/**
+ * The path-allowlist predicate, exported so the regression test can assert the boundary directly
+ * rather than only through `fetch`.
+ *
+ * @param {string} candidate - The resource, as a string.
+ * @returns {string|null} The absolute path to read, or null.
+ */
+export function _servableWasmPathForTest(candidate) {
+    return servableWasmPath(candidate);
 }
 
 /**

@@ -101,9 +101,9 @@ describe("stdio contract, via the official MCP client", () => {
     it("executes a tool call end to end", async () => {
         const res = await client.callTool({
             name: "cyberchef_to_base64",
-            arguments: { input: "Hello v2.0.1" }
+            arguments: { input: "Hello v2.1.0" }
         });
-        expect(res.content[0].text).toBe(Buffer.from("Hello v2.0.1").toString("base64"));
+        expect(res.content[0].text).toBe(Buffer.from("Hello v2.1.0").toString("base64"));
     }, BOOT_TIMEOUT_MS);
 });
 
