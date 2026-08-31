@@ -216,7 +216,21 @@ module.exports = function (grunt) {
     function chainCommands(cmds) {
         const win = process.platform === "win32";
         if (!win) {
-            return cmds.join(";");
+            // `&&`, NOT `;`. With `;` every command runs regardless of the previous one's exit
+            // status AND the chain's status is the LAST command's -- which here is always a
+            // trailing `echo`. So a config-generation script could die and `grunt configTests`
+            // would still exit 0, leaving OperationConfig.json as the literal `[]` written by the
+            // first command: an MCP server with zero tools, from a build that reported success.
+            //
+            // Observed twice. During the v11.4.0 landing a missing generator killed
+            // generateConfig silently, and again here when `bson` 7 removed its default export.
+            // Both times grunt said "Done." Verified:
+            //     (true ; false ; echo done)  -> exit 0
+            //     (true && false && echo done) -> exit 1
+            //
+            // Note the Windows branch below already used `&&` and its comment explains exactly
+            // why -- so POSIX was the odd one out, failing open where Windows failed closed.
+            return cmds.join(" && ");
         }
         return cmds
             // && means that subsequent commands will not be executed if the
