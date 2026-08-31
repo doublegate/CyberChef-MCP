@@ -127,6 +127,17 @@ TestRegister.addTests([
         ],
     },
     {
+        name: "To Hexdump: Width too large",
+        input: "H",
+        expectedOutput: "Width must be less than or equal to 65536.",
+        recipeConfig: [
+            {
+                op: "To Hexdump",
+                args: [155555555555555, false, false, false]
+            }
+        ],
+    },
+    {
         name: "From Hexdump: xxd",
         input: `00000000: 0001 0203 0405 0607 0809 0a0b 0c0d 0e0f  ................
 00000010: 1011 1213 1415 1617 1819 1a1b 1c1d 1e1f  ................
@@ -145,6 +156,17 @@ TestRegister.addTests([
 000000e0: e0e1 e2e3 e4e5 e6e7 e8e9 eaeb eced eeef  ................
 000000f0: f0f1 f2f3 f4f5 f6f7 f8f9 fafb fcfd feff  ................`,
         expectedOutput: ALL_BYTES,
+        recipeConfig: [
+            {
+                op: "From Hexdump",
+                args: []
+            }
+        ],
+    },
+    {
+        name: "From Hexdump: xxd format, odd number of bytes",
+        input: "00000000: 6162 6364 65                             abcde",
+        expectedOutput: "abcde",
         recipeConfig: [
             {
                 op: "From Hexdump",

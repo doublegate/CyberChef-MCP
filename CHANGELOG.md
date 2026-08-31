@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Upstream CyberChef 10.19.4 → 11.4.0.** 505 operation files (was 464); `OperationConfig` holds 504, and the difference is an upstream duplicate, not a loss — `GeneratePrime.mjs` and `RandomPrime.mjs` are **byte-identical** and both declare `this.name = "Pseudo-Random Prime Generator"`, so one shadows the other harmlessly. Tool baseline regenerated: 465 → 506.
+- **Node floor is now 24.** Added `engines: {"node": ">=24 <27"}`, matching upstream exactly.
+- **Dependency set adopted from upstream**, including two breaking majors that cost nothing because the code that uses them is mirrored: `jimp` 0.22 → 1.6 (no fork-owned code uses it) and `js-yaml` 4 → 5. The `overrides` pin holding `js-yaml` at `^4.1.1` was **removed** — leaving it would have silently defeated the upgrade while installing cleanly.
+- **`src/node/recipe-manager.mjs` migrated to js-yaml 5** named imports. It is fork-owned, so the mirror could not do it: `import yaml from "js-yaml"` is `undefined` under v5, which fails at call time rather than import time.
+- **`argSelector` argument type supported** (`src/node/lib/tool-schema.mjs`). 19 operations use it, including AES Encrypt/Decrypt; without a case they would have offered a free-text field where only fixed modes are valid.
+- **Upstream-owned test suites are now mirrored too** (`tests/{lib,node,operations,samples}`), which the previous `src/**`-only scope missed. Upstream migrated these to `await assert.rejects(...)` for the async `bake()`; our stale copies still used `assert.throws`. `tests/mcp/` remains fork-owned and untouched.
+- **`Gruntfile.js` runs `generateHTMLEntities.mjs`.** v11.4.0 introduced a **sixth** generated file, `src/core/lib/HTMLEntities.mjs`. Without it `FromHTMLEntity.mjs` imports a module that does not exist, `generateConfig` dies, and `OperationConfig.json` is left as the literal `[]` — an MCP server with zero tools, from a Grunt run that reports success.
+
+### Removed
+- **Fork patch `02-utils-escape-backslashes`.** Upstream fixed the underlying incomplete-sanitization issue in v11.4.0 with `Utils._validatePrettyRecipe()` and a corrected parsing regex. The patch still applied cleanly — and was still wrong, double-escaping what upstream now handles and breaking upstream's own new test. A clean apply is not evidence a patch is still needed.
+
 ### Added
 - **ReDoS screening for user-supplied regular expressions** (`src/node/lib/safe-regex.mjs`), replacing the removed `src/core/lib/SafeRegex.mjs`. Screens regex-bearing arguments in `resolveArgValue` — the single point every user argument passes through, covering single-operation tools, `cyberchef_bake` and batch execution with one hook — and rejects catastrophic-backtracking shapes before the pattern is ever executed.
   Two things make this different from its predecessor rather than a reinstatement:

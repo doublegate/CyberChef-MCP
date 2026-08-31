@@ -445,10 +445,14 @@ describe("MCP Server Integration", () => {
             expect(typeof result.value).toBe("string");
         });
 
-        it("should throw on invalid operation", () => {
-            // bake throws TypeError synchronously for invalid operations
-            expect(() => bake("test", [{ op: "InvalidOperation", args: [] }]))
-                .toThrow(/Couldn't find an operation/);
+        it("should reject on invalid operation", async () => {
+            // `bake()` became async in upstream v11.4.0. Verified directly rather than assumed:
+            // calling it with an unknown operation does NOT throw synchronously, it returns a
+            // Promise that rejects with "Couldn't find an operation with name '...'". The old
+            // form here was `expect(() => bake(...)).toThrow(...)`, which tests the wrong thing
+            // and additionally leaves the rejection unhandled.
+            await expect(bake("test", [{ op: "InvalidOperation", args: [] }]))
+                .rejects.toThrow(/Couldn't find an operation/);
         });
 
         it("should handle empty input", async () => {

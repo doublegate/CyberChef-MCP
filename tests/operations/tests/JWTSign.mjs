@@ -15,52 +15,66 @@ const inputObject = JSON.stringify({
 }, null, 4);
 
 const hsKey = "secret_cat";
-const rsKey = `-----BEGIN PRIVATE KEY-----
-MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDyctlheJSGFQM7
-qbbQaG6xsPCkGmwUrfrKqs+yINpwbvIxtERM5Hy4d1zS+ZlH7Y1VQxDsr0PjXS8G
-83dabeQ1Z59L+iuN6bb5xVFKBg0eT9zM2UJp6F0NZtP9iz8+ZlMhGAPqp7qhYO2o
-iq6CqW+Z4/87wNL4KEFZTa9GRN0YAbJsRHfPRleJLfWm/9jc5dgyqz6HIEhuSd3k
-HiG3A1HUp+ih+z3wwxHAgqle932sEHUSfKzK4Y1cKyn9ph8NUrZFHctGZpCjQa9t
-6LEf/HafhbLn6ej5Aykfgm9Wzgfqy+WakmjUf33DB0BWpI2yefqmDa5iU+6rSlEx
-3x7RSah5AgMBAAECggEAEozdy87Ia2lma81YlOHWrV8UzHOOlzb4GENhPJd1qzJb
-8thgfPMjBVCxsB1DoHyhKpfE7t0aoEX4FAuzEz7S/hCRgERSCovKMZpqtbOYk5wH
-8H8DjTunif/XAsBhnIZDAEZYf17pwVD7oiCJSWtKJA/NLq7aXX0kAd+XJHTep0hM
-1JrXWQhBIlZeF7S5/u+MbkdAa+/9RnfEjojHxXA+Gyam4cPlrGI/2wCD/Q+o+dIp
-irnUUlrhVrnkHbq10Rb2cHBcHt8ptr73Fn1tCgjXjUh10N/wbiQvDRgcS0GXcW+j
-lrKIUWHhP/ihPEf/XNgl2W5HLoarGjU/AYcKThXM0QKBgQD77OJRAuUttz8dckdp
-piFDdZ+kO+O6uav2g5VTJpdMeoQyhf5c8DFVUXtzcsKdAoCTIpKsTzxq5dR21qt/
-NIPrqt48yMtK2FvwX9JnsnfxfmbLJH2vbGVML76dM36u3D+dCpjhiG+ULZeXwazO
-5q0QQLvitTuvRWTEVtOGJmjd8QKBgQD2Xrnh7xwSzzvEJQfjcoyICPim2YbC5HU2
-kHmt9j2SreKxgyvYOdKyCbT1P0GU4ZX9jMZ5CSd+2bO4b76+NVCRNgJXO5y15BVE
-JY07o5oSph7A5Q9oQKMjIH/uoeb6gT3BhbAMo8STn8SP7yKPECJ4jkvFn6MX1Ott
-950UwJiLCQKBgD+OldJGXrdX4c52BFo9FWtFg48VpPB440+ABu5BcC5VQoDUmUWt
-O2UA95o6u6qM9Q8py8M5Ak8dyKpqoj2nbBjKtOK07cTmLNvJ8PVEa0o7z4c0n5jg
-SfYcnYRfd3h6DHp8L/HGUBAcKICa1hQk0kilbEFX48TmRvPZy+euTQqhAoGAU/xE
-t51wX4UfpaTOBJ43A+SzBwXeZ6/DuV8U69WmdcsrHUJO/v3vMlwWwQfYTm18WRvV
-SMtzGE4Ucwo85tB775SOxbf/mw3upfV7KNqDmlng3/b2Ap8OPdpFYk70026dY8w0
-EIr/ZyeutTZa/JQOfDRd5jeePHCL9UfU1480MSkCgYEAlTh/fDAqM+VHfPIFoK8l
-AFyZhmq0TKHu6mZJ2FpBk3CtAnGzr89PE5orwHoq/wL/SxFXHRgbrLlRZ90VLc9x
-Z+On217NUfJU1JjYnRiD15+aBVY5Ugf37e3Ee5vnbTTsqueZCvVfgIxoUDafv7vY
-9AuB+29hLd8MMviwpCYpGPY=
------END PRIVATE KEY-----`;
-const esKey = `-----BEGIN PRIVATE KEY-----
+const rsKey1024 = `-----BEGIN RSA PRIVATE KEY-----
+MIICWwIBAAKBgQDdlatRjRjogo3WojgGHFHYLugdUWAY9iR3fy4arWNA1KoS8kVw
+33cJibXr8bvwUAUparCwlvdbH6dvEOfou0/gCFQsHUfQrSDv+MuSUMAe8jzKE4qW
++jK+xQU9a03GUnKHkkle+Q0pX/g6jXZ7r1/xAK5Do2kQ+X5xK9cipRgEKwIDAQAB
+AoGAD+onAtVye4ic7VR7V50DF9bOnwRwNXrARcDhq9LWNRrRGElESYYTQ6EbatXS
+3MCyjjX2eMhu/aF5YhXBwkppwxg+EOmXeh+MzL7Zh284OuPbkglAaGhV9bb6/5Cp
+uGb1esyPbYW+Ty2PC0GSZfIXkXs76jXAu9TOBvD0ybc2YlkCQQDywg2R/7t3Q2OE
+2+yo382CLJdrlSLVROWKwb4tb2PjhY4XAwV8d1vy0RenxTB+K5Mu57uVSTHtrMK0
+GAtFr833AkEA6avx20OHo61Yela/4k5kQDtjEf1N0LfI+BcWZtxsS3jDM3i1Hp0K
+Su5rsCPb8acJo5RO26gGVrfAsDcIXKC+bQJAZZ2XIpsitLyPpuiMOvBbzPavd4gY
+6Z8KWrfYzJoI/Q9FuBo6rKwl4BFoToD7WIUS+hpkagwWiz+6zLoX1dbOZwJACmH5
+fSSjAkLRi54PKJ8TFUeOP15h9sQzydI8zJU+upvDEKZsZc/UhT/SySDOxQ4G/523
+Y0sz/OZtSWcol/UMgQJALesy++GdvoIDLfJX5GBQpuFgFenRiRDabxrE9MNUZ2aP
+FaFp+DyAe+b4nDwuJaW2LURbr8AEZga7oQj0uYxcYw==
+-----END RSA PRIVATE KEY-----`;
+const rsKey2048 = `-----BEGIN RSA PRIVATE KEY-----
+MIIEogIBAAKCAQEAk0VOoksAblwP82DALTG6xGC86Hfho3nChbcPGWyqn+ScfHBF
+cg3SeKyy6aWCyLcKfNwE5cPYzuYvVBsZyIrdfFOuV90D/aRYbuw6UkKR3cmmy9qE
+qvu05dogvc0BcmkwbC37Q8JnsZBRcosoLGgTFxcK+LXdsG7DukajpsGesxQjOLb2
+1jnx+ypzx74xvj7grqlXkxeDKr22q7QkO3A1ApoOuJRAU+SjEEZmqdXzRery2RWx
+hkWbCXuQw4PnW5Lh3Wwabnu7XKVIa6wJa1pqL2IAxmlZ0bvGTfjtO5ggNfgJk5V4
+bGSOXnsplpG71AWMrK2q6NqHjFIE1szEycUKrwIDAQABAoIBAAivyt6Zy/G2g8kC
+852hfvcRubLV92eRdAmNGFqTOqaUcS00i3QZyp4MRGqxtOV/88y/nEOtP1RHkZJw
+HXTjHq4JsDvwhnQR8JbCX6z1zkLQdS01u3jrwJTaPpooxdATfPlfO6CYjqM+SapB
+o7dS1ZAZb4U8vPx+MWoDEVNxvO7/xyqho1Oc4H9MwqQUiyG2WfIoqxLSrBYcambv
+RmySwTIpgQZTr61EeWf/0eWpV0iEYbSnkB/VaKW+5tg4gCjPgy5v6/LQ0u/pzlYz
+ayCL3xN2rp0tigXsiiWz3cM5gDsnatK4nVNRs9y3JSZpWpI236ZfZjs8Lts+WBUw
+hAEoE9kCgYEAyEIGD1A7R/t5EYk5HhHDH5tGdyxejAcQL5AIz0YnTZU8Iixyc7FR
+uDmAMiuKIcJY/nUlxZjSxNc3MkOfZNggQvf9ONrt+ftQ1yyTjv+019NfU4w4d0Ep
+LNaiAHgaPKimBUZjYXbLgiMXj/1pBaQmgUYTK/VlO3PVdowxxzxMYlMCgYEAvEOG
+GrhVaQV1nAYx86BgZ3wn90hBFXZWGaN+eXUmyrast93Ih3TCSgQDKPuN3pdv/TIe
+cpQv/BxEMpW+6d5Z1NP3GbrLpaZUiUNk8fqw1S3pmD5aWZrYIUaNukAyOxnZVgjv
+EWD9QTpI663gODaeZZTkDYiRNzTzGOg5HtzporUCgYBBOphEtqqImNXnq13qeHip
+O+eo+8/UJpzUEUN9WGmG8NxEeVvSaWin7DrgnKQCuQ5J3Biwk0XcDgoRmks6Ctf/
+WE2oDk/DxGOhowhxZMMgJd6AFUVzOstRqpvcMULCjWB+iV3nqk1Bl3KeWTmzN7O/
+Gfc2s1kFE4btdV7lebObtwKBgE3rkLS8eLVYCh6Cvef9CAms7Im/wRhV+zrvXWh9
+4YljZEdRpy7RV5z03i33N/faLALa3JlF1jp9pIhfTD5Vxk59ULe4hZNRLYoGd+Bj
+hw8kyps1q4WMvkm/fueIrIGjqD2gwvopb4iwy/+n3rbFfHfE0UL8tEXqR3eWnhW1
+D4pFAoGAccR4eMJD43hJWaUQLtsj0RoW9lFKVXj7aqkIIeupXwt7Ic2z/FhCAJi+
+V0MWpd3K6+kPl+ifdt8U4kcYfubPMfJhd7IkMcgQS+yZK1+5xWdRISvI8GpNwIHE
+LUkVkCCadXNNZ7b1nmUKjse95u4IaE6hwAqjSTNb05gPmCfoEjg=
+-----END RSA PRIVATE KEY-----`;
+const esKeyP256 = `-----BEGIN PRIVATE KEY-----
 MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgevZzL1gdAFr88hb2
 OF/2NxApJCzGCEDdfSp6VQO30hyhRANCAAQRWz+jn65BtOMvdyHKcvjBeBSDZH2r
 1RTwjmYSi9R/zpBnuQ4EiMnCqfMPWiZqB4QdbAd0E7oH50VpuZ1P087G
 -----END PRIVATE KEY-----`;
-const es384Key = `-----BEGIN PRIVATE KEY-----
-MIG2AgEAMBAGByqGSM49AgEGBSuBBAAiBIGeMIGbAgEBBDBxNOX3ru5/MwotXisD
-P7l/sAJVYN5s1/aFRC8W+MNiZS12RLFEk5QHkCbvry2Vsw+hZANiAARrW07nrRxQ
-KpAJoaKtt8QKc2Uvd52KaGTifu2VhY0umO+Mw9wnDNCnVSIg9QxYMsIhKv35uBJH
-nl0scoW2o9AbHrTq2eTbh97xJeFB8VAPXBZZTVgiRjEfFpLzEiwZMEE=
+const esKeyP384 = `-----BEGIN PRIVATE KEY-----
+MIG2AgEAMBAGByqGSM49AgEGBSuBBAAiBIGeMIGbAgEBBDDpgCvB2frnLKd7TuWe
+JM1ejXXmr9y/5gskxKuuylLvpQTiDdtLtuhJnvw1/zWKWO6hZANiAAQ5Crhsi5FD
+t55i53dCtdzG9OzCnbDFf/6136ZfEiakDTDeWCdUvNnB3WQEcVBr97BfSWLI9mO+
+T5yzm0RfhgvWIq/tBou+sIDeGp6NQfJwhDhf+JsdeF174gtfNMZGj/s=
 -----END PRIVATE KEY-----`;
-const es512Key = `-----BEGIN PRIVATE KEY-----
-MIHuAgEAMBAGByqGSM49AgEGBSuBBAAjBIHWMIHTAgEBBEIB9NouOseFJkJdhFXQ
-O4hKuqIOePpDY93Oa3w90MhPpbm+xOYWIlUaoRXymbDi0Ls7pzAXBDlxxmOKVKp9
-4lK4uAChgYkDgYYABAH1KKkilLhZaT1a17LUR5X0cWbWpS98rKyb6BdBvMhgz3zn
-jSA6KsMo/kjJnhgnttEAwZirfCkLQooxJYYG0bOpAQDhzAZdzlicwrMugJY4sz+U
-Gv1Qnb70m+oX0zGctWdPT8N3lGVdMKRubgQB155H3nRVyPVlJCYcbb8ZExH5AuwF
-mg==
+const esKeyP521 = `-----BEGIN PRIVATE KEY-----
+MIHuAgEAMBAGByqGSM49AgEGBSuBBAAjBIHWMIHTAgEBBEIA0dBErrZ5ovKq4Xf/
+iTlRkYxuOfgBZ6+tWIfG13YwthB1XrH06YmteZGNjHHLZEeycwUt0jM4kUb+tOsJ
+3ckhj1ihgYkDgYYABACYgsa8JWKH46CQagwNw14v/L+DIs1WAjJdMXZySjKlRkD9
+LtLMxkbX2H4H4Zl2KzCMJkwTSETzSKNlXvAUJqKbRwHezCp4y5XZN9MOBYdmyylZ
+NOVxwwTouimNkJ0K6A8+/Im5S3PWB8Ra1D6t+bT1WHHhEePZcltSLLFlbIIyot5m
+2w==
 -----END PRIVATE KEY-----`;
 
 TestRegister.addTests([
@@ -115,7 +129,24 @@ TestRegister.addTests([
         recipeConfig: [
             {
                 op: "JWT Sign",
-                args: [esKey, "ES256", "{}"],
+                args: [esKeyP256, "ES256", "{}"],
+            },
+            {
+                op: "JWT Decode",
+                args: []
+            }
+        ],
+    },
+    {
+        name: "JWT Sign: ES384 - P256 key",
+        input: inputObject,
+        expectedOutput: `Error: Have you entered the key correctly? The key should be either the secret for HMAC algorithms or the PEM-encoded private key for RSA and ECDSA.
+
+Error: "alg" parameter "ES384" requires curve "secp384r1".`,
+        recipeConfig: [
+            {
+                op: "JWT Sign",
+                args: [esKeyP256, "ES384", "{}"],
             },
             {
                 op: "JWT Decode",
@@ -130,7 +161,7 @@ TestRegister.addTests([
         recipeConfig: [
             {
                 op: "JWT Sign",
-                args: [es384Key, "ES384", "{}"],
+                args: [esKeyP384, "ES384", "{}"],
             },
             {
                 op: "JWT Decode",
@@ -145,7 +176,24 @@ TestRegister.addTests([
         recipeConfig: [
             {
                 op: "JWT Sign",
-                args: [es512Key, "ES512", "{}"],
+                args: [esKeyP521, "ES512", "{}"],
+            },
+            {
+                op: "JWT Decode",
+                args: []
+            }
+        ],
+    },
+    {
+        name: "JWT Sign: RS256, weak key",
+        input: inputObject,
+        expectedOutput: `Error: Have you entered the key correctly? The key should be either the secret for HMAC algorithms or the PEM-encoded private key for RSA and ECDSA.
+
+Error: secretOrPrivateKey has a minimum key size of 2048 bits for RS256`,
+        recipeConfig: [
+            {
+                op: "JWT Sign",
+                args: [rsKey1024, "RS256", "{}"],
             },
             {
                 op: "JWT Decode",
@@ -160,7 +208,7 @@ TestRegister.addTests([
         recipeConfig: [
             {
                 op: "JWT Sign",
-                args: [rsKey, "RS256", "{}"],
+                args: [rsKey2048, "RS256", "{}"],
             },
             {
                 op: "JWT Decode",
@@ -175,7 +223,7 @@ TestRegister.addTests([
         recipeConfig: [
             {
                 op: "JWT Sign",
-                args: [rsKey, "RS384", "{}"],
+                args: [rsKey2048, "RS384", "{}"],
             },
             {
                 op: "JWT Decode",
@@ -190,7 +238,7 @@ TestRegister.addTests([
         recipeConfig: [
             {
                 op: "JWT Sign",
-                args: [rsKey, "RS512", "{}"],
+                args: [rsKey2048, "RS512", "{}"],
             },
             {
                 op: "JWT Decode",

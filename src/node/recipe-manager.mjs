@@ -18,7 +18,10 @@ import {
 } from "./recipe-validator.mjs";
 import { getLogger } from "./logger.mjs";
 import { createInputError } from "./errors.mjs";
-import yaml from "js-yaml";
+// js-yaml 5 dropped the default export; upstream v11.4.0 migrated to named imports and
+// src/core arrives that way with the mirror. This file is fork-owned, so it is migrated
+// by hand -- a default import here would be `undefined` at runtime, not a load error.
+import { dump, load } from "js-yaml";
 
 /**
  * Recipe Manager class for high-level recipe operations.
@@ -396,7 +399,7 @@ export class RecipeManager {
                 return JSON.stringify(recipe, null, 2);
 
             case "yaml":
-                return yaml.dump(recipe, { indent: 2 });
+                return dump(recipe, { indent: 2 });
 
             case "url": {
                 // Base64-encode JSON for URL
@@ -441,7 +444,7 @@ export class RecipeManager {
                     break;
 
                 case "yaml":
-                    recipeData = yaml.load(data);
+                    recipeData = load(data);
                     break;
 
                 case "url": {

@@ -52,6 +52,17 @@ function mapArgsToZod(args) {
             case "integer":
                 zodType = z.number();
                 break;
+            case "argSelector":
+                // Added for upstream v11.4.0, where 19 operations use it -- including AES Encrypt
+                // and AES Decrypt, so falling through to the `default: z.string()` branch would
+                // have offered a free-text field where only a fixed set of modes is valid, and
+                // pushed the failure to `validateIngredients` at execution time.
+                //
+                // Shape is `[{name, on?: number[], off?: number[]}]`. The `on`/`off` arrays name
+                // which OTHER argument indices the web UI shows or hides for each choice; they
+                // carry no meaning over MCP. The value the operation receives is just the name,
+                // so this behaves exactly like `option` and shares its handling below.
+                // falls through
             case "option":
                 // Strict enum
                 if (Array.isArray(arg.value) && arg.value.length > 0) {
@@ -109,7 +120,8 @@ function resolveArgValue(argDef, userValue) {
 
     // 2. Handle User Provided Value
     // If it's an option/editableOption, we might need to map name -> value
-    if ((argDef.type === "option" || argDef.type === "editableOption") && Array.isArray(argDef.value)) {
+    if ((argDef.type === "option" || argDef.type === "editableOption" ||
+         argDef.type === "argSelector") && Array.isArray(argDef.value)) {
         // Try to find a match by Name
         const match = argDef.value.find(v => {
             const optName = (typeof v === "string") ? v : v.name;
