@@ -147,24 +147,29 @@ AGY_PRINT_TIMEOUT="${AGY_PRINT_TIMEOUT:-5m}"
 AGY_TIMEOUT_SECONDS_PER_MIB="${AGY_TIMEOUT_SECONDS_PER_MIB:-240}"
 AGY_PRINT_TIMEOUT_MAX_SECONDS="${AGY_PRINT_TIMEOUT_MAX_SECONDS:-1800}"
 
-# Both of the above reach `$(( ... ))`. They are workflow-set rather than attacker-set, so the
-# validation below is defence in depth rather than a live hole -- but a numeric setting that can
-# run a command is not a property to leave standing because today's callers happen to be trusted.
+# Both of the above reach `$(( ... ))`, so both are validated before they get there.
 # >>> SELFTEST-EXTRACT: numeric env validation
 # Validate and canonicalise a numeric setting that will reach an arithmetic expansion.
 #
 # @param $1 name of the variable to validate, assigned in place.
 # @param $2 default to fall back to when the value is not a non-negative decimal integer.
 #
-# Two distinct hazards, both verified rather than assumed:
+# Two hazards, and the honest status of each is different -- so they are recorded separately
+# rather than under one "unsafe input" heading.
 #
-#  1. Bash arithmetic RECURSIVELY EXPANDS variable contents, so a value naming another variable
-#     that holds a command substitution EXECUTES it:
-#         V=a; a='$(echo PWNED >&2; echo 7)'; echo $(( V ))    ->  PWNED  /  7
-#  2. Digits-only is still not safe. `09` is all digits, and bash reads the leading zero as OCTAL:
+#  1. Bash arithmetic recursively expands variable CONTENTS as a name, so `$(( V ))` with V=a and
+#     a=5 yields 5, at any depth. Contents that are a command substitution are NOT executed on
+#     bash 5.3 (measured here): they reach the parser as a literal and are refused with
+#     "arithmetic syntax error: operand expected". This was reported in review as a CWE-78, and an
+#     earlier version of this comment asserted the execution -- WRONGLY, from a nested-quoting
+#     artefact in the test that ran it. It does not reproduce. What is left is still worth
+#     refusing: a value naming another variable silently means something other than what it says.
+#  2. Digits-only is not sufficient on its own. `09` is all digits, and bash reads the leading
+#     zero as OCTAL:
 #         $(( 1000000 * 09 / 1048576 ))   ->  value too great for base
-#     So a *valid* setting takes the script down under `set -e`. Canonicalising to base 10 here,
-#     once, means no downstream `$(( ))` has to remember `10#`.
+#     So a *valid* setting takes the script down under `set -e`. That one is demonstrated, not
+#     theoretical, and is the reason this function exists. Canonicalising to base 10 here, once,
+#     means no downstream `$(( ))` has to remember `10#`.
 normalise_numeric_env() {
   local name="$1" default="$2" val="${!1}"
   case "$val" in

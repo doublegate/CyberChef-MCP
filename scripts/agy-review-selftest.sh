@@ -349,12 +349,20 @@ check "numeric env: many leading zeros"             "8"    "$(nne 0008)"
 check "numeric env: empty falls back"               "240"  "$(nne "")"
 check "numeric env: non-numeric falls back"         "240"  "$(nne 30s)"
 check "numeric env: negative falls back"            "240"  "$(nne -1800)"
-# The injection case: bash arithmetic recursively expands variable contents, so a value NAMING a
-# variable that holds a command substitution would run it. It must never reach `$(( ))`.
-payload='$(echo PWNED; echo 7)'
-check "numeric env: a variable name falls back"     "240"  "$(nne payload)"
-check "numeric env: the payload never runs"         ""     \
-  "$(nne payload 2>&1 >/dev/null | grep -o PWNED || true)"
+# Bash arithmetic recursively expands variable CONTENTS as a name, so a value that names another
+# variable silently evaluates to that one's value. It must never reach `$(( ))` at all.
+check "numeric env: a variable name falls back"     "240"  "$(nne a_name)"
+# Asserted on STDERR, not on the returned value: reaching `$(( ))` with a non-numeric value emits
+# a bash arithmetic error there, so an empty stderr is positive evidence that it never got that
+# far. Mutation-checked -- deleting the digits-only case above makes THIS check fail with
+# "value too great for base", which is what a guard's test is supposed to do.
+#
+# The previous version of this check grepped for a command-substitution payload and was VACUOUS:
+# it passed under a deliberately broken guard, because the helper's own `2>&1 >/dev/null` had
+# already swallowed the evidence. Kept as a note because a test that cannot fail is worse than
+# no test -- it reads as coverage.
+check "numeric env: a non-numeric value never reaches arithmetic" "" \
+  "$( { T=a_name; normalise_numeric_env T 240; } 2>&1 >/dev/null || true )"
 
 # And the value it produces must survive the arithmetic it exists to feed.
 T=09; normalise_numeric_env T 240
