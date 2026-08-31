@@ -1,7 +1,7 @@
 /**
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * Turning a baked result into MCP content blocks, including images and binary.
+ * Turning a baked result into MCP content blocks, including images, audio and binary.
  *
  * WHY THIS EXISTS
  * ---------------
@@ -17,6 +17,15 @@
  *
  * MCP has carried an `image` content block since its first revision. Emitting one turns a tool that
  * silently returns nothing into a tool that returns the picture.
+ *
+ * **Audio was going the same way, and is the same fix.** `Play Media` emits
+ * `<audio src='data:audio/x-wav;base64,...' controls>`. Stripping the tag left **23 characters of
+ * player chrome** and deleted the recording. MCP has an `audio` block too, so the only thing that
+ * differed was which tag the payload rode in -- hence one extractor for `<img>`, `<audio>` and
+ * `<video>` rather than three.
+ *
+ * Video is the honest exception: MCP has no block for it, so the data URI is returned as text.
+ * Unreadable, but recoverable, which is the whole difference between that and stripping.
  *
  * **Binary is lossless but unreadable.** The 76 `ArrayBuffer`/`byteArray` operations present as a
  * latin1 string, so `Gzip` comes back as mojibake. That was measured rather than assumed, and the
@@ -36,27 +45,55 @@ import Utils from "../../core/Utils.mjs";
 import { dishToText } from "./dish-output.mjs";
 
 /**
- * A `data:` URI carrying base64 image data, as CyberChef's image operations emit it.
+ * A `data:` URI carrying base64 media, as CyberChef's media operations emit it.
  *
- * Deliberately narrow: only `image/<subtype>`, only base64, and the subtype may not contain a
+ * Covers `<img>`, `<audio>` and `<video>`, because all three lose their payload to the same
+ * html-to-text conversion. `Play Media` emits
+ * `<audio src='data:audio/x-wav;base64,...' controls>`; stripping the tag left 23 characters of
+ * player chrome and deleted the recording.
+ *
+ * Deliberately narrow: a known top-level type, base64 only, and a subtype that may not contain a
  * quote or angle bracket. The alternative -- parsing the html -- would mean a DOM parser for a
  * string this server generated itself two functions ago.
  */
-const DATA_URI_IMAGE = /<img[^>]+src=["']data:(image\/[a-zA-Z0-9.+-]+);base64,([A-Za-z0-9+/=\s]+)["']/;
+const DATA_URI_MEDIA =
+    /<(?:img|audio|video)[^>]+src=["']data:((?:image|audio|video)\/[a-zA-Z0-9.+-]+);base64,([A-Za-z0-9+/=\s]+)["']/;
 
 /**
  * Magic numbers, longest first so a prefix cannot shadow a longer match.
  *
- * Only formats an MCP client plausibly renders. `Detect File Type` covers the general case and is
- * one `cyberchef_bake` call away; duplicating its ~90-signature table here would be a second copy
- * to keep in step for no gain.
+ * Only formats an MCP client plausibly renders, and only the two kinds MCP has a content block
+ * for. `Detect File Type` covers the general case and is one `cyberchef_bake` call away;
+ * duplicating its ~90-signature table here would be a second copy to keep in step for no gain.
  */
-const IMAGE_MAGIC = [
+const MEDIA_MAGIC = [
     { mime: "image/png", bytes: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] },
+    { mime: "audio/ogg", bytes: [0x4f, 0x67, 0x67, 0x53] },
     { mime: "image/gif", bytes: [0x47, 0x49, 0x46, 0x38] },
-    { mime: "image/bmp", bytes: [0x42, 0x4d] },
-    { mime: "image/jpeg", bytes: [0xff, 0xd8, 0xff] }
+    { mime: "audio/mpeg", bytes: [0x49, 0x44, 0x33] },
+    { mime: "image/jpeg", bytes: [0xff, 0xd8, 0xff] },
+    { mime: "image/bmp", bytes: [0x42, 0x4d] }
 ];
+
+/**
+ * RIFF containers need their form type read to be identified.
+ *
+ * `RIFF....WAVE` is audio and `RIFF....WEBP` is an image; the first four bytes are identical, so a
+ * plain prefix table would have to guess. Checked separately rather than by extending the table
+ * with a wildcard, which would make every other entry harder to read.
+ *
+ * @param {Uint8Array} bytes - The payload.
+ * @returns {string|null} The MIME type, or null.
+ */
+function riffMime(bytes) {
+    if (bytes.length < 12) return null;
+    const magic = String.fromCharCode(...bytes.slice(0, 4));
+    if (magic !== "RIFF") return null;
+    const form = String.fromCharCode(...bytes.slice(8, 12));
+    if (form === "WAVE") return "audio/wav";
+    if (form === "WEBP") return "image/webp";
+    return null;
+}
 
 /** Output types whose value is bytes rather than text. */
 const BINARY_OUTPUT_TYPES = new Set(["ArrayBuffer", "byteArray", "File"]);
@@ -71,31 +108,47 @@ export function binaryOutputMode() {
 }
 
 /**
- * Pull a base64 image payload out of an html-output operation's markup.
+ * Pull a base64 media payload out of an html-output operation's markup.
  *
  * @param {string} html - The operation's presented output.
- * @returns {{mimeType: string, data: string}|null} The image, or null if there is not one.
+ * @returns {{mimeType: string, data: string}|null} The payload, or null if there is not one.
  */
-export function imageFromHtml(html) {
+export function mediaFromHtml(html) {
     if (typeof html !== "string") return null;
-    const m = DATA_URI_IMAGE.exec(html);
+    const m = DATA_URI_MEDIA.exec(html);
     if (!m) return null;
     // Whitespace is legal inside a data URI and illegal inside the base64 an MCP block carries.
     return { mimeType: m[1], data: m[2].replace(/\s+/g, "") };
 }
 
 /**
- * Identify an image by its leading bytes.
+ * Identify renderable media by its leading bytes.
  *
  * @param {Uint8Array} bytes - The payload.
- * @returns {string|null} The MIME type, or null if it is not a recognised image.
+ * @returns {string|null} The MIME type, or null if it is not recognised.
  */
-export function sniffImageMime(bytes) {
+export function sniffMediaMime(bytes) {
     if (!bytes || bytes.length < 2) return null;
-    for (const { mime, bytes: magic } of IMAGE_MAGIC) {
+    for (const { mime, bytes: magic } of MEDIA_MAGIC) {
         if (bytes.length < magic.length) continue;
         if (magic.every((b, i) => bytes[i] === b)) return mime;
     }
+    return riffMime(bytes);
+}
+
+/**
+ * The MCP content-block type that carries a given MIME type.
+ *
+ * MCP has a block for images and one for audio, and none for video -- so video keeps the payload
+ * rather than pretending to be something it is not: it falls through to the caller's decision
+ * below. Returning "image" for a video would be worse than returning nothing.
+ *
+ * @param {string} mimeType - The payload's MIME type.
+ * @returns {"image"|"audio"|null} The block type, or null when MCP has none.
+ */
+function blockTypeFor(mimeType) {
+    if (mimeType.startsWith("image/")) return "image";
+    if (mimeType.startsWith("audio/")) return "audio";
     return null;
 }
 
@@ -151,12 +204,14 @@ function toBytes(value, outputType) {
 /**
  * Render a baked result as MCP content blocks.
  *
- * Three cases, in order:
- *   1. An html-output operation whose markup carries a data-URI image -> an `image` block. This is
- *      the case that was returning an empty string.
- *   2. A binary value whose leading bytes identify an image -> an `image` block. Reached by, for
- *      example, `From Base64` of a PNG, where the operation never produced markup at all.
- *   3. Everything else -> the existing `text` block, byte-lossless for binary, optionally base64
+ * Four cases, in order:
+ *   1. An html-output operation whose markup carries a data-URI image or audio payload -> an
+ *      `image` or `audio` block. This is the case that was returning an empty string.
+ *   2. The same for video, which MCP has no block for: the data URI is returned as text, so the
+ *      payload is recoverable rather than deleted.
+ *   3. A binary value whose leading bytes identify renderable media -> the matching block. Reached
+ *      by, for example, `From Base64` of a PNG, where no markup is ever produced.
+ *   4. Everything else -> the existing `text` block, byte-lossless for binary, optionally base64
  *      under CYBERCHEF_BINARY_OUTPUT.
  *
  * @param {Object} result - The baked result: `{value, outputType?}`.
@@ -167,11 +222,18 @@ export function toContentBlocks(result, outputType = result?.outputType) {
     const value = result?.value;
 
     if (outputType === "html" && typeof value === "string") {
-        const image = imageFromHtml(value);
-        if (image) {
-            return [{ type: "image", data: image.data, mimeType: image.mimeType }];
+        const media = mediaFromHtml(value);
+        const blockType = media && blockTypeFor(media.mimeType);
+        if (blockType) {
+            return [{ type: blockType, data: media.data, mimeType: media.mimeType }];
         }
-        // Not an image, so reduce the browser markup to text. Done HERE rather than in
+        // Video reaches here: MCP has no block for it, so the base64 payload is returned as text
+        // rather than stripped away. Unreadable, but recoverable -- which is the whole difference
+        // between this and what stripping did.
+        if (media) {
+            return [{ type: "text", text: `data:${media.mimeType};base64,${media.data}` }];
+        }
+        // Not media at all, so reduce the browser markup to text. Done HERE rather than in
         // `dishToText`, which returns a string value unchanged via its fast path and would hand
         // back a raw `<table class='table table-hover ...'>` -- which is what `Magic` produces,
         // and it is the operation whose readability matters most.
@@ -180,10 +242,11 @@ export function toContentBlocks(result, outputType = result?.outputType) {
 
     const bytes = toBytes(value, outputType);
     if (bytes) {
-        const mime = sniffImageMime(bytes);
-        if (mime) {
+        const mime = sniffMediaMime(bytes);
+        const blockType = mime && blockTypeFor(mime);
+        if (blockType) {
             return [{
-                type: "image",
+                type: blockType,
                 data: Buffer.from(bytes).toString("base64"),
                 mimeType: mime
             }];

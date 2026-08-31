@@ -1,13 +1,14 @@
 /**
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * Image and binary content blocks.
+ * Image, audio and binary content blocks.
  *
  * The defect these pin is total, silent data loss: `Generate QR Code` produced a valid PNG and the
  * caller received `""`, because the operation's output type is `html` and the html-to-text
  * conversion stripped the `<img>` tag that carried the entire payload. It had never worked over
  * MCP -- v2.0.0 returned `{}` for the same call -- so there is no prior behaviour to preserve, only
- * one to establish.
+ * one to establish. `Play Media` lost its audio the same way, leaving 23 characters of player
+ * chrome, which is why one extractor covers `<img>`, `<audio>` and `<video>`.
  *
  * The binary half is deliberately NOT changed by default, and the tests say why: the latin1
  * presentation is byte-for-byte reversible, so it is a readability problem rather than a
@@ -20,7 +21,7 @@
 
 import { describe, it, expect, afterEach } from "vitest";
 import {
-    toContentBlocks, imageFromHtml, sniffImageMime, binaryOutputMode
+    toContentBlocks, mediaFromHtml, sniffMediaMime, binaryOutputMode
 } from "../../src/node/lib/content-blocks.mjs";
 
 /** A 1x1 transparent PNG. */
@@ -41,47 +42,47 @@ afterEach(() => {
     delete process.env.CYBERCHEF_BINARY_OUTPUT;
 });
 
-describe("imageFromHtml", () => {
+describe("mediaFromHtml", () => {
     it("extracts a data-URI image from an img tag", () => {
-        const img = imageFromHtml(`<img src="data:image/png;base64,${PNG_B64}">`);
+        const img = mediaFromHtml(`<img src="data:image/png;base64,${PNG_B64}">`);
         expect(img).toEqual({ mimeType: "image/png", data: PNG_B64 });
     });
 
     it("accepts single quotes and extra attributes", () => {
-        const img = imageFromHtml(`<img class='x' src='data:image/gif;base64,R0lGODlh' alt='y'>`);
+        const img = mediaFromHtml(`<img class='x' src='data:image/gif;base64,R0lGODlh' alt='y'>`);
         expect(img.mimeType).toBe("image/gif");
     });
 
     it("strips whitespace, which is legal in a data URI and illegal in a content block", () => {
-        const img = imageFromHtml('<img src="data:image/png;base64,iVBO Rw0K\nGgo=">');
+        const img = mediaFromHtml('<img src="data:image/png;base64,iVBO Rw0K\nGgo=">');
         expect(img.data).toBe("iVBORw0KGgo=");
     });
 
     it("ignores markup with no image", () => {
-        expect(imageFromHtml("<table class='table'><tr><td>Magic</td></tr></table>")).toBeNull();
-        expect(imageFromHtml("<img src='https://example.com/x.png'>")).toBeNull();
-        expect(imageFromHtml("")).toBeNull();
-        expect(imageFromHtml(null)).toBeNull();
+        expect(mediaFromHtml("<table class='table'><tr><td>Magic</td></tr></table>")).toBeNull();
+        expect(mediaFromHtml("<img src='https://example.com/x.png'>")).toBeNull();
+        expect(mediaFromHtml("")).toBeNull();
+        expect(mediaFromHtml(null)).toBeNull();
     });
 
     it("does not treat a non-image data URI as an image", () => {
-        expect(imageFromHtml('<img src="data:text/html;base64,PGI+">')).toBeNull();
+        expect(mediaFromHtml('<img src="data:text/html;base64,PGI+">')).toBeNull();
     });
 });
 
-describe("sniffImageMime", () => {
+describe("sniffMediaMime", () => {
     it("identifies the formats a client can render", () => {
-        expect(sniffImageMime(Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))).toBe("image/png");
-        expect(sniffImageMime(Uint8Array.from([0x47, 0x49, 0x46, 0x38, 0x39, 0x61]))).toBe("image/gif");
-        expect(sniffImageMime(Uint8Array.from([0xff, 0xd8, 0xff, 0xe0]))).toBe("image/jpeg");
-        expect(sniffImageMime(Uint8Array.from([0x42, 0x4d, 0x36]))).toBe("image/bmp");
+        expect(sniffMediaMime(Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))).toBe("image/png");
+        expect(sniffMediaMime(Uint8Array.from([0x47, 0x49, 0x46, 0x38, 0x39, 0x61]))).toBe("image/gif");
+        expect(sniffMediaMime(Uint8Array.from([0xff, 0xd8, 0xff, 0xe0]))).toBe("image/jpeg");
+        expect(sniffMediaMime(Uint8Array.from([0x42, 0x4d, 0x36]))).toBe("image/bmp");
     });
 
     it("returns null for anything else, including truncated magic", () => {
-        expect(sniffImageMime(Uint8Array.from([0x1f, 0x8b, 0x08]))).toBeNull();   // gzip
-        expect(sniffImageMime(Uint8Array.from([0x89, 0x50]))).toBeNull();          // partial PNG
-        expect(sniffImageMime(Uint8Array.from([]))).toBeNull();
-        expect(sniffImageMime(null)).toBeNull();
+        expect(sniffMediaMime(Uint8Array.from([0x1f, 0x8b, 0x08]))).toBeNull();   // gzip
+        expect(sniffMediaMime(Uint8Array.from([0x89, 0x50]))).toBeNull();          // partial PNG
+        expect(sniffMediaMime(Uint8Array.from([]))).toBeNull();
+        expect(sniffMediaMime(null)).toBeNull();
     });
 });
 
@@ -178,5 +179,79 @@ describe("binaryOutputMode", () => {
         expect(binaryOutputMode()).toBe("base64");
         process.env.CYBERCHEF_BINARY_OUTPUT = "nonsense";
         expect(binaryOutputMode()).toBe("text");
+    });
+});
+
+describe("audio and video, which lost their payload the same way images did", () => {
+    /** A 144-byte 8-bit mono WAV of silence, as `Play Media` would emit it. */
+    const WAV = (() => {
+        const wav = Buffer.alloc(44 + 100, 0x80);
+        wav.write("RIFF", 0);
+        wav.writeUInt32LE(36 + 100, 4);
+        wav.write("WAVEfmt ", 8);
+        wav.writeUInt32LE(16, 16);       // fmt chunk size
+        wav.writeUInt16LE(1, 20);        // PCM
+        wav.writeUInt16LE(1, 22);        // mono
+        wav.writeUInt32LE(8000, 24);     // sample rate
+        wav.writeUInt32LE(8000, 28);     // byte rate
+        wav.writeUInt16LE(1, 32);        // block align
+        wav.writeUInt16LE(8, 34);        // bits per sample
+        wav.write("data", 36);
+        wav.writeUInt32LE(100, 40);
+        return wav;
+    })();
+    const WAV_B64 = WAV.toString("base64");
+
+    it("returns an audio block for Play Media's markup", () => {
+        // Before: `stripHtmlTags` removed the tag and left 23 characters of player chrome, with
+        // the recording gone. Exactly the QR defect, wearing a different tag.
+        const html = `<audio src='data:audio/x-wav;base64,${WAV_B64}' type='audio/x-wav' controls>`;
+        const blocks = toContentBlocks({ value: html }, "html");
+        expect(blocks).toHaveLength(1);
+        expect(blocks[0].type).toBe("audio");
+        expect(blocks[0].mimeType).toBe("audio/x-wav");
+        expect(blocks[0].data).toBe(WAV_B64);
+    });
+
+    it("extracts from img, audio and video alike", () => {
+        for (const [tag, mime] of [["img", "image/png"], ["audio", "audio/mpeg"], ["video", "video/mp4"]]) {
+            const found = mediaFromHtml(`<${tag} src="data:${mime};base64,QUJD">`);
+            expect(found, tag).toEqual({ mimeType: mime, data: "QUJD" });
+        }
+    });
+
+    it("returns video as a recoverable data URI, since MCP has no video block", () => {
+        // The honest option. Returning an `image` block for a video would be worse than returning
+        // nothing, and stripping it is what this whole module exists to stop.
+        const blocks = toContentBlocks({ value: '<video src="data:video/mp4;base64,QUJD" controls>' }, "html");
+        expect(blocks[0].type).toBe("text");
+        expect(blocks[0].text).toBe("data:video/mp4;base64,QUJD");
+    });
+
+    it("identifies audio by magic number too", () => {
+        expect(sniffMediaMime(WAV)).toBe("audio/wav");
+        expect(sniffMediaMime(Uint8Array.from([0x49, 0x44, 0x33, 0x04]))).toBe("audio/mpeg");   // ID3
+        expect(sniffMediaMime(Uint8Array.from([0x4f, 0x67, 0x67, 0x53]))).toBe("audio/ogg");
+    });
+
+    it("reads the RIFF form type instead of guessing from the first four bytes", () => {
+        // RIFF....WAVE is audio and RIFF....WEBP is an image; the prefix is identical, so a plain
+        // magic table would have to pick one and be wrong half the time.
+        const riff = (form) => Uint8Array.from([
+            ...Buffer.from("RIFF"), 0, 0, 0, 0, ...Buffer.from(form)
+        ]);
+        expect(sniffMediaMime(riff("WAVE"))).toBe("audio/wav");
+        expect(sniffMediaMime(riff("WEBP"))).toBe("image/webp");
+        expect(sniffMediaMime(riff("AVI "))).toBeNull();
+        // Truncated before the form type: not enough to decide, so decide nothing.
+        expect(sniffMediaMime(Uint8Array.from(Buffer.from("RIFF")))).toBeNull();
+    });
+
+    it("promotes sniffed audio bytes to an audio block", () => {
+        const latin1 = WAV.toString("latin1");
+        const blocks = toContentBlocks({ value: latin1 }, "byteArray");
+        expect(blocks[0].type).toBe("audio");
+        expect(blocks[0].mimeType).toBe("audio/wav");
+        expect(blocks[0].data).toBe(WAV_B64);
     });
 });
