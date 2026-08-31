@@ -35,10 +35,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Setup Node.js 24
+      - name: Setup Node.js 22
         uses: actions/setup-node@v7
         with:
-          node-version: '24'
+          node-version: '22'
           cache: 'npm'
 
       - name: Install dependencies
@@ -66,7 +66,7 @@ jobs:
       # this workflow can post, and it was previously discarded.
       - name: Upload benchmark output
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: benchmark-output
           path: benchmark-output.txt
@@ -91,7 +91,7 @@ jobs:
       pull-requests: write
     steps:
       - name: Download benchmark output
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: benchmark-output
         continue-on-error: true
@@ -103,13 +103,19 @@ jobs:
         uses: actions/github-script@v9
         with:
           script: |
-            const fs = require("fs");
-
+            // `require` is injected by github-script as a proxy wrapper and works for node
+            // builtins. It is resolved INSIDE the try rather than at the top of the script
+            // because v8/v9 moved this action to ESM and made `require('@actions/github')`
+            // fail; the builtin case still works, but a reporting step must not die on the
+            // question. If it ever does stop working, the comment degrades to a placeholder
+            // instead of throwing.
+            //
             // Carry the actual numbers. The previous body said only "Benchmarks have been run
             // ... check the workflow logs", spending an API call and a PR comment to report
             // that a thing had happened.
             let output;
             try {
+              const fs = require("fs");
               output = fs.readFileSync("benchmark-output.txt", "utf8").trim();
             } catch (err) {
               // Logged, not swallowed: if the artifact is missing, the reason belongs in the

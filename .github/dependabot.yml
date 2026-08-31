@@ -26,6 +26,15 @@ updates:
     commit-message:
       prefix: "build(deps)"
       prefix-development: "build(deps-dev)"
+    # Cooldown, raised above GitHub's 3-day default. This project consumes cryptography and
+    # parser libraries where a bad release is a real hazard, and nothing here is urgent enough to
+    # justify being the first to find out. Security updates ignore cooldown entirely, which is
+    # exactly the behaviour wanted: a published CVE should not wait out a safety margin.
+    cooldown:
+      default-days: 3
+      semver-major-days: 14
+      semver-minor-days: 7
+      semver-patch-days: 3
     groups:
       production-minor-patch:
         applies-to: version-updates
