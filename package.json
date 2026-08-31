@@ -118,7 +118,7 @@
     "browserify-zlib": "^0.2.0",
     "bson": "^4.7.2",
     "buffer": "^6.0.3",
-    "cbor": "9.0.2",
+    "cbor": "10.0.12",
     "chi-squared": "^1.1.0",
     "codepage": "^1.15.0",
     "crypto-api": "^0.8.5",
