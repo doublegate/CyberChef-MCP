@@ -170,13 +170,17 @@ AGY_PRINT_TIMEOUT_MAX_SECONDS="${AGY_PRINT_TIMEOUT_MAX_SECONDS:-1800}"
 #     So a *valid* setting takes the script down under `set -e`. That one is demonstrated, not
 #     theoretical, and is the reason this function exists. Canonicalising to base 10 here, once,
 #     means no downstream `$(( ))` has to remember `10#`.
+# The locals are `_nne_`-prefixed because this function assigns THROUGH A NAME the caller supplies.
+# Plain `name`/`val` locals shadow a caller variable of the same name, and the failure is silent --
+# `normalise_numeric_env val 240` reads and writes the local, leaving the caller's `val` untouched.
+# Verified: with unprefixed locals, `val=07; normalise_numeric_env val 240` leaves val as `07`.
 normalise_numeric_env() {
-  local name="$1" default="$2" val="${!1}"
-  case "$val" in
+  local _nne_name="$1" _nne_default="$2" _nne_val="${!1}"
+  case "$_nne_val" in
     ""|*[!0-9]*)
-      log "$name ('$val') is not a non-negative integer; using the default ($default)"
-      printf -v "$name" '%s' "$default" ;;
-    *) printf -v "$name" '%s' "$(( 10#$val ))" ;;   # safe to expand: verified digits-only above
+      log "$_nne_name ('$_nne_val') is not a non-negative integer; using the default ($_nne_default)"
+      printf -v "$_nne_name" '%s' "$_nne_default" ;;
+    *) printf -v "$_nne_name" '%s' "$(( 10#$_nne_val ))" ;;   # digits-only, verified above
   esac
 }
 # <<< SELFTEST-EXTRACT
@@ -723,7 +727,6 @@ fi
 # bytes it must read and reason over.
 #
 # An explicit AGY_PRINT_TIMEOUT wins, so a caller can still pin it.
-readonly BYTES_PER_MIB=$(( 1024 * 1024 ))
 
 # >>> SELFTEST-EXTRACT: duration parser
 # Parse a duration ("90", "90s", "5m", "1h") to seconds. Echoes nothing and returns 1 if the value
@@ -746,12 +749,25 @@ duration_to_seconds() {
 }
 # <<< SELFTEST-EXTRACT
 
+# >>> SELFTEST-EXTRACT: diff-size scaling
+# Kept below the duration-parser block, not beside the other constants: SELFTEST-EXTRACT ranges
+# end at the first closing marker, so a block declared around this one would be truncated at the
+# parser's `<<<` and silently extract without the function under test.
+readonly BYTES_PER_MIB=$(( 1024 * 1024 ))
+
 # Raise --print-timeout in proportion to the diff agy has to read.
 #
 # @param $1 size of the diff handed to agy, in bytes. Passed explicitly rather than read from the
 #           enclosing scope, so the function's inputs are visible at the call site.
 scale_timeout_for_diff() {
   local bytes="${1:-0}"       # explicit default rather than leaning on `$(( ))` treating "" as 0
+  # Whitespace is stripped BEFORE validating, not after: some `wc` implementations pad their count,
+  # and " 1619782 " is not digits-only, so validating first would quietly fall back to 0 and
+  # disable the scaling entirely -- a silent no-op, which is worse than the crash being guarded
+  # against. Then the same guard the settings get, so a non-numeric value falls back rather than
+  # becoming a syntax error in the expansion below.
+  bytes="${bytes//[[:space:]]/}"
+  normalise_numeric_env bytes 0
   [ -z "$AGY_PRINT_TIMEOUT_EXPLICIT" ] || { log "AGY_PRINT_TIMEOUT set explicitly ($AGY_PRINT_TIMEOUT); not scaling"; return 0; }
 
   # Computed from BYTES, not from truncated whole MiB: `mib = bytes / 1048576` in integer
@@ -773,6 +789,7 @@ scale_timeout_for_diff() {
   AGY_PRINT_TIMEOUT="${scaled}s"
   log "diff is ${bytes} bytes; raised --print-timeout to ${AGY_PRINT_TIMEOUT} (base ${base_s}s + ${extra}s)"
 }
+# <<< SELFTEST-EXTRACT
 scale_timeout_for_diff "$diff_bytes"
 
 # --- run agy headless, under a PTY (works around agy issue #76: -p drops --------

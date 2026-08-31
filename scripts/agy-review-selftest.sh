@@ -61,7 +61,7 @@ log() { :; }
 # otherwise extract EMPTY, and an empty guard sources fine and asserts nothing -- the same
 # absence-reads-as-agreement failure the markers were adopted to prevent.
 for guard in "service-error guard" "oauth guard" "ours-comment filter" "duration parser" \
-             "numeric env validation"; do
+             "numeric env validation" "diff-size scaling"; do
   blk="$(extract_block "$guard")"
   [ -n "$blk" ] || { echo "FAIL: SELFTEST-EXTRACT block '$guard' is missing or empty" >&2; exit 1; }
   printf '%s\n' "$blk" | bash -n - 2>/dev/null \
@@ -363,6 +363,30 @@ check "numeric env: a variable name falls back"     "240"  "$(nne a_name)"
 # no test -- it reads as coverage.
 check "numeric env: a non-numeric value never reaches arithmetic" "" \
   "$( { T=a_name; normalise_numeric_env T 240; } 2>&1 >/dev/null || true )"
+# It assigns THROUGH a caller-supplied name, so its own locals must not collide with one. With
+# plain `name`/`default`/`val` locals these two silently no-op -- the function reads and writes its
+# own local and the caller's variable is never touched. Verified as a real failure before fixing.
+name=09; normalise_numeric_env name 240
+check "numeric env: a caller variable named 'name' is not shadowed" "9" "$name"
+val=07;  normalise_numeric_env val 240
+check "numeric env: a caller variable named 'val' is not shadowed"  "7" "$val"
+default=08; normalise_numeric_env default 240
+check "numeric env: a caller variable named 'default' is not shadowed" "8" "$default"
+
+# --- diff-size scaling -------------------------------------------------------------------------
+# The argument is stripped of whitespace BEFORE validation, so a padded `wc` count still scales.
+# Validating first would fall back to 0 and silently disable the scaling -- a no-op is worse here
+# than the crash, because the symptom is the timeout this whole feature exists to prevent.
+sc() { AGY_PRINT_TIMEOUT="5m"; scale_timeout_for_diff "$1"; printf '%s' "$AGY_PRINT_TIMEOUT"; }
+AGY_PRINT_TIMEOUT_EXPLICIT=""; AGY_TIMEOUT_SECONDS_PER_MIB=240; AGY_PRINT_TIMEOUT_MAX_SECONDS=1800
+check "scaling: 1.6 MB gets a real raise"        "670s"  "$(sc 1619782)"
+check "scaling: a padded count still scales"     "670s"  "$(sc '  1619782  ')"
+check "scaling: a huge diff hits the ceiling"    "1800s" "$(sc 20000000)"
+check "scaling: no argument leaves the base"     "5m"    "$(sc '')"
+check "scaling: junk leaves the base"            "5m"    "$(sc junk)"
+AGY_PRINT_TIMEOUT_EXPLICIT=set
+check "scaling: an explicit timeout is not touched" "5m" "$(sc 20000000)"
+AGY_PRINT_TIMEOUT_EXPLICIT=""
 
 # And the value it produces must survive the arithmetic it exists to feed.
 T=09; normalise_numeric_env T 240
