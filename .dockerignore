@@ -19,7 +19,7 @@ docker-compose*.yml
 *.md
 !package.json
 
-# Test artefacts. `tests/` itself is NOT excluded, deliberately.
+# Test artifacts. `tests/` itself is NOT excluded, deliberately.
 #
 # `src/core/config/scripts/generateOpsIndex.mjs` (upstream's file, byte-identical) writes two
 # indexes: src/core/operations/index.mjs and tests/operations/index.mjs. It readdir's
