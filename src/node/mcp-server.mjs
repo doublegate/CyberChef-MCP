@@ -1297,7 +1297,9 @@ async function runServer() {
             if (shuttingDown) return;
             shuttingDown = true;
             const logger = getLogger();
-            logger.info(`${signal} received: closing HTTP sessions and listener`);
+            // Not "HTTP sessions": the socket transport has a `closeAll` too, and naming the wrong
+            // transport in a shutdown line is how an operator ends up debugging the wrong thing.
+            logger.info(`${signal} received: closing connections and listener`);
             closeAll()
                 .catch(err => logger.error(`shutdown failed: ${err.message}`))
                 .finally(() => process.exit(128 + (SIGNAL_NUMBERS[signal] ?? 0)));

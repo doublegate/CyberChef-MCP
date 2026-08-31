@@ -405,7 +405,7 @@ Browser-based clients additionally need `CYBERCHEF_ALLOWED_ORIGINS`.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `CYBERCHEF_TRANSPORT` | `stdio` | `stdio` or `http`. |
+| `CYBERCHEF_TRANSPORT` | `stdio` | `stdio`, `http`, or `socket`. |
 | `CYBERCHEF_HTTP_HOST` | `127.0.0.1` | Bind address. |
 | `CYBERCHEF_HTTP_PORT` | `3000` | Port. |
 | `CYBERCHEF_HTTP_PATH` | `/mcp` | Endpoint path. Anything else gets a plain 404. |
@@ -414,6 +414,38 @@ Browser-based clients additionally need `CYBERCHEF_ALLOWED_ORIGINS`.
 | `CYBERCHEF_MAX_SESSIONS` | `100` | Concurrent session cap. |
 | `CYBERCHEF_SESSION_TIMEOUT` | `1800000` | Idle-session reap threshold (30 min). |
 | `CYBERCHEF_HTTP_MAX_BODY` | `4194304` | Maximum request body (4 MiB). |
+
+### Socket transport (`CYBERCHEF_TRANSPORT=socket`)
+
+The stdio binding over a stream rather than a pipe: a Unix domain socket or a loopback TCP port.
+Each connection is pinned to its own server instance, so two clients never share one — the socket
+*is* the session, and there are no session ids to manage.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `CYBERCHEF_SOCKET_PATH` | *(unset)* | Unix domain socket path. Mutually exclusive with the port. Created mode `0600`. |
+| `CYBERCHEF_SOCKET_PORT` | *(unset)* | TCP port. Mutually exclusive with the path. |
+| `CYBERCHEF_SOCKET_HOST` | `127.0.0.1` | TCP bind address. |
+| `CYBERCHEF_SOCKET_MAX_CONNECTIONS` | `16` | Concurrent connection cap; further connections are dropped. |
+| `CYBERCHEF_SOCKET_ALLOW_REMOTE` | `false` | Required to bind a non-loopback address. |
+
+```bash
+CYBERCHEF_TRANSPORT=socket CYBERCHEF_SOCKET_PATH=/run/cyberchef-mcp.sock npx cyberchef-mcp
+```
+
+**This transport has no authentication.** It is the stdio binding, whose security model is that the
+peer already has access to your process. On a Unix socket that is enforced by file permissions —
+hence `0600`, rather than whatever the umask would have produced. On TCP there is nothing enforcing
+it at all, which is why a non-loopback bind is refused unless `CYBERCHEF_SOCKET_ALLOW_REMOTE=true`
+is set. If you set it, put your own authentication in front.
+
+A note on Unix socket paths: `sun_path` is a fixed 108-byte field (104 on macOS), and the kernel
+rejects anything longer with a bare `EINVAL` that names the path but not the reason. The server
+checks the length itself and says so plainly.
+
+There is deliberately **no WebSocket transport**. MCP does not define one — the specification's
+transports are stdio and Streamable HTTP — and no SDK ships one, so it would be a private extension
+no client could speak. See `docs/planning/ROADMAP.md`.
 
 ### Logging
 

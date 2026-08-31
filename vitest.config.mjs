@@ -20,8 +20,15 @@ export default defineConfig({
         // Enable globals for describe/it/expect
         globals: true,
 
-        // Extended timeout for potentially slow operations
-        testTimeout: 10000,
+        // Booting a suite's server builds the tool surface over 504 operations, which on this
+        // machine lands at 9.5-10s for the heavier files -- i.e. right on the old 10s default.
+        // Adding one more parallel suite was enough to tip two of them over, as a *hook* timeout,
+        // which reports as a whole-file failure and looks nothing like "the runner was busy".
+        // These are integration suites; the timeout should mean "broken", not "loaded".
+        testTimeout: 30000,
+        // hookTimeout was never set, so beforeAll inherited the 10s default -- which is where the
+        // flake actually was, since that is where the server gets built.
+        hookTimeout: 30000,
 
         // Silent mode for passed tests (reduce noise)
         silent: false,

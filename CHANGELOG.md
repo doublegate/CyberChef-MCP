@@ -48,6 +48,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to the same tools. Both legs are built from one server factory. The modern entry performs no
   validation of its own, so the existing Host allowlist is applied in front of it — a forged Host is
   refused on both paths.
+- **Socket transport** (`CYBERCHEF_TRANSPORT=socket`): the stdio binding over a Unix domain socket or
+  loopback TCP stream, one pinned server instance per connection, so two clients never share one.
+  Configured with `CYBERCHEF_SOCKET_PATH` or `CYBERCHEF_SOCKET_PORT` (plus `_HOST`,
+  `_MAX_CONNECTIONS`, `_ALLOW_REMOTE`). It carries no authentication, so a non-loopback bind is
+  refused unless explicitly allowed, the Unix socket is created `0600` rather than at the mercy of
+  the umask, and a stale socket file is probed before it is removed. Replaces the roadmap's
+  "WebSocket" line, which named a transport MCP does not define.
 - `tests/mcp/image-operations.test.mjs` — 19 tests pinning all 17 image operations end to end, plus
   the operation-boundary assertions that make the buffer-pool defect visible.
 

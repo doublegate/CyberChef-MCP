@@ -3,8 +3,15 @@
  *
  * MCP Transport Factory for CyberChef.
  *
- * Provides stdio (default) or Streamable HTTP transport based on
- * the CYBERCHEF_TRANSPORT environment variable.
+ * Provides stdio (default), Streamable HTTP, or a socket binding, selected by the
+ * CYBERCHEF_TRANSPORT environment variable.
+ *
+ *   stdio   - the process's own stdin/stdout. One connection by construction.
+ *   http    - Streamable HTTP, per session, serving both protocol eras.
+ *   socket  - the stdio binding over a Unix domain socket or loopback TCP stream, one pinned
+ *             server instance per connection. CYBERCHEF_SOCKET_PATH or CYBERCHEF_SOCKET_PORT
+ *             (+ CYBERCHEF_SOCKET_HOST, CYBERCHEF_SOCKET_MAX_CONNECTIONS,
+ *             CYBERCHEF_SOCKET_ALLOW_REMOTE).
  *
  * THE HTTP BRANCH IS PER-SESSION, AND THAT IS THE WHOLE POINT
  * ----------------------------------------------------------
@@ -42,8 +49,32 @@ import { getLogger } from "./logger.mjs";
  */
 export const TransportType = {
     STDIO: "stdio",
-    HTTP: "http"
+    HTTP: "http",
+    SOCKET: "socket"
 };
+
+/** Connections accepted concurrently on the socket transport, unless configured otherwise. */
+export const DEFAULT_SOCKET_MAX_CONNECTIONS = 16;
+
+/**
+ * Whether a bind address is loopback-only.
+ *
+ * The socket transport carries NO authentication -- it is the stdio binding over a stream, and the
+ * stdio binding's security model is "the peer already has your process". On a Unix socket that is
+ * filesystem permissions; on TCP it is nothing at all. So a non-loopback bind is refused unless it
+ * is asked for explicitly, because the failure mode is an unauthenticated MCP server, exposing 504
+ * operations, reachable from the network by anyone who can route to it.
+ *
+ * @param {string} host - The bind address.
+ * @returns {boolean} True when the address is loopback.
+ */
+export function isLoopbackAddress(host) {
+    if (!host) return false;
+    const bare = host.replace(/^\[|\]$/g, "").toLowerCase();
+    if (bare === "localhost" || bare === "::1" || bare === "0:0:0:0:0:0:0:1") return true;
+    // The whole 127.0.0.0/8 block is loopback, not just 127.0.0.1.
+    return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(bare);
+}
 
 /** Header carrying the session id, per the Streamable HTTP spec. Node lowercases header names. */
 const SESSION_HEADER = "mcp-session-id";
@@ -53,6 +84,20 @@ export const DEFAULT_SESSION_TIMEOUT_MS = 30 * 60 * 1000;
 
 /** How often the reaper runs. */
 export const DEFAULT_SESSION_SWEEP_MS = 60 * 1000;
+
+/**
+ * The longest usable Unix domain socket path on this platform.
+ *
+ * `sockaddr_un.sun_path` is a fixed 108-byte field on Linux and 104 on macOS/BSD, NUL included, and
+ * the kernel rejects anything longer with a bare `EINVAL: invalid argument` that names the path but
+ * says nothing about why. That is close to unguessable -- it was hit here with a perfectly ordinary
+ * 128-character path under a temp directory -- so the length is checked up front instead.
+ *
+ * @returns {number} Maximum path length in bytes.
+ */
+export function maxSocketPathLength() {
+    return process.platform === "darwin" ? 103 : 107;
+}
 
 /**
  * Read a JSON request body, bounded.
@@ -699,6 +744,197 @@ export async function createTransport(options = {}) {
         // `transport` is null on purpose. There is no process-wide transport any more, and
         // returning one would invite exactly the `server.connect(transport)` that caused #36.
         return { transport: null, httpServer, sessions, closeAll };
+    }
+
+    if (type === TransportType.SOCKET) {
+        // The stdio binding over a stream rather than a pipe. This is the SDK's own documented
+        // custom-transport route ("a `StdioServerTransport` constructed over a Unix domain socket
+        // or TCP stream"), and it is what the v2.3.0 roadmap's "advanced transports" line was
+        // actually reaching for -- WebSocket, which that line named, is not an MCP transport at
+        // all. See docs/planning/ROADMAP.md.
+        //
+        // Per connection: one transport over the socket, handed to `serveStdio`, which pins ONE
+        // server instance for that connection's lifetime. So this inherits the same isolation the
+        // HTTP branch was rewritten for in issue #36 -- no two clients share a `Server` -- without
+        // needing session ids, because the socket IS the session.
+        const net = await import("node:net");
+        const fs = await import("node:fs");
+        const { StdioServerTransport } = await import("@modelcontextprotocol/server/stdio");
+
+        const createServer = options.createServer;
+        if (typeof createServer !== "function") {
+            throw new TypeError(
+                "createTransport({type:'socket'}) requires a createServer factory: each " +
+                "connection is pinned to its own MCP Server instance."
+            );
+        }
+
+        const socketPath = options.socketPath ?? process.env.CYBERCHEF_SOCKET_PATH;
+        const host = options.host ?? process.env.CYBERCHEF_SOCKET_HOST ?? "127.0.0.1";
+        const portRaw = options.port ?? process.env.CYBERCHEF_SOCKET_PORT;
+        const port = portRaw === undefined || portRaw === null || portRaw === "" ?
+            undefined : parseInt(portRaw, 10);
+        const maxConnections = parseInt(
+            options.maxConnections ?? process.env.CYBERCHEF_SOCKET_MAX_CONNECTIONS, 10
+        ) || DEFAULT_SOCKET_MAX_CONNECTIONS;
+
+        if (!socketPath && port === undefined) {
+            throw new TypeError(
+                "createTransport({type:'socket'}) needs CYBERCHEF_SOCKET_PATH (a Unix domain " +
+                "socket) or CYBERCHEF_SOCKET_PORT (TCP)."
+            );
+        }
+        if (socketPath && port !== undefined) {
+            throw new TypeError(
+                "createTransport({type:'socket'}): set CYBERCHEF_SOCKET_PATH or " +
+                "CYBERCHEF_SOCKET_PORT, not both -- one server binds one address."
+            );
+        }
+        if (port !== undefined && Number.isNaN(port)) {
+            throw new TypeError("createTransport({type:'socket'}): CYBERCHEF_SOCKET_PORT is not a number.");
+        }
+
+        // Fail closed on a network-reachable bind. See isLoopbackAddress for why.
+        const allowRemote = String(
+            options.allowRemote ?? process.env.CYBERCHEF_SOCKET_ALLOW_REMOTE ?? ""
+        ).toLowerCase() === "true";
+        if (port !== undefined && !isLoopbackAddress(host) && !allowRemote) {
+            throw new TypeError(
+                `createTransport({type:'socket'}): refusing to bind ${host}:${port}. This ` +
+                "transport has no authentication, so a non-loopback bind exposes every operation " +
+                "to anyone who can reach the port. Set CYBERCHEF_SOCKET_ALLOW_REMOTE=true to " +
+                "override, and put your own authentication in front of it."
+            );
+        }
+
+        if (socketPath) {
+            const limit = maxSocketPathLength();
+            const length = Buffer.byteLength(socketPath);
+            if (length > limit) {
+                throw new TypeError(
+                    `createTransport({type:'socket'}): socket path is ${length} bytes, and this ` +
+                    `platform allows ${limit}. The kernel reports this only as a bare EINVAL, ` +
+                    "which names the path but not the reason. Use a shorter path."
+                );
+            }
+        }
+
+        if (socketPath) {
+            // A stale socket file from a crashed process must be removed, and a LIVE one must not
+            // be. Existence alone cannot tell them apart, so probe it: a connection that is
+            // refused means nothing is listening. Anything else -- a live server, or a path that
+            // is not a socket at all -- is left alone and the bind fails loudly instead.
+            let stat = null;
+            try {
+                stat = fs.statSync(socketPath);
+            } catch (err) {
+                if (err.code !== "ENOENT") throw err;
+            }
+            if (stat) {
+                if (!stat.isSocket()) {
+                    throw new Error(
+                        `createTransport({type:'socket'}): ${socketPath} exists and is not a ` +
+                        "socket. Refusing to remove it."
+                    );
+                }
+                const live = await new Promise((resolve) => {
+                    const probe = net.connect(socketPath);
+                    probe.once("connect", () => {
+                        probe.destroy();
+                        resolve(true);
+                    });
+                    probe.once("error", () => resolve(false));
+                });
+                if (live) {
+                    throw new Error(
+                        `createTransport({type:'socket'}): ${socketPath} is already served by a ` +
+                        "running process."
+                    );
+                }
+                fs.unlinkSync(socketPath);
+                logger.warn(`removed stale socket file ${socketPath}`);
+            }
+        }
+
+        /** Open connections, so shutdown can close them and the tests can count them. */
+        const connections = new Set();
+
+        const socketServer = net.createServer((socket) => {
+            if (connections.size >= maxConnections) {
+                logger.warn(`refusing connection: at capacity (${connections.size}/${maxConnections})`);
+                socket.destroy();
+                return;
+            }
+            // Nagle batches small writes, which for a request/response protocol on a local socket
+            // is latency for no benefit.
+            socket.setNoDelay?.(true);
+
+            const handle = serveStdio(createServer, {
+                transport: new StdioServerTransport(socket, socket),
+                onerror: (err) => logger.error(`socket connection error: ${err.message}`)
+            });
+            const entry = { socket, handle };
+            connections.add(entry);
+            logger.info(`socket connection opened [${connections.size} active]`);
+
+            const drop = () => {
+                if (!connections.delete(entry)) return;   // already dropped
+                // Close the pinned server instance too. Dropping only the socket would leak one
+                // Server per connection for the process's lifetime.
+                Promise.resolve(handle.close()).catch(() => { /* the peer is already gone */ });
+                logger.info(`socket connection closed [${connections.size} active]`);
+            };
+            socket.once("close", drop);
+            socket.once("error", (err) => {
+                // ECONNRESET is a client that hung up mid-write; it is normal, not an incident.
+                if (err.code !== "ECONNRESET") logger.warn(`socket error: ${err.message}`);
+                drop();
+            });
+        });
+
+        await new Promise((resolve, reject) => {
+            socketServer.once("error", reject);
+            if (socketPath) socketServer.listen(socketPath, resolve);
+            else socketServer.listen(port, host, resolve);
+        });
+
+        if (socketPath) {
+            // Owner-only. A Unix socket's access control IS its file mode, and node creates it
+            // with the process umask, which on a permissive umask is world-writable -- i.e. any
+            // local user could drive this server.
+            fs.chmodSync(socketPath, 0o600);
+        }
+
+        const bound = socketServer.address();
+        logger.info(`Running on socket transport: ${
+            typeof bound === "string" ? bound : `${bound.address}:${bound.port}`
+        } (max ${maxConnections} connections)`);
+
+        /**
+         * Close every connection and stop listening.
+         *
+         * @returns {Promise<void>} Resolves once everything is closed.
+         */
+        async function closeAll() {
+            for (const entry of [...connections]) entry.socket.destroy();
+            connections.clear();
+            await new Promise((resolve, reject) => {
+                socketServer.close(err => {
+                    if (err && err.code !== "ERR_SERVER_NOT_RUNNING") reject(err);
+                    else resolve();
+                });
+            });
+            // node removes the socket file on a clean close; this is for the case where it did not.
+            if (socketPath) {
+                try {
+                    fs.unlinkSync(socketPath);
+                } catch (err) {
+                    if (err.code !== "ENOENT") throw err;
+                }
+            }
+        }
+
+        return { transport: null, httpServer: null, socketServer, connections, closeAll };
     }
 
     // Default: stdio.
