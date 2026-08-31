@@ -136,7 +136,10 @@ jobs:
           }
 
           added=0; modified=0; removed=0
-          : > /tmp/sync-added.txt; : > /tmp/sync-modified.txt; : > /tmp/sync-removed.txt
+          # File names match what the report and PR-body steps below already read. Renaming the
+          # detection step's outputs without renaming its SEVEN consumers is exactly the kind of
+          # silent breakage this widening is meant to eliminate.
+          : > /tmp/new_ops.txt; : > /tmp/modified_ops.txt; : > /tmp/deleted_ops.txt
 
           # src/core/** plus the six upstream-owned files in src/node/. Everything else in
           # src/node/ is fork-owned (mcp-server, transports, streaming, recipe-*, worker*,
@@ -146,9 +149,9 @@ jobs:
           while IFS= read -r rel; do
             is_excluded "$rel" && continue
             if [ ! -f "$rel" ]; then
-              echo "$rel" >> /tmp/sync-added.txt; added=$((added+1))
+              echo "$rel" >> /tmp/new_ops.txt; added=$((added+1))
             elif ! cmp -s "$SRC/$rel" "$rel"; then
-              echo "$rel" >> /tmp/sync-modified.txt; modified=$((modified+1))
+              echo "$rel" >> /tmp/modified_ops.txt; modified=$((modified+1))
             fi
           done <<EOF
           $(cd "$SRC" && find src/core -type f | sort)
@@ -157,15 +160,15 @@ jobs:
 
           while IFS= read -r rel; do
             is_excluded "$rel" && continue
-            [ -f "$SRC/$rel" ] || { echo "$rel" >> /tmp/sync-removed.txt; removed=$((removed+1)); }
+            [ -f "$SRC/$rel" ] || { echo "$rel" >> /tmp/deleted_ops.txt; removed=$((removed+1)); }
           done <<EOF
           $(find src/core -type f | sort)
           EOF
 
           {
-            echo "added_count=$added"
+            echo "new_count=$added"
             echo "modified_count=$modified"
-            echo "removed_count=$removed"
+            echo "deleted_count=$removed"
           } >> "$GITHUB_OUTPUT"
 
           if [ "$added" -gt 0 ] || [ "$modified" -gt 0 ] || [ "$removed" -gt 0 ]; then

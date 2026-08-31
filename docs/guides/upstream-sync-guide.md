@@ -118,7 +118,7 @@ SHA3.mjs
    whether the fix is still needed
 5. Verify the sync stayed in scope — an **allowlist**, so anything unexpected fails the run
 6. Regenerate `OperationConfig.json`
-6. Run comprehensive tests (core + MCP + lint)
+7. Run comprehensive tests (core + MCP + lint)
 7. Update `baseline.json` for regression testing
 8. Create PR with detailed changelog
 

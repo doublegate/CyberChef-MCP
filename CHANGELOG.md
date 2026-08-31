@@ -7,8 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Removed
-- **`src/core/config/OperationConfig.json` is no longer tracked.** It was gitignored *and* committed at the same time — the only such file in the repository — because `upstream-sync.yml` force-added it on every run. It is generated from the operations by `npx grunt configTests`, so a committed copy is a 1.7MB derived artefact whose diff cannot be meaningfully reviewed and which goes stale the moment an operation changes. Every CI workflow, the Dockerfile and the documented local setup already regenerate it. The force-add is removed from the sync.
+### Added
+- **`patches/fork/` — fork changes to upstream-owned files, re-applied after every sync.** Three patches, each verified to apply to pristine v11.4.0: `crypto.randomBytes` instead of `Math.random()` for GOST cryptographic randomness (upstream still ships `Math.random()`), backslash-before-quote escaping in `Utils.parsePrettyRecipe` (upstream still ships the `lgtm [js/incomplete-sanitization]`-suppressed version), and this fork's scoped `@natlibfi/loglevel-message-prefix` dependency.
+
+  **A patch that no longer applies fails the sync.** That is the alarm missing when a ReDoS mitigation was silently reverted by a sync and stayed gone for four releases. Patches also beat a protected-file list: `Utils.mjs` gains upstream's new `_validatePrettyRecipe` *and* keeps our escaping fix, where protecting the file wholesale would have discarded upstream's improvement.
+
+
+- **Antigravity PR reviewer**: `.github/workflows/antigravity-review.yml` plus `scripts/agy-review.sh` and helpers run a first-pass adversarial review on every same-repo PR, and on `/agy-review` from a maintainer. Runs on a self-hosted runner against a Google AI Ultra OAuth session, so it costs no metered API spend. Restores the automated PR review lost when Gemini Code Assist for GitHub was retired.
+- **Repository style guide for reviewers**: `.github/agy-review.md` gives the reviewer this project's conventions (fork hygiene for `src/core/**`, generated files, MCP-layer rules) instead of generic advice.
 
 ### Changed
 - **`.gitignore` corrected.** Added `.env` / `.env.*` (with `!.env.example`), `dist/`, `*.log`. Removed stale entries: `travis.log` (this project has never used Travis) and `tests/browser/output/*` (the web app went in v1.7.1, and the sync now fails if it returns). `ref-proj/` is no longer ignored — it is a declared submodule tracked as a gitlink, and ignoring a tracked path is what forced `git add -f` in two workflows. Every remaining entry is annotated with why it exists.
@@ -17,26 +23,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The deletion case is why atomicity matters: upstream removed `src/core/lib/ImageManipulation.mjs` and refactored `BlurImage`/`SharpenImage` to use `jimp` directly. Syncing operations without `lib/` orphans the library; syncing `lib/` without operations breaks the build.
 - **Sync scope is now verified with an allowlist rather than a denylist.** The previous check enumerated forbidden paths, so it only caught mistakes someone had thought of. Anything outside the declared scope now fails the run.
 
-### Added
-- **`patches/fork/` — fork changes to upstream-owned files, re-applied after every sync.** Three patches, each verified to apply to pristine v11.4.0: `crypto.randomBytes` instead of `Math.random()` for GOST cryptographic randomness (upstream still ships `Math.random()`), backslash-before-quote escaping in `Utils.parsePrettyRecipe` (upstream still ships the `lgtm [js/incomplete-sanitization]`-suppressed version), and this fork's scoped `@natlibfi/loglevel-message-prefix` dependency.
 
-  **A patch that no longer applies fails the sync.** That is the alarm missing when a ReDoS mitigation was silently reverted by a sync and stayed gone for four releases. Patches also beat a protected-file list: `Utils.mjs` gains upstream's new `_validatePrettyRecipe` *and* keeps our escaping fix, where protecting the file wholesale would have discarded upstream's improvement.
-
-### Added
-- **Antigravity PR reviewer**: `.github/workflows/antigravity-review.yml` plus `scripts/agy-review.sh` and helpers run a first-pass adversarial review on every same-repo PR, and on `/agy-review` from a maintainer. Runs on a self-hosted runner against a Google AI Ultra OAuth session, so it costs no metered API spend. Restores the automated PR review lost when Gemini Code Assist for GitHub was retired.
-- **Repository style guide for reviewers**: `.github/agy-review.md` gives the reviewer this project's conventions (fork hygiene for `src/core/**`, generated files, MCP-layer rules) instead of generic advice.
+- **Upstream Monitor Schedule**: Changed cron from every 6 hours to weekly (Sundays at noon UTC) to reduce unnecessary CI runs
 
 ### Removed
+- **`src/core/config/OperationConfig.json` is no longer tracked.** It was gitignored *and* committed at the same time — the only such file in the repository — because `upstream-sync.yml` force-added it on every run. It is generated from the operations by `npx grunt configTests`, so a committed copy is a 1.7MB derived artefact whose diff cannot be meaningfully reviewed and which goes stale the moment an operation changes. Every CI workflow, the Dockerfile and the documented local setup already regenerate it. The force-add is removed from the sync.
+
+
 - **`src/core/lib/SafeRegex.mjs`** (138 lines, added v1.4.1): dead code. The module was never self-acting — it worked by having operations import `createSafeRegExp` — and a later run of `upstream-sync.yml` overwrote those operations verbatim from upstream, removing every import. Nothing in the tree referenced it. Reviving it would mean re-adding imports that the next sync strips again, so it is removed rather than restored. Any future regex hardening must live in the fork-owned MCP layer under `src/node/`, where the sync cannot reach it, or be contributed upstream.
 
 ### Fixed
 - **Documentation asserting a security protection that no longer existed.** `README.md` described SafeRegex as an active mitigation; `docs/reference/cyberchef-upstream.md` — the *live* upstream-sync guide — instructed maintainers to re-apply "SafeRegex imports" after each sync and listed a table of four "MCP patches" of which **three did not exist** (`Magic.mjs`, `Recipe.mjs` and `api.mjs` differed from upstream only by JSON-import syntax, not by the changes claimed). Both corrected against the actual tree. Historical reports keep their text and carry a pointer to the incident record at `docs/security/2026-08-30-saferegex-reverted-by-upstream-sync.md`.
 - **The one real fork patch is now documented as such.** `src/core/Utils.mjs` escapes backslashes before double quotes, replacing upstream's `// lgtm [js/incomplete-sanitization]` suppression. Upstream still ships the suppressed version as of v11.4.0, so this is reverted by any sync that widens to `src/core/**` — it is now on the fork-owned manifest instead of being undocumented.
 
-### Changed
-- **Upstream Monitor Schedule**: Changed cron from every 6 hours to weekly (Sundays at noon UTC) to reduce unnecessary CI runs
 
-### Fixed
 - **Node runtime warnings on startup, now zero.** Two classes, both traced to a source rather than silenced:
   - `[DEP0040] DeprecationWarning: The 'punycode' module is deprecated` — raised by our own `FromPunycode.mjs`/`ToPunycode.mjs`, which imported the bare specifier `punycode`. For unprefixed names Node resolves builtins ahead of `node_modules`, so this always bound to the deprecated built-in. Fixed by adopting the userland `punycode.js` package — exactly what upstream did in v11.4.0, so the next sync confirms this change rather than reverting it.
   - `Warning: Accessing non-existent property 'b2u'/'u2b'/'Pair' of module exports inside circular dependency` — a circular `require` inside `kbpgp`. Our pin was an exact `2.1.15` while upstream uses `^2.1.18`; matching that range resolves to 2.1.19, which no longer emits them.
