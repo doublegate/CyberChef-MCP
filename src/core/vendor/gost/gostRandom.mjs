@@ -114,21 +114,15 @@ GostRandom.prototype.getRandomValues = function (array) // <editor-fold defaults
         // Native window cryptographic interface
         rootCrypto.getRandomValues(u8);
     } else {
-        // Fallback: Use Node.js crypto module if available, otherwise throw error
-        // Math.random() is NOT cryptographically secure and should never be used for crypto
-        if (typeof require !== 'undefined') {
-            try {
-                const crypto = require('crypto');
-                const bytes = crypto.randomBytes(u8.length);
-                for (var i = 0; i < u8.length; i++) {
-                    u8[i] = bytes[i];
-                }
-            } catch (e) {
-                throw new Error('No cryptographically secure random number generator available. Cannot use Math.random() for cryptographic operations.');
-            }
-        } else {
-            throw new Error('No cryptographically secure random number generator available. crypto.getRandomValues() is required for browser environments.');
-        }
+        // Fail closed. Upstream falls back to `Math.floor(256 * Math.random())` here, which is
+        // not a CSPRNG and must never generate key material.
+        //
+        // There is deliberately no `require('crypto')` fallback: this file is ESM (.mjs), where
+        // `require` is undefined, so such a branch is dead code that merely looks like a
+        // safeguard. `rootCrypto` is the global `crypto`, present in every Node this project
+        // supports and in browsers, so reaching this line means no CSPRNG exists and the only
+        // safe action is to stop.
+        throw new Error('No cryptographically secure random number generator available. crypto.getRandomValues() is required; refusing to fall back to Math.random() for cryptographic operations.');
     }
 
     // Mix bio randomizator

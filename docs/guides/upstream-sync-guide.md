@@ -27,10 +27,27 @@ CyberChef-MCP/
 
 **Philosophy:** Selective file syncing, NOT git merge
 
-- **Synced Files:** Only `src/core/operations/*.mjs`
-- **Excluded Files:** `src/web/`, `tests/browser/`, config files
-- **Preserved Files:** MCP-specific modifications (package.json, Gruntfile.js, etc.)
-- **Reference Directory:** `ref-proj/CyberChef/` contains full upstream for comparison
+- **Synced (mirrored verbatim):** all of `src/core/**`, plus the six upstream-owned files in
+  `src/node/` — `api.mjs`, `apiUtils.mjs`, `File.mjs`, `NodeDish.mjs`, `NodeRecipe.mjs`, `repl.mjs`.
+- **Never synced (generated):** `src/core/config/modules/`, `src/core/config/OperationConfig.json`,
+  `src/core/operations/index.mjs`, `src/node/config/OperationConfig.json`, `src/node/index.mjs`.
+  Our `.gitignore` and upstream's list exactly these five.
+- **Never synced (fork-owned):** everything else in `src/node/` — `mcp-server.mjs`, `lib/`,
+  `transports.mjs`, `streaming.mjs`, `recipe-*.mjs`, `worker*.mjs`, `errors.mjs`, `logger.mjs`,
+  `retry.mjs`, `deprecation.mjs` — plus `package.json`, `Gruntfile.js`, `tests/mcp/`.
+- **Forbidden (must never return):** `src/web/`, `tests/browser/`, `nightwatch.json`,
+  `postcss.config.js`, `.devcontainer/`. The web app was removed in v1.7.1.
+- **Fork changes to upstream files:** kept as patches in `patches/fork/` and re-applied after every
+  mirror. See [`patches/fork/README.md`](../../patches/fork/README.md). **Never hand-edit an
+  upstream-owned file** — the mirror overwrites it and your change disappears silently.
+- **Reference Directory:** `ref-proj/CyberChef/` is a git submodule holding pristine upstream.
+
+**Why the whole tree, not just `operations/`.** The previous model synced only
+`src/core/operations/*.mjs`. That cannot express a major-version jump. Measured on 10.19.4 → 11.4.0:
+449 files identical, **112 differing, 61 added upstream, 1 removed upstream**. The removed file is
+the clearest illustration: upstream deleted `src/core/lib/ImageManipulation.mjs` and refactored
+`BlurImage`/`SharpenImage` to use `jimp` directly. Syncing operations without `lib/` orphans the
+library; syncing `lib/` without operations breaks the build. The tree has to move atomically.
 
 ## Workflows
 
@@ -92,12 +109,16 @@ SHA3.mjs
 - Automatic: Add `upstream-sync-approved` label to monitor issue
 
 **Process:**
-1. Ensure `ref-proj/CyberChef/` is updated
-2. Identify changed operations (new, modified, deleted)
-3. Copy only changed operation files
-4. Verify no excluded files copied
-5. Regenerate `OperationConfig.json`
-6. Run comprehensive tests (core + MCP + lint)
+1. Ensure `ref-proj/CyberChef/` is updated to the target upstream tag
+2. Identify changes across the whole synced scope (added, modified, removed)
+3. **Mirror** the tree with `rsync -a --delete`, so additions, modifications *and deletions* apply
+   in one pass
+4. **Re-apply `patches/fork/*.patch`.** A patch that no longer applies **fails the sync** — that is
+   correct behaviour, not a breakage: upstream changed the code it touches and a human must decide
+   whether the fix is still needed
+5. Verify the sync stayed in scope — an **allowlist**, so anything unexpected fails the run
+6. Regenerate `OperationConfig.json`
+7. Run comprehensive tests (core + MCP + lint)
 7. Update `baseline.json` for regression testing
 8. Create PR with detailed changelog
 

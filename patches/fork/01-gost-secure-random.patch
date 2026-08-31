@@ -1,0 +1,21 @@
+--- a/src/core/vendor/gost/gostRandom.mjs
++++ b/src/core/vendor/gost/gostRandom.mjs
+@@ -114,9 +114,15 @@
+         // Native window cryptographic interface
+         rootCrypto.getRandomValues(u8);
+     } else {
+-        // Standard Javascript method
+-        for (var i = 0, n = u8.length; i < n; i++)
+-            u8[i] = Math.floor(256 * Math.random()) & 255;
++        // Fail closed. Upstream falls back to `Math.floor(256 * Math.random())` here, which is
++        // not a CSPRNG and must never generate key material.
++        //
++        // There is deliberately no `require('crypto')` fallback: this file is ESM (.mjs), where
++        // `require` is undefined, so such a branch is dead code that merely looks like a
++        // safeguard. `rootCrypto` is the global `crypto`, present in every Node this project
++        // supports and in browsers, so reaching this line means no CSPRNG exists and the only
++        // safe action is to stop.
++        throw new Error('No cryptographically secure random number generator available. crypto.getRandomValues() is required; refusing to fall back to Math.random() for cryptographic operations.');
+     }
+ 
+     // Mix bio randomizator
