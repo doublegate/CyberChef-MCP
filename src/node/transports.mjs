@@ -131,17 +131,36 @@ export function normaliseSessionId(raw) {
 }
 
 /**
+ * The request id from a parsed body, when there is exactly one unambiguous candidate.
+ *
+ * A batch has several, so there is no single id to echo and null is the correct answer -- which is
+ * also what JSON-RPC 2.0 prescribes when the id cannot be determined.
+ *
+ * @param {*} body - Parsed JSON-RPC body.
+ * @returns {string|number|null} The id, or null.
+ */
+function requestIdOf(body) {
+    if (!body || typeof body !== "object" || Array.isArray(body)) return null;
+    const id = body.id;
+    return typeof id === "string" || typeof id === "number" ? id : null;
+}
+
+/**
  * Write a JSON-RPC error response.
  *
  * @param {import("node:http").ServerResponse} res - The response.
  * @param {number} status - HTTP status code.
  * @param {number} code - JSON-RPC error code.
  * @param {string} message - Human-readable message.
+ * @param {string|number|null} [id] - The request id to echo, when it is known.
  * @returns {void}
  */
-function sendJsonRpcError(res, status, code, message) {
+function sendJsonRpcError(res, status, code, message, id = null) {
     if (res.headersSent) return;
-    const body = JSON.stringify({ jsonrpc: "2.0", error: { code, message }, id: null });
+    // JSON-RPC 2.0 requires `id` to match the request when it could be determined, and permits
+    // null only when it could not (a parse error, or a body that never yielded one). Echoing it
+    // where we DO know it is what lets a client correlate the failure with the call it made.
+    const body = JSON.stringify({ jsonrpc: "2.0", error: { code, message }, id });
     // charset explicit: the body is JSON.stringify output, which may contain non-ASCII from an
     // echoed message, and a client that guesses latin-1 will mangle it.
     res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
@@ -372,7 +391,7 @@ export async function createTransport(options = {}) {
                     if (!entry) {
                         // A stale id from a client that outlived a server restart. 404 is what the
                         // spec prescribes and what makes a conforming client re-initialize.
-                        sendJsonRpcError(res, 404, -32001, "Session not found");
+                        sendJsonRpcError(res, 404, -32001, "Session not found", requestIdOf(body));
                         return;
                     }
                     entry.lastSeen = Date.now();
@@ -386,7 +405,8 @@ export async function createTransport(options = {}) {
                 if (!isInitializeBody(body)) {
                     sendJsonRpcError(
                         res, 400, -32000,
-                        "Bad Request: Mcp-Session-Id header required for non-initialize requests"
+                        "Bad Request: Mcp-Session-Id header required for non-initialize requests",
+                        requestIdOf(body)
                     );
                     return;
                 }
@@ -402,6 +422,13 @@ export async function createTransport(options = {}) {
                     // Never echo err.message for a 500: it can carry internal detail.
                     status >= 500 ? "Internal server error" : err.message
                 );
+                // On 413 the client may still be streaming a body we have already decided to
+                // refuse. Answering without severing the socket means continuing to read (and pay
+                // for) an arbitrary amount of data after the decision -- so destroy it, once the
+                // response is actually out.
+                if (status === 413) {
+                    res.end(() => req.destroy());
+                }
             }
         });
 

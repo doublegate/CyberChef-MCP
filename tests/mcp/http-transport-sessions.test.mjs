@@ -393,6 +393,23 @@ describe("Streamable HTTP transport - session lifecycle (issue #36)", () => {
         }
     });
 
+    it("echoes the request id in a JSON-RPC error when it knows it", async () => {
+        // JSON-RPC 2.0 permits `id: null` only when the id could not be determined. For a
+        // well-formed body that simply lacks a session header, it is known -- and echoing it is
+        // what lets a client correlate the failure with the call it made.
+        const res = await post(base, { jsonrpc: "2.0", id: 4242, method: "tools/list", params: {} });
+        expect(res.status).toBe(400);
+        expect(res.json.id).toBe(4242);
+
+        // A batch has several ids and therefore no single one to echo: null is correct there.
+        const batch = await post(base, [
+            { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} },
+            { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} }
+        ]);
+        expect(batch.status).toBe(400);
+        expect(batch.json.id).toBeNull();
+    });
+
     it("400s a malformed JSON body", async () => {
         const res = await fetch(`${base}/mcp`, {
             method: "POST",

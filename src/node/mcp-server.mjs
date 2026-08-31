@@ -765,11 +765,16 @@ const handleCallTool = async (request, extra) => {
                     // hands every request handler an `extra.sendNotification` bound to the right
                     // connection, which is the routing this needs.
                     //
+                    // Passed as a FUNCTION, not as a stand-in Server object. An earlier revision
+                    // built `{ notification: ... }` here, which would break the moment
+                    // executeWithStreamingProgress touched any other Server member; handing it the
+                    // one capability it actually uses removes that coupling entirely.
+                    //
                     // The fallback keeps the module server for callers that invoke the handler
                     // directly without an `extra` (the existing unit tests do exactly that).
-                    const progressTarget = typeof extra?.sendNotification === "function" ?
-                        { notification: (n) => extra.sendNotification(n) } :
-                        server;
+                    const sendNotification = typeof extra?.sendNotification === "function" ?
+                        extra.sendNotification :
+                        (n => server.notification(n));
 
                     // Execute with streaming progress support
                     result = await executeWithStreamingProgress({
@@ -778,7 +783,7 @@ const handleCallTool = async (request, extra) => {
                         input: args.input,
                         recipeArgs,
                         recipe,
-                        server: progressTarget,
+                        sendNotification,
                         progressToken,
                         streamingEnabled: ENABLE_STREAMING,
                         streamingThreshold: STREAMING_THRESHOLD,
@@ -916,9 +921,32 @@ async function runServer() {
     // HTTP builds a Server per session inside createTransport (issue #36), so there is no
     // process-wide transport to connect and `transport` comes back null. Connecting the module
     // singleton here would recreate the shared-instance bug the factory exists to avoid.
-    const { transport } = await createTransport({ createServer: createMcpServer });
+    const { transport, closeAll } = await createTransport({ createServer: createMcpServer });
     if (transport) {
         await server.connect(transport);
+    }
+
+    // Shut down cleanly on a signal. Without this, SIGTERM (which is what `docker stop` sends)
+    // killed the process with sessions still open and the listener still bound: clients saw a
+    // dropped connection rather than a closed session, and the container took the full stop
+    // timeout to exit because keep-alive sockets held the loop open.
+    //
+    // Registered only when there is something to close, so stdio -- where the process ending IS
+    // the teardown -- keeps its current behaviour and its default signal handling.
+    if (typeof closeAll === "function") {
+        let shuttingDown = false;
+        const shutdown = (signal) => {
+            // Guard against a second signal arriving mid-teardown and re-entering closeAll.
+            if (shuttingDown) return;
+            shuttingDown = true;
+            const logger = getLogger();
+            logger.info(`${signal} received: closing HTTP sessions and listener`);
+            closeAll()
+                .catch(err => logger.error(`shutdown failed: ${err.message}`))
+                .finally(() => process.exit(0));
+        };
+        process.on("SIGINT", () => shutdown("SIGINT"));
+        process.on("SIGTERM", () => shutdown("SIGTERM"));
     }
 
     // Log server startup with configuration
