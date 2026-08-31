@@ -9,8 +9,8 @@
  */
 
 import { promises as fs } from "fs";
-import { dirname } from "path";
-import { randomUUID } from "crypto";
+import { dirname, basename, join } from "path";
+import { randomUUID, randomBytes } from "crypto";
 import { getLogger } from "./logger.mjs";
 import { createInputError } from "./errors.mjs";
 import { RecipeSchema } from "./recipe-validator.mjs";
@@ -19,6 +19,14 @@ import { RecipeSchema } from "./recipe-validator.mjs";
 const STORAGE_FILE = process.env.CYBERCHEF_RECIPE_STORAGE || "./recipes.json";
 const MAX_RECIPES = parseInt(process.env.CYBERCHEF_RECIPE_MAX_COUNT, 10) || 10000;
 const BACKUP_ENABLED = process.env.CYBERCHEF_RECIPE_BACKUP !== "false"; // Enabled by default
+
+/**
+ * How old a staging file must be before a sweep will remove it.
+ *
+ * Well beyond any live write -- a save completes in milliseconds -- so a concurrent save's
+ * staging file is never a candidate. Module scope rather than per-call: it is a constant.
+ */
+const STALE_TEMP_AFTER_MS = 60 * 60 * 1000;
 
 /**
  * Storage schema version.
@@ -118,13 +126,86 @@ export class RecipeStorage {
     }
 
     /**
+     * Remove stale staging files left by a save that never completed.
+     *
+     * Randomising the temp name closed a symlink/pre-creation hole, but it also removed a property
+     * the old fixed `<path>.tmp` had for free: a leaked file was overwritten by the next save, so
+     * leaks self-healed. A unique name cannot be overwritten, so a process killed between the
+     * write and the rename now leaves an orphan that stays forever.
+     *
+     * The catch in save() already unlinks on any error it can observe; this covers the case it
+     * cannot -- SIGKILL, a crash, a container stopped mid-write.
+     *
+     * Best-effort throughout: a failure here must never fail a save. The one-hour floor is well
+     * beyond any live write (saves complete in milliseconds), so a concurrent save's staging file
+     * is never a candidate.
+     *
+     * @returns {Promise<void>} Always resolves.
+     */
+    async cleanupStaleTempFiles() {
+        const dir = dirname(this.filePath);
+        const prefix = `${basename(this.filePath)}.`;
+        const cutoff = Date.now() - STALE_TEMP_AFTER_MS;
+        let handle;
+        try {
+            // opendir rather than readdir: this directory is caller-supplied via
+            // CYBERCHEF_RECIPE_STORAGE and may be somewhere large (a home directory, say).
+            // Streaming entries keeps a sweep from materialising an arbitrary listing in memory
+            // just to find at most a handful of `.tmp` siblings.
+            handle = await fs.opendir(dir);
+            for await (const entry of handle) {
+                // opendir yields Dirents, so the type is already known -- no extra syscall.
+                // A DIRECTORY matching the pattern would otherwise reach unlink() and throw
+                // EISDIR, which the catch below would then log as a genuine surprise. Skipping
+                // non-files makes that impossible rather than merely handled.
+                if (!entry.isFile()) continue;
+                const name = entry.name;
+                if (!name.startsWith(prefix) || !name.endsWith(".tmp")) continue;
+                const candidate = join(dir, name);
+                try {
+                    const { mtimeMs } = await fs.stat(candidate);
+                    if (mtimeMs < cutoff) await fs.unlink(candidate);
+                } catch (error) {
+                    // Not swallowed: logged. A vanished file (ENOENT) is the ordinary case -- a
+                    // concurrent sweep or the owning process cleaning up -- and is expected rather
+                    // than notable, so it is debug. Anything else is a genuine surprise about a
+                    // path we were about to delete, so it is warn.
+                    const level = error.code === "ENOENT" ? "debug" : "warn";
+                    this.logger[level]({
+                        error: error.message,
+                        code: error.code,
+                        candidate
+                    }, "Could not remove stale recipe-storage temp file");
+                }
+            }
+        } catch (error) {
+            // Best-effort by design: a sweep failure must never fail the save that just succeeded.
+            // But it is logged rather than discarded -- an unreadable storage directory is worth
+            // knowing about even when nothing depends on this sweep.
+            this.logger.warn({
+                error: error.message,
+                code: error.code,
+                dir
+            }, "Could not sweep stale recipe-storage temp files");
+        }
+    }
+
+    /**
      * Save recipes to file with atomic write.
      *
      * @param {Object} storage - Storage object to save.
      * @returns {Promise<void>}
      */
     async save(storage) {
-        const tempFile = `${this.filePath}.tmp`;
+        // Random suffix, not a fixed `.tmp` sibling.
+        //
+        // `${this.filePath}.tmp` is predictable, so anything that can write to the storage
+        // directory can pre-create it -- or symlink it elsewhere -- and the write below follows
+        // the link. That matters because CYBERCHEF_RECIPE_STORAGE is caller-supplied and may point
+        // at a shared directory; the default `./recipes.json` is not, but a default is not a
+        // guarantee. Paired with the `wx` flag on the write, which fails rather than truncating
+        // when the path already exists, so a pre-created file loses the race instead of winning it.
+        const tempFile = `${this.filePath}.${randomBytes(8).toString("hex")}.tmp`;
 
         try {
             // Ensure directory exists
@@ -150,10 +231,21 @@ export class RecipeStorage {
             storage.lastModified = new Date().toISOString();
 
             // Write to temp file
-            await fs.writeFile(tempFile, JSON.stringify(storage, null, 2), "utf8");
+            await fs.writeFile(tempFile, JSON.stringify(storage, null, 2), {
+                encoding: "utf8",
+                // Exclusive create: fail if the path exists rather than following it.
+                flag: "wx",
+                // Owner-only. The default 0666-minus-umask can leave saved recipes
+                // world-readable, and a recipe can carry keys and IVs.
+                mode: 0o600
+            });
 
             // Atomic rename
             await fs.rename(tempFile, this.filePath);
+
+            // Sweep orphans from earlier interrupted saves. AFTER the rename, so a failure here
+            // cannot affect the save that just succeeded.
+            await this.cleanupStaleTempFiles();
 
             // Update cache
             this.cache = storage;
