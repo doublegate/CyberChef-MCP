@@ -224,9 +224,35 @@ jobs:
             echo "Creating release for $TAG_NAME"
             if [ -f "$NOTES_FILE" ]; then
               echo "Using release notes from $NOTES_FILE"
+
+              # Rewrite RELATIVE links to absolute, pinned to this tag.
+              #
+              # A release body is rendered on the Releases page, not inside the tree, so a
+              # `[text](../security/foo.md)` link 404s for every reader of the release -- which is
+              # the audience the file exists for. v2.0.0 shipped with 8 such links and v2.1.0 with
+              # 3, all broken, and v2.1.1's were caught only because a reviewer happened to look.
+              #
+              # Fixed here rather than per-file so a future note cannot reintroduce it: the author
+              # writes the link that works in the repository, and the publish step makes it work on
+              # the release page too. Pinned to the TAG, not to master, so the link keeps pointing
+              # at the code the release describes even after the file moves or changes.
+              #
+              # Only `](../x)` and `](./x)` are touched. A bare `](x.md)` is left alone: it is
+              # ambiguous with an anchor or an external shortlink, and guessing wrong would break a
+              # link that currently works.
+              #
+              # A script rather than an inline heredoc, for two reasons the first attempt found the
+              # hard way: the path must be RESOLVED rather than pattern-stripped (`../guides/x`
+              # from `docs/releases/` is `docs/guides/x`, not `guides/x`), and a quoted heredoc
+              # inside a YAML block scalar keeps its indentation, so the terminator never matched
+              # and `bash -n` failed with "unexpected end of file". As a script it is also tested.
+              RENDERED_NOTES="$(mktemp)"
+              python3 scripts/absolutise-release-links.py \
+                "$NOTES_FILE" "$GITHUB_REPOSITORY" "$TAG_NAME" "$RENDERED_NOTES"
+
               gh release create "$TAG_NAME" \
                 --title "Release $TAG_NAME" \
-                --notes-file "$NOTES_FILE" \
+                --notes-file "$RENDERED_NOTES" \
                 --verify-tag
             else
               echo "::warning::$NOTES_FILE not found; publishing with a link to the changelog"
