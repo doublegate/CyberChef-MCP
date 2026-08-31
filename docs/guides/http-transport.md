@@ -42,6 +42,7 @@ CYBERCHEF_TRANSPORT=http npm run mcp
 | `CYBERCHEF_HTTP_PORT` | `3000` | Listen port. `0` asks the OS for an ephemeral port. |
 | `CYBERCHEF_HTTP_HOST` | `127.0.0.1` | Bind address. Use `0.0.0.0` in a container. |
 | `CYBERCHEF_ALLOWED_HOSTS` | *(unset)* | Comma-separated `Host` allowlist. Setting it enables DNS-rebinding protection. |
+| `CYBERCHEF_ALLOWED_ORIGINS` | *(unset)* | Comma-separated `Origin` allowlist. Setting it enables CORS. Required by browser clients. |
 | `CYBERCHEF_SESSION_TIMEOUT` | `1800000` | Idle session reap threshold, in ms (30 minutes). |
 | `CYBERCHEF_HTTP_MAX_BODY` | `4194304` | Maximum accepted request body, in bytes (4 MiB). |
 
@@ -61,6 +62,28 @@ CYBERCHEF_ALLOWED_HOSTS=localhost:3000,127.0.0.1:3000
 The MCP SDK marks its built-in check deprecated in favour of external middleware. It is wired up
 here anyway, because this server ships without middleware and "there is no middleware" is not a
 mitigation. If you front the server with a reverse proxy that validates `Host`, you do not need it.
+
+### On `CYBERCHEF_ALLOWED_ORIGINS` (browser clients)
+
+A browser-based MCP client — MCP Inspector's web UI is one — sends an `OPTIONS` **preflight** before
+its `POST`, because the request carries a custom `Mcp-Session-Id` header. The server answers the
+preflight, but it sends CORS *allow* headers only for an origin on this list. Without the list the
+preflight is well-formed and the browser correctly refuses to proceed.
+
+```
+CYBERCHEF_ALLOWED_ORIGINS=http://localhost:6274
+```
+
+That default-deny is deliberate: `Access-Control-Allow-Origin: *` on a server that may be bound to
+`0.0.0.0` is how a hostile page reaches a local MCP server, so it is not on offer.
+
+When the origin matches, the response also carries `Access-Control-Expose-Headers: Mcp-Session-Id`.
+That one header is the difference between a browser client working and appearing to lose its
+session on every request: without it the browser hides the session id from the client's JavaScript,
+so the client cannot echo it back and every follow-up request gets a `400`.
+
+Command-line and desktop clients (Claude Desktop, Cursor, LM Studio) send no `Origin` and need none
+of this.
 
 ## How sessions work
 
@@ -121,7 +144,8 @@ Real MCP clients handle this. Shell scripts need to strip the `data: ` prefix.
 | Non-`initialize` POST with no session id | `400` — `Mcp-Session-Id header required` |
 | Any request with an unknown/expired session id | `404` — `Session not found` |
 | `GET` or `DELETE` with no/unknown session | `404` |
-| Any method other than GET/POST/DELETE | `405` with an `Allow` header |
+| `OPTIONS` (CORS preflight) | `204`, with allow headers only for an allowlisted origin |
+| Any method other than GET/POST/DELETE/OPTIONS | `405` with an `Allow` header |
 | Body over `CYBERCHEF_HTTP_MAX_BODY` | `413` |
 | Body that is not valid JSON | `400` |
 
@@ -150,6 +174,13 @@ this is [#36](https://github.com/doublegate/CyberChef-MCP/issues/36) and it is f
 
 **`404 Session not found` immediately after initialize** — the client is not echoing the
 `Mcp-Session-Id` response header back on subsequent requests.
+
+**A browser client fails with a CORS error, or its requests never leave the browser** — set
+`CYBERCHEF_ALLOWED_ORIGINS` to the page's origin. Command-line clients do not need it.
+
+**A browser client initializes and then 400s on every following request** — the session id is
+reaching the browser but not the page's JavaScript. Confirm the response carries
+`Access-Control-Expose-Headers: Mcp-Session-Id`, which requires the origin to be allowlisted.
 
 **Sessions accumulating** — clients are disconnecting without `DELETE`. They are reaped after
 `CYBERCHEF_SESSION_TIMEOUT`; lower it if your clients are short-lived.

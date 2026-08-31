@@ -277,6 +277,8 @@ CYBERCHEF_HTTP_PORT=3000                 # HTTP transport port
 CYBERCHEF_HTTP_HOST=127.0.0.1            # HTTP bind address (use 0.0.0.0 in a container)
 CYBERCHEF_ALLOWED_HOSTS=                 # Comma-separated Host allowlist; enables DNS-rebinding
                                          # protection. Set this whenever binding 0.0.0.0.
+CYBERCHEF_ALLOWED_ORIGINS=               # Comma-separated Origin allowlist; enables CORS. Required
+                                         # by browser MCP clients (e.g. MCP Inspector's web UI).
 CYBERCHEF_SESSION_TIMEOUT=1800000        # Idle HTTP session reap threshold (30 min)
 CYBERCHEF_HTTP_MAX_BODY=4194304          # Maximum accepted HTTP request body (4 MiB)
 

@@ -142,7 +142,9 @@ export function normaliseSessionId(raw) {
 function sendJsonRpcError(res, status, code, message) {
     if (res.headersSent) return;
     const body = JSON.stringify({ jsonrpc: "2.0", error: { code, message }, id: null });
-    res.writeHead(status, { "Content-Type": "application/json" });
+    // charset explicit: the body is JSON.stringify output, which may contain non-ASCII from an
+    // echoed message, and a client that guesses latin-1 will mangle it.
+    res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
     res.end(body);
 }
 
@@ -185,10 +187,27 @@ export async function createTransport(options = {}) {
         // used -- since a browser page can then be made to POST to the server via a rebound name.
         // The SDK deprecates its built-in check in favour of external middleware; it is wired here
         // because this server ships without one and "there is no middleware" is not a mitigation.
-        const allowedHosts = options.allowedHosts ||
-            (process.env.CYBERCHEF_ALLOWED_HOSTS ?
-                process.env.CYBERCHEF_ALLOWED_HOSTS.split(",").map(h => h.trim()).filter(Boolean) :
-                undefined);
+        const csv = (value, envName) => {
+            const raw = value ?? process.env[envName];
+            if (!raw) return undefined;
+            const list = Array.isArray(raw) ? raw : raw.split(",");
+            const cleaned = list.map(h => String(h).trim()).filter(Boolean);
+            return cleaned.length ? cleaned : undefined;
+        };
+        const allowedHosts = csv(options.allowedHosts, "CYBERCHEF_ALLOWED_HOSTS");
+
+        // CORS is OPT-IN, and off by default on purpose.
+        //
+        // A browser MCP client (MCP Inspector's web UI is one, and it is named in issue #36)
+        // preflights its POST with OPTIONS, because the request carries a custom `Mcp-Session-Id`
+        // header. Answering 405 there fails the preflight and the client never sends the POST.
+        //
+        // But permissive CORS on a server bound to 0.0.0.0 is how a hostile page reaches a local
+        // MCP server, so `Access-Control-Allow-Origin: *` is not on offer. Without
+        // CYBERCHEF_ALLOWED_ORIGINS the OPTIONS gets a well-formed 204 with NO allow headers,
+        // which the browser correctly refuses -- default-deny, and semantically honest about the
+        // method being supported, unlike a 405.
+        const allowedOrigins = csv(options.allowedOrigins, "CYBERCHEF_ALLOWED_ORIGINS");
 
         const createServer = options.createServer;
         if (typeof createServer !== "function") {
@@ -204,8 +223,50 @@ export async function createTransport(options = {}) {
         const http = await import("node:http");
         const { randomUUID } = await import("node:crypto");
 
+        /**
+         * CORS headers for one request, or none when the origin is not allowlisted.
+         *
+         * @param {import("node:http").IncomingMessage} req - The request.
+         * @returns {Object} Headers to merge into the response.
+         */
+        function corsHeaders(req) {
+            const origin = req.headers.origin;
+            if (!allowedOrigins || !origin || !allowedOrigins.includes(origin)) return {};
+            return {
+                "Access-Control-Allow-Origin": origin,
+                // Echoing the origin makes the response origin-specific, so Vary is required or a
+                // shared cache can serve one origin's response to another.
+                "Vary": "Origin",
+                "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type, Accept, Mcp-Session-Id, Mcp-Protocol-Version, Last-Event-ID, Authorization",
+                // Without this the browser hides Mcp-Session-Id from the client's JS, so it can
+                // never send it back and every follow-up request 400s. This one line is the
+                // difference between a browser client working and appearing to lose its session.
+                "Access-Control-Expose-Headers": "Mcp-Session-Id",
+                "Access-Control-Max-Age": "600"
+            };
+        }
+
         /** @type {Map<string, {server: Object, transport: Object, lastSeen: number}>} */
         const sessions = new Map();
+
+        /**
+         * Fire-and-forget a closeSession() without dropping a rejection on the floor.
+         *
+         * closeSession already try/catches both halves, so it should not reject -- but "should
+         * not" is exactly the assumption the repository style guide forbids relying on ("silent
+         * failure paths: ... an unawaited promise"). This makes the guarantee structural rather
+         * than dependent on reading closeSession's internals, which is the point of the rule.
+         *
+         * @param {string} sessionId - The session to close.
+         * @param {string} reason - Why, for the log line.
+         * @returns {void}
+         */
+        function closeSessionDetached(sessionId, reason) {
+            closeSession(sessionId, reason).catch(err => {
+                logger.error(`session ${sessionId}: teardown failed (${reason}): ${err.message}`);
+            });
+        }
 
         /**
          * Tear down one session and forget it. Safe to call for an unknown id.
@@ -256,14 +317,14 @@ export async function createTransport(options = {}) {
                 onsessionclosed: (sessionId) => {
                     // Fired for a client DELETE. closeSession is idempotent, so the transport's
                     // own onclose firing afterwards is harmless.
-                    void closeSession(sessionId, "client DELETE");
+                    closeSessionDetached(sessionId, "client DELETE");
                 }
             });
 
             // A transport that dies for any other reason (network drop, server close) must not
             // leave its entry behind, or the map becomes a slow leak keyed by dead sessions.
             transport.onclose = () => {
-                if (transport.sessionId) void closeSession(transport.sessionId, "transport closed");
+                if (transport.sessionId) closeSessionDetached(transport.sessionId, "transport closed");
             };
 
             await mcpServer.connect(transport);
@@ -272,6 +333,17 @@ export async function createTransport(options = {}) {
 
         const httpServer = http.createServer(async (req, res) => {
             try {
+                const cors = corsHeaders(req);
+                for (const [k, v] of Object.entries(cors)) res.setHeader(k, v);
+
+                // Preflight. Answered before anything else, since it carries no body and no
+                // session and must not be mistaken for a malformed request.
+                if (req.method === "OPTIONS") {
+                    res.writeHead(204, { "Allow": "GET, POST, DELETE, OPTIONS" });
+                    res.end();
+                    return;
+                }
+
                 const sessionId = normaliseSessionId(req.headers[SESSION_HEADER]);
 
                 // GET (server-initiated SSE) and DELETE (explicit teardown) are only meaningful
@@ -288,7 +360,7 @@ export async function createTransport(options = {}) {
                 }
 
                 if (req.method !== "POST") {
-                    res.writeHead(405, { "Allow": "GET, POST, DELETE" });
+                    res.writeHead(405, { "Allow": "GET, POST, DELETE, OPTIONS" });
                     res.end();
                     return;
                 }
@@ -338,7 +410,7 @@ export async function createTransport(options = {}) {
         const sweeper = setInterval(() => {
             const cutoff = Date.now() - sessionTimeoutMs;
             for (const [id, entry] of sessions) {
-                if (entry.lastSeen < cutoff) void closeSession(id, "idle timeout");
+                if (entry.lastSeen < cutoff) closeSessionDetached(id, "idle timeout");
             }
         }, DEFAULT_SESSION_SWEEP_MS);
         // Do not hold the event loop open for the sweeper alone.
@@ -348,6 +420,7 @@ export async function createTransport(options = {}) {
             logger.info(`Streamable HTTP transport listening on ${host}:${port}`);
             logger.info(`  session timeout: ${Math.round(sessionTimeoutMs / 1000)}s`);
             logger.info(`  DNS rebinding protection: ${allowedHosts ? `on (${allowedHosts.join(", ")})` : "off"}`);
+            logger.info(`  CORS: ${allowedOrigins ? `on (${allowedOrigins.join(", ")})` : "off -- browser clients need CYBERCHEF_ALLOWED_ORIGINS"}`);
         });
 
         /**
@@ -358,6 +431,11 @@ export async function createTransport(options = {}) {
         async function closeAll() {
             clearInterval(sweeper);
             await Promise.all([...sessions.keys()].map(id => closeSession(id, "server shutdown")));
+            // `close()` stops accepting NEW connections but waits for existing ones to end. An
+            // idle keep-alive socket -- which any HTTP/1.1 client leaves behind -- therefore hangs
+            // the shutdown until its timeout. Severing them first is what makes closeAll()
+            // actually close. (node >= 18.2)
+            httpServer.closeAllConnections?.();
             await new Promise(resolve => httpServer.close(resolve));
         }
 

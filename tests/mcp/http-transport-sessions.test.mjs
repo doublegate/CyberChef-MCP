@@ -288,6 +288,87 @@ describe("Streamable HTTP transport - session lifecycle (issue #36)", () => {
         const res = await fetch(`${base}/mcp`, { method: "PUT" });
         expect(res.status).toBe(405);
         expect(res.headers.get("allow")).toContain("POST");
+        expect(res.headers.get("allow")).toContain("OPTIONS");
+    });
+
+    it("answers a CORS preflight instead of 405ing it", async () => {
+        // A browser MCP client (MCP Inspector's web UI, named in issue #36) preflights its POST
+        // because the request carries a custom Mcp-Session-Id header. A 405 here means the POST is
+        // never sent and the client fails with no useful diagnostic.
+        const res = await fetch(`${base}/mcp`, {
+            method: "OPTIONS",
+            headers: {
+                "Origin": "http://localhost:6274",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "content-type, mcp-session-id"
+            }
+        });
+        expect(res.status).toBe(204);
+        expect(res.headers.get("allow")).toContain("OPTIONS");
+    });
+
+    it("sends NO CORS allow headers unless an origin is allowlisted", async () => {
+        // Default-deny. Permissive CORS on a server that may be bound to 0.0.0.0 is how a hostile
+        // page reaches a local MCP server, so `*` is not on offer.
+        const res = await fetch(`${base}/mcp`, {
+            method: "OPTIONS",
+            headers: { "Origin": "http://evil.example" }
+        });
+        expect(res.status).toBe(204);
+        expect(res.headers.get("access-control-allow-origin")).toBeNull();
+    });
+
+    it("sends CORS headers for an allowlisted origin, and exposes Mcp-Session-Id", async () => {
+        const cors = await createTransport({
+            type: "http", port: 0, host: "127.0.0.1",
+            createServer: createTinyServer,
+            allowedOrigins: ["http://localhost:6274"]
+        });
+        await new Promise(resolve => {
+            if (cors.httpServer.listening) return resolve();
+            cors.httpServer.once("listening", resolve);
+        });
+        const corsBase = `http://127.0.0.1:${cors.httpServer.address().port}`;
+        try {
+            const pre = await fetch(`${corsBase}/mcp`, {
+                method: "OPTIONS",
+                headers: {
+                    "Origin": "http://localhost:6274",
+                    "Access-Control-Request-Method": "POST"
+                }
+            });
+            expect(pre.status).toBe(204);
+            expect(pre.headers.get("access-control-allow-origin")).toBe("http://localhost:6274");
+            expect(pre.headers.get("vary")).toContain("Origin");
+            expect(pre.headers.get("access-control-allow-headers")).toContain("Mcp-Session-Id");
+
+            // Without Expose-Headers the browser hides Mcp-Session-Id from the client's JS, so it
+            // can never echo it back and every follow-up request 400s. This assertion is the
+            // difference between a browser client working and appearing to lose its session.
+            expect(pre.headers.get("access-control-expose-headers")).toContain("Mcp-Session-Id");
+
+            const init = await fetch(`${corsBase}/mcp`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Accept": "application/json, text/event-stream",
+                    "Origin": "http://localhost:6274"
+                },
+                body: JSON.stringify(INITIALIZE)
+            });
+            expect(init.status).toBe(200);
+            expect(init.headers.get("access-control-allow-origin")).toBe("http://localhost:6274");
+            expect(init.headers.get("access-control-expose-headers")).toContain("Mcp-Session-Id");
+
+            // A different origin gets nothing, even with the allowlist configured.
+            const other = await fetch(`${corsBase}/mcp`, {
+                method: "OPTIONS",
+                headers: { "Origin": "http://evil.example" }
+            });
+            expect(other.headers.get("access-control-allow-origin")).toBeNull();
+        } finally {
+            await cors.closeAll();
+        }
     });
 
     it("413s a body over the limit without opening a session", async () => {
