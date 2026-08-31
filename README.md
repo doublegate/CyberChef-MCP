@@ -26,19 +26,17 @@ This fork wraps the core CyberChef Node.js API into an MCP server, bridging the 
 ### Fork Relationship
 
 This project maintains a selective sync relationship with the upstream GCHQ/CyberChef repository:
-- **Synced from upstream**: all of `src/core/**` plus the six upstream-owned files in `src/node/`
-  (`api.mjs`, `apiUtils.mjs`, `File.mjs`, `NodeDish.mjs`, `NodeRecipe.mjs`, `repl.mjs`)
-- **Web UI Components**: Removed (88 files, ~19,260 lines) - not needed for MCP server
-- **MCP-Specific Code**: Custom implementation (`src/node/mcp-server.mjs` and `src/node/lib/**`, tests, workflows)
-- **Sync Model**: `rsync -a --delete` mirror, NOT git merge. Additions, modifications *and deletions*
-  apply atomically — the previous mechanism copied only `src/core/operations/*.mjs` and could not
-  express a major-version jump, which is why 10.19.4 sat un-upgraded through six upstream releases.
-- **Fork changes are patches**: anything this fork changes in an upstream-owned file lives in
-  `patches/fork/*.patch` and is re-applied after the mirror. **A patch that stops applying fails the
-  sync** — the alarm that was missing when a ReDoS mitigation was silently reverted and stayed gone
-  for four releases ([incident record](docs/security/2026-08-30-saferegex-reverted-by-upstream-sync.md)).
-- **Scope is verified with an allowlist**: anything the sync touches outside its declared scope
-  fails the run, rather than being caught only if someone thought to forbid it.
+- **Synced from upstream**: `src/core/**` (minus three generated paths) and six upstream-owned
+  files in `src/node/`. Mirrored verbatim — **never hand-edit them**; fork changes live as
+  re-applied patches.
+- **Web UI Components**: Removed (88 files, ~19,260 lines) — not needed for an MCP server
+- **MCP-Specific Code**: this fork's own (`src/node/mcp-server.mjs`, `src/node/lib/**`, `tests/mcp/`,
+  workflows)
+- **Sync is one-way**: pull only. As of v2.0.0 the combined work is GPL-3.0-or-later, so MCP-layer
+  changes cannot be contributed back to an Apache-2.0 upstream.
+
+Exact scope, the patch model, and what to do when a sync conflicts:
+**[Upstream Sync Guide](docs/guides/upstream-sync-guide.md)**.
 
 See [Upstream Sync Guide](docs/guides/upstream-sync-guide.md) for details on the synchronization process.
 
@@ -89,12 +87,12 @@ The server exposes CyberChef operations as MCP tools:
 *   **MCP Streaming with Progress** (v1.9.0): Operations send `notifications/progress` via the MCP SDK progress token mechanism for real-time status updates during long-running tasks.
 *   **Worker Thread Pool** (v1.9.0): Piscina-based worker threads offload CPU-intensive operations (AES, Blowfish, bcrypt, scrypt, PBKDF2, etc.) to prevent event loop blocking. Configurable pool size and routing thresholds.
 *   **Schema Validation**: All inputs are validated against schemas derived from CyberChef's internal type system using `zod`.
-*   **Modern Node.js**: Fully compatible with Node.js v22+ with automated compatibility patches.
+*   **Modern Node.js**: Requires Node.js `>=24 <27`, matching upstream exactly. The published image runs Node 26.8.1.
 *   **Recipe Management** (v1.6.0): Save and reuse multi-operation workflows with full CRUD operations, import/export in multiple formats (JSON/YAML/URL/CyberChef), recipe composition with nesting support, and curated library of 25+ production-ready recipes across 5 categories. See [Recipe Management Guide](docs/guides/recipe_management.md) for details.
 *   **Advanced Features** (v1.7.0): Enterprise-grade capabilities with batch processing (parallel/sequential execution of up to 100 operations), privacy-first telemetry collection (disabled by default, no input/output data captured), sliding window rate limiting for resource protection, enhanced caching with inspection tools, and resource quota tracking (concurrent operations, data sizes). All features are configurable via environment variables with secure defaults. See [Release Notes](docs/releases/v1.7.0.md) for details.
 *   **Enhanced Observability** (v1.5.0): Structured JSON logging with Pino for production monitoring, comprehensive error handling with actionable recovery suggestions, automatic retry logic with exponential backoff, request correlation with UUID tracking, circuit breaker pattern for cascading failure prevention, and streaming infrastructure for progressive results on large operations. See [Release Notes](docs/releases/v1.5.0.md) for details.
 *   **Performance Optimized** (v1.4.0): LRU cache for operation results (100MB default), automatic streaming for large inputs (10MB+ threshold), configurable resource limits (100MB max input, 30s timeout), memory monitoring, and comprehensive benchmark suite. See [Performance Tuning Guide](docs/architecture/performance-tuning.md) for configuration options.
-*   **Upstream Sync Automation** (v1.3.0; **widened in v2.0.0**): Automated monitoring of upstream CyberChef releases weekly (Sundays at noon UTC), a whole-tree `rsync --delete` mirror with fork changes carried as re-applied patches, an allowlist scope check that fails the run on anything out of scope, comprehensive validation (757 MCP tests, 241 Node-API tests, 2,289 operation tests), and an emergency rollback mechanism.
+*   **Upstream Sync Automation** (v1.3.0; **rebuilt in v2.0.0**): Weekly monitoring of upstream releases, an atomic whole-tree mirror, fork changes carried as patches that fail the sync if they stop applying, comprehensive validation (756 MCP + 241 Node-API + 2,289 operation tests), and an emergency rollback. See the [Upstream Sync Guide](docs/guides/upstream-sync-guide.md).
 *   **Security Hardened** (v1.4.5+): Chainguard distroless base image with zero-CVE baseline, non-root execution (UID 65532), automated Trivy vulnerability scanning with build-fail thresholds, dual SBOM strategy (Docker Scout attestations + CycloneDX), read-only filesystem support, SLSA Build Level 3 provenance, and 7-day SLA for critical CVE patches. Fixed 11 of 12 code scanning vulnerabilities including critical cryptographic randomness weakness and 7 ReDoS vulnerabilities. See [Security Policy](SECURITY.md) and [Security Fixes Report](docs/security/SECURITY_FIX_REPORT.md) for details.
 *   **Production Ready**: Comprehensive CI/CD with CodeQL v4, automated testing, and dual-registry container publishing (Docker Hub + GHCR) with complete supply chain attestations.
 
@@ -664,7 +662,7 @@ If you want to modify the server code without Docker:
 This project uses GitHub Actions to ensure stability and security:
 
 **Core Development Workflows:**
-*   **MCP Server CI** ([`core-ci.yml`](.github/workflows/core-ci.yml)): Tests the underlying CyberChef logic and configuration generation on Node.js v22
+*   **MCP Server CI** ([`core-ci.yml`](.github/workflows/core-ci.yml)): Tests the underlying CyberChef logic and configuration generation on Node.js 24
 *   **Docker Build** ([`mcp-docker-build.yml`](.github/workflows/mcp-docker-build.yml)): Builds, verifies, and security scans the `cyberchef-mcp` Docker image
 *   **Pull Request Checks** ([`pull_requests.yml`](.github/workflows/pull_requests.yml)): Automated testing and validation for pull requests
 *   **Performance Benchmarks** ([`performance-benchmarks.yml`](.github/workflows/performance-benchmarks.yml)): Automated performance regression testing on code changes (v1.4.0+)
@@ -724,12 +722,14 @@ npm run lint
 ```
 
 **Test Coverage:**
-The MCP server maintains comprehensive test coverage across 19 test suites:
-- **689 total tests** covering all MCP server components (increased from 563 in v1.8.0)
+The MCP server maintains comprehensive test coverage across 22 test suites:
+- **756 MCP tests**, plus 241 Node-API tests and 2,289 operation tests
 - **Coverage thresholds**: 75% lines/statements, 90% functions, 70% branches
-- **Current coverage**: 75.64% lines, 75.7% statements, 91.5% functions, 71.98% branches
-- Test suites: config-variations, coverage-improvement, deprecation, errors, handler-dispatch, logger, mcp-server, migration-preview, real-server-handlers, recipe-manager, recipe-storage, recipe-validator, retry, server-integration, streaming, transports, v1.7.0, validation, worker-pool
-- Note: Coverage variation occurs as new features are added; mcp-server.mjs currently has lower coverage due to extensive integration code
+- **Current coverage**: 78.8% lines, 78.7% statements, 90.5% functions, 75.1% branches
+- `src/node/lib/**` — the fork-owned subsystems extracted in the v2.0.0 decomposition — sits at **95.2% lines**
+- Note: the global figure is held down by `mcp-server.mjs`, a composition root that is only
+  exercisable end-to-end. Individual suite names are not listed here because the list went stale
+  three times; `ls tests/mcp/*.test.mjs` is authoritative.
 
 ## Contributing
 

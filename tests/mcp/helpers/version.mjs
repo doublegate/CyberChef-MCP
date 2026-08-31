@@ -25,8 +25,15 @@
 
 import { expect } from "vitest";
 
-/** SemVer 2.0.0, with optional pre-release and build metadata. */
-const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
+/**
+ * The official SemVer 2.0.0 regular expression, verbatim from semver.org.
+ *
+ * A looser `\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?` accepts things SemVer forbids -- leading zeros
+ * (`01.2.3`) and empty pre-release identifiers (`1.2.3-alpha..1`) -- so it would pass a version
+ * string that npm itself rejects. Since the whole point of this assertion is "package.json does
+ * not carry a malformed version", a regex laxer than npm's own rules defeats it.
+ */
+const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
 
 /**
  * Assert that a version constant is present and well-formed.

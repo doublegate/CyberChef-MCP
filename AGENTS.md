@@ -36,10 +36,13 @@ server. Exposes 504 operations (encryption, encoding, compression, forensics) as
 
 **Focus:** MCP server (`src/node/mcp-server.mjs` + `src/node/lib/**`), not the web app.
 
-**Fork hygiene — the rule that matters most here.** `src/core/**` and six `src/node/*.mjs` files
-are mirrored verbatim from upstream. **Never hand-edit them.** To change one, either adopt
-upstream's version (if upstream already has the change) or add a `patches/fork/*.patch`, which the
-sync re-applies and which **fails the sync if it stops applying**. A ReDoS mitigation was once
+**Fork hygiene — the rule that matters most here.** The sync mirrors `src/core/**` **except the
+three generated paths** (`config/modules/`, `config/OperationConfig.json`, `operations/index.mjs`,
+which `npx grunt configTests` produces and `.gitignore` excludes), plus six upstream-owned
+`src/node/*.mjs` files: `api.mjs`, `apiUtils.mjs`, `File.mjs`, `NodeDish.mjs`, `NodeRecipe.mjs`,
+`repl.mjs`. **Never hand-edit any of them.** To change one, either adopt upstream's version (if
+upstream already has the change) or add a `patches/fork/*.patch`, which the sync re-applies and
+which **fails the sync if it stops applying**. A ReDoS mitigation was once
 hand-edited into `src/core/operations/` and silently reverted by a sync, staying gone for four
 releases while three documents claimed it was active:
 `docs/security/2026-08-30-saferegex-reverted-by-upstream-sync.md`.
@@ -124,7 +127,7 @@ Generated files, **not committed** - regenerate with `npx grunt configTests`:
 
 1. **`cyberchef_bake`** - Meta-tool for complex recipe chains
 2. **`cyberchef_search`** - Operation discovery via the `help()` function
-3. **`cyberchef_<op_name>`** - 300+ dynamically generated tools from OperationConfig
+3. **`cyberchef_<op_name>`** - 504 dynamically generated tools from OperationConfig
 4. **`cyberchef_worker_stats`** - Worker thread pool monitoring (v1.9.0)
 5. **`cyberchef_deprecation_stats`** / **`cyberchef_migration_preview`** - v2.0.0 migration tools (v1.8.0)
 6. **Recipe tools** - `cyberchef_recipe_create/get/list/update/delete/execute/export/import/validate/test` (v1.6.0)
