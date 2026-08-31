@@ -1,0 +1,101 @@
+# Dependabot version updates.
+#
+# Until now this repository had NO dependabot.yml, so it received only the automatic *security*
+# updates GitHub enables by default. That is why its dependency debt reached 194 open alerts:
+# nothing was ever bumped for currency, only for a published CVE, and a package that drifts far
+# enough behind eventually cannot be patched without a major bump.
+#
+# Design notes, because the defaults are wrong for this repo in two directions:
+#
+#  * GROUPED, because ungrouped npm updates on a 1,700-package tree open a wall of PRs that
+#    nobody reviews, and an unreviewed dependency PR is worse than no PR.
+#  * MAJORS ARE NEVER GROUPED. A grouped major is unreviewable -- the whole point of a major is
+#    that it needs individual judgement. They arrive one at a time or not at all.
+#  * Cooldown is raised above GitHub's 3-day default for majors and minors. This project consumes
+#    cryptography and parser libraries where a bad release is a real hazard, and nothing here is
+#    urgent enough to justify being the first to find out. Security updates ignore cooldown
+#    entirely, which is the behaviour we want.
+version: 2
+
+updates:
+  # --- npm ------------------------------------------------------------------------------------
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "05:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 8
+    labels:
+      - "dependencies"
+      - "javascript"
+    commit-message:
+      prefix: "build(deps)"
+      prefix-development: "build(deps-dev)"
+      include: "scope"
+    cooldown:
+      default-days: 3
+      semver-major-days: 14
+      semver-minor-days: 7
+      semver-patch-days: 3
+    groups:
+      # Runtime dependencies, patch + minor only. Majors fall through to individual PRs.
+      production-minor-patch:
+        applies-to: version-updates
+        dependency-type: "production"
+        update-types: ["minor", "patch"]
+      # Dev tooling churns constantly and cannot affect the shipped image, so it is grouped more
+      # aggressively -- majors included.
+      development:
+        applies-to: version-updates
+        dependency-type: "development"
+        update-types: ["major", "minor", "patch"]
+      # Security updates are grouped separately so a security PR is never mixed with routine
+      # currency churn and can be reviewed and merged on its own.
+      security:
+        applies-to: security-updates
+        patterns: ["*"]
+    ignore:
+      # Pinned deliberately by this fork; see patches/fork/README.md. Dependabot bumping it back
+      # to the unscoped upstream package would silently undo patch 03.
+      - dependency-name: "@natlibfi/loglevel-message-prefix"
+        update-types: ["version-update:semver-major"]
+
+  # --- GitHub Actions -------------------------------------------------------------------------
+  # This is the one that would have caught the outage that killed Security Scan for ~5 months:
+  # `aquasecurity/trivy-action@0.28.0` was retagged away upstream and every run died at
+  # "Set up job" with an unresolvable action. Actions drift silently and fail loudly.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "05:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "ci/cd"
+    commit-message:
+      prefix: "ci(deps)"
+    groups:
+      actions-minor-patch:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]
+
+  # --- Docker ---------------------------------------------------------------------------------
+  # Dockerfile.mcp only; the root web-app Dockerfile was removed in v1.7.1.
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "05:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "security"
+    commit-message:
+      prefix: "build(docker)"
