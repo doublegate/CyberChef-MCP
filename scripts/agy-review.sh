@@ -42,7 +42,26 @@ log() { printf '[agy-review] %s\n' "$*" >&2; }
 # general helper used throughout the script -- the marker is a comment, so its position
 # changes nothing about where the function is defined.
 have_text() { [ -s "$1" ] && grep -q '[^[:space:]]' "$1"; }
-AGY_ERROR_RE='^[[:space:]]*Error:.*(Eligibility check failed|UNAVAILABLE|unavailable|RESOURCE_EXHAUSTED|INTERNAL|DEADLINE_EXCEEDED|code [45][0-9]{2})'
+# Any `Error:` on line 1 of a short capture -- NOT an enumeration of known backend messages.
+#
+# This was previously a list: Eligibility check failed | UNAVAILABLE | RESOURCE_EXHAUSTED |
+# INTERNAL | DEADLINE_EXCEEDED | code 4xx/5xx. That list is unmaintainable by construction,
+# and it failed exactly as you would expect. Observed on CyberChef-MCP PR #72, where agy posted
+# this as its entire review and the `review` check went GREEN:
+#
+#     ## Antigravity review (Gemini via Ultra)
+#
+#     Error: timeout waiting for response
+#
+# A timeout is not in the list, so the guard let it through -- reproducing the precise failure
+# the guard exists to prevent, one signature later. Enumerating failure modes only ever catches
+# the ones already seen.
+#
+# Inverted: treat ANY leading `Error:` as a failure. The false-positive protection does not come
+# from the message text at all, and never did -- it comes from the two conditions below, which
+# are unchanged: the error must be on LINE 1, and the whole capture must be under
+# AGY_ERROR_MAX_BYTES. A genuine review is thousands of bytes and does not open with "Error:".
+AGY_ERROR_RE='^[[:space:]]*Error:'
 # Captures longer than this are assumed to be real reviews even if they open with an error line:
 # a genuine review is thousands of bytes, a bare backend error is a couple of hundred.
 AGY_ERROR_MAX_BYTES="${AGY_ERROR_MAX_BYTES:-2000}"
