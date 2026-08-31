@@ -68,7 +68,12 @@ try {
         recipe: [{ op: "Extract URLs" }]
     });
     console.log(`  URLs:   ${urls.trim()}`);
-    expect("found the C2 URL", urls.includes("http://evil.example/c2"), true);
+    // Compared as a whole extracted line rather than with `.includes(url)`. A substring test
+    // against a URL is the `js/incomplete-url-substring-sanitization` pattern -- "arbitrary hosts
+    // may come before or after it" -- and while this is an assertion rather than a security check,
+    // an example is the last place to demonstrate a habit worth unlearning.
+    expect("found the C2 URL",
+        urls.split("\n").map(u => u.trim()).includes("http://evil.example/c2"), true);
 
     const emails = await call(client, "cyberchef_bake", {
         input: plain,

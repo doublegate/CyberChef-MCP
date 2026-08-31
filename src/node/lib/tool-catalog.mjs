@@ -13,17 +13,20 @@
  * Both pay up front for schemas the session may never use. `curated` is cheaper only because it
  * guesses which 79 operations matter, and it is wrong for anyone whose work is the other 425.
  *
+ * Measured after the change: the index is ~24 tools and ~2,500 tokens.
+ *
  * THE SHAPE OF THE FIX
  * --------------------
  * Make `tools/list` an INDEX rather than a catalogue. The model is handed a handful of navigation
  * tools plus the executor, and walks down to detail only where it needs it:
  *
- *     tools/list                  ~15 tools, a few KB     <- always loaded
- *       cyberchef_categories       17 categories + counts  <- one call, ~1 KB
- *       cyberchef_list_operations  names + one-liners for one category
- *       cyberchef_describe         the FULL schema for the 1-5 operations actually chosen
- *       cyberchef_search           keyword search across all 504
- *       cyberchef_bake             runs any of the 504, by name
+ *     tools/list                      ~24 tools, ~10 KB   <- always loaded
+ *       cyberchef_categories          16 categories + counts + examples   (~2 KB)
+ *       cyberchef_list_operations     names + one-liners for one category (~8 KB for 50)
+ *       cyberchef_describe_operation  the FULL schema for the operations actually chosen
+ *       cyberchef_search              keyword search across all 504
+ *       cyberchef_bake                runs any of the 504, by name
+ *       cyberchef_magic               kept in every surface: the entry point for unknown data
  *
  * The parent index is `tools/list`; the child listings are ordinary tool calls returning data.
  * That works on every MCP client, needs no `listChanged` support, and keeps the schema for an
@@ -46,6 +49,7 @@
 
 import Categories from "../../core/config/Categories.json" with {type: "json"};
 import OperationConfig from "../../core/config/OperationConfig.json" with {type: "json"};
+import Utils from "../../core/Utils.mjs";
 
 /**
  * Categories that carry no operations for an MCP caller.
@@ -64,10 +68,10 @@ const HIDDEN_CATEGORIES = new Set(["Favourites"]);
  */
 function summarise(text, max) {
     if (typeof text !== "string" || !text.length) return "";
-    const plain = text
-        .replace(/<br\s*\/?>/gi, " ")
-        .replace(/<[^>]+>/g, "")
-        .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    // Upstream's pair, not a hand-rolled one -- see the note on `summariseDescription` in
+    // mcp-server.mjs. Two copies of a regex-based HTML stripper is one copy too many, and CodeQL
+    // flagged both for incomplete multi-character sanitisation and double-escaping.
+    const plain = Utils.unescapeHtml(Utils.stripHtmlTags(text, true))
         .replace(/\s+/g, " ")
         .trim();
     if (plain.length <= max) return plain;

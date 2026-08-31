@@ -11,6 +11,7 @@ import { help } from "./index.mjs";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
+import Utils from "../core/Utils.mjs";
 import OperationConfig from "../core/config/OperationConfig.json" with {type: "json"};
 import { dishToText } from "./lib/dish-output.mjs";
 import { bakeOnCore } from "./lib/core-recipe.mjs";
@@ -115,10 +116,19 @@ function toInputSchema(schema) {
 function summariseDescription(description) {
     if (typeof description !== "string" || !description.length) return "";
 
-    const plain = description
-        .replace(/<br\s*\/?>/gi, " ")
-        .replace(/<[^>]+>/g, "")
-        .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    // `Utils.stripHtmlTags` + `Utils.unescapeHtml` rather than a hand-rolled pair of regexes.
+    //
+    // The first draft did roll its own -- `.replace(/<[^>]+>/g, "")` then a chain of entity
+    // replacements -- and CodeQL was right to flag it twice: `js/incomplete-multi-character-
+    // sanitization` (a `<scr<script>ipt>` construction survives a single pass) and
+    // `js/double-escaping` (unescaping `&amp;` before `&lt;` turns `&amp;lt;` into `<`).
+    //
+    // Neither is reachable from here -- the input is CyberChef's own operation descriptions, which
+    // are static, and the output goes into a JSON string rather than a DOM. That is an argument
+    // for the finding being low severity, not for keeping a hand-rolled HTML sanitiser: this
+    // module now uses the same pair the Node API itself uses in `DishHTML.toArrayBuffer()`, so
+    // there is one implementation to be wrong rather than three.
+    const plain = Utils.unescapeHtml(Utils.stripHtmlTags(description, true))
         .replace(/\s+/g, " ")
         .trim();
 
