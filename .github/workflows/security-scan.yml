@@ -122,6 +122,11 @@ jobs:
           severity: 'CRITICAL'
           vuln-type: 'os,library'
           exit-code: '1'
+          # Same ignore file as the SARIF steps. It changes nothing today -- the only entry is a
+          # LOW and this step filters to CRITICAL -- but a gate and a report that disagree about
+          # what is suppressed is a trap for whoever reads them next, and the mismatch would appear
+          # silently the first time a CRITICAL is ever justified here.
+          trivyignores: '.trivyignore'
 
   dependency-scan:
     name: Dependency Vulnerability Scan

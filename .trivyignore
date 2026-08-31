@@ -4,7 +4,9 @@
 # NOT be fixed, and an unexplained one is indistinguishable from a finding nobody looked at. Every
 # entry states the vulnerability, why it is unfixable rather than merely inconvenient, why it is
 # not reachable in this project, and what would make it removable. Anything that can be fixed is
-# fixed instead -- see docs/security/audit.md for the full disposition of every open finding.
+# fixed instead -- see docs/security/2026-08-31-open-alert-sweep.md for the full disposition of
+# every open finding. (Not docs/security/audit.md: that is a December 2025 snapshot, kept for
+# history and explicitly superseded.)
 #
 # Format: one vulnerability ID per line. Trivy also accepts `exp:` for a dated expiry; none is used
 # here because these are conditions that change on an upstream event, not on a date.
