@@ -99,8 +99,8 @@ npm run mcp
 Development and testing:
 
 ```bash
-npm start                # Dev server with hot reload (grunt dev)
-npm run build            # Production build (grunt prod)
+npm start                # Run the MCP server (same as `npm run mcp`)
+npm run build            # Generate OperationConfig.json + src/node/index.mjs (grunt configTests)
 npm run lint             # ESLint via grunt - zero errors required
 npm test                 # Core unit tests (custom Node runners)
 npm run test:mcp         # MCP server tests, Vitest (757 tests across 22 files)

@@ -207,8 +207,8 @@
     "zod": "^4.4.3"
   },
   "scripts": {
-    "start": "npx grunt dev",
-    "build": "npx grunt prod",
+    "start": "node --openssl-legacy-provider src/node/mcp-server.mjs",
+    "build": "npx grunt configTests",
     "node": "npx grunt node",
     "repl": "node --no-warnings src/node/repl.mjs",
     "test": "npx grunt configTests && node --no-warnings --no-deprecation --openssl-legacy-provider tests/node/index.mjs && node --no-warnings --no-deprecation --openssl-legacy-provider --trace-uncaught tests/operations/index.mjs",

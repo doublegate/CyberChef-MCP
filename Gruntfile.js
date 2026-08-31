@@ -32,13 +32,21 @@ module.exports = function (grunt) {
     //
     // A task that cannot succeed is worse than an absent one: it invites someone to debug a build
     // for a product this repository does not ship. These now say so immediately.
+    // `grunt.fail.fatal` -- exits NON-ZERO -- rather than a log line.
+    //
+    // Raised in review, and the reasoning is right: before this change `grunt prod` FAILED, with 39
+    // webpack errors. A stub that prints a message and exits 0 would turn an outdated caller from
+    // red to green while it still produced nothing, which is a worse outcome than the broken build
+    // it replaced. The point of removing the task is to say "this does not exist", and a build
+    // command that does not build must not report success.
     const webAppRemoved = (name) => grunt.registerTask(name,
         `Removed: this fork ships an MCP server, not the CyberChef web app (dropped in v1.7.1).`,
         function () {
-            grunt.log.writeln(
+            grunt.fail.fatal(
                 `"${name}" built the CyberChef web application, which this fork removed in v1.7.1.\n` +
-                "  Build the MCP server instead:  npm run mcp   (or docker build -f Dockerfile.mcp .)\n" +
-                "  Regenerate operation config:   npx grunt configTests");
+                "  Run the MCP server:            npm run mcp\n" +
+                "  Build the container:           docker build -f Dockerfile.mcp -t cyberchef-mcp .\n" +
+                "  Regenerate operation config:   npm run build   (npx grunt configTests)");
         });
     webAppRemoved("dev");
     webAppRemoved("prod");
