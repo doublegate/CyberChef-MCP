@@ -15,7 +15,7 @@
  * @license GPL-3.0-or-later
  */
 
-import { describe, it, expect, beforeEach, afterAll } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -52,7 +52,9 @@ beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), "cyberchef-migrate-"));
 });
 
-afterAll(() => {
+// afterEACH, not afterAll: `beforeEach` mints a new directory per test, so an `afterAll` removed
+// only the last one and left the rest in the system temp directory after every run.
+afterEach(() => {
     if (dir) rmSync(dir, { recursive: true, force: true });
 });
 

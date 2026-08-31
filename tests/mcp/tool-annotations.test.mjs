@@ -105,8 +105,10 @@ describe("annotations for this server's own tools", () => {
             expect(a.readOnlyHint, t).toBe(false);
             expect(a.openWorldHint, t).toBe(true);
             expect(a.idempotentHint, t).toBe(false);
-            // It destroys nothing by itself; the operation that can carries its own hint.
-            expect(a.destructiveHint, t).toBe(false);
+            // Destructive too: a recipe may carry `HTTP request` with a DELETE, and
+            // `destructiveHint` asks what the tool MAY do, not what it usually does. Over-warning
+            // costs a prompt; under-warning costs a deletion nobody approved.
+            expect(a.destructiveHint, t).toBe(true);
         }
     });
 

@@ -177,8 +177,11 @@ function main(argv) {
         results.push({ file, ...analysis });
         if (analysis.issues.length) needsChanges = true;
 
-        if (flags.has("--json")) continue;
-        if (!flags.has("--stdout")) report(file, analysis);
+        // `--json` suppresses the HUMAN-READABLE report only. It used to `continue` here, which
+        // also skipped the conversion below -- so `--json --write` reported what would change and
+        // silently changed nothing, exiting 0. A migration command that says it converted and did
+        // not is worse than one that refuses the flag combination.
+        if (!flags.has("--json") && !flags.has("--stdout")) report(file, analysis);
 
         if (flags.has("--stdout")) {
             console.log(JSON.stringify(transformRecipeToV2(recipe), null, 2));

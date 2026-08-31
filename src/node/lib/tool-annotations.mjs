@@ -179,11 +179,17 @@ export function annotationsForMetaTool(toolName, title) {
     return {
         title,
         readOnlyHint: !WRITES.has(toolName) && !EXECUTORS.has(toolName),
-        // An executor destroys nothing by itself. The only route to an external mutation is the
-        // `HTTP request` operation inside a recipe, and that operation carries its own destructive
-        // hint when called directly -- so marking every bake "destructive" would flatten a real
-        // distinction rather than describe one.
-        destructiveHint: DESTRUCTIVE.has(toolName),
+        // Executors are destructive too, and an earlier version of this file argued otherwise:
+        // that an executor "destroys nothing by itself" and marking it destructive would flatten a
+        // distinction. That reasoning does not survive contact with the spec. `destructiveHint` is
+        // meaningful precisely when `readOnlyHint` is false -- which it already is here -- and it
+        // asks whether the tool MAY perform destructive updates. A recipe may contain
+        // `HTTP request` with a DELETE, so the answer is yes.
+        //
+        // Being conservative on a hint a client uses to decide whether to ask the user is the
+        // right direction to be wrong in: over-warning costs a prompt, under-warning costs a
+        // deletion nobody approved.
+        destructiveHint: DESTRUCTIVE.has(toolName) || EXECUTORS.has(toolName),
         // Claiming idempotence for an executor would be a claim about a recipe this server has not
         // seen yet: it may contain `Generate UUID`, or a network call.
         idempotentHint: !NON_IDEMPOTENT.has(toolName),

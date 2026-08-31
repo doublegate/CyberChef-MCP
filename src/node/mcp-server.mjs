@@ -1013,7 +1013,14 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
                     assertKnownArgs(opName, opConfig.args, opArgs);
 
                     opConfig.args.forEach(argDef => {
-                        const userVal = args[toolArgName(argDef.name)];
+                        // Both spellings, because `assertKnownArgs` ACCEPTS both. Reading only the
+                        // sanitised key meant a raw CyberChef label -- `{"Alphabet": "..."}` --
+                        // passed validation and then resolved to `undefined`, so the operation ran
+                        // on its default. That is the same silently-wrong-answer failure the
+                        // unknown-argument check was added to stop, surviving in the other path.
+                        // `core-recipe.mjs` already does it this way.
+                        const sanitised = args[toolArgName(argDef.name)];
+                        const userVal = sanitised !== undefined ? sanitised : args[argDef.name];
                         recipeArgs.push(resolveArgValue(argDef, userVal));
                     });
                 }
@@ -1026,8 +1033,13 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
                     cached = operationCache.get(cacheKey);
                     if (cached) {
                         logCache("hit", { operation: opName, requestId });
-                        const output = typeof cached === "string" ? cached : JSON.stringify(cached);
-                        const outputSize = Buffer.byteLength(output, "utf8");
+                        // Rendered through `toContentBlocks`, exactly as a cache MISS is. The
+                        // cache stores `result.value`, and returning that as a text block meant
+                        // the first call to `cyberchef_generate_qr_code` produced an `image`
+                        // block and every subsequent call produced text -- so the multi-modal fix
+                        // silently stopped applying the moment a result was cached.
+                        const content = toContentBlocks({ value: cached }, opConfig.outputType);
+                        const outputSize = contentSize(content);
 
                         // Track quota
                         quotaTracker.trackData(inputSize, outputSize);
@@ -1050,9 +1062,7 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
                             duration
                         });
 
-                        return {
-                            content: [{ type: "text", text: output }]
-                        };
+                        return { content };
                     }
 
                     logCache("miss", { operation: opName, requestId });
@@ -1430,5 +1440,9 @@ export {
     createTransport,
     getTransportType,
     // v2.0.0 export - per-session server factory for the HTTP transport (issue #36)
-    createMcpServer
+    createMcpServer,
+    // The stdio singleton, exported so a test can read the capabilities it ACTUALLY declares.
+    // Comparing two factory instances would pass through the exact drift worth catching: the two
+    // construction sites disagreeing.
+    server
 };

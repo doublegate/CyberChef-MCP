@@ -35,7 +35,7 @@
  
  /**
   * LM Hash operation
-@@ -28,12 +54,45 @@
+@@ -28,12 +54,52 @@
      }
  
      /**
@@ -66,8 +66,15 @@
      run(input, args) {
 -        return smbhash.lmhash(input);
 +        // Uppercased, truncated to 14 characters, NUL-padded, then split into two 7-byte halves.
++        //
++        // Indexed `charCodeAt`, NOT `Array.from`. `slice`/`padEnd` count UTF-16 code UNITS while
++        // `Array.from` iterates code POINTS, so an astral character in the first 14 units yields
++        // fewer than 14 entries -- leaving the second half six bytes long and `expandKey` reading
++        // an undefined seventh. LM is a byte algorithm over a legacy code page; code units are the
++        // right unit here, and this keeps both halves exactly seven bytes for any input.
 +        const padded = input.toUpperCase().slice(0, 14).padEnd(14, "\0");
-+        const bytes = Array.from(padded, c => c.charCodeAt(0) & 0xff);
++        const bytes = [];
++        for (let i = 0; i < 14; i++) bytes.push(padded.charCodeAt(i) & 0xff);
 +
 +        let out = "";
 +        for (const half of [bytes.slice(0, 7), bytes.slice(7, 14)]) {

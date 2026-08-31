@@ -34,8 +34,8 @@ test suite could not see.
   (exactly two operations), and non-idempotence by running each candidate **twice** and comparing —
   which is why `Bcrypt` and `Derive PBKDF2 key` are marked (both generate a random salt) and
   `Argon2` and `Scrypt` are not (fixed defaults, identical output). `cyberchef_bake` is deliberately
-  **not** marked read-only: it runs caller-supplied recipes, which may contain `HTTP request` with a
-  POST. That costs a prompt on the most-used tool and is still correct — a hint that is convenient
+  marked neither read-only nor non-destructive: it runs caller-supplied recipes, which may contain
+  `HTTP request` with a POST or a DELETE. That costs a prompt on the most-used tool and is still correct — a hint that is convenient
   and wrong teaches a client to ignore the whole set.
 - **Prompts** (5): `analyse-unknown-data`, `extract-iocs`, `deobfuscate-script`, `identify-hash`,
   `decode-chain`. The tool surface answers "what can this server do" and never answered "what should

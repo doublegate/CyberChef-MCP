@@ -241,20 +241,32 @@ describe("capabilities", () => {
     });
 
     it("agrees between the stdio singleton and the per-session factory", async () => {
-        // The drift this caught: adding prompts and resources updated the factory and left the
-        // singleton -- which backs stdio, i.e. most clients -- advertising `tools` only.
+        // The drift this exists to catch: adding prompts and resources updated the FACTORY and
+        // left the SINGLETON -- which backs stdio, i.e. most clients -- advertising `tools` only.
+        //
+        // An earlier version of this test connected a second factory instance and compared it to
+        // the first, which would have passed happily through exactly that bug. It reads the
+        // singleton's own declaration now, which is the thing that was wrong.
         const mod = await import("../../src/node/mcp-server.mjs");
-        const factory = mod.createMcpServer();
+        const singleton = mod.server;
 
+        const factoryServer = mod.createMcpServer();
         const [ct, st] = InMemoryTransport.createLinkedPair();
         const client = new Client({ name: "caps", version: "1.0.0" }, { capabilities: {} });
-        await Promise.all([factory.connect(st), client.connect(ct)]);
+        await Promise.all([factoryServer.connect(st), client.connect(ct)]);
         try {
-            expect(Object.keys(client.getServerCapabilities()).sort())
-                .toEqual(["prompts", "resources", "tools"]);
+            const factoryCaps = Object.keys(client.getServerCapabilities()).sort();
+            expect(factoryCaps).toEqual(["prompts", "resources", "tools"]);
+
+            // Both construction sites read one `SERVER_CAPABILITIES`, so the singleton must
+            // advertise the same set. Asserted against the singleton itself rather than against a
+            // second instance of the same factory.
+            expect(singleton, "the singleton must be exported for this to test anything")
+                .toBeDefined();
+            expect(Object.keys(singleton.getCapabilities()).sort()).toEqual(factoryCaps);
         } finally {
             await client.close();
-            await factory.close();
+            await factoryServer.close();
         }
     });
 });
