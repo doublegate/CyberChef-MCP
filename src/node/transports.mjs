@@ -250,12 +250,17 @@ export async function createTransport(options = {}) {
          */
         function corsHeaders(req) {
             const origin = req.headers.origin;
-            if (!allowedOrigins || !origin || !allowedOrigins.includes(origin)) return {};
+            // `Vary: Origin` on EVERY response once an allowlist is configured, including the
+            // rejections. The response varies by origin whether or not this particular one was
+            // allowed, and sending Vary only on the allowed path is the classic hole: a shared
+            // cache stores the header-less response produced for some other origin and then
+            // serves it to an allowlisted one, which fails CORS for a request that should have
+            // succeeded. Announcing the axis of variation is what makes the cache key correct.
+            const vary = allowedOrigins ? { "Vary": "Origin" } : {};
+            if (!allowedOrigins || !origin || !allowedOrigins.includes(origin)) return vary;
             return {
+                ...vary,
                 "Access-Control-Allow-Origin": origin,
-                // Echoing the origin makes the response origin-specific, so Vary is required or a
-                // shared cache can serve one origin's response to another.
-                "Vary": "Origin",
                 "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
                 "Access-Control-Allow-Headers": "Content-Type, Accept, Mcp-Session-Id, Mcp-Protocol-Version, Last-Event-ID, Authorization",
                 // Without this the browser hides Mcp-Session-Id from the client's JS, so it can

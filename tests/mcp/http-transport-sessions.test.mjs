@@ -337,6 +337,9 @@ describe("Streamable HTTP transport - session lifecycle (issue #36)", () => {
         });
         expect(res.status).toBe(204);
         expect(res.headers.get("access-control-allow-origin")).toBeNull();
+        // No allowlist configured at all, so the response cannot vary by origin and Vary would be
+        // noise. (With an allowlist, rejections DO carry it -- asserted below.)
+        expect(res.headers.get("vary")).toBeNull();
     });
 
     it("sends CORS headers for an allowlisted origin, and exposes Mcp-Session-Id", async () => {
@@ -381,12 +384,15 @@ describe("Streamable HTTP transport - session lifecycle (issue #36)", () => {
             expect(init.headers.get("access-control-allow-origin")).toBe("http://localhost:6274");
             expect(init.headers.get("access-control-expose-headers")).toContain("Mcp-Session-Id");
 
-            // A different origin gets nothing, even with the allowlist configured.
+            // A different origin gets no allow header -- but it DOES get Vary: Origin. Without
+            // that, a shared cache could store this header-less response and later serve it to
+            // the allowlisted origin, failing CORS for a request that should have succeeded.
             const other = await fetch(`${corsBase}/mcp`, {
                 method: "OPTIONS",
                 headers: { "Origin": "http://evil.example" }
             });
             expect(other.headers.get("access-control-allow-origin")).toBeNull();
+            expect(other.headers.get("vary")).toContain("Origin");
         } finally {
             await cors.closeAll();
         }
