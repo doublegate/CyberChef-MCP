@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [2.1.1] - 2026-08-31
+
+Security housekeeping: every open code-scanning alert dispositioned, and the dead web-app tree that
+accounted for six of them deleted from the repository and the runtime image.
+
 ### Fixed
 
 - **`src/web/` deleted — eight orphaned files that were shipping in the runtime image.** The
