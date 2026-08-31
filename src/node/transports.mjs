@@ -486,7 +486,18 @@ export async function createTransport(options = {}) {
             // the shutdown until its timeout. Severing them first is what makes closeAll()
             // actually close. (node >= 18.2)
             httpServer.closeAllConnections?.();
-            await new Promise(resolve => httpServer.close(resolve));
+            // Reject on a real close error rather than resolving WITH it -- `close(resolve)` hands
+            // the Error object to resolve, so a genuine failure looked like success.
+            //
+            // ERR_SERVER_NOT_RUNNING is exempt on purpose: closeAll() is documented idempotent and
+            // the suite calls it twice (an explicit call plus afterEach). Rejecting there would
+            // turn a guarantee into a failure.
+            await new Promise((resolve, reject) => {
+                httpServer.close(err => {
+                    if (err && err.code !== "ERR_SERVER_NOT_RUNNING") reject(err);
+                    else resolve();
+                });
+            });
         }
 
         // `transport` is null on purpose. There is no process-wide transport any more, and
