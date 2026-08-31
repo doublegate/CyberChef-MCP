@@ -7,12 +7,139 @@
  * @license GPL-3.0-or-later
  */
 
-import { bake, help } from "./index.mjs";
+import { help } from "./index.mjs";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { zodToJsonSchema } from "zod-to-json-schema";
+import Utils from "../core/Utils.mjs";
 import OperationConfig from "../core/config/OperationConfig.json" with {type: "json"};
+import { dishToText } from "./lib/dish-output.mjs";
+import { bakeOnCore } from "./lib/core-recipe.mjs";
+import { isExposed, describeSurface } from "./lib/tool-surface.mjs";
+import { categoryIndex, listOperations, describeOperations } from "./lib/tool-catalog.mjs";
+import { installWasmFetch } from "./lib/wasm-fetch.mjs";
+
+// Installed BEFORE any operation can run. `argon2-browser` fetches its .wasm by filesystem path,
+// which Node's fetch rejects, and jq-web's Emscripten runtime turns that unhandled rejection into
+// a process-wide abort() -- one tool call killing the server for every connected client.
+installWasmFetch();
+
+/**
+ * Size of a batch payload, for telemetry, tolerating a missing or unserialisable value.
+ *
+ * `JSON.stringify(undefined)` returns `undefined`, not a string, so the previous
+ * `JSON.stringify(args.operations).length` threw when `operations` was absent -- INSIDE the catch
+ * block, which meant the caller received `Cannot read properties of undefined (reading 'length')`
+ * instead of the structured "Operations must be a non-empty array" the guard had correctly
+ * produced. An error handler that throws replaces a good diagnosis with a bad one.
+ *
+ * @param {*} operations - The batch operations, possibly missing.
+ * @returns {number} Serialised length, or 0 when there is nothing to measure.
+ */
+function batchInputSize(operations) {
+    try {
+        const json = JSON.stringify(operations);
+        return typeof json === "string" ? json.length : 0;
+    } catch {
+        return 0;
+    }
+}
+
+/**
+ * Longest operation description carried in `tools/list`.
+ *
+ * 240 characters comfortably holds the "what it does" sentence for essentially every operation
+ * while cutting the reference material out of the always-loaded payload. Configurable because a
+ * caller optimising hard for context may want it shorter, and one browsing interactively may not.
+ */
+const MAX_TOOL_DESCRIPTION = (() => {
+    const parsed = parseInt(process.env.CYBERCHEF_MAX_TOOL_DESCRIPTION, 10);
+    return Number.isNaN(parsed) || parsed < 40 ? 240 : parsed;
+})();
+
+/**
+ * Convert a Zod schema to the JSON Schema an MCP `inputSchema` must carry.
+ *
+ * Replaces `zod-to-json-schema`, which targets Zod **v3** and FAILS SILENTLY against v4: given any
+ * v4 schema it returns the bare envelope
+ *
+ *     {"$schema": "http://json-schema.org/draft-07/schema#"}
+ *
+ * with no `type`, no `properties` and no `required` -- no error, no warning. Zod 4 restructured
+ * the internals the converter introspects, so it finds nothing and emits nothing. Every tool this
+ * server advertised had an empty input schema from v1.8.0 (when Zod 4 landed) through v2.0.0, so a
+ * spec-compliant client rejected `tools/list` outright, and a lenient one showed the model tools
+ * whose arguments it could not see. Zod 4 has a native converter; this uses it.
+ *
+ * Options, each load-bearing:
+ *   target "draft-7"       -- what the MCP tool schema and the LLM tool APIs expect, and what the
+ *                             old (empty) output claimed to be, so nothing downstream shifts draft.
+ *   io "input"             -- these ARE input schemas; it also omits `additionalProperties: false`,
+ *                             which the "output" default would add.
+ *   unrepresentable "any"  -- a type with no JSON Schema equivalent becomes `{}` instead of
+ *                             THROWING. With 524 generated tools, one such argument in one
+ *                             operation would otherwise take down the whole `tools/list`.
+ *
+ * @param {import("zod").ZodType} schema - The Zod schema to convert.
+ * @returns {Object} A JSON Schema object with `type: "object"`.
+ */
+function toInputSchema(schema) {
+    const json = z.toJSONSchema(schema, {
+        target: "draft-7",
+        io: "input",
+        unrepresentable: "any"
+    });
+
+    // `$schema` is dropped. It is 41 bytes of identical boilerplate on every tool -- 21 KB across
+    // 524 of them, paid on every `tools/list` -- and the MCP tool schema does not ask for it: a
+    // client validates `inputSchema` as a JSON Schema object regardless. Verified against the
+    // official SDK client, which accepts the tool list without it.
+    delete json.$schema;
+    return json;
+}
+
+/**
+ * Shorten an operation description for the tool list.
+ *
+ * CyberChef descriptions are written for a browser pane: they carry `<br>`, `<code>` and `<a>`
+ * markup, and the longest runs to 6,423 characters. Summed over 524 tools they were 141 KB --
+ * 30% of the entire `tools/list` payload -- and the tail of a long description is reference
+ * material a model does not need in order to CHOOSE a tool.
+ *
+ * The first sentence is kept, which is where CyberChef consistently puts what the operation does,
+ * with markup converted to plain text. `cyberchef_search` returns the full description for a
+ * caller that wants the detail, so nothing is lost -- only moved off the always-loaded path.
+ *
+ * @param {string} description - The raw description from OperationConfig.
+ * @returns {string} A plain-text summary.
+ */
+function summariseDescription(description) {
+    if (typeof description !== "string" || !description.length) return "";
+
+    // `Utils.stripHtmlTags` + `Utils.unescapeHtml` rather than a hand-rolled pair of regexes.
+    //
+    // The first draft did roll its own -- `.replace(/<[^>]+>/g, "")` then a chain of entity
+    // replacements -- and CodeQL was right to flag it twice: `js/incomplete-multi-character-
+    // sanitization` (a `<scr<script>ipt>` construction survives a single pass) and
+    // `js/double-escaping` (unescaping `&amp;` before `&lt;` turns `&amp;lt;` into `<`).
+    //
+    // Neither is reachable from here -- the input is CyberChef's own operation descriptions, which
+    // are static, and the output goes into a JSON string rather than a DOM. That is an argument
+    // for the finding being low severity, not for keeping a hand-rolled HTML sanitiser: this
+    // module now uses the same pair the Node API itself uses in `DishHTML.toArrayBuffer()`, so
+    // there is one implementation to be wrong rather than three.
+    const plain = Utils.unescapeHtml(Utils.stripHtmlTags(description, true))
+        .replace(/\s+/g, " ")
+        .trim();
+
+    if (plain.length <= MAX_TOOL_DESCRIPTION) return plain;
+
+    // Prefer a sentence boundary, so the text does not stop mid-clause. Only accept one that is
+    // not uselessly short -- truncating "e.g." to four characters would be worse than a hard cut.
+    const cut = plain.slice(0, MAX_TOOL_DESCRIPTION);
+    const stop = cut.lastIndexOf(". ");
+    return (stop > MAX_TOOL_DESCRIPTION / 3) ? cut.slice(0, stop + 1) : `${cut.trimEnd()}...`;
+}
 
 // New v1.5.0 imports
 import {
@@ -80,7 +207,7 @@ import { TelemetryCollector } from "./lib/telemetry.mjs";
 import { RateLimiter } from "./lib/rate-limit.mjs";
 import { ResourceQuotaTracker } from "./lib/quota.mjs";
 import { BatchProcessor } from "./lib/batch.mjs";
-import { sanitizeToolName, mapArgsToZod, resolveArgValue, validateInputSize } from "./lib/tool-schema.mjs";
+import { sanitizeToolName, mapArgsToZod, resolveArgValue, validateInputSize, toolArgName } from "./lib/tool-schema.mjs";
 
 // Performance configuration (configurable via environment variables)
 
@@ -122,7 +249,7 @@ const handleListTools = async () => {
         {
             name: "cyberchef_bake",
             description: "Execute a CyberChef recipe. Use this for complex chains of operations.",
-            inputSchema: zodToJsonSchema(z.object({
+            inputSchema: toInputSchema(z.object({
                 input: z.string().describe("The input data"),
                 recipe: z.array(z.object({
                     op: z.string().describe("Operation name"),
@@ -131,9 +258,33 @@ const handleListTools = async () => {
             }))
         },
         {
+            name: "cyberchef_categories",
+            description: "List CyberChef's operation categories with counts and examples. " +
+                "Start here to browse what this server can do, then use cyberchef_list_operations.",
+            inputSchema: toInputSchema(z.object({}))
+        },
+        {
+            name: "cyberchef_list_operations",
+            description: "List the operations in one category, with a one-line summary of each. " +
+                "Use cyberchef_describe_operation for full argument schemas.",
+            inputSchema: toInputSchema(z.object({
+                category: z.string().describe(
+                    "Category name, e.g. \"Encryption / Encoding\", \"Hashing\", \"Extractors\"")
+            }))
+        },
+        {
+            name: "cyberchef_describe_operation",
+            description: "Full argument schema, defaults and types for one or more operations. " +
+                "This is what you need before calling cyberchef_bake with a new operation.",
+            inputSchema: toInputSchema(z.object({
+                operations: z.union([z.string(), z.array(z.string())]).describe(
+                    "One operation name, or several, e.g. \"AES Encrypt\" or [\"Gzip\", \"To Base64\"]")
+            }))
+        },
+        {
             name: "cyberchef_search",
             description: "Search for available CyberChef operations.",
-            inputSchema: zodToJsonSchema(z.object({
+            inputSchema: toInputSchema(z.object({
                 query: z.string().describe("Search query")
             }))
         },
@@ -141,7 +292,7 @@ const handleListTools = async () => {
         {
             name: "cyberchef_recipe_create",
             description: "Create a new recipe with multiple operations.",
-            inputSchema: zodToJsonSchema(z.object({
+            inputSchema: toInputSchema(z.object({
                 name: z.string().describe("Recipe name"),
                 description: z.string().optional().describe("Recipe description"),
                 operations: z.array(z.object({
@@ -161,14 +312,14 @@ const handleListTools = async () => {
         {
             name: "cyberchef_recipe_get",
             description: "Get a recipe by ID.",
-            inputSchema: zodToJsonSchema(z.object({
+            inputSchema: toInputSchema(z.object({
                 id: z.string().uuid().describe("Recipe UUID")
             }))
         },
         {
             name: "cyberchef_recipe_list",
             description: "List all recipes with optional filtering.",
-            inputSchema: zodToJsonSchema(z.object({
+            inputSchema: toInputSchema(z.object({
                 tag: z.string().optional().describe("Filter by tag"),
                 category: z.string().optional().describe("Filter by category"),
                 search: z.string().optional().describe("Search in name/description"),
@@ -179,7 +330,7 @@ const handleListTools = async () => {
         {
             name: "cyberchef_recipe_update",
             description: "Update an existing recipe.",
-            inputSchema: zodToJsonSchema(z.object({
+            inputSchema: toInputSchema(z.object({
                 id: z.string().uuid().describe("Recipe UUID"),
                 name: z.string().optional().describe("New recipe name"),
                 description: z.string().optional().describe("New description"),
@@ -199,14 +350,14 @@ const handleListTools = async () => {
         {
             name: "cyberchef_recipe_delete",
             description: "Delete a recipe by ID.",
-            inputSchema: zodToJsonSchema(z.object({
+            inputSchema: toInputSchema(z.object({
                 id: z.string().uuid().describe("Recipe UUID")
             }))
         },
         {
             name: "cyberchef_recipe_execute",
             description: "Execute a saved recipe with input data.",
-            inputSchema: zodToJsonSchema(z.object({
+            inputSchema: toInputSchema(z.object({
                 id: z.string().uuid().describe("Recipe UUID"),
                 input: z.string().describe("Input data to process")
             }))
@@ -214,7 +365,7 @@ const handleListTools = async () => {
         {
             name: "cyberchef_recipe_export",
             description: "Export a recipe to various formats (json, yaml, url, cyberchef).",
-            inputSchema: zodToJsonSchema(z.object({
+            inputSchema: toInputSchema(z.object({
                 id: z.string().uuid().describe("Recipe UUID"),
                 format: z.enum(["json", "yaml", "url", "cyberchef"]).describe("Export format")
             }))
@@ -222,7 +373,7 @@ const handleListTools = async () => {
         {
             name: "cyberchef_recipe_import",
             description: "Import a recipe from various formats.",
-            inputSchema: zodToJsonSchema(z.object({
+            inputSchema: toInputSchema(z.object({
                 data: z.string().describe("Recipe data to import"),
                 format: z.enum(["json", "yaml", "url", "cyberchef"]).describe("Import format")
             }))
@@ -230,7 +381,7 @@ const handleListTools = async () => {
         {
             name: "cyberchef_recipe_validate",
             description: "Validate a recipe without saving it.",
-            inputSchema: zodToJsonSchema(z.object({
+            inputSchema: toInputSchema(z.object({
                 recipe: z.object({
                     name: z.string(),
                     operations: z.array(z.object({
@@ -244,7 +395,7 @@ const handleListTools = async () => {
         {
             name: "cyberchef_recipe_test",
             description: "Test a recipe with sample inputs.",
-            inputSchema: zodToJsonSchema(z.object({
+            inputSchema: toInputSchema(z.object({
                 recipe: z.object({
                     name: z.string(),
                     operations: z.array(z.object({
@@ -260,7 +411,7 @@ const handleListTools = async () => {
         {
             name: "cyberchef_batch",
             description: "Execute multiple CyberChef operations in batch (parallel or sequential mode). Supports partial success.",
-            inputSchema: zodToJsonSchema(z.object({
+            inputSchema: toInputSchema(z.object({
                 operations: z.array(z.object({
                     tool: z.string().describe("Tool name (e.g., cyberchef_to_base64)"),
                     arguments: z.record(z.any()).describe("Tool arguments")
@@ -271,30 +422,30 @@ const handleListTools = async () => {
         {
             name: "cyberchef_telemetry_export",
             description: "Export collected telemetry metrics. Returns anonymized usage statistics.",
-            inputSchema: zodToJsonSchema(z.object({
+            inputSchema: toInputSchema(z.object({
                 format: z.enum(["json", "summary"]).default("json").describe("Export format")
             }))
         },
         {
             name: "cyberchef_cache_stats",
             description: "Get cache statistics including hits, misses, size, and items.",
-            inputSchema: zodToJsonSchema(z.object({}))
+            inputSchema: toInputSchema(z.object({}))
         },
         {
             name: "cyberchef_cache_clear",
             description: "Clear the operation result cache.",
-            inputSchema: zodToJsonSchema(z.object({}))
+            inputSchema: toInputSchema(z.object({}))
         },
         {
             name: "cyberchef_quota_info",
             description: "Get current resource quota information including concurrent operations and data sizes.",
-            inputSchema: zodToJsonSchema(z.object({}))
+            inputSchema: toInputSchema(z.object({}))
         },
         // v1.8.0 tools - Breaking Changes Preparation
         {
             name: "cyberchef_migration_preview",
             description: "Analyze recipes and configurations for v2.0.0 compatibility. Returns compatibility issues and optionally transforms recipes to v2.0.0 format.",
-            inputSchema: zodToJsonSchema(z.object({
+            inputSchema: toInputSchema(z.object({
                 recipe: z.any().describe("Recipe object or array to analyze"),
                 mode: z.enum(["analyze", "transform"]).default("analyze").describe("analyze: check compatibility, transform: convert to v2.0.0 format")
             }))
@@ -302,17 +453,23 @@ const handleListTools = async () => {
         {
             name: "cyberchef_deprecation_stats",
             description: "Get statistics on deprecated API usage in current session. Shows which deprecation warnings have been triggered and v2.0.0 preparation status.",
-            inputSchema: zodToJsonSchema(z.object({}))
+            inputSchema: toInputSchema(z.object({}))
         },
         // v1.9.0 tools - Worker Thread Pool
         {
             name: "cyberchef_worker_stats",
             description: "Get worker thread pool statistics including thread count, utilization, and completed tasks. Only available when ENABLE_WORKERS=true.",
-            inputSchema: zodToJsonSchema(z.object({}))
+            inputSchema: toInputSchema(z.object({}))
         }
     ];
 
     Object.keys(OperationConfig).forEach(opName => {
+        // The default surface is `index`, which pre-loads no ordinary operation tools at all;
+        // `curated` and `all` pre-load progressively more, and CYBERCHEF_TOOL_ALLOWLIST overrides
+        // the mode entirely. Nothing becomes unreachable under any of them -- cyberchef_bake runs
+        // any operation by name, and the navigation tools find the name and its schema.
+        if (!isExposed(opName)) return;
+
         const op = OperationConfig[opName];
         const toolName = sanitizeToolName(opName);
         if (!toolName) return;
@@ -321,8 +478,8 @@ const handleListTools = async () => {
             const argsSchema = mapArgsToZod(op.args || []);
             tools.push({
                 name: toolName,
-                description: op.description || opName,
-                inputSchema: zodToJsonSchema(z.object(argsSchema))
+                description: summariseDescription(op.description) || opName,
+                inputSchema: toInputSchema(z.object(argsSchema))
             });
         } catch (e) {
             // Log schema generation failures for debugging
@@ -366,12 +523,12 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
 
             // Execute with timeout and retry
             const result = await executeWithTimeoutAndRetry(
-                () => bake(args.input, args.recipe),
+                () => bakeOnCore(args.input, args.recipe),
                 OPERATION_TIMEOUT,
                 { requestId, maxRetries: RetryConfig.MAX_RETRIES, context: { tool: name } }
             );
 
-            const output = typeof result.value === "string" ? result.value : JSON.stringify(result.value);
+            const output = dishToText(result);
             logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
 
             return {
@@ -494,6 +651,34 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
             };
         }
 
+        // Navigation tools -- the "index" tool surface. See lib/tool-catalog.mjs for why this
+        // hierarchy exists: it keeps 504 operation schemas off the always-loaded payload while
+        // leaving every one of them reachable.
+        if (name === "cyberchef_categories") {
+            const output = JSON.stringify(categoryIndex(), null, 2);
+            logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
+            return { content: [{ type: "text", text: output }] };
+        }
+
+        if (name === "cyberchef_list_operations") {
+            try {
+                const output = JSON.stringify(listOperations(args.category), null, 2);
+                logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
+                return { content: [{ type: "text", text: output }] };
+            } catch (err) {
+                const error = createInputError(err.message, { category: args.category });
+                logRequestError(requestId, error, { tool: name });
+                return error.toMCPError();
+            }
+        }
+
+        if (name === "cyberchef_describe_operation") {
+            const output = JSON.stringify(
+                describeOperations(args.operations, toolArgName), null, 2);
+            logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
+            return { content: [{ type: "text", text: output }] };
+        }
+
         // Handle v1.7.0 tools
         if (name === "cyberchef_batch") {
             // Check rate limit
@@ -520,7 +705,7 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
                 telemetryCollector.record({
                     tool: name,
                     duration,
-                    inputSize: JSON.stringify(args.operations).length,
+                    inputSize: batchInputSize(args.operations),
                     outputSize: JSON.stringify(result).length,
                     success: true,
                     cached: false
@@ -542,7 +727,7 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
                 telemetryCollector.record({
                     tool: name,
                     duration,
-                    inputSize: JSON.stringify(args.operations).length,
+                    inputSize: batchInputSize(args.operations),
                     outputSize: 0,
                     success: false,
                     cached: false
@@ -694,8 +879,7 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
 
                 if (opConfig.args) {
                     opConfig.args.forEach(argDef => {
-                        const argName = argDef.name.toLowerCase().replace(/ /g, "_");
-                        const userVal = args[argName];
+                        const userVal = args[toolArgName(argDef.name)];
                         recipeArgs.push(resolveArgValue(argDef, userVal));
                     });
                 }
@@ -778,7 +962,7 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
 
                     // Execute with streaming progress support
                     result = await executeWithStreamingProgress({
-                        bakeFunction: bake,
+                        bakeFunction: bakeOnCore,
                         operation: opName,
                         input: args.input,
                         recipeArgs,
@@ -799,7 +983,7 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
                     logCache("set", { operation: opName, requestId });
                 }
 
-                const output = typeof result.value === "string" ? result.value : JSON.stringify(result.value);
+                const output = dishToText(result);
                 const outputSize = Buffer.byteLength(output, "utf8");
                 const duration = Date.now() - startTime;
 
@@ -1022,6 +1206,8 @@ async function runServer() {
     // v1.8.0 configuration
     logger.info(`V2 compatibility mode: ${V2_COMPATIBILITY_MODE ? "enabled" : "disabled"}`);
     logger.info(`Deprecation warnings: ${SUPPRESS_DEPRECATIONS ? "suppressed" : "enabled"}`);
+    const allOps = Object.keys(OperationConfig);
+    logger.info(describeSurface(allOps.filter(isExposed).length, allOps.length));
     logger.info("=====================================");
 }
 

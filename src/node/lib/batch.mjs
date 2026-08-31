@@ -10,12 +10,14 @@
  * @license GPL-3.0-or-later
  */
 
-import { bake, help } from "../index.mjs";
+import { help } from "../index.mjs";
 import OperationConfig from "../../core/config/OperationConfig.json" with {type: "json"};
 import { BATCH_ENABLED, BATCH_MAX_SIZE, OPERATION_TIMEOUT } from "./config.mjs";
 import { executeWithTimeoutAndRetry, RetryConfig } from "../retry.mjs";
 import { createInputError } from "../errors.mjs";
-import { sanitizeToolName, resolveArgValue, validateInputSize } from "./tool-schema.mjs";
+import { dishToText } from "./dish-output.mjs";
+import { bakeOnCore } from "./core-recipe.mjs";
+import { sanitizeToolName, resolveArgValue, validateInputSize, toolArgName } from "./tool-schema.mjs";
 
 /**
  * Batch processor for executing multiple operations (v1.7.0).
@@ -131,11 +133,11 @@ class BatchProcessor {
         // Handle bake operation
         if (toolName === "cyberchef_bake") {
             const result = await executeWithTimeoutAndRetry(
-                () => bake(op.arguments.input, op.arguments.recipe),
+                () => bakeOnCore(op.arguments.input, op.arguments.recipe),
                 OPERATION_TIMEOUT,
                 { ...context, maxRetries: RetryConfig.MAX_RETRIES }
             );
-            return typeof result.value === "string" ? result.value : JSON.stringify(result.value);
+            return dishToText(result);
         }
 
         // Handle search operation
@@ -155,7 +157,11 @@ class BatchProcessor {
 
         if (opConfig.args) {
             opConfig.args.forEach(argDef => {
-                const argName = argDef.name.toLowerCase().replace(/ /g, "_");
+                // `toolArgName`, not a fourth private copy of the sanitisation. This WAS a
+                // fourth copy, and it had already drifted: it produced `input` where the schema
+                // and the direct-call path produce `input_arg`, so a batched AES call failed
+                // while the identical direct call succeeded.
+                const argName = toolArgName(argDef.name);
                 const userVal = op.arguments[argName];
                 recipeArgs.push(resolveArgValue(argDef, userVal));
             });
@@ -163,12 +169,12 @@ class BatchProcessor {
 
         const recipe = [{ op: opName, args: recipeArgs }];
         const result = await executeWithTimeoutAndRetry(
-            () => bake(op.arguments.input, recipe),
+            () => bakeOnCore(op.arguments.input, recipe),
             OPERATION_TIMEOUT,
             { ...context, maxRetries: RetryConfig.MAX_RETRIES }
         );
 
-        return typeof result.value === "string" ? result.value : JSON.stringify(result.value);
+        return dishToText(result);
     }
 }
 

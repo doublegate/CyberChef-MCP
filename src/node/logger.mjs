@@ -33,9 +33,18 @@ function createLogger(options = {}) {
             service: "cyberchef-mcp",
             version: options.version || "unknown"
         },
-        // Write to stderr to avoid interfering with MCP protocol on stdout
         ...options
-    });
+    // STDERR, via an explicit destination.
+    //
+    // The comment that used to sit above `...options` said "Write to stderr to avoid interfering
+    // with MCP protocol on stdout" -- and nothing implemented it. Pino's default destination is
+    // fd 1, so every startup line went to STDOUT, which the MCP stdio transport reserves
+    // exclusively for JSON-RPC messages. Measured on the published image: 19 log lines on stdout,
+    // 0 on stderr, interleaved with the `tools/list` response.
+    //
+    // A comment asserting a behaviour the code does not have is worse than no comment: it is why
+    // this survived from v1.x -- anyone checking read the line and moved on.
+    }, pino.destination(2));
 }
 
 /**
@@ -107,10 +116,17 @@ class RequestContext {
             ...metadata
         };
 
-        // Clean up old contexts (keep for 1 minute for debugging)
-        setTimeout(() => {
+        // Clean up old contexts (keep for 1 minute for debugging).
+        //
+        // `unref` is load-bearing, not tidiness. Without it this timer keeps the event loop alive
+        // for a full minute after EVERY request, so a stdio server that had finished its work sat
+        // there refusing to exit -- measured at 61,318 ms for a call that answered in 1,259 ms.
+        // A janitor for a debugging convenience must never be the reason a process stays up; if
+        // the process is going away anyway, the contexts go with it.
+        const sweep = setTimeout(() => {
             this.contexts.delete(requestId);
         }, 60000);
+        if (typeof sweep.unref === "function") sweep.unref();
 
         return completedContext;
     }

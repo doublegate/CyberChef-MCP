@@ -11,6 +11,10 @@
  */
 
 import { bake } from "./index.mjs";
+import { installWasmFetch } from "./lib/wasm-fetch.mjs";
+
+// A worker thread has its own globals, so the wrapper must be installed here too.
+installWasmFetch();
 
 /**
  * Execute a CyberChef operation in a worker thread.

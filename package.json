@@ -1,7 +1,7 @@
 {
   "name": "cyberchef",
   "version": "11.4.0",
-  "mcpVersion": "2.0.0",
+  "mcpVersion": "2.1.0",
   "description": "The Cyber Swiss Army Knife for encryption, encoding, compression and data analysis.",
   "author": "n1474335 <n1474335@gmail.com>",
   "homepage": "https://gchq.github.io/CyberChef",
@@ -102,14 +102,14 @@
     "worker-loader": "^3.0.8"
   },
   "dependencies": {
-    "@alexaltea/capstone-js": "^3.0.5",
+    "@alexaltea/capstone-js": "^5.0.9",
     "@astronautlabs/amf": "^0.0.6",
     "@blu3r4y/lzma": "^2.3.3",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@natlibfi/loglevel-message-prefix": "^3.0.1",
     "@noble/hashes": "2.3.0",
     "@wavesenterprise/crypto-gost-js": "^2.1.0-RC1",
-    "@xmldom/xmldom": "^0.8.14",
+    "@xmldom/xmldom": "^0.8.15",
     "argon2-browser": "^1.18.0",
     "arrive": "^2.5.3",
     "assert": "^2.1.0",
@@ -204,8 +204,7 @@
     "xpath": "0.0.34",
     "xregexp": "^5.1.2",
     "zlibjs": "^0.3.1",
-    "zod": "^4.4.3",
-    "zod-to-json-schema": "^3.25.2"
+    "zod": "^4.4.3"
   },
   "scripts": {
     "start": "npx grunt dev",
@@ -225,7 +224,7 @@
     "minor": "node src/core/config/scripts/newMinorVersion.mjs",
     "getheapsize": "node -e 'console.log(`node heap limit = ${require(\"v8\").getHeapStatistics().heap_size_limit / (1024 * 1024)} Mb`)'",
     "setheapsize": "export NODE_OPTIONS=--max_old_space_size=2048",
-    "mcp": "node src/node/mcp-server.mjs"
+    "mcp": "node --openssl-legacy-provider src/node/mcp-server.mjs"
   },
   "overrides": {
     "ws": ">=5.2.4",

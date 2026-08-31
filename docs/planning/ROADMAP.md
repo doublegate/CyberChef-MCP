@@ -1,6 +1,6 @@
 # CyberChef MCP Server - Product Roadmap
 
-**Current version:** **v2.0.0** (released 2026-08-31) · **Upstream base:** CyberChef v11.4.0
+**Current version:** **v2.1.0** (released 2026-08-31) · **Upstream base:** CyberChef v11.4.0
 **Planned through:** v3.0.0
 **Timeline:** January 2026 - August 2027
 **Last Updated:** 2026-08-31
@@ -26,17 +26,17 @@ Extend MCP protocol capabilities with streaming support, recipe management, and 
 
 Prepare for and execute a major version release with architectural improvements, enhanced type safety, and a refined API surface. This phase sets the foundation for sustained evolution.
 
-### Phase 4: Expansion (v2.1.0 - v2.3.0) - Q4 2026
+### Phase 4: Expansion (v2.2.0 - v2.4.0) - Q4 2026
 **Focus:** Multi-modal support, advanced transports, and plugin architecture
 
 Extend the platform with binary/image handling, WebSocket/SSE transports, and a sandboxed plugin system. This phase transforms the server into a fully extensible platform supporting the complete MCP specification.
 
-### Phase 5: Enterprise (v2.4.0 - v2.6.0) - Q1 2027
+### Phase 5: Enterprise (v2.5.0 - v2.7.0) - Q1 2027
 **Focus:** Authentication, scaling, and observability
 
 Deploy enterprise-grade features including OAuth 2.1 authentication, RBAC authorization, horizontal scaling with Kubernetes, and comprehensive OpenTelemetry observability. This phase enables production deployment at scale.
 
-### Phase 6: Evolution (v2.7.0 - v3.0.0) - Q2-Q3 2027
+### Phase 6: Evolution (v2.8.0 - v3.0.0) - Q2-Q3 2027
 **Focus:** Edge deployment, AI-native features, and major version evolution
 
 Prepare for and execute v3.0.0 with edge computing support, AI-assisted operations, and breaking API improvements. This phase establishes the next-generation architecture with a stable API contract through 2029.
@@ -60,17 +60,17 @@ gantt
     v1.9.0 Pre-v2.0.0 Polish            :2026-08-01, 4w
     v2.0.0 Major Release                :2026-09-01, 4w
     section Phase 4 Expansion
-    v2.1.0 Multi-Modal Support          :2026-10-01, 4w
-    v2.2.0 Advanced Transports          :2026-11-01, 4w
-    v2.3.0 Plugin Architecture          :2026-12-01, 4w
+    v2.2.0 Multi-Modal Support          :2026-10-01, 4w
+    v2.3.0 Advanced Transports          :2026-11-01, 4w
+    v2.4.0 Plugin Architecture          :2026-12-01, 4w
     section Phase 5 Enterprise
-    v2.4.0 Enterprise Features          :2027-01-01, 4w
-    v2.5.0 Distributed Architecture     :2027-02-01, 4w
-    v2.6.0 Observability                :2027-03-01, 4w
+    v2.5.0 Enterprise Features          :2027-01-01, 4w
+    v2.6.0 Distributed Architecture     :2027-02-01, 4w
+    v2.7.0 Observability                :2027-03-01, 4w
     section Phase 6 Evolution
-    v2.7.0 Edge Deployment              :2027-04-01, 4w
-    v2.8.0 AI-Native Features           :2027-05-01, 4w
-    v2.9.0 Pre-v3.0.0 Polish            :2027-06-01, 4w
+    v2.8.0 Edge Deployment              :2027-04-01, 4w
+    v2.9.0 AI-Native Features           :2027-05-01, 4w
+    v2.9.x Pre-v3.0.0 Polish            :2027-06-01, 4w
     v3.0.0 Major Release                :2027-08-01, 6w
 ```
 
@@ -91,7 +91,18 @@ gantt
 | **v1.8.0** | Breaking Changes Prep | Deprecation warnings, migration guides | M | High | Released |
 | **v1.9.0** | Pre-v2.0.0 Polish | Streaming, workers, HTTP transport, security | M | Medium | Released |
 | **v2.0.0** | Major Release | Upstream v11.4.0 (504 ops), GPL-3.0-or-later relicense, Node 24 floor, per-session HTTP transport, zero open security alerts | XL | High | **Released 2026-08-31** |
+| **v2.1.0** | Usability & correctness | Tool-list hierarchy (~97% smaller `tools/list`), Zod 4 schema fix, all 10 flow-control operations working, 31 ciphers + 63 key-taking operations fixed, server-killing crash removed, 60s shutdown hang removed, tutorial + 8 CI-tested examples | L | High | **Released 2026-08-31** |
 
+> **The planned "v2.1.0 Multi-Modal Support" moved to v2.2.0.** The number was taken by an
+> unplanned release; the work itself is unchanged and still first in Phase 4.
+>
+> **v2.1.0 was not planned at all.** It exists because smoke-testing the published v2.0.0 image --
+> calling all 524 tools in turn, and driving the server with a real MCP SDK client rather than the
+> hand-rolled JSON-RPC every test used -- found that none of the tools carried a usable input
+> schema, 31 symmetric ciphers could never be called, and one tool call killed the process. The
+> lesson recorded for future phases: **a protocol server must be tested through a client that
+> enforces the protocol**, not through requests hand-built to match the server's own assumptions.
+>
 > **What v2.0.0 actually shipped differs from what this table planned**, and the difference is
 > worth recording. "Breaking changes, API stabilization, type system" assumed the upstream base was
 > current; it was six releases behind, and the sync mechanism could not express the jump. The
@@ -99,22 +110,22 @@ gantt
 > 272 open security findings to zero. Three of the eight announced breaking changes (DEP001/007/008,
 > the `cyberchef_` prefix removal) were **withdrawn on measurement** rather than enacted — see
 > [the breaking-changes guide](../v2.0.0-breaking-changes.md#withdrawn-changes-dep001-dep007-dep008).
-> The curated tool surface and the SDK v2 migration that were also scoped here did **not** ship and
-> move to v2.1.0.
+> The curated tool surface **did** ship, in v2.1.0, alongside an index surface that goes further.
+> The SDK v2 migration did not, and moves to Phase 4.
 
-### Phase 4-6 (v2.1.0 - v3.0.0)
+### Phase 4-6 (v2.2.0 - v3.0.0)
 
 | Release | Theme | Key Features | Effort | Risk |
 |---------|-------|--------------|--------|------|
-| **v2.1.0** | Multi-Modal Support | Binary data handling, image operations, MIME detection | L | Medium |
-| **v2.2.0** | Advanced Transports | WebSocket, Streamable HTTP, SSE (deprecated) | L | Medium |
-| **v2.3.0** | Plugin Architecture | Plugin system, sandboxed execution, plugin registry | XL | High |
-| **v2.4.0** | Enterprise Features | OAuth 2.1, RBAC, audit logging, multi-tenancy | XL | High |
-| **v2.5.0** | Distributed Architecture | Kubernetes scaling, service mesh, warm pools | XL | High |
-| **v2.6.0** | Observability | OpenTelemetry traces/metrics/logs, dashboards, alerts | L | Medium |
-| **v2.7.0** | Edge Deployment | WebAssembly/WASI, edge runtime, offline support | L | High |
-| **v2.8.0** | AI-Native Features | NL-to-recipe, operation suggestions, smart recipes | M | Medium |
-| **v2.9.0** | Pre-v3.0.0 Polish | Migration tooling, deprecation warnings, compatibility mode | M | Medium |
+| **v2.2.0** | Multi-Modal Support | Binary data handling, image operations, MIME detection | L | Medium |
+| **v2.3.0** | Advanced Transports | WebSocket, Streamable HTTP, SSE (deprecated) | L | Medium |
+| **v2.4.0** | Plugin Architecture | Plugin system, sandboxed execution, plugin registry | XL | High |
+| **v2.5.0** | Enterprise Features | OAuth 2.1, RBAC, audit logging, multi-tenancy | XL | High |
+| **v2.6.0** | Distributed Architecture | Kubernetes scaling, service mesh, warm pools | XL | High |
+| **v2.7.0** | Observability | OpenTelemetry traces/metrics/logs, dashboards, alerts | L | Medium |
+| **v2.8.0** | Edge Deployment | WebAssembly/WASI, edge runtime, offline support | L | High |
+| **v2.9.0** | AI-Native Features | NL-to-recipe, operation suggestions, smart recipes | M | Medium |
+| **v2.9.x** | Pre-v3.0.0 Polish | Migration tooling, deprecation warnings, compatibility mode | M | Medium |
 | **v3.0.0** | Major Release | API evolution, breaking changes, v2.x LTS | XL | High |
 
 **Effort:** S (1-3 days), M (4-7 days), L (1-2 weeks), XL (2-4 weeks)
@@ -294,7 +305,7 @@ After v3.0.0 release:
 - [Phase 1: Foundation](./planning/phase-1-foundation.md) (v1.2.0-v1.4.0)
 - [Phase 2: Enhancement](./planning/phase-2-enhancement.md) (v1.5.0-v1.7.0)
 - [Phase 3: Maturity](./planning/phase-3-maturity.md) (v1.8.0-v2.0.0)
-- [Phase 4: Expansion](./planning/phase-4-expansion.md) (v2.1.0-v2.3.0)
+- [Phase 4: Expansion](./planning/phase-4-expansion.md) (v2.2.0-v2.4.0)
 - [Phase 5: Enterprise](./planning/phase-5-enterprise.md) (v2.4.0-v2.6.0)
 - [Phase 6: Evolution](./planning/phase-6-evolution.md) (v2.7.0-v3.0.0)
 
