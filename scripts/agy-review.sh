@@ -137,7 +137,55 @@ AGY_BIN="${AGY_BIN:-agy}"
 command -v "$AGY_BIN" >/dev/null 2>&1 || AGY_BIN="$HOME/.local/bin/agy"
 AGY_MODEL="${AGY_MODEL:-}"                 # empty = agy's configured default (Gemini 3.x Pro)
 AGY_EFFORT="${AGY_EFFORT:-high}"           # low|medium|high
+# Base timeout for a normal review. Scaled up for a large diff further down -- see
+# `scale_timeout_for_diff`. Set AGY_PRINT_TIMEOUT explicitly to pin it and skip the scaling.
+AGY_PRINT_TIMEOUT_EXPLICIT="${AGY_PRINT_TIMEOUT:+set}"
 AGY_PRINT_TIMEOUT="${AGY_PRINT_TIMEOUT:-5m}"
+# Seconds of budget per MiB of diff handed to agy, on top of the base. Reading a 1.6 MB patch and
+# reasoning over it is not work a five-minute budget can absorb, and the failure is indistinguishable
+# from a backend outage: `Error: timeout waiting for response`, three times, with no review.
+AGY_TIMEOUT_SECONDS_PER_MIB="${AGY_TIMEOUT_SECONDS_PER_MIB:-240}"
+AGY_PRINT_TIMEOUT_MAX_SECONDS="${AGY_PRINT_TIMEOUT_MAX_SECONDS:-1800}"
+
+# Both of the above reach `$(( ... ))`, so both are validated before they get there.
+# >>> SELFTEST-EXTRACT: numeric env validation
+# Validate and canonicalise a numeric setting that will reach an arithmetic expansion.
+#
+# @param $1 name of the variable to validate, assigned in place.
+# @param $2 default to fall back to when the value is not a non-negative decimal integer.
+#
+# Two hazards, and the honest status of each is different -- so they are recorded separately
+# rather than under one "unsafe input" heading.
+#
+#  1. Bash arithmetic recursively expands variable CONTENTS as a name, so `$(( V ))` with V=a and
+#     a=5 yields 5, at any depth. Contents that are a command substitution are NOT executed on
+#     bash 5.3 (measured here): they reach the parser as a literal and are refused with
+#     "arithmetic syntax error: operand expected". This was reported in review as a CWE-78, and an
+#     earlier version of this comment asserted the execution -- WRONGLY, from a nested-quoting
+#     artefact in the test that ran it. It does not reproduce. What is left is still worth
+#     refusing: a value naming another variable silently means something other than what it says.
+#  2. Digits-only is not sufficient on its own. `09` is all digits, and bash reads the leading
+#     zero as OCTAL:
+#         $(( 1000000 * 09 / 1048576 ))   ->  value too great for base
+#     So a *valid* setting takes the script down under `set -e`. That one is demonstrated, not
+#     theoretical, and is the reason this function exists. Canonicalising to base 10 here, once,
+#     means no downstream `$(( ))` has to remember `10#`.
+# The locals are `_nne_`-prefixed because this function assigns THROUGH A NAME the caller supplies.
+# Plain `name`/`val` locals shadow a caller variable of the same name, and the failure is silent --
+# `normalise_numeric_env val 240` reads and writes the local, leaving the caller's `val` untouched.
+# Verified: with unprefixed locals, `val=07; normalise_numeric_env val 240` leaves val as `07`.
+normalise_numeric_env() {
+  local _nne_name="$1" _nne_default="$2" _nne_val="${!1}"
+  case "$_nne_val" in
+    ""|*[!0-9]*)
+      log "$_nne_name ('$_nne_val') is not a non-negative integer; using the default ($_nne_default)"
+      printf -v "$_nne_name" '%s' "$_nne_default" ;;
+    *) printf -v "$_nne_name" '%s' "$(( 10#$_nne_val ))" ;;   # digits-only, verified above
+  esac
+}
+# <<< SELFTEST-EXTRACT
+normalise_numeric_env AGY_TIMEOUT_SECONDS_PER_MIB   240
+normalise_numeric_env AGY_PRINT_TIMEOUT_MAX_SECONDS 1800
 AGY_DIFF_MODE="${AGY_DIFF_MODE:-auto}"     # auto|inline|file. A diff is passed to agy either inlined
                                            # in the --print prompt, or written to a FILE agy reads with
                                            # its own tools. `auto` inlines a diff that fits under the
@@ -338,11 +386,17 @@ cleanup() {
   local keep_set="${keep_artifacts:-}"
   local -a doomed=()
   local f
-  for f in "$diff_file" "$diff_err" "$meta_file" "$out_file" "$raw" "$body_file"; do
+  # `${v:-}` on every name, even though all of them are pre-declared at the top of the script and
+  # cannot be unset here. Belt-and-braces on purpose: this is an EXIT trap, so if a future edit
+  # ever moves the trap above the pre-declarations, the failure would be an `unbound variable`
+  # abort DURING cleanup -- temp files left behind, and a confusing error masking the real exit
+  # cause. The pre-declaration stays and is still the actual guarantee; this is the cheap second
+  # line for a function that only ever runs while something else is going wrong.
+  for f in "${diff_file:-}" "${diff_err:-}" "${meta_file:-}" "${out_file:-}" "${raw:-}" "${body_file:-}"; do
     [ -n "$f" ] && doomed+=("$f")
   done
   if [ -z "$keep_set" ]; then
-    for f in "$prompt_file" "$agy_diff_file"; do
+    for f in "${prompt_file:-}" "${agy_diff_file:-}"; do
       [ -n "$f" ] && doomed+=("$f")
     done
   fi
@@ -350,8 +404,8 @@ cleanup() {
   # Remove the gitignored diff-handoff scratch dir once its file is gone. `rmdir` only unlinks an
   # empty dir, so a concurrent run's file (a different $$) is never clobbered; a non-empty dir is
   # gitignored and harmless if left behind.
-  [ -n "$agy_work_dir" ] && [ -z "$keep_set" ] && rmdir "$agy_work_dir" 2>/dev/null || true
-  if [ -n "$agy_refs_created" ] && [ -n "${PR:-}" ]; then
+  [ -n "${agy_work_dir:-}" ] && [ -z "$keep_set" ] && rmdir "${agy_work_dir}" 2>/dev/null || true
+  if [ -n "${agy_refs_created:-}" ] && [ -n "${PR:-}" ]; then
     git update-ref -d "refs/agy/pr-${PR}" 2>/dev/null || true
     git update-ref -d "refs/agy/base-${PR}" 2>/dev/null || true
   fi
@@ -665,6 +719,84 @@ if [ -n "${AGY_DRY_RUN:-}" ]; then
   log "(remove them yourself; every other temp file was cleaned up as usual)"
   exit 0
 fi
+
+# Scale the timeout with the size of the diff agy actually has to read.
+#
+# A fixed 5m is right for an ordinary PR and hopeless for a release merge. Observed on
+# CyberChef-MCP#83 -- 323 files, 39,856 lines, 1.6 MB handed off as a file -- where agy hit the
+# 5m ceiling on all three attempts, twice in a row, at 5m01s each time. The job then failed with
+# `Error: timeout waiting for response`, which is INDISTINGUISHABLE from a backend outage: the
+# guard did its job and refused to post a fake review, but nothing told the reader that the cause
+# was diff size rather than an outage.
+#
+# Deliberately keyed on the diff handed to agy, not on the PR's file count: what costs time is the
+# bytes it must read and reason over.
+#
+# An explicit AGY_PRINT_TIMEOUT wins, so a caller can still pin it.
+
+# >>> SELFTEST-EXTRACT: duration parser
+# Parse a duration ("90", "90s", "5m", "1h") to seconds. Echoes nothing and returns 1 if the value
+# is not one of those forms -- deliberately, so a caller can decide, rather than feeding a
+# non-numeric token into an arithmetic expansion where `$(( 1x + 60 ))` is a SYNTAX ERROR that
+# takes the whole script down under `set -e`.
+duration_to_seconds() {
+  local v="$1" n unit
+  case "$v" in
+    *[!0-9smh]*|"") return 1 ;;                      # stray characters, or empty
+    *h) n="${v%h}"; unit=3600 ;;
+    *m) n="${v%m}"; unit=60 ;;
+    *s) n="${v%s}"; unit=1 ;;
+    *)  n="$v";     unit=1 ;;
+  esac
+  case "$n" in ""|*[!0-9]*) return 1 ;; esac         # "m" alone, or "1m2s"
+  # `10#` forces base 10. Without it bash reads a leading zero as OCTAL, so a perfectly valid
+  # `08m` dies with "value too great for base" -- and `010s` would silently mean 8 seconds.
+  printf '%s\n' $(( 10#$n * unit ))
+}
+# <<< SELFTEST-EXTRACT
+
+# >>> SELFTEST-EXTRACT: diff-size scaling
+# Kept below the duration-parser block, not beside the other constants: SELFTEST-EXTRACT ranges
+# end at the first closing marker, so a block declared around this one would be truncated at the
+# parser's `<<<` and silently extract without the function under test.
+readonly BYTES_PER_MIB=$(( 1024 * 1024 ))
+
+# Raise --print-timeout in proportion to the diff agy has to read.
+#
+# @param $1 size of the diff handed to agy, in bytes. Passed explicitly rather than read from the
+#           enclosing scope, so the function's inputs are visible at the call site.
+scale_timeout_for_diff() {
+  local bytes="${1:-0}"       # explicit default rather than leaning on `$(( ))` treating "" as 0
+  # Whitespace is stripped BEFORE validating, not after: some `wc` implementations pad their count,
+  # and " 1619782 " is not digits-only, so validating first would quietly fall back to 0 and
+  # disable the scaling entirely -- a silent no-op, which is worse than the crash being guarded
+  # against. Then the same guard the settings get, so a non-numeric value falls back rather than
+  # becoming a syntax error in the expansion below.
+  bytes="${bytes//[[:space:]]/}"
+  normalise_numeric_env bytes 0
+  [ -z "$AGY_PRINT_TIMEOUT_EXPLICIT" ] || { log "AGY_PRINT_TIMEOUT set explicitly ($AGY_PRINT_TIMEOUT); not scaling"; return 0; }
+
+  # Computed from BYTES, not from truncated whole MiB: `mib = bytes / 1048576` in integer
+  # arithmetic gives a 1.99 MiB diff exactly one MiB of extra budget, which is the wrong side to
+  # round on for the case this exists to fix.
+  local extra=$(( bytes * AGY_TIMEOUT_SECONDS_PER_MIB / BYTES_PER_MIB ))
+  [ "$extra" -gt 0 ] || return 0        # rounds to nothing: keep the base budget untouched
+
+  local base_s
+  if ! base_s="$(duration_to_seconds "$AGY_PRINT_TIMEOUT")"; then
+    log "AGY_PRINT_TIMEOUT ('$AGY_PRINT_TIMEOUT') is not a recognised duration; leaving it alone"
+    return 0
+  fi
+
+  local scaled=$(( base_s + extra ))
+  # Ceiling, so a pathological diff cannot pin the self-hosted runner for an hour.
+  [ "$scaled" -gt "$AGY_PRINT_TIMEOUT_MAX_SECONDS" ] && scaled="$AGY_PRINT_TIMEOUT_MAX_SECONDS"
+
+  AGY_PRINT_TIMEOUT="${scaled}s"
+  log "diff is ${bytes} bytes; raised --print-timeout to ${AGY_PRINT_TIMEOUT} (base ${base_s}s + ${extra}s)"
+}
+# <<< SELFTEST-EXTRACT
+scale_timeout_for_diff "$diff_bytes"
 
 # --- run agy headless, under a PTY (works around agy issue #76: -p drops --------
 #     stdout when stdout is not a TTY, e.g. piped/redirected/subprocess) ---------
