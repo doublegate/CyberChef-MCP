@@ -1,4 +1,15 @@
-# Project Roadmap
+# Project Roadmap (bootstrap-era)
+
+> **Superseded. This is the ORIGINAL bootstrap plan, not the current roadmap.**
+>
+> It was written before v1.0.0 and describes getting a basic MCP server running. It contradicts
+> [`../ROADMAP.md`](../ROADMAP.md), which is the authoritative planning document, and it does not
+> reflect anything from v1.2.0 onward — let alone v2.0.0, which closed a six-release upstream gap
+> and relicensed the project.
+>
+> Kept as a record of the project's original shape. For current state see
+> [`../ROADMAP.md`](../ROADMAP.md) and [`../../releases/v2.0.0.md`](../../releases/v2.0.0.md).
+
 
 ## Phase 1: Foundation & Core Tools
 **Goal:** Get a basic MCP server running that exposes the `bake` capability.

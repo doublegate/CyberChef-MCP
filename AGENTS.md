@@ -20,16 +20,36 @@
 <<< MC-PROJECT-START >>>
 ## Project: CyberChef
 
-**CyberChef MCP Server** (v1.9.0) - Fork of GCHQ CyberChef wrapping the Node.js API into an MCP
-server. Exposes 300+ operations (encryption, encoding, compression, forensics) as AI assistant tools.
+**CyberChef MCP Server** (v2.0.0) - Fork of GCHQ CyberChef wrapping the Node.js API into an MCP
+server. Exposes 504 operations (encryption, encoding, compression, forensics) as AI assistant tools.
 
 | Metric | Value |
 |--------|-------|
-| MCP Version | 1.9.0 |
-| Tests | 689 (100% passing) |
-| Coverage | 75.64% lines, 91.5% functions |
+| MCP Version | 2.0.0 (single source: `package.json` `mcpVersion`, read by `src/node/lib/config.mjs`) |
+| Upstream base | CyberChef **v11.4.0** |
+| Operations / tools | 504 operations, **524 tools** in `tools/list` |
+| Licence | **GPL-3.0-or-later** (from v2.0.0; v1.9.x and earlier are Apache-2.0) |
+| Node | `>=24 <27`; image runs Node 26.8.1, digest-pinned |
+| Tests | 757 MCP (22 files) + 241 Node-API + 2,289 operations |
+| Coverage | 78.8% lines / 75.1% branches / 90.5% functions overall; `src/node/lib/**` at 95.2% lines |
+| Open security alerts | **0** Dependabot, **0** code-scanning |
 
-**Focus:** MCP server (`src/node/mcp-server.mjs`), not the web app.
+**Focus:** MCP server (`src/node/mcp-server.mjs` + `src/node/lib/**`), not the web app.
+
+**Fork hygiene — the rule that matters most here.** The sync mirrors `src/core/**` **except the
+three generated paths** (`config/modules/`, `config/OperationConfig.json`, `operations/index.mjs`,
+which `npx grunt configTests` produces and `.gitignore` excludes), plus six upstream-owned
+`src/node/*.mjs` files: `api.mjs`, `apiUtils.mjs`, `File.mjs`, `NodeDish.mjs`, `NodeRecipe.mjs`,
+`repl.mjs`. **Never hand-edit any of them.** To change one, either adopt upstream's version (if
+upstream already has the change) or add a `patches/fork/*.patch`, which the sync re-applies and
+which **fails the sync if it stops applying**. A ReDoS mitigation was once
+hand-edited into `src/core/operations/` and silently reverted by a sync, staying gone for four
+releases while three documents claimed it was active:
+`docs/security/2026-08-30-saferegex-reverted-by-upstream-sync.md`.
+
+**The `cyberchef_` prefix is permanent.** DEP001/DEP007/DEP008 announced its removal in v1.8.0 and
+were **withdrawn** in v2.0.0 (2.6% payload saving against 19 colliding tool names and every
+integration broken). Do not strip it, and do not reintroduce the rename in docs or code.
 
 ---
 
@@ -70,7 +90,7 @@ npm start                # Dev server with hot reload (grunt dev)
 npm run build            # Production build (grunt prod)
 npm run lint             # ESLint via grunt - zero errors required
 npm test                 # Core unit tests (custom Node runners)
-npm run test:mcp         # MCP server tests, Vitest (689 tests)
+npm run test:mcp         # MCP server tests, Vitest (757 tests across 22 files)
 npm run test:coverage    # Thresholds: 75% lines/stmts, 90% functions, 70% branches
 npm run testnodeconsumer # Test CJS/ESM consumers
 ```
@@ -107,7 +127,7 @@ Generated files, **not committed** - regenerate with `npx grunt configTests`:
 
 1. **`cyberchef_bake`** - Meta-tool for complex recipe chains
 2. **`cyberchef_search`** - Operation discovery via the `help()` function
-3. **`cyberchef_<op_name>`** - 300+ dynamically generated tools from OperationConfig
+3. **`cyberchef_<op_name>`** - 504 dynamically generated tools from OperationConfig
 4. **`cyberchef_worker_stats`** - Worker thread pool monitoring (v1.9.0)
 5. **`cyberchef_deprecation_stats`** / **`cyberchef_migration_preview`** - v2.0.0 migration tools (v1.8.0)
 6. **Recipe tools** - `cyberchef_recipe_create/get/list/update/delete/execute/export/import/validate/test` (v1.6.0)
@@ -116,13 +136,16 @@ Generated files, **not committed** - regenerate with `npx grunt configTests`:
 Tool naming: operations are sanitized to snake_case with a `cyberchef_` prefix
 (e.g. "AES Decrypt" -> `cyberchef_aes_decrypt`).
 
-### Node 22 Compatibility
+### Node compatibility patches
 
-`Dockerfile.mcp` patches the deprecated `SlowBuffer` in two dependencies. Run the same two
-in-place `sed` substitutions manually when developing locally on Node 22+:
+`Dockerfile.mcp` and the CI workflows run two in-place `sed` substitutions for the deprecated
+`SlowBuffer`. Run them locally too if `npm test` fails with `SlowBuffer is not defined`:
 
-- `node_modules/avsc/lib/types.js`: `new SlowBuffer` -> `Buffer.alloc`
-- `node_modules/buffer-equal-constant-time/index.js`: `SlowBuffer` -> `Buffer`
+- `node_modules/avsc/lib/types.js`: `new SlowBuffer` -> `Buffer.alloc` — **still needed**
+  (`avsc@5.7.9` contains 2 references)
+- `node_modules/buffer-equal-constant-time/index.js`: `SlowBuffer` -> `Buffer` — **now a no-op**
+  (`buffer-equal-constant-time@1.0.1` contains none). Left in place as a harmless self-healing
+  guard rather than removed from five files.
 
 ### CI/CD
 
@@ -158,7 +181,7 @@ git tag -a v1.x.x -F docs/releases/v1.x.x.md && git push origin v1.x.x
 
 | Issue | Solution |
 |-------|----------|
-| `SlowBuffer is not defined` | Apply the two Node 22 substitutions above |
+| `SlowBuffer is not defined` | Apply the `avsc` substitution above |
 | `ERR_MODULE_NOT_FOUND` for Config | Run `npx grunt configTests` |
 | Container exits instantly | Add the `-i` flag to `docker run` |
 
@@ -170,7 +193,7 @@ git tag -a v1.x.x -F docs/releases/v1.x.x.md && git push origin v1.x.x
 | Guides | `docs/guides/commands.md` (MCP tools), `user_guide.md` (installation) |
 | Planning | `docs/planning/ROADMAP.md`, `docs/planning/phases/overview.md` |
 | Security | `docs/security/audit.md` |
-| Releases | `docs/releases/v1.9.0.md` (latest), `v1.8.0.md`, `v1.7.3.md` ... `v1.0.0.md` |
+| Releases | `docs/releases/v2.0.0.md` (latest), `v1.9.0.md`, `v1.8.0.md` ... `v1.0.0.md` |
 | Internal | `docs/internal/tech-debt-analysis-v1.6.1.md` (project health: 8.9/10) |
 
 <<< MC-PROJECT-END >>>

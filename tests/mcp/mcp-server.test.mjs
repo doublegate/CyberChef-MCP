@@ -9,6 +9,7 @@
  * @license GPL-3.0-or-later
  */
 
+import { expectValidVersion } from "./helpers/version.mjs";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { bake, help } from "../../src/node/index.mjs";
 import {
@@ -228,7 +229,7 @@ describe("MCP Server Core Functions", () => {
 
     describe("VERSION and Configuration", () => {
         it("should have correct version", () => {
-            expect(VERSION).toBe("1.9.0");
+            expectValidVersion(VERSION);
         });
 
         it("should have valid configuration defaults", () => {

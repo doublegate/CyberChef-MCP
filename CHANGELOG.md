@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Nothing yet. Add user-visible changes here in the same PR as the change itself — the reviewer
+guidance in `.github/agy-review.md` flags a behaviour change that arrives without one.
+
+## [2.0.0] - 2026-08-31
+
+Upstream **v11.4.0** (504 operations) · **GPL-3.0-or-later** · Node `>=24 <27` · **zero open
+security alerts**. Full notes: [`docs/releases/v2.0.0.md`](docs/releases/v2.0.0.md); migration:
+[`docs/v2.0.0-breaking-changes.md`](docs/v2.0.0-breaking-changes.md).
+
 ### Added
 - **ReDoS screening for user-supplied regular expressions** (`src/node/lib/safe-regex.mjs`), replacing the removed `src/core/lib/SafeRegex.mjs`. Screens regex-bearing arguments in `resolveArgValue` — the single point every user argument passes through, covering single-operation tools, `cyberchef_bake` and batch execution with one hook — and rejects catastrophic-backtracking shapes before the pattern is ever executed.
   Two things make this different from its predecessor rather than a reinstatement:

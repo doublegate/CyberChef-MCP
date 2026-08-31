@@ -1,8 +1,9 @@
 # CyberChef MCP Server - Product Roadmap
 
-**Version:** 1.1.0 → 3.0.0
+**Current version:** **v2.0.0** (released 2026-08-31) · **Upstream base:** CyberChef v11.4.0
+**Planned through:** v3.0.0
 **Timeline:** January 2026 - August 2027
-**Last Updated:** December 2025
+**Last Updated:** 2026-08-31
 
 ## Vision
 
@@ -89,7 +90,17 @@ gantt
 | **v1.7.0** | Advanced Features | Batch processing, telemetry, rate limiting | L | Low | Released |
 | **v1.8.0** | Breaking Changes Prep | Deprecation warnings, migration guides | M | High | Released |
 | **v1.9.0** | Pre-v2.0.0 Polish | Streaming, workers, HTTP transport, security | M | Medium | Released |
-| **v2.0.0** | Major Release | Breaking changes, API stabilization, type system | XL | High | Planned |
+| **v2.0.0** | Major Release | Upstream v11.4.0 (504 ops), GPL-3.0-or-later relicense, Node 24 floor, per-session HTTP transport, zero open security alerts | XL | High | **Released 2026-08-31** |
+
+> **What v2.0.0 actually shipped differs from what this table planned**, and the difference is
+> worth recording. "Breaking changes, API stabilization, type system" assumed the upstream base was
+> current; it was six releases behind, and the sync mechanism could not express the jump. The
+> release became: close the upstream gap, rebuild the sync so it cannot reopen, relicense, and take
+> 272 open security findings to zero. Three of the eight announced breaking changes (DEP001/007/008,
+> the `cyberchef_` prefix removal) were **withdrawn on measurement** rather than enacted — see
+> [the breaking-changes guide](../v2.0.0-breaking-changes.md#withdrawn-changes-dep001-dep007-dep008).
+> The curated tool surface and the SDK v2 migration that were also scoped here did **not** ship and
+> move to v2.1.0.
 
 ### Phase 4-6 (v2.1.0 - v3.0.0)
 

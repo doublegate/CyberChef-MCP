@@ -12,7 +12,18 @@
  * @license GPL-3.0-or-later
  */
 
-export const VERSION = "1.9.0";
+import pkg from "../../../package.json" with { type: "json" };
+
+// Read from package.json rather than restated here.
+//
+// This constant used to be a hardcoded string, which made the product version live in EIGHT
+// places (package.json, this file, tests/mcp/baseline.json and four test assertions) that had to
+// be edited together and silently disagreed when they were not.
+//
+// package.json is now the only one: this derives it, the four tests assert against it, and
+// baseline.json no longer carries a version at all -- it records the tool INVENTORY, and nothing
+// ever read a version from it.
+export const VERSION = pkg.mcpVersion;
 export const MAX_INPUT_SIZE = parseInt(process.env.CYBERCHEF_MAX_INPUT_SIZE, 10) || 100 * 1024 * 1024; // 100MB default
 export const OPERATION_TIMEOUT = parseInt(process.env.CYBERCHEF_OPERATION_TIMEOUT, 10) || 30000; // 30s default
 export const STREAMING_THRESHOLD = parseInt(process.env.CYBERCHEF_STREAMING_THRESHOLD, 10) || 10 * 1024 * 1024; // 10MB default

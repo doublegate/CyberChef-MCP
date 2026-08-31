@@ -167,7 +167,6 @@ jobs:
           }
 
           const baseline = {
-              version: require('./package.json').mcpVersion,
               timestamp: new Date().toISOString(),
               tool_count: Object.keys(OperationConfig).length + 2,
               tools: {

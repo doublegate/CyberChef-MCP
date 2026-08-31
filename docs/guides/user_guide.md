@@ -9,20 +9,20 @@ This guide provides instructions for installing and using the CyberChef MCP serv
 
     **Option 1: Pull from GitHub Container Registry (Recommended)**
     ```bash
-    docker pull ghcr.io/doublegate/cyberchef-mcp_v1:latest
-    docker tag ghcr.io/doublegate/cyberchef-mcp_v1:latest cyberchef-mcp
+    docker pull ghcr.io/doublegate/cyberchef-mcp_v2:latest
+    docker tag ghcr.io/doublegate/cyberchef-mcp_v2:latest cyberchef-mcp
     ```
 
     **Option 2: Download Pre-built Tarball (Offline Installation)**
     ```bash
-    # Download from GitHub Releases (approximately 270MB compressed)
-    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v1.3.0/cyberchef-mcp-v1.3.0-docker-image.tar.gz
+    # Download from GitHub Releases (approximately 196 MB compressed)
+    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v2.0.0/cyberchef-mcp-v2.0.0-docker-image.tar.gz
 
     # Load into Docker
-    docker load < cyberchef-mcp-v1.3.0-docker-image.tar.gz
+    docker load < cyberchef-mcp-v2.0.0-docker-image.tar.gz
 
     # Tag for easier usage
-    docker tag ghcr.io/doublegate/cyberchef-mcp_v1:v1.3.0 cyberchef-mcp
+    docker tag ghcr.io/doublegate/cyberchef-mcp_v2:v2.0.0 cyberchef-mcp
     ```
 
     **Option 3: Build from Source**
@@ -123,15 +123,19 @@ mcp-client --server-command "docker run -i --rm cyberchef-mcp"
 
 ## Security Best Practices
 
-The CyberChef MCP server (v1.3.0) includes comprehensive security hardening features:
+The CyberChef MCP server includes comprehensive security hardening features:
 
 ### Non-Root Execution
-The container runs as a non-root user (`cyberchef`, UID 1001) by default:
+The container runs as the unprivileged `node` user (UID 65532), Chainguard's `nonroot` identity:
 ```bash
 # Verify non-root execution
-docker run --rm cyberchef-mcp id
-# Output: uid=1001(cyberchef) gid=1001(cyberchef)
+docker run --rm --entrypoint id cyberchef-mcp
+# Output: uid=65532(node) gid=65532(node) groups=65532(node)
 ```
+
+*(This said `cyberchef`, UID 1001 until v2.0.0 — the Alpine-era identity, which has been wrong since
+the move to a Chainguard distroless base in v1.4.6. `--entrypoint id` is also needed: the image's
+entrypoint is `node`, so a bare `docker run ... id` passes `id` to node as a script path.)*
 
 ### Read-Only Filesystem
 For maximum security, run with a read-only root filesystem:

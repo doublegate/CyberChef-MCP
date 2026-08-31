@@ -15,7 +15,6 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import {
-    VERSION,
     analyzeRecipeCompatibility,
     transformRecipeToV2,
     getDeprecationStats,
@@ -30,12 +29,6 @@ import {
 describe("v1.8.0 Features - Migration Preview", () => {
     beforeEach(() => {
         resetDeprecations();
-    });
-
-    describe("VERSION", () => {
-        it("should be 1.9.0", () => {
-            expect(VERSION).toBe("1.9.0");
-        });
     });
 
     describe("DEPRECATION_CODES", () => {
