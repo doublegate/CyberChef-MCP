@@ -25,7 +25,9 @@ import {
     ListToolsRequestSchema,
     CallToolRequestSchema
 } from "@modelcontextprotocol/sdk/types.js";
-import { createTransport, isInitializeBody, normalizeSessionId } from "../../src/node/transports.mjs";
+import {
+    createTransport, isInitializeBody, normalizeSessionId, normalizeEndpointPath
+} from "../../src/node/transports.mjs";
 
 /**
  * A minimal MCP server standing in for the real one.
@@ -718,6 +720,48 @@ describe("DNS-rebinding protection", () => {
         const { handle: h, port } = await boot({ allowedHosts: ["*"] });
         try {
             expect((await postWithHost(port, "evil.example:" + port)).status).toBe(200);
+        } finally {
+            await h.closeAll();
+        }
+    });
+});
+
+describe("endpoint path routing", () => {
+    it("normalizes both sides of the comparison identically", () => {
+        // The bug this guards: the two sides were normalized SEPARATELY and only the request side
+        // had the `|| "/"` fallback, so a configured "/" became "" while a request for it became
+        // "/" -- and the one path that could never work was the root.
+        expect(normalizeEndpointPath("/")).toBe("/");
+        expect(normalizeEndpointPath("//")).toBe("/");
+        expect(normalizeEndpointPath("")).toBe("/");
+        expect(normalizeEndpointPath(undefined)).toBe("/");
+        expect(normalizeEndpointPath("/mcp")).toBe("/mcp");
+        expect(normalizeEndpointPath("/mcp/")).toBe("/mcp");
+        expect(normalizeEndpointPath("/mcp///")).toBe("/mcp");
+        expect(normalizeEndpointPath("/mcp?x=1")).toBe("/mcp");
+    });
+
+    it("serves a root endpoint when CYBERCHEF_HTTP_PATH is /", async () => {
+        const h = await createTransport({
+            type: "http", port: 0, host: "127.0.0.1", path: "/",
+            createServer: createTinyServer
+        });
+        await new Promise(resolve => {
+            if (h.httpServer.listening) return resolve();
+            h.httpServer.once("listening", resolve);
+        });
+        const rootBase = `http://127.0.0.1:${h.httpServer.address().port}`;
+        try {
+            const res = await fetch(rootBase + "/", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Accept": "application/json, text/event-stream"
+                },
+                body: JSON.stringify(INITIALIZE)
+            });
+            expect(res.status).toBe(200);
+            expect(res.headers.get("mcp-session-id")).toBeTruthy();
         } finally {
             await h.closeAll();
         }

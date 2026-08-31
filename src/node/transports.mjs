@@ -131,6 +131,20 @@ export function normalizeSessionId(raw) {
 }
 
 /**
+ * Normalize a URL or configured endpoint path for comparison.
+ *
+ * Drops any query string, strips trailing slashes, and maps the empty result back to "/" so that
+ * a root endpoint compares equal to itself. Used on BOTH the request path and the configured path,
+ * so the two cannot drift apart.
+ *
+ * @param {string|undefined} value - A request URL or a configured path.
+ * @returns {string} The normalized path.
+ */
+export function normalizeEndpointPath(value) {
+    return (value || "").split("?")[0].replace(/\/+$/, "") || "/";
+}
+
+/**
  * The request id from a parsed body, when there is exactly one unambiguous candidate.
  *
  * A batch has several, so there is no single id to echo and null is the correct answer -- which is
@@ -201,6 +215,12 @@ export async function createTransport(options = {}) {
         // plain 404 instead of being routed into the transport and answered with the confusing
         // "Session not found".
         const mcpPath = options.path || process.env.CYBERCHEF_HTTP_PATH || "/mcp";
+        // BOTH sides of the route comparison go through this, which is the point of extracting it.
+        // They were normalized separately, and only the request side had the `|| "/"` fallback --
+        // so `CYBERCHEF_HTTP_PATH=/` normalized the configured path to the empty string while a
+        // request for it normalized to "/", and every request 404'd. A root endpoint is a
+        // perfectly reasonable thing to configure, and it was the one value that could not work.
+        const mcpPathNormalized = normalizeEndpointPath(mcpPath);
         // Hard cap on concurrent sessions.
         //
         // Without one, a single unauthenticated `initialize` creates a Server + transport pair
@@ -441,8 +461,8 @@ export async function createTransport(options = {}) {
                 // Ordering matters and an earlier revision had it backwards: answering OPTIONS
                 // before this check made `OPTIONS /anything` return 204, advertising an endpoint
                 // that does not exist and contradicting the documented "every other path 404s".
-                const path = (req.url || "").split("?")[0].replace(/\/+$/, "") || "/";
-                if (path !== mcpPath.replace(/\/+$/, "")) {
+                const path = normalizeEndpointPath(req.url);
+                if (path !== mcpPathNormalized) {
                     sendJsonRpcError(res, 404, -32601, `Not Found: the MCP endpoint is ${mcpPath}`);
                     return;
                 }

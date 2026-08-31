@@ -7,41 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Security
-
-- **DNS-rebinding protection is now ON by default for the HTTP transport.** It was opt-in, on the
-  stated reasoning that "the default bind is loopback, where it adds nothing". That reasoning was
-  backwards: DNS rebinding exists *specifically* to reach loopback and private addresses, using the
-  victim's own browser as a proxy the firewall cannot see. A page on `evil.example` whose DNS is
-  rebound to `127.0.0.1` reaches the server with `Host: evil.example`, and because the browser
-  considers that request same-origin with the page, **no preflight is sent** — so the CORS
-  default-deny never comes into it — and the response is readable by the attacker's script. Since
-  `initialize` needs no session id, such a page could open a session and drive every tool, on a
-  server whose recipe storage touches the filesystem.
-
-  With nothing configured, the server now answers only to `localhost`, `127.0.0.1` and `[::1]`,
-  each with and without its port, and returns `403 Invalid Host header` otherwise. The allowlist is
-  resolved after `listen()` so that an ephemeral port (`port: 0`) is covered. `CYBERCHEF_ALLOWED_HOSTS`
-  still replaces the defaults for a non-loopback bind, and `CYBERCHEF_ALLOWED_HOSTS=*` disables the
-  check outright with a startup warning. Four tests speak raw HTTP with a forged `Host`, because
-  `fetch` will not let a caller set one and the forged header is the whole attack.
-
-  **Breaking for one configuration:** a server bound to `0.0.0.0` and reached by a LAN name or IP
-  now needs `CYBERCHEF_ALLOWED_HOSTS` set. That is the secure-by-default trade, and it is what the
-  MCP specification asks for.
-
-- **Recipe storage no longer writes through a predictable temp file.** `save()` staged the new
-  content in `<path>.tmp`, a fixed sibling name. Anything able to write to the storage directory
-  could pre-create or symlink it, and the write would follow — and `CYBERCHEF_RECIPE_STORAGE` is
-  caller-supplied, so that directory is not necessarily private. The staging file now carries a
-  random suffix and is created with `flag: "wx"`, so a pre-created path fails the write instead of
-  capturing it, and with `mode: 0o600`, since a saved recipe can carry keys and IVs. Raised by
-  CodeQL (`js/insecure-temporary-file`, high) on the v2.0.0 release merge.
-
-  Randomising the name removed one property the fixed `.tmp` had for free — a leaked file was
-  overwritten by the next save, so leaks self-healed — so `save()` now also sweeps staging files
-  older than an hour. The existing `catch` already unlinks on any observable error; this covers the
-  case it cannot, a process killed between the write and the rename.
+Nothing yet.
 
 ## [2.0.0] - 2026-08-31
 
@@ -109,6 +75,7 @@ security alerts**. Full notes: [`docs/releases/v2.0.0.md`](docs/releases/v2.0.0.
 - **`src/core/config/OperationConfig.json` is no longer tracked.** It was gitignored *and* committed at the same time — the only such file in the repository — because `upstream-sync.yml` force-added it on every run. It is generated from the operations by `npx grunt configTests`, so a committed copy is a 1.7MB derived artefact whose diff cannot be meaningfully reviewed and which goes stale the moment an operation changes. Every CI workflow, the Dockerfile and the documented local setup already regenerate it. The force-add is removed from the sync.
 
 ### Fixed
+- **A root MCP endpoint (`CYBERCHEF_HTTP_PATH=/`) 404'd every request.** The request path and the configured path were normalized *separately*, and only the request side mapped an empty result back to `/` — so a configured `/` became the empty string while a request for it became `/`, and the one path that could never work was the root. Both sides now share `normalizeEndpointPath()`, which is the point of extracting it.
 - **Streamable HTTP transport now serves multiple clients** ([#36](https://github.com/doublegate/CyberChef-MCP/issues/36)). The HTTP branch created **one** `StreamableHTTPServerTransport` for the whole process and routed every request from every client into it. The SDK marks a transport initialized on the first `initialize` it sees and rejects any further one, so the first client to connect worked and every one after it got `{"code":-32600,"message":"Invalid Request: Server already initialized"}`. Many clients probe the endpoint before their formal handshake, so a single client could burn the one available initialize on its own probe and then reject itself.
 
   Rewritten as a session map: each session gets its own MCP `Server` **and** its own transport, created on an unsessioned `initialize` and routed thereafter by the `Mcp-Session-Id` header. This is the shape the SDK's own advisory GHSA-345p-7cg4-v4c7 requires — sharing server or transport instances between clients leaks state across them — not merely the tidier one.
@@ -143,6 +110,39 @@ security alerts**. Full notes: [`docs/releases/v2.0.0.md`](docs/releases/v2.0.0.
 - **Documentation**: Expanded MCP tools listing and CI/CD workflow table in CLAUDE.md
 
 ### Security
+- **DNS-rebinding protection is now ON by default for the HTTP transport.** It was opt-in, on the
+  stated reasoning that "the default bind is loopback, where it adds nothing". That reasoning was
+  backwards: DNS rebinding exists *specifically* to reach loopback and private addresses, using the
+  victim's own browser as a proxy the firewall cannot see. A page on `evil.example` whose DNS is
+  rebound to `127.0.0.1` reaches the server with `Host: evil.example`, and because the browser
+  considers that request same-origin with the page, **no preflight is sent** — so the CORS
+  default-deny never comes into it — and the response is readable by the attacker's script. Since
+  `initialize` needs no session id, such a page could open a session and drive every tool, on a
+  server whose recipe storage touches the filesystem.
+
+  With nothing configured, the server now answers only to `localhost`, `127.0.0.1` and `[::1]`,
+  each with and without its port, and returns `403 Invalid Host header` otherwise. The allowlist is
+  resolved after `listen()` so that an ephemeral port (`port: 0`) is covered. `CYBERCHEF_ALLOWED_HOSTS`
+  still replaces the defaults for a non-loopback bind, and `CYBERCHEF_ALLOWED_HOSTS=*` disables the
+  check outright with a startup warning. Four tests speak raw HTTP with a forged `Host`, because
+  `fetch` will not let a caller set one and the forged header is the whole attack.
+
+  **Breaking for one configuration:** a server bound to `0.0.0.0` and reached by a LAN name or IP
+  now needs `CYBERCHEF_ALLOWED_HOSTS` set. That is the secure-by-default trade, and it is what the
+  MCP specification asks for.
+
+- **Recipe storage no longer writes through a predictable temp file.** `save()` staged the new
+  content in `<path>.tmp`, a fixed sibling name. Anything able to write to the storage directory
+  could pre-create or symlink it, and the write would follow — and `CYBERCHEF_RECIPE_STORAGE` is
+  caller-supplied, so that directory is not necessarily private. The staging file now carries a
+  random suffix and is created with `flag: "wx"`, so a pre-created path fails the write instead of
+  capturing it, and with `mode: 0o600`, since a saved recipe can carry keys and IVs. Raised by
+  CodeQL (`js/insecure-temporary-file`, high) on the v2.0.0 release merge.
+
+  Randomising the name removed one property the fixed `.tmp` had for free — a leaked file was
+  overwritten by the next save, so leaks self-healed — so `save()` now also sweeps staging files
+  older than an hour. The existing `catch` already unlinks on any observable error; this covers the
+  case it cannot, a process killed between the write and the rename.
 - **CVE-2026-42615 (HIGH, CVSS 7.2, CWE-79) — XSS in `Show Base64 offsets`.** Upstream built the operation's `<span>`-annotated output by concatenating attacker-influenced text into an HTML string; the vector is the **Alphabet** argument, whose characters land inside span bodies and inside the single-quoted `title='...'` tooltip attribute. Fixed by adopting upstream v11.4.0's file byte-for-byte — the entire diff is `Utils.escapeHtml()` around each interpolated segment — and pinned by `tests/mcp/cve-regressions.test.mjs`, which fails against the pre-fix file (7 span bodies carried raw `<`, `>` and `"`).
 
   Exposure for this fork was nil, and the record says so: `DishHTML.toArrayBuffer()` strips tags and unescapes entities before any Node-API or MCP consumer sees the value, so the CVE is a web-UI issue. Taken because the image also ships `src/core` for direct use, and because converging on upstream is cheaper than diverging from it.
