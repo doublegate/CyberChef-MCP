@@ -123,15 +123,17 @@ Add `-e` pairs to the args, before the image name:
   "mcpServers": {
     "cyberchef": {
       "command": "node",
-      "args": ["--openssl-legacy-provider", "/path/to/CyberChef/src/node/mcp-server.mjs"]
+      "args": ["/path/to/CyberChef/src/node/mcp-server.mjs"]
     }
   }
 }
 ```
 
-`--openssl-legacy-provider` is not optional. A few operations reach algorithms OpenSSL 3 moved out
-of its default provider; without it `Generate all hashes` silently returns its input unchanged.
-`npm run mcp` and the Docker image both set it for you.
+**No `--openssl-legacy-provider` is needed.** v2.1.0's guide said it was "not optional"; that was
+wrong, and worse, it did not work. Most Node builds -- the Docker image included -- ship no legacy
+provider module at all, so the flag printed `Unable to load legacy provider.` and changed nothing.
+Exactly one operation reached OpenSSL for a legacy algorithm (`LM Hash`, via DES-ECB); as of v2.2.0
+it computes that in pure JavaScript, so every operation works on a stock Node with no flags.
 
 ---
 
@@ -438,7 +440,7 @@ Report vulnerabilities per [SECURITY.md](../../SECURITY.md).
 | A tool you expect is not in `tools/list` | The default surface is `index`. Use `cyberchef_bake`, or set `CYBERCHEF_TOOL_SURFACE=all`. |
 | `Input must be one of the following: Raw, Hex` | The argument is `input_arg`, not `input`. |
 | `Cannot read properties of undefined (reading 'option')` | A key/IV needs `{ string, option }`, or a plain string. |
-| `Generate all hashes` returns the input unchanged | Node is missing `--openssl-legacy-provider`. |
+| `Generate all hashes` fails with `error:0308010C` | You are on v2.1.0 or earlier. Upgrade; v2.2.0 removed the OpenSSL dependency. |
 | `Invalid Host header` over HTTP | Set `CYBERCHEF_ALLOWED_HOSTS` for a non-loopback bind. |
 | Browser client fails its preflight | Set `CYBERCHEF_ALLOWED_ORIGINS`. |
 | `SlowBuffer is not defined` in local tests | Apply the `avsc` substitution — see the README. |

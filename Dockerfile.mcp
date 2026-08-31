@@ -153,15 +153,20 @@ EXPOSE 3000
 # Security: Set TMPDIR to use /tmp (writable via tmpfs in read-only mode)
 ENV TMPDIR=/tmp
 
-# OpenSSL's legacy provider, needed by a small number of operations that reach algorithms OpenSSL 3
-# moved out of the default provider. `Generate all hashes` is the one that shows it: its NTLM/LM
-# step calls `createCipheriv` with DES-ECB, which fails without this -- and the operation swallowed
-# the failure, so the tool returned the INPUT UNCHANGED rather than an error. Found by calling all
-# 524 tools in turn; a silently wrong hash table is worse than a missing one.
+# NO `--openssl-legacy-provider` HERE, DELIBERATELY. v2.1.0 set it, believing it fixed
+# `Generate all hashes`. It did not, and could not: this image has **no legacy provider module to
+# load**. A filesystem walk of the published v2.1.0 image finds no `*legacy*.so`, and Node prints
 #
-# Set as NODE_OPTIONS rather than in CMD because Chainguard's distroless image has `node` as the
-# ENTRYPOINT and CMD is only the script path, so there is nowhere in CMD to put an interpreter flag.
-ENV NODE_OPTIONS=--openssl-legacy-provider
+#     Unable to load legacy provider.
+#
+# on every start while `crypto.createHash("md4")` still throws `error:0308010C`. So the flag bought
+# a startup warning and nothing else, and three documents described a mitigation the shipped
+# artefact never carried -- the same shape as the SafeRegex incident.
+#
+# The dependency is removed instead of satisfied: `LM Hash` (the single operation that needed it)
+# now computes DES with node-forge in pure JavaScript. See patches/fork/06. Nothing in the suite
+# requires the legacy provider any more -- verified by running all 2,289 operation tests on a host
+# that also lacks it.
 
 # Health check for container orchestration
 # Note: MCP servers use stdio, so we check if node is responsive

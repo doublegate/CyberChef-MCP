@@ -211,7 +211,7 @@
     "build": "npx grunt configTests",
     "node": "npx grunt node",
     "repl": "node --no-warnings src/node/repl.mjs",
-    "test": "npx grunt configTests && node --no-warnings --no-deprecation --openssl-legacy-provider tests/node/index.mjs && node --no-warnings --no-deprecation --openssl-legacy-provider --trace-uncaught tests/operations/index.mjs",
+    "test": "npx grunt configTests && node --no-warnings --no-deprecation tests/node/index.mjs && node --no-warnings --no-deprecation --trace-uncaught tests/operations/index.mjs",
     "test:mcp": "vitest run",
     "test:coverage": "vitest run --coverage",
     "coverage": "npm run test:coverage",
@@ -224,7 +224,7 @@
     "minor": "node src/core/config/scripts/newMinorVersion.mjs",
     "getheapsize": "node -e 'console.log(`node heap limit = ${require(\"v8\").getHeapStatistics().heap_size_limit / (1024 * 1024)} Mb`)'",
     "setheapsize": "export NODE_OPTIONS=--max_old_space_size=2048",
-    "mcp": "node --openssl-legacy-provider src/node/mcp-server.mjs"
+    "mcp": "node src/node/mcp-server.mjs"
   },
   "overrides": {
     "ws": ">=5.2.4",

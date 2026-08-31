@@ -108,6 +108,30 @@ export const RecipeSchema = z.object({
 });
 
 /**
+ * Schema for a recipe that has not been saved yet.
+ *
+ * `id`, `version`, `created` and `updated` are **assigned by the server** when a recipe is stored.
+ * Requiring them in `validateRecipe` meant `cyberchef_recipe_validate` could only check a recipe
+ * that had already been saved -- the case where checking is least useful. Asking "is this recipe
+ * well-formed before I store it" returned
+ *
+ *     Invalid input: expected string, received undefined   path: ["id"]
+ *     Invalid input: expected string, received undefined   path: ["version"]
+ *
+ * which describes the caller's failure to guess two values only the server can supply.
+ *
+ * Everything that actually says whether a recipe is correct -- the operation names, their
+ * arguments, the composition graph -- is unaffected: those checks run on `operations`, which stays
+ * required.
+ */
+export const DraftRecipeSchema = RecipeSchema.partial({
+    id: true,
+    version: true,
+    created: true,
+    updated: true
+});
+
+/**
  * Schema for recipe creation (subset of RecipeSchema).
  * ID, timestamps, and version are auto-generated.
  */
@@ -386,12 +410,18 @@ export function estimateComplexity(recipe) {
  *
  * @param {Object} recipe - The recipe to validate.
  * @param {Function} getRecipeById - Function to retrieve recipe by ID (for composition validation).
+ * @param {Object} [options] - Validation options.
+ * @param {boolean} [options.draft=false] - Allow a recipe that has not been saved, i.e. one without
+ *   the server-assigned `id`, `version`, `created` and `updated`. Used by the validate/test tools,
+ *   whose whole purpose is checking a recipe BEFORE it is stored. Left off for a recipe read back
+ *   out of storage, where those fields must be present and their absence means the record is
+ *   damaged.
  * @returns {Promise<void>}
  * @throws {Error} If validation fails.
  */
-export async function validateRecipe(recipe, getRecipeById = null) {
+export async function validateRecipe(recipe, getRecipeById = null, { draft = false } = {}) {
     // Schema validation
-    RecipeSchema.parse(recipe);
+    (draft ? DraftRecipeSchema : RecipeSchema).parse(recipe);
 
     // Operation name validation
     validateOperationNames(recipe);

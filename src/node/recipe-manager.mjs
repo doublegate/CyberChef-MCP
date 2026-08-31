@@ -300,7 +300,9 @@ export class RecipeManager {
      */
     async validateRecipe(recipe) {
         try {
-            await validateRecipe(recipe, (id) => this.storage.getById(id));
+            // `draft: true` -- this method's contract is "without saving it", so demanding the
+            // server-assigned `id`/`version` made the only interesting use impossible.
+            await validateRecipe(recipe, (id) => this.storage.getById(id), { draft: true });
 
             return {
                 valid: true,

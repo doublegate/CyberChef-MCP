@@ -351,24 +351,45 @@ describe("in-process handlers: recipe management", () => {
         }
     });
 
-    it("reports a draft recipe as invalid rather than crashing (F-02)", async () => {
+    it("validates and tests a DRAFT recipe, with no server-assigned fields (F-02)", async () => {
         const { client, close } = await connected();
         try {
-            // Pins today's behaviour so the F-02 fix is visible as a deliberate change rather
-            // than an accident: validate answers structurally, test throws. They disagree.
-            const validated = await callJson(client, "cyberchef_recipe_validate", {
-                recipe: { name: "draft", operations: [{ op: "To Base64" }] }
-            });
-            expect(validated.valid).toBe(false);
+            // `id`, `version`, `created` and `updated` are assigned by the server when a recipe is
+            // stored. Requiring them here made "check this before I save it" -- the only
+            // interesting use of a validate tool -- impossible: it failed with
+            // `expected string, received undefined` on two values only the server can supply.
+            const draft = { name: "draft", operations: [{ op: "To Base64" }] };
 
-            const tested = await client.callTool({
-                name: "cyberchef_recipe_test",
-                arguments: {
-                    recipe: { name: "draft", operations: [{ op: "To Base64" }] },
-                    testInputs: ["Hello"]
-                }
+            const validated = await callJson(client, "cyberchef_recipe_validate", { recipe: draft });
+            expect(validated.valid).toBe(true);
+            expect(validated.operationCount).toBe(1);
+
+            const tested = await callJson(client, "cyberchef_recipe_test", {
+                recipe: draft,
+                testInputs: ["Hello"]
             });
-            expect(tested.isError).toBe(true);
+            expect(tested.passed).toBe(1);
+            expect(tested.results[0].output).toBe("SGVsbG8=");
+        } finally {
+            await close();
+        }
+    });
+
+    it("still rejects a draft that is genuinely wrong", async () => {
+        const { client, close } = await connected();
+        try {
+            // Relaxing the server-assigned fields must not relax what actually decides whether a
+            // recipe is correct: the operation names, their arguments, and a non-empty list.
+            const badOp = await callJson(client, "cyberchef_recipe_validate", {
+                recipe: { name: "b", operations: [{ op: "Nope" }] }
+            });
+            expect(badOp.valid).toBe(false);
+            expect(badOp.error).toMatch(/Invalid operation name/);
+
+            const empty = await callJson(client, "cyberchef_recipe_validate", {
+                recipe: { name: "e", operations: [] }
+            });
+            expect(empty.valid).toBe(false);
         } finally {
             await close();
         }
