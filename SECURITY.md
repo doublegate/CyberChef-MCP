@@ -6,12 +6,14 @@ This document covers security for the **CyberChef MCP Server** fork. For the ori
 
 ## Supported Versions
 
-| Version | Supported          | Notes                                    |
-| ------- | ------------------ | ---------------------------------------- |
-| 1.2.x   | :white_check_mark: | Current release - Security Hardening     |
-| 1.1.x   | :white_check_mark: | Security fixes backported                |
-| 1.0.x   | :x:                | Upgrade to 1.1.x or later                |
-| < 1.0   | :x:                | Not supported                            |
+| Version | Supported          | Notes                                                      |
+| ------- | ------------------ | ---------------------------------------------------------- |
+| 1.9.x   | :white_check_mark: | Current release                                            |
+| 1.8.x   | :white_check_mark: | Security fixes only                                        |
+| < 1.8   | :x:                | Upgrade to 1.9.x                                           |
+
+This table had drifted five releases behind, still naming 1.2.x as current while 1.9.0 shipped in
+February 2026. It is now a release-checklist item rather than something updated when noticed.
 
 ## Reporting a Vulnerability
 
@@ -33,16 +35,20 @@ Report to the upstream project:
 - **Resolution**: Critical issues within 30 days
 - **Disclosure**: Coordinated after fix is available
 
-## Security Measures (v1.3.0)
+## Security Measures
+
+Describes the **current** posture (1.9.x), not a historical snapshot. It previously carried a
+`(v1.3.0)` stamp that was never updated, so a reader could not tell whether it described the
+shipped image or a state six releases old.
 
 ### Container Security
 
 #### Non-Root Execution
-The container runs as a dedicated `cyberchef` user (UID 1001):
+The container runs as the unprivileged `node` user (UID 65532), Chainguard's `nonroot` identity:
 ```bash
 # Verify non-root execution
-docker run --rm cyberchef-mcp id
-# Output: uid=1001(cyberchef) gid=1001(cyberchef)
+docker run --rm --entrypoint id cyberchef-mcp
+# Output: uid=65532(node) gid=65532(node) groups=65532(node)
 ```
 
 #### Read-Only Filesystem Support
@@ -71,17 +77,19 @@ Results are uploaded to the GitHub Security tab automatically.
 
 ### Security Audits
 
+- **2026-08-31**: Full sweep of every open Dependabot and code-scanning alert — CVE-2026-42615 (XSS in `Show Base64 offsets`) fixed by adopting upstream's file, minimatch and uuid cleared at the root, Dockerfile pinned by digest and given an explicit non-root `USER`, one justified `.trivyignore` entry, three CodeQL alerts on upstream-identical code dismissed with reasons. See [docs/security/2026-08-31-open-alert-sweep.md](docs/security/2026-08-31-open-alert-sweep.md).
 - **v1.3.0**: Upstream sync automation, comprehensive MCP validation testing, GitHub Actions security best practices
 - **v1.2.6**: Web app Dockerfile nginx:alpine-slim optimization with non-root permission fixes
 - **v1.2.5**: 5 GitHub Security alerts resolved, Argon2 OWASP 2024-2025 hardening, CVE-2025-64756 fixed
 - **v1.2.0**: Non-root execution, Trivy integration, SBOM generation
 - **v1.1.0**: 11 vulnerabilities fixed (76% reduction), NIST-compliant password hashing
 
-See [docs/security/audit.md](docs/security/audit.md) for detailed audit reports.
+Current disposition of every open finding: [docs/security/2026-08-31-open-alert-sweep.md](docs/security/2026-08-31-open-alert-sweep.md).
+Historical reports: [docs/security/audit.md](docs/security/audit.md) (a December 2025 snapshot, superseded).
 
 ## Docker Hardened Images (DHI)
 
-Docker Hardened Images for Node.js 22 are available via Docker Hub subscription. This open-source project uses `node:22-alpine` with manual hardening. Enterprise deployments may consider DHI for additional security.
+Docker Hardened Images are available via Docker Hub subscription. This project does not use them: `Dockerfile.mcp` builds on **Chainguard's distroless `cgr.dev/chainguard/node`**, pinned by digest, which already provides a minimal Wolfi-based runtime with no shell or package manager and daily rebuilds. (This paragraph previously claimed the project used `node:22-alpine`, which has not been true since the move to Chainguard.) Enterprise deployments with a Docker Hub subscription may still prefer DHI for its support terms.
 
 See [Docker DHI Documentation](https://docs.docker.com/dhi/about/what/) for more information.
 

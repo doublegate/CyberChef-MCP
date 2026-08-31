@@ -45,10 +45,6 @@ module.exports = function (grunt) {
             "clean:config", "clean:nodeConfig", "exec:generateConfig", "exec:generateNodeIndex"
         ]);
 
-    grunt.registerTask("testui",
-        "A task which runs all the UI tests in the tests directory. The prod task must already have been run.",
-        ["connect:prod", "exec:browserTests"]);
-
     grunt.registerTask("testnodeconsumer",
         "A task which checks whether consuming CJS and ESM apps work with the CyberChef build",
         ["exec:setupNodeConsumers", "exec:testCJSNodeConsumer", "exec:testESMNodeConsumer", "exec:teardownNodeConsumers"]);
@@ -115,7 +111,6 @@ module.exports = function (grunt) {
     grunt.loadNpmTasks("grunt-contrib-watch");
     grunt.loadNpmTasks("grunt-exec");
     grunt.loadNpmTasks("grunt-concurrent");
-    grunt.loadNpmTasks("grunt-contrib-connect");
     grunt.loadNpmTasks("grunt-zip");
 
 
@@ -306,14 +301,6 @@ module.exports = function (grunt) {
                 dest: `build/prod/CyberChef_v${pkg.version}.zip`
             }
         },
-        connect: {
-            prod: {
-                options: {
-                    port: grunt.option("port") || 8000,
-                    base: "build/prod/"
-                }
-            }
-        },
         copy: {
             ghPages: {
                 options: {
@@ -426,9 +413,6 @@ module.exports = function (grunt) {
                     "echo '--- Node index generated. ---\n'"
                 ]),
                 sync: true
-            },
-            browserTests: {
-                command: "./node_modules/.bin/nightwatch --env prod"
             },
             setupNodeConsumers: {
                 command: chainCommands([
