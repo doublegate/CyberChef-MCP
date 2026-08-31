@@ -105,7 +105,7 @@ export function isInitializeBody(body) {
 }
 
 /**
- * Normalise the session-id header to a single, trimmed string.
+ * Normalize the session-id header to a single, trimmed string.
  *
  * Node's http module joins duplicate header values with ", " for every header except set-cookie,
  * so two `Mcp-Session-Id` headers arrive here as the STRING "aaa, bbb" rather than as an array
@@ -119,7 +119,7 @@ export function isInitializeBody(body) {
  * @param {string|string[]|undefined} raw - The raw header value.
  * @returns {string|undefined} A single session id, or undefined if absent or ambiguous.
  */
-export function normaliseSessionId(raw) {
+export function normalizeSessionId(raw) {
     if (raw === undefined || raw === null) return undefined;
     const value = Array.isArray(raw) ? (raw.length === 1 ? raw[0] : undefined) : raw;
     if (typeof value !== "string") return undefined;
@@ -402,7 +402,7 @@ export async function createTransport(options = {}) {
                     return;
                 }
 
-                const sessionId = normaliseSessionId(req.headers[SESSION_HEADER]);
+                const sessionId = normalizeSessionId(req.headers[SESSION_HEADER]);
 
                 // GET (server-initiated SSE) and DELETE (explicit teardown) are only meaningful
                 // for an established session, and both are routed purely by header.

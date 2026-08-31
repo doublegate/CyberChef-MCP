@@ -22,7 +22,7 @@ import {
     ListToolsRequestSchema,
     CallToolRequestSchema
 } from "@modelcontextprotocol/sdk/types.js";
-import { createTransport, isInitializeBody, normaliseSessionId } from "../../src/node/transports.mjs";
+import { createTransport, isInitializeBody, normalizeSessionId } from "../../src/node/transports.mjs";
 
 /**
  * A minimal MCP server standing in for the real one.
@@ -621,28 +621,28 @@ describe("createTransport - HTTP guard rails", () => {
     });
 });
 
-describe("normaliseSessionId", () => {
+describe("normalizeSessionId", () => {
     it("passes a single trimmed id through", () => {
-        expect(normaliseSessionId("abc")).toBe("abc");
-        expect(normaliseSessionId("  abc  ")).toBe("abc");
-        expect(normaliseSessionId(["abc"])).toBe("abc");
+        expect(normalizeSessionId("abc")).toBe("abc");
+        expect(normalizeSessionId("  abc  ")).toBe("abc");
+        expect(normalizeSessionId(["abc"])).toBe("abc");
     });
 
     it("rejects a DUPLICATED header rather than looking up a value that cannot match", () => {
         // Node joins duplicate header values with ", " for every header except set-cookie, so two
         // `Mcp-Session-Id` headers arrive as the string "aaa, bbb" -- verified against node's own
         // parser. A comma is never valid inside a UUID.
-        expect(normaliseSessionId("aaa, bbb")).toBeUndefined();
-        expect(normaliseSessionId(["aaa", "bbb"])).toBeUndefined();
+        expect(normalizeSessionId("aaa, bbb")).toBeUndefined();
+        expect(normalizeSessionId(["aaa", "bbb"])).toBeUndefined();
     });
 
     it("treats absent, empty and non-string values as no session", () => {
-        expect(normaliseSessionId(undefined)).toBeUndefined();
-        expect(normaliseSessionId(null)).toBeUndefined();
-        expect(normaliseSessionId("")).toBeUndefined();
-        expect(normaliseSessionId("   ")).toBeUndefined();
-        expect(normaliseSessionId([])).toBeUndefined();
-        expect(normaliseSessionId(42)).toBeUndefined();
+        expect(normalizeSessionId(undefined)).toBeUndefined();
+        expect(normalizeSessionId(null)).toBeUndefined();
+        expect(normalizeSessionId("")).toBeUndefined();
+        expect(normalizeSessionId("   ")).toBeUndefined();
+        expect(normalizeSessionId([])).toBeUndefined();
+        expect(normalizeSessionId(42)).toBeUndefined();
     });
 });
 

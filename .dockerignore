@@ -34,6 +34,10 @@ docker-compose*.yml
 # runtime stage copies /app, so this costs 3.7 MB of build context and nothing in the final image.
 # Excluding it instead would mean hand-editing an upstream-mirrored file, which the next sync
 # reverts.
+
+# Test and coverage OUTPUT, as opposed to the `tests` sources above. These are produced by a local
+# `npm run test:coverage` / `npm test` run and are pure build-context weight -- nothing in the
+# image reads them, and a stale local copy would be silently baked into the layer.
 coverage
 .nyc_output
 test-results
