@@ -32,6 +32,43 @@ function sanitizeToolName(name) {
 }
 
 /**
+ * Names the tool schema reserves for itself, which an operation argument may not take.
+ *
+ * Only `input` today: every generated tool takes the data to process under that name.
+ */
+const RESERVED_ARG_NAMES = new Set(["input"]);
+
+/**
+ * The property name a CyberChef argument is exposed under in a tool's inputSchema.
+ *
+ * THE ONE FUNCTION, used by the schema builder, the per-operation dispatch path, and the recipe
+ * converter. They each had their own copy of this sanitisation, and the copies were ALREADY
+ * subtly different -- `[^a-z0-9]+ -> _` in one, `/ / -> _` in another -- which is how a rule that
+ * has to agree in three places goes wrong quietly.
+ *
+ * The collision handling is the part that matters. 31 operations declare an argument literally
+ * named "Input" -- AES, DES, Blowfish, ChaCha, RC2, RC6, SM4, PRESENT, Ascon, Rabbit and the rest
+ * of the symmetric ciphers -- meaning the input FORMAT (Raw or Hex). Sanitised naively it becomes
+ * `input`, which the schema then overwrites with the data parameter. The operation consequently
+ * received the message text where it expected "Raw" or "Hex" and answered
+ *
+ *     Input must be one of the following: Raw, Hex.
+ *
+ * on every call. AES Encrypt and AES Decrypt, among the most obvious reasons to run this server,
+ * could not be invoked successfully at all. A colliding name is now suffixed rather than lost.
+ *
+ * @param {string} argName - The argument's name from OperationConfig.
+ * @returns {string} The property name to use in the tool schema.
+ */
+function toolArgName(argName) {
+    const sanitised = String(argName)
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "_")
+        .replace(/^_+|_+$/g, "");
+    return RESERVED_ARG_NAMES.has(sanitised) ? `${sanitised}_arg` : sanitised;
+}
+
+/**
  * Map CyberChef arguments to Zod schema.
  *
  * @param {Array} args - The arguments from OperationConfig.
@@ -40,7 +77,7 @@ function sanitizeToolName(name) {
 function mapArgsToZod(args) {
     const schema = {};
     args.forEach((arg) => {
-        const name = arg.name.toLowerCase().replace(/ /g, "_");
+        const name = toolArgName(arg.name);
         let zodType;
         let description = arg.type || "";
 
@@ -75,19 +112,56 @@ function mapArgsToZod(args) {
                     zodType = z.string();
                 }
                 break;
+            case "toggleString":
+                // A "toggleString" is a value PLUS the encoding it is written in -- a key given as
+                // Hex, UTF8, Base64 and so on. 63 operations use one, including AES Encrypt/Decrypt,
+                // and the operation receives `{option, string}`.
+                //
+                // It used to fall through to `default: z.string()`, so the schema advertised a bare
+                // string and the operation then did `key.option` on it. Every one of those 63 tools
+                // failed the same way -- `Cannot read properties of undefined (reading 'option')` --
+                // whether an argument was supplied or not. Measured by calling all 524 tools.
+                //
+                // Both forms are accepted, because both are reasonable things for a caller to send:
+                //   { key: "6f6d0bab" }                         -> option defaults to the first
+                //   { key: { string: "hunter2", option: "UTF8" } }
+                zodType = z.union([
+                    z.string(),
+                    z.object({
+                        string: z.string(),
+                        option: (Array.isArray(arg.toggleValues) && arg.toggleValues.length) ?
+                            z.enum([arg.toggleValues[0], ...arg.toggleValues.slice(1)]).optional() :
+                            z.string().optional()
+                    })
+                ]);
+                if (Array.isArray(arg.toggleValues) && arg.toggleValues.length) {
+                    // Kept: a caller cannot infer the default option from the schema alone, and
+                    // getting it wrong decodes the key with the wrong scheme.
+                    description = `string, or {string, option}; option one of ` +
+                        `${arg.toggleValues.join("/")} (default ${arg.toggleValues[0]})`;
+                }
+                break;
             case "editableOption":
                 // String, but we will try to match option names in execution
                 zodType = z.string();
                 if (Array.isArray(arg.value) && arg.value.length > 0) {
+                    // editableOption accepts free text as well as the listed values, so the list
+                    // is NOT expressible as an enum and this prose is the only place it appears.
                     const options = arg.value.map(v => (typeof v === "string" ? v : v.name)).join(", ");
-                    description += ` (Options: ${options})`;
+                    description = `free text, or one of: ${options}`;
                 }
                 break;
             default:
                 zodType = z.string();
         }
 
-        zodType = zodType.optional().describe(description);
+        // An argument description is emitted only when it ADDS something. It used to be seeded
+        // with the raw type name -- "option", "toggleString", "number" -- which the JSON Schema
+        // already states in `type`/`enum`, and then had the full option list appended, duplicating
+        // `enum` verbatim. Across 524 tools that redundancy came to roughly 42 KB, paid on every
+        // `tools/list` and carrying no information a client could not already read.
+        const informative = description && description !== (arg.type || "");
+        zodType = informative ? zodType.optional().describe(description) : zodType.optional();
         schema[name] = zodType;
     });
 
@@ -103,6 +177,35 @@ function mapArgsToZod(args) {
  * @returns {any} The resolved value.
  */
 function resolveArgValue(argDef, userValue) {
+    // toggleString is resolved first and separately, because BOTH its default and its supplied
+    // form have to become `{option, string}` -- the shape the operation destructures. The generic
+    // default handling below returns `argDef.value`, which for a toggleString is a bare string
+    // (usually ""), and that is exactly what produced
+    // `Cannot read properties of undefined (reading 'option')` across all 63 of these operations.
+    if (argDef.type === "toggleString") {
+        const options = Array.isArray(argDef.toggleValues) ? argDef.toggleValues : [];
+        const defaultOption = options[0] ?? "UTF8";
+
+        if (userValue === undefined || userValue === null) {
+            return { option: defaultOption, string: typeof argDef.value === "string" ? argDef.value : "" };
+        }
+        if (typeof userValue === "string") {
+            assertSafeRegexArg(argDef, userValue);
+            return { option: defaultOption, string: userValue };
+        }
+        if (typeof userValue === "object") {
+            const str = typeof userValue.string === "string" ? userValue.string : "";
+            assertSafeRegexArg(argDef, str);
+            // An unrecognised option is corrected to the default rather than passed through: the
+            // operation would otherwise decode the key with a scheme it does not know, and a
+            // wrongly-decoded key fails as "bad decrypt" a long way from the actual mistake.
+            const option = (typeof userValue.option === "string" && options.includes(userValue.option)) ?
+                userValue.option : defaultOption;
+            return { option, string: str };
+        }
+        return { option: defaultOption, string: String(userValue) };
+    }
+
     // 1. Handle Defaults if userValue is undefined
     if (userValue === undefined) {
         const defaultVal = argDef.value; // Fallback
@@ -172,4 +275,4 @@ function validateInputSize(input) {
     }
 }
 
-export { sanitizeToolName, mapArgsToZod, resolveArgValue, validateInputSize };
+export { sanitizeToolName, mapArgsToZod, resolveArgValue, validateInputSize, toolArgName };

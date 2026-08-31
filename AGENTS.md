@@ -20,21 +20,34 @@
 <<< MC-PROJECT-START >>>
 ## Project: CyberChef
 
-**CyberChef MCP Server** (v2.0.0) - Fork of GCHQ CyberChef wrapping the Node.js API into an MCP
+**CyberChef MCP Server** (v2.1.0) - Fork of GCHQ CyberChef wrapping the Node.js API into an MCP
 server. Exposes 504 operations (encryption, encoding, compression, forensics) as AI assistant tools.
 
 | Metric | Value |
 |--------|-------|
-| MCP Version | 2.0.0 (single source: `package.json` `mcpVersion`, read by `src/node/lib/config.mjs`) |
+| MCP Version | 2.1.0 (single source: `package.json` `mcpVersion`, read by `src/node/lib/config.mjs`) |
 | Upstream base | CyberChef **v11.4.0** |
-| Operations / tools | 504 operations, **524 tools** in `tools/list` |
+| Operations / tools | 504 operations. `tools/list` is an **index** by default (~24 tools, ~2.5k tokens); `CYBERCHEF_TOOL_SURFACE=curated\|all` for ~100 or all 524. All 504 reachable via `cyberchef_bake` + the three navigation tools. |
 | Licence | **GPL-3.0-or-later** (from v2.0.0; v1.9.x and earlier are Apache-2.0) |
 | Node | `>=24 <27`; image runs Node 26.8.1, digest-pinned |
-| Tests | 757 MCP (22 files) + 241 Node-API + 2,289 operations |
+| Tests | 798 MCP (25 files) + 241 Node-API + 2,289 operations + 8 CI-executed examples |
 | Coverage | 78.8% lines / 75.1% branches / 90.5% functions overall; `src/node/lib/**` at 95.2% lines |
 | Open security alerts | **0** Dependabot, **0** code-scanning |
 
 **Focus:** MCP server (`src/node/mcp-server.mjs` + `src/node/lib/**`), not the web app.
+
+**Test through a real MCP client, not hand-rolled JSON-RPC.** This is the v2.1.0 lesson and it is
+the expensive one. Every test before v2.1.0 spoke raw JSON-RPC or called handlers directly, and
+raw JSON-RPC does no schema validation -- so three releases shipped in which **every one of the 524
+tools carried an empty `inputSchema`** (`zod-to-json-schema@3` fails silently against Zod 4) and
+the suite was green throughout. The official SDK client rejects that response outright. The same
+blind spot hid logs going to stdout, 31 symmetric ciphers that could never be called, and a tool
+that killed the process. `tests/mcp/stdio-client-contract.test.mjs` exists to close it; do not add
+a protocol-level feature without a test that goes through the client.
+
+**Examples are executable and CI runs them.** `examples/` holds eight self-asserting scripts and
+`tests/mcp/examples.test.mjs` runs each one. Documentation that is not executed drifts -- see
+`docs/security/2026-08-30-saferegex-reverted-by-upstream-sync.md` for what that cost last time.
 
 **Fork hygiene — the rule that matters most here.** The sync mirrors `src/core/**` **except the
 three generated paths** (`config/modules/`, `config/OperationConfig.json`, `operations/index.mjs`,

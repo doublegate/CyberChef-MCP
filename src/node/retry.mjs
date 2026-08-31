@@ -166,19 +166,34 @@ export async function executeWithRetry(fn, options = {}) {
 export async function executeWithTimeoutAndRetry(fn, timeout, retryOptions = {}) {
     return executeWithRetry(
         async () => {
-            return Promise.race([
-                fn(),
-                new Promise((_, reject) =>
-                    setTimeout(
-                        () => reject(new CyberChefMCPError(
-                            ErrorCodes.TIMEOUT,
-                            `Operation timed out after ${timeout}ms`,
-                            { timeout }
-                        )),
-                        timeout
-                    )
-                )
-            ]);
+            // The timer is captured and CLEARED in `finally`. Losing the reference -- which is what
+            // the inline `new Promise((_, reject) => setTimeout(...))` form does -- leaves a live
+            // timer armed for the full timeout after the operation has already answered.
+            //
+            // Measured before the fix: a single `cyberchef_to_base64` call answered in 1,259 ms and
+            // then held the process open until 61,318 ms. For a stdio client that is a server which
+            // will not exit for a minute after its work is done, and under load it is one pending
+            // timer per call, all of them holding their captured error object.
+            //
+            // `Promise.race` does not cancel the loser; nothing does, unless it is done here.
+            let timer;
+            try {
+                return await Promise.race([
+                    fn(),
+                    new Promise((_, reject) => {
+                        timer = setTimeout(
+                            () => reject(new CyberChefMCPError(
+                                ErrorCodes.TIMEOUT,
+                                `Operation timed out after ${timeout}ms`,
+                                { timeout }
+                            )),
+                            timeout
+                        );
+                    })
+                ]);
+            } finally {
+                clearTimeout(timer);
+            }
         },
         retryOptions
     );

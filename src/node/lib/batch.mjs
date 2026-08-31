@@ -10,11 +10,13 @@
  * @license GPL-3.0-or-later
  */
 
-import { bake, help } from "../index.mjs";
+import { help } from "../index.mjs";
 import OperationConfig from "../../core/config/OperationConfig.json" with {type: "json"};
 import { BATCH_ENABLED, BATCH_MAX_SIZE, OPERATION_TIMEOUT } from "./config.mjs";
 import { executeWithTimeoutAndRetry, RetryConfig } from "../retry.mjs";
 import { createInputError } from "../errors.mjs";
+import { dishToText } from "./dish-output.mjs";
+import { bakeOnCore } from "./core-recipe.mjs";
 import { sanitizeToolName, resolveArgValue, validateInputSize } from "./tool-schema.mjs";
 
 /**
@@ -131,11 +133,11 @@ class BatchProcessor {
         // Handle bake operation
         if (toolName === "cyberchef_bake") {
             const result = await executeWithTimeoutAndRetry(
-                () => bake(op.arguments.input, op.arguments.recipe),
+                () => bakeOnCore(op.arguments.input, op.arguments.recipe),
                 OPERATION_TIMEOUT,
                 { ...context, maxRetries: RetryConfig.MAX_RETRIES }
             );
-            return typeof result.value === "string" ? result.value : JSON.stringify(result.value);
+            return dishToText(result);
         }
 
         // Handle search operation
@@ -163,12 +165,12 @@ class BatchProcessor {
 
         const recipe = [{ op: opName, args: recipeArgs }];
         const result = await executeWithTimeoutAndRetry(
-            () => bake(op.arguments.input, recipe),
+            () => bakeOnCore(op.arguments.input, recipe),
             OPERATION_TIMEOUT,
             { ...context, maxRetries: RetryConfig.MAX_RETRIES }
         );
 
-        return typeof result.value === "string" ? result.value : JSON.stringify(result.value);
+        return dishToText(result);
     }
 }
 

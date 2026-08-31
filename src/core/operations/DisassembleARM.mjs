@@ -7,7 +7,36 @@
 import Operation from "../Operation.mjs";
 import OperationError from "../errors/OperationError.mjs";
 import { isWorkerEnvironment } from "../Utils.mjs";
-import cs from "@alexaltea/capstone-js/dist/capstone.min.js";
+// capstone-js 5.x renamed the bundle: `dist/capstone.min.js` (3.x, asm.js) became
+// `dist/capstone.js` (WASM-backed). The old path does not exist in 5.x, so this import is what
+// the version bump requires.
+import capstoneFactory from "@alexaltea/capstone-js/dist/capstone.js";
+
+/**
+ * capstone-js 5.x is a WASM build and default-exports an Emscripten MODULARIZE **factory**, where
+ * 3.x default-exported the ready-made asm.js module. So `cs.Capstone` no longer exists on the
+ * import itself -- calling it as a constructor gives "cs.Capstone is not a constructor", which is
+ * how all 31 Disassemble ARM tests failed on the bump.
+ *
+ * Instantiating WASM is expensive and the result is stateless, so the promise is created ONCE and
+ * reused: concurrent callers await the same instance rather than each compiling their own copy.
+ * Deliberately not awaited at module scope -- a top-level await here would make importing this
+ * operation instantiate WASM even for a recipe that never disassembles anything, and every
+ * operation module is imported to build the tool list.
+ *
+ * @type {Promise<Object>|null}
+ */
+let capstonePromise = null;
+
+/**
+ * The resolved capstone module, instantiating it on first use.
+ *
+ * @returns {Promise<Object>} The capstone module namespace (`Capstone`, `ARCH_*`, `MODE_*`).
+ */
+function loadCapstone() {
+    if (!capstonePromise) capstonePromise = capstoneFactory();
+    return capstonePromise;
+}
 
 /**
  * Disassemble ARM operation
@@ -96,6 +125,8 @@ class DisassembleARM extends Operation {
         for (let i = 0; i < hexInput.length; i += 2) {
             bytes.push(parseInt(hexInput.substr(i, 2), 16));
         }
+
+        const cs = await loadCapstone();
 
         // Determine architecture constant
         let arch;

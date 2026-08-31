@@ -4,7 +4,7 @@ This project provides a **Model Context Protocol (MCP)** server interface for **
 
 By running this server, you enable AI assistants (like Claude, Cursor AI, and others) to natively utilize CyberChef's extensive library of **504 data manipulation operations**—including encryption, encoding, compression, and forensic analysis—as executable tools.
 
-**Latest Release:** v2.0.0 | [Release Notes](docs/releases/v2.0.0.md) | [Breaking Changes](docs/v2.0.0-breaking-changes.md) | [Security Policy](SECURITY.md) | [Open-alert disposition](docs/security/2026-08-31-open-alert-sweep.md)
+**Latest Release:** v2.1.0 | [Release Notes](docs/releases/v2.1.0.md) | [Tutorial](docs/guides/tutorial.md) | [Examples](examples/) | [Breaking Changes](docs/v2.0.0-breaking-changes.md) | [Security Policy](SECURITY.md)
 
 **Upstream base:** GCHQ CyberChef **v11.4.0** | **Licence:** GPL-3.0-or-later (from v2.0.0; v1.9.x and earlier remain Apache-2.0)
 
@@ -48,7 +48,7 @@ See [Upstream Sync Guide](docs/guides/upstream-sync-guide.md) for details on the
 The server exposes CyberChef operations as MCP tools:
 
 *   **`cyberchef_bake`**: The "Omni-tool". Executes a full CyberChef recipe (a chain of operations) on an input. Ideal for complex, multi-step transformations (e.g., "Decode Base64, then Gunzip, then prettify JSON").
-*   **Atomic Operations**: 504 individual tools for specific tasks, dynamically generated from the CyberChef configuration (524 tools total in `tools/list`, including the meta-tools and the recipe/batch/telemetry subsystems).
+*   **All 504 operations, without paying for 504 schemas** (v2.1.0): `tools/list` is an **index** by default — ~24 tools and ~2,500 tokens, rather than 524 tools and ~86,000. Every operation stays reachable: `cyberchef_categories` -> `cyberchef_list_operations` -> `cyberchef_describe_operation` walks down to any of them, `cyberchef_search` finds one by keyword, and `cyberchef_bake` runs any of them by name. `CYBERCHEF_TOOL_SURFACE=curated` (~100 tools) or `=all` (all 524) if you would rather pre-load. See the [User Guide](docs/guides/user_guide.md#the-tool-surface--how-many-tools-you-see-and-why).
     *   `cyberchef_to_base64` / `cyberchef_from_base64`
     *   `cyberchef_aes_decrypt`
     *   `cyberchef_sha2`
@@ -92,7 +92,7 @@ The server exposes CyberChef operations as MCP tools:
 *   **Advanced Features** (v1.7.0): Enterprise-grade capabilities with batch processing (parallel/sequential execution of up to 100 operations), privacy-first telemetry collection (disabled by default, no input/output data captured), sliding window rate limiting for resource protection, enhanced caching with inspection tools, and resource quota tracking (concurrent operations, data sizes). All features are configurable via environment variables with secure defaults. See [Release Notes](docs/releases/v1.7.0.md) for details.
 *   **Enhanced Observability** (v1.5.0): Structured JSON logging with Pino for production monitoring, comprehensive error handling with actionable recovery suggestions, automatic retry logic with exponential backoff, request correlation with UUID tracking, circuit breaker pattern for cascading failure prevention, and streaming infrastructure for progressive results on large operations. See [Release Notes](docs/releases/v1.5.0.md) for details.
 *   **Performance Optimized** (v1.4.0): LRU cache for operation results (100MB default), automatic streaming for large inputs (10MB+ threshold), configurable resource limits (100MB max input, 30s timeout), memory monitoring, and comprehensive benchmark suite. See [Performance Tuning Guide](docs/architecture/performance-tuning.md) for configuration options.
-*   **Upstream Sync Automation** (v1.3.0; **rebuilt in v2.0.0**): Weekly monitoring of upstream releases, an atomic whole-tree mirror, fork changes carried as patches that fail the sync if they stop applying, comprehensive validation (756 MCP + 241 Node-API + 2,289 operation tests), and an emergency rollback. See the [Upstream Sync Guide](docs/guides/upstream-sync-guide.md).
+*   **Upstream Sync Automation** (v1.3.0; **rebuilt in v2.0.0**): Weekly monitoring of upstream releases, an atomic whole-tree mirror, fork changes carried as patches that fail the sync if they stop applying, comprehensive validation (798 MCP + 241 Node-API + 2,289 operation tests), and an emergency rollback. See the [Upstream Sync Guide](docs/guides/upstream-sync-guide.md).
 *   **Security Hardened** (v1.4.5+): Chainguard distroless base image with zero-CVE baseline, non-root execution (UID 65532), automated Trivy vulnerability scanning with build-fail thresholds, dual SBOM strategy (Docker Scout attestations + CycloneDX), read-only filesystem support, SLSA Build Level 3 provenance, and 7-day SLA for critical CVE patches. Fixed 11 of 12 code scanning vulnerabilities including critical cryptographic randomness weakness and 7 ReDoS vulnerabilities. See [Security Policy](SECURITY.md) and [Security Fixes Report](docs/security/SECURITY_FIX_REPORT.md) for details.
 *   **Production Ready**: Comprehensive CI/CD with CodeQL v4, automated testing, and dual-registry container publishing (Docker Hub + GHCR) with complete supply chain attestations.
 
@@ -125,17 +125,17 @@ For environments without direct GHCR access, download the pre-built Docker image
 1.  **Download the tarball** (approximately 196 MB compressed; measured, not estimated):
     ```bash
     # Download from GitHub Releases
-    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v2.0.0/cyberchef-mcp-v2.0.0-docker-image.tar.gz
+    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v2.1.0/cyberchef-mcp-v2.1.0-docker-image.tar.gz
     ```
 
 2.  **Load the image into Docker:**
     ```bash
-    docker load < cyberchef-mcp-v2.0.0-docker-image.tar.gz
+    docker load < cyberchef-mcp-v2.1.0-docker-image.tar.gz
     ```
 
 3.  **Tag for easier usage:**
     ```bash
-    docker tag ghcr.io/doublegate/cyberchef-mcp_v2:v2.0.0 cyberchef-mcp
+    docker tag ghcr.io/doublegate/cyberchef-mcp_v2:v2.1.0 cyberchef-mcp
     ```
 
 4.  **Run the server:**
@@ -565,6 +565,11 @@ See the [**Full Roadmap**](docs/planning/ROADMAP.md) for detailed release plans 
 
 ## Documentation
 
+**New here? Start with the [Tutorial](docs/guides/tutorial.md)** — a guided first hour, from
+install to decoding a real sample. Then [`examples/`](examples/) for eight runnable scripts that
+CI executes on every change, so they cannot drift from the code.
+
+
 Detailed documentation is organized in the [`docs/`](docs/) directory:
 
 ### User Guides
@@ -620,6 +625,7 @@ Detailed documentation is organized in the [`docs/`](docs/) directory:
 *   [**Security Fixes Report**](docs/security/SECURITY_FIX_REPORT.md): Detailed report of 11 vulnerability fixes (ReDoS and cryptographic weaknesses)
 *   [**Security Fixes Summary**](docs/security/SECURITY_FIXES_SUMMARY.md): Quick reference for recent security improvements
 *   [**v2.0.0 Breaking Changes**](docs/v2.0.0-breaking-changes.md): Comprehensive migration guide for v2.0.0 with deprecation codes, examples, and FAQ
+*   [**Release Notes v2.1.0**](docs/releases/v2.1.0.md): Tool-list hierarchy (~97% smaller `tools/list`), Zod 4 schema fix, all 10 flow-control operations working, AES and 62 other toggleString operations fixed, logs to stderr, 60s shutdown hang removed, tutorial + 8 runnable examples
 *   [**Release Notes v2.0.0**](docs/releases/v2.0.0.md): Upstream v11.4.0 (504 operations), GPL-3.0-or-later relicense, Node 24 floor, per-session HTTP transport (#36), zero open security alerts, 757 MCP tests
 *   [**Open-alert disposition**](docs/security/2026-08-31-open-alert-sweep.md): Every Dependabot and code-scanning alert — fixed, suppressed with a justification, or dismissed with a reason
 *   [**Release Notes v1.9.0**](docs/releases/v1.9.0.md): MCP streaming, worker thread pool, HTTP transport, upstream v10.20.0, security updates, 689 tests
@@ -708,7 +714,7 @@ All workflows use the latest CodeQL Action v4 for security scanning and SARIF up
 # Run all tests (requires Node.js >=24 <27; 241 Node-API + 2,289 operation tests)
 npm test
 
-# Run MCP validation test suite (757 tests across 22 files, with Vitest)
+# Run MCP validation test suite (798 tests across 25 files, with Vitest)
 npm run test:mcp
 
 # Run MCP tests with coverage report
@@ -728,7 +734,7 @@ npm run lint
 ```
 
 **Test Coverage:**
-The MCP server maintains comprehensive test coverage across 22 test suites:
+The MCP server maintains comprehensive test coverage across 25 test suites:
 - **756 MCP tests**, plus 241 Node-API tests and 2,289 operation tests
 - **Coverage thresholds**: 75% lines/statements, 90% functions, 70% branches
 - **Current coverage**: 78.8% lines, 78.7% statements, 90.5% functions, 75.1% branches

@@ -57,6 +57,26 @@ updates:
       # that sync and desynchronise us from the pinned upstream base.
       - dependency-name: "grunt"
       - dependency-name: "grunt-*"
+      # Two majors HELD, with the evidence recorded rather than the PR silently closed each week.
+      # Both break upstream-owned files we mirror verbatim, and upstream still pins the old line,
+      # so taking them means carrying a fork patch against code upstream will keep changing.
+      #
+      #   @xmldom/xmldom 0.9 -- `parseFromString` made mimeType REQUIRED and `errorHandler` was
+      #     replaced by `onError`. Both are mechanical, and BOTH WERE TRIED: the resulting DOM
+      #     still differs enough that `CSS selector` returns 0 matches and `XPath expression`
+      #     returns 1 of 2 through the real pipeline. Behavioural, not a rename. Upstream pins
+      #     ^0.8.14.
+      #   geodesy 2.x -- upstream's own comment says the blocker is "cannot load .js modules into
+      #     a .mjs file", which is STALE: geodesy 2 is `"type": "module"` and imports fine on
+      #     Node 24. The real blocker is that v2's LatLon subclasses do not compose --
+      #     `utm.js` exports a LatLon with `toUtm` and no `toOsGrid`, `osgridref.js` the reverse,
+      #     and ConvertCoordinates.mjs needs both on one object. Upstream pins 1.1.3 exactly.
+      #
+      # Re-evaluate when upstream moves; drop the ignore then rather than carrying a patch.
+      - dependency-name: "@xmldom/xmldom"
+        versions: [">=0.9.0"]
+      - dependency-name: "geodesy"
+        versions: [">=2.0.0"]
 
   # ------------------------------------------------------- github-actions
   # The 0.28.0 -> v0.36.0 trivy-action breakage that took Security Scan down for months

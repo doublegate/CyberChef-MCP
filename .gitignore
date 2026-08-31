@@ -22,7 +22,6 @@ dist/
 src/core/config/modules/*
 src/core/config/OperationConfig.json
 src/core/operations/index.mjs
-src/core/lib/HTMLEntities.mjs
 tests/operations/index.mjs
 src/node/config/OperationConfig.json
 src/node/index.mjs
@@ -58,6 +57,19 @@ WARP.md
 coverage/
 test-results/
 .nyc_output/
+
+# The default recipe store. `CYBERCHEF_RECIPE_STORAGE` defaults to ./recipes.json, so running the
+# server or the examples from a checkout writes one into the repository root. It is user data --
+# and it may hold keys and IVs, since a saved recipe carries its arguments.
+recipes.json
+recipes.json.bak
+recipes.json.*.tmp
+
+# Reference checkouts for the external-project integration work (docs/planning/ext-proj-int/).
+# `ref-proj/CyberChef` is a tracked submodule and stays visible -- see the note below; the other
+# clones are local working copies of third-party repositories and are nobody else's business.
+/ref-proj/*
+!/ref-proj/CyberChef
 
 # Antigravity PR reviewer: large-diff on-disk handoff (transient, removed by the script).
 /.agy-review-work/

@@ -1,6 +1,6 @@
 # CyberChef MCP Server - Product Roadmap
 
-**Current version:** **v2.0.0** (released 2026-08-31) · **Upstream base:** CyberChef v11.4.0
+**Current version:** **v2.1.0** (released 2026-08-31) · **Upstream base:** CyberChef v11.4.0
 **Planned through:** v3.0.0
 **Timeline:** January 2026 - August 2027
 **Last Updated:** 2026-08-31
@@ -91,7 +91,15 @@ gantt
 | **v1.8.0** | Breaking Changes Prep | Deprecation warnings, migration guides | M | High | Released |
 | **v1.9.0** | Pre-v2.0.0 Polish | Streaming, workers, HTTP transport, security | M | Medium | Released |
 | **v2.0.0** | Major Release | Upstream v11.4.0 (504 ops), GPL-3.0-or-later relicense, Node 24 floor, per-session HTTP transport, zero open security alerts | XL | High | **Released 2026-08-31** |
+| **v2.1.0** | Usability & correctness | Tool-list hierarchy (~97% smaller `tools/list`), Zod 4 schema fix, all 10 flow-control operations working, 31 ciphers + 63 key-taking operations fixed, server-killing crash removed, 60s shutdown hang removed, tutorial + 8 CI-tested examples | L | High | **Released 2026-08-31** |
 
+> **v2.1.0 was not planned at all.** It exists because smoke-testing the published v2.0.0 image --
+> calling all 524 tools in turn, and driving the server with a real MCP SDK client rather than the
+> hand-rolled JSON-RPC every test used -- found that none of the tools carried a usable input
+> schema, 31 symmetric ciphers could never be called, and one tool call killed the process. The
+> lesson recorded for future phases: **a protocol server must be tested through a client that
+> enforces the protocol**, not through requests hand-built to match the server's own assumptions.
+>
 > **What v2.0.0 actually shipped differs from what this table planned**, and the difference is
 > worth recording. "Breaking changes, API stabilization, type system" assumed the upstream base was
 > current; it was six releases behind, and the sync mechanism could not express the jump. The

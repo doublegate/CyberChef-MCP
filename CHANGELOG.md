@@ -9,6 +9,137 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Nothing yet.
 
+## [2.1.0] - 2026-08-31
+
+The release that made v2.0.0's tools actually usable. Every finding below was discovered by
+**smoke-testing the published v2.0.0 image** — calling all 524 tools in turn and running a real MCP
+client against the server, rather than the raw JSON-RPC every existing test used.
+
+### Fixed
+
+- **Every tool advertised an EMPTY input schema, and had since v1.8.0.** `zod-to-json-schema@3`
+  targets Zod v3 and fails **silently** against Zod v4 (which landed in v1.8.0): given any v4
+  schema it returns the bare envelope `{"$schema": "…draft-07/schema#"}` — no `type`, no
+  `properties`, no `required`, and no error. Raw JSON-RPC does no schema validation, so 524 tools
+  "listed fine"; the official MCP SDK client **rejected the entire `tools/list` response** with 524
+  `invalid_value` errors. Confirmed against the published images: 483/483 empty on v1.9.0, 524/524
+  on v2.0.0. A lenient client fared no better in practice — it showed the model tools whose
+  arguments it could not see. Replaced with Zod 4's native `z.toJSONSchema()`; `zod-to-json-schema`
+  is dropped as a dependency.
+
+- **31 operations — every symmetric cipher — could never be called successfully.** AES, DES,
+  Triple DES, Blowfish, ChaCha, RC2, RC6, SM4, PRESENT, Ascon and Rabbit each declare an argument
+  literally named `Input` (the input *format*: `Raw` or `Hex`). Sanitised naively that became
+  `input`, which the schema then overwrote with the data parameter — so the operation received the
+  message text where it expected `"Raw"` and answered `Input must be one of the following: Raw,
+  Hex.` on every call. A colliding name is now suffixed: **`input_arg`**. The sanitisation itself
+  moved into one shared `toolArgName()` used by the schema builder, the dispatch path and the
+  recipe converter, which previously held three subtly different copies of it.
+
+- **63 operations that take a key or IV were unusable.** `toggleString` arguments — a value plus
+  the encoding it is written in — were advertised as plain strings while the operation
+  destructures `{option, string}`, so every one failed with `Cannot read properties of undefined
+  (reading 'option')` whether or not an argument was supplied. Both forms are now accepted:
+  `"key": "00ff"` (encoding defaults to the first listed) and
+  `"key": {"string": "hunter2", "option": "UTF8"}`.
+
+- **Ten advertised tools could never work.** `cyberchef_magic`, `_fork`, `_merge`, `_jump`,
+  `_conditional_jump`, `_label`, `_register`, `_subsection`, `_comment` and `_return` are
+  flow-control operations, and the Node API wrapper refused them outright
+  (`flowControl operations like Magic are not currently allowed in recipes for chef.bake in the
+  Node API`). The restriction is not a property of the operations: `src/core/Recipe.mjs` executes
+  flow control properly, assembling the `opList`/`numJumps`/`numRegisters`/`forkOffset` state they
+  need. Recipes now run on that engine, so all ten behave as they do in the CyberChef web UI —
+  verified individually: `Fork` splits and merges, `Return` halts, `Jump` skips, `Register`
+  substitutes `$R0`, `Subsection` applies its branch only to matched regions.
+
+- **A single tool call could kill the server for every connected client.** `argon2-browser` fetches
+  its `.wasm` by filesystem path, which Node's `fetch` rejects — and `jq-web`'s Emscripten runtime
+  installs a process-wide `unhandledRejection` handler that calls `abort()`. So
+  `cyberchef_argon2_compare` terminated the process; in the all-tools sweep the 484 tools after it
+  all reported "Not connected". Upstream fixed this for **tests only**
+  (`tests/lib/wasmFetchPolyfill.mjs`), which is why the suite passed while the shipped server
+  crashed. The equivalent now lives in the MCP layer, outside every sync allowlist.
+
+- **The server would not exit for 60 seconds after finishing its work.** Two leaked timers, both
+  armed on every request: `executeWithTimeoutAndRetry` built its `Promise.race` timeout with the
+  handle discarded, so a 30s timer stayed armed after the operation had already answered; and the
+  logger's context sweeper was never `unref`'d. Measured: a call that answered in 1,259 ms held the
+  process open until 61,318 ms. Now 1,275 ms. The shell example that surfaced this went from 187.6 s
+  to 6.4 s.
+
+- **Decoding returned character codes instead of text.** 175 of 504 operations declare a non-string
+  output type, and the result was serialised with `JSON.stringify(value)` — so `From Base64` of
+  `SGVsbG8sIENoZWYh` returned `[72,101,108,108,111,44,32,67,104,101,102,33]` rather than
+  `Hello, Chef!`. Valid JSON, and useless. Results are now presented the way the CyberChef UI
+  presents them, and `html`-output operations (61 of them, `Magic` included) are converted to plain
+  text the same way the Node API already converts them.
+
+- **Every log line went to STDOUT**, which the MCP stdio transport reserves exclusively for
+  JSON-RPC. `logger.mjs` carried a comment saying "Write to stderr to avoid interfering with MCP
+  protocol on stdout" and nothing implemented it — pino defaults to fd 1. Measured on the published
+  image: 19 log lines on stdout, 0 on stderr, interleaved with the `tools/list` response.
+
+- **`Generate all hashes` silently returned its input unchanged.** Its NTLM/LM step calls
+  `createCipheriv` with DES-ECB, which OpenSSL 3 moved out of the default provider, and the
+  operation swallowed the failure. `--openssl-legacy-provider` is now set by `npm run mcp` and by
+  the Docker image's `NODE_OPTIONS`.
+
+- **`cyberchef_batch` destroyed its own error message.** The catch block computed
+  `JSON.stringify(args.operations).length`, and `JSON.stringify(undefined)` is not a string — so a
+  call with no arguments reported `Cannot read properties of undefined (reading 'length')` instead
+  of the structured `Operations must be a non-empty array` the guard had correctly produced.
+
+- **A flaky CipherSaber2 test.** Its assertion counted *characters* of randomly-generated *bytes*,
+  so a byte pair that decoded as one character failed it (~0.2% of runs). It now asserts on bytes.
+
+### Added
+
+- **A tool-list hierarchy — `tools/list` is an index, not a catalogue.** Three navigation tools
+  (`cyberchef_categories`, `cyberchef_list_operations`, `cyberchef_describe_operation`) let a client
+  walk to any operation and read its full argument schema on demand, while `cyberchef_bake` runs any
+  of the 504 by name. Measured: **~24 tools and ~2,500 tokens**, against 524 tools and ~86,000 for
+  the full surface. Exhaustively verified — walking every category reaches **504/504** operations
+  and describes **504/504**, with zero orphans.
+- **`CYBERCHEF_TOOL_SURFACE`** — `index` (default), `curated` (~100 tools, ~16,600 tokens) or `all`
+  (524 tools, ~86,000 tokens), plus `CYBERCHEF_TOOL_ALLOWLIST` for an explicit set.
+- **A [Tutorial](docs/guides/tutorial.md)** and a rewritten [User Guide](docs/guides/user_guide.md),
+  which now documents **every** environment variable the code reads (it previously listed 7 of ~30).
+- **[`examples/`](examples/) — eight runnable, self-asserting scripts**, executed by
+  `tests/mcp/examples.test.mjs` on every change, so a broken example fails CI instead of quietly
+  rotting.
+- **`tests/mcp/stdio-client-contract.test.mjs`** — drives the real MCP SDK client over a real child
+  process. Both schema and stdout defects above were invisible to every existing test because they
+  all spoke raw JSON-RPC; this suite is the one that would have caught them.
+- **`tests/mcp/tool-surface.test.mjs`** — the three surfaces and the exhaustive reachability proof.
+- **`@alexaltea/capstone-js` 3.0.5 → 5.0.9**, migrating `Disassemble ARM` to the WASM module factory
+  the 5.x line ships.
+
+### Changed
+
+- **The default tool surface is `index`.** A client that hard-codes a tool name outside it will no
+  longer find that name in `tools/list`. Two one-line remedies: `CYBERCHEF_TOOL_SURFACE=all`, or
+  call the operation through `cyberchef_bake`, which never stopped working.
+- Tool descriptions are trimmed to 240 characters of plain text
+  (`CYBERCHEF_MAX_TOOL_DESCRIPTION`), and the redundant `$schema` line is dropped from every
+  `inputSchema` — 21 KB of identical boilerplate across 524 tools.
+- Chainguard base images bumped to the current digests.
+
+### Held, with evidence
+
+Three Dependabot majors were evaluated, reproduced and **declined** rather than closed silently.
+`.github/dependabot.yml` records the reasoning so they stop being re-proposed weekly:
+
+- **`@xmldom/xmldom` 0.9** — the two mechanical migrations (`parseFromString` requires a mimeType;
+  `errorHandler` became `onError`) were both applied, and the resulting DOM still differs enough
+  that `CSS selector` returns 0 matches and `XPath expression` 1 of 2. Behavioural, not a rename.
+- **`geodesy` 2.x** — upstream's own comment blames "cannot load .js modules into a .mjs file",
+  which is **stale**: geodesy 2 is `"type": "module"` and imports fine on Node 24. The real blocker
+  is that v2's `LatLon` subclasses do not compose — `utm.js` exports one with `toUtm` and no
+  `toOsGrid`, `osgridref.js` the reverse, and `ConvertCoordinates.mjs` needs both on one object.
+- **`jq-web` 0.6** — its module namespace exports `then`, which makes it a thenable; `await import()`
+  of a thenable module throws, and it broke 10 test files.
+
 ## [2.0.0] - 2026-08-31
 
 Upstream **v11.4.0** (504 operations) · **GPL-3.0-or-later** · Node `>=24 <27` · **zero open
