@@ -146,6 +146,27 @@ AGY_PRINT_TIMEOUT="${AGY_PRINT_TIMEOUT:-5m}"
 # from a backend outage: `Error: timeout waiting for response`, three times, with no review.
 AGY_TIMEOUT_SECONDS_PER_MIB="${AGY_TIMEOUT_SECONDS_PER_MIB:-240}"
 AGY_PRINT_TIMEOUT_MAX_SECONDS="${AGY_PRINT_TIMEOUT_MAX_SECONDS:-1800}"
+
+# Both of the above reach `$(( ... ))`, and bash arithmetic RECURSIVELY EXPANDS variable contents --
+# so a value naming another variable that holds a command substitution executes it:
+#
+#     V=a; a='$(echo PWNED >&2; echo 7)'; echo $(( V ))    ->  PWNED  /  7
+#
+# Verified, not assumed. These are workflow-set rather than attacker-set, so this is defence in
+# depth rather than a live hole -- but a numeric setting that can run a command is not a property
+# to leave standing because today's callers are trusted. Anything not a plain non-negative decimal
+# integer falls back to the default, loudly.
+for _agy_num in AGY_TIMEOUT_SECONDS_PER_MIB AGY_PRINT_TIMEOUT_MAX_SECONDS; do
+  case "${!_agy_num}" in
+    ""|*[!0-9]*)
+      log "$_agy_num ('${!_agy_num}') is not a non-negative integer; using the default"
+      case "$_agy_num" in
+        AGY_TIMEOUT_SECONDS_PER_MIB)   AGY_TIMEOUT_SECONDS_PER_MIB=240 ;;
+        AGY_PRINT_TIMEOUT_MAX_SECONDS) AGY_PRINT_TIMEOUT_MAX_SECONDS=1800 ;;
+      esac ;;
+  esac
+done
+unset _agy_num
 AGY_DIFF_MODE="${AGY_DIFF_MODE:-auto}"     # auto|inline|file. A diff is passed to agy either inlined
                                            # in the --print prompt, or written to a FILE agy reads with
                                            # its own tools. `auto` inlines a diff that fits under the
@@ -668,6 +689,8 @@ fi
 # bytes it must read and reason over.
 #
 # An explicit AGY_PRINT_TIMEOUT wins, so a caller can still pin it.
+readonly BYTES_PER_MIB=1048576
+
 # >>> SELFTEST-EXTRACT: duration parser
 # Parse a duration ("90", "90s", "5m", "1h") to seconds. Echoes nothing and returns 1 if the value
 # is not one of those forms -- deliberately, so a caller can decide, rather than feeding a
@@ -683,7 +706,9 @@ duration_to_seconds() {
     *)  n="$v";     unit=1 ;;
   esac
   case "$n" in ""|*[!0-9]*) return 1 ;; esac         # "m" alone, or "1m2s"
-  printf '%s' $(( n * unit ))
+  # `10#` forces base 10. Without it bash reads a leading zero as OCTAL, so a perfectly valid
+  # `08m` dies with "value too great for base" -- and `010s` would silently mean 8 seconds.
+  printf '%s' $(( 10#$n * unit ))
 }
 # <<< SELFTEST-EXTRACT
 
@@ -698,7 +723,7 @@ scale_timeout_for_diff() {
   # Computed from BYTES, not from truncated whole MiB: `mib = bytes / 1048576` in integer
   # arithmetic gives a 1.99 MiB diff exactly one MiB of extra budget, which is the wrong side to
   # round on for the case this exists to fix.
-  local extra=$(( bytes * AGY_TIMEOUT_SECONDS_PER_MIB / 1048576 ))
+  local extra=$(( bytes * AGY_TIMEOUT_SECONDS_PER_MIB / BYTES_PER_MIB ))
   [ "$extra" -gt 0 ] || return 0        # rounds to nothing: keep the base budget untouched
 
   local base_s

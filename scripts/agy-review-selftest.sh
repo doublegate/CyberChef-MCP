@@ -318,6 +318,11 @@ check "duration: bare seconds"     "90"   "$(duration_to_seconds 90)"
 check "duration: explicit seconds" "90"   "$(duration_to_seconds 90s)"
 check "duration: minutes"          "300"  "$(duration_to_seconds 5m)"
 check "duration: hours"            "3600" "$(duration_to_seconds 1h)"
+check "duration: leading zero minutes"  "480" "$(duration_to_seconds 08m)"
+check "duration: leading zero seconds"  "9"   "$(duration_to_seconds 09s)"
+# 10, not 8. That IS the fix: without `10#` bash reads the leading zero as octal, so this would
+# silently mean 8 seconds -- a wrong answer rather than an error, which is the worse of the two.
+check "duration: leading zero bare"     "10"  "$(duration_to_seconds 010)"
 for bad in m s "" 1m2s 5x -3 " 5m" 5M; do
   check "duration: rejects '$bad'" "1" "$(duration_to_seconds "$bad" >/dev/null 2>&1; echo $?)"
 done
