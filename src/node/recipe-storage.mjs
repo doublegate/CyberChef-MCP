@@ -21,6 +21,14 @@ const MAX_RECIPES = parseInt(process.env.CYBERCHEF_RECIPE_MAX_COUNT, 10) || 1000
 const BACKUP_ENABLED = process.env.CYBERCHEF_RECIPE_BACKUP !== "false"; // Enabled by default
 
 /**
+ * How old a staging file must be before a sweep will remove it.
+ *
+ * Well beyond any live write -- a save completes in milliseconds -- so a concurrent save's
+ * staging file is never a candidate. Module scope rather than per-call: it is a constant.
+ */
+const STALE_TEMP_AFTER_MS = 60 * 60 * 1000;
+
+/**
  * Storage schema version.
  */
 const STORAGE_VERSION = "1.0.0";
@@ -135,10 +143,9 @@ export class RecipeStorage {
      * @returns {Promise<void>} Always resolves.
      */
     async cleanupStaleTempFiles() {
-        const STALE_AFTER_MS = 60 * 60 * 1000;
         const dir = dirname(this.filePath);
         const prefix = `${basename(this.filePath)}.`;
-        const cutoff = Date.now() - STALE_AFTER_MS;
+        const cutoff = Date.now() - STALE_TEMP_AFTER_MS;
         let handle;
         try {
             // opendir rather than readdir: this directory is caller-supplied via
