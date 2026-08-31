@@ -175,7 +175,7 @@ jobs:
           category: 'trivy-dependency-scan'
 
       - name: Upload npm audit results
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: npm-audit-results
@@ -216,7 +216,7 @@ jobs:
           vuln-type: 'os,library'
 
       - name: Upload SBOM artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: sbom-cyclonedx
           path: sbom.cyclonedx.json

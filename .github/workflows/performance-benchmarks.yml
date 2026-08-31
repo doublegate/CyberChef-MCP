@@ -66,7 +66,7 @@ jobs:
       # this workflow can post, and it was previously discarded.
       - name: Upload benchmark output
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: benchmark-output
           path: benchmark-output.txt
@@ -91,7 +91,7 @@ jobs:
       pull-requests: write
     steps:
       - name: Download benchmark output
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: benchmark-output
         continue-on-error: true
