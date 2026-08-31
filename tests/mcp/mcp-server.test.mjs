@@ -9,6 +9,7 @@
  * @license GPL-3.0-or-later
  */
 
+import { expectValidVersion } from "./helpers/version.mjs";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { bake, help } from "../../src/node/index.mjs";
 import {
@@ -228,14 +229,7 @@ describe("MCP Server Core Functions", () => {
 
     describe("VERSION and Configuration", () => {
         it("should have correct version", () => {
-            // Asserted as a SHAPE, not against pkg.mcpVersion.
-            //
-            // `expect(VERSION).toBe(pkg.mcpVersion)` reads like a test and is a tautology:
-            // config.mjs IS `pkg.mcpVersion`, so the assertion compares a value to itself and can
-            // never fail. What can still go wrong is the export vanishing or package.json carrying
-            // a malformed version, and those are what this checks.
-            expect(typeof VERSION).toBe("string");
-            expect(VERSION).toMatch(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/);
+            expectValidVersion(VERSION);
         });
 
         it("should have valid configuration defaults", () => {

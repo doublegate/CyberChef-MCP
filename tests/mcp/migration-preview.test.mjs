@@ -15,7 +15,6 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import {
-    VERSION,
     analyzeRecipeCompatibility,
     transformRecipeToV2,
     getDeprecationStats,
@@ -30,21 +29,6 @@ import {
 describe("v1.8.0 Features - Migration Preview", () => {
     beforeEach(() => {
         resetDeprecations();
-    });
-
-    describe("VERSION", () => {
-        it("is a valid semver string", () => {
-            // Deliberately a SHAPE check rather than a comparison against a literal or against
-            // package.json.
-            //
-            // A literal ("2.0.0") is a second source of truth that must be edited in lockstep with
-            // the first, and its failure says nothing about what broke. A comparison against
-            // `pkg.mcpVersion` is worse: config.mjs IS `pkg.mcpVersion`, so it compares a value to
-            // itself and can never fail. What can still break is the export vanishing or
-            // package.json carrying a malformed version.
-            expect(typeof VERSION).toBe("string");
-            expect(VERSION).toMatch(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/);
-        });
     });
 
     describe("DEPRECATION_CODES", () => {
