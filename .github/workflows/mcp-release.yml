@@ -194,7 +194,20 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
         run: |
+          # A GitHub Release only makes sense for a TAG.
+          #
+          # This workflow also has a `workflow_dispatch` trigger, and a manual run happens on a
+          # BRANCH -- so `github.ref_name` is `master`, not `v2.1.0`. Without this guard the step
+          # would run `gh release create master --verify-tag`, which fails because no tag named
+          # `master` exists, and on a repository where one did it would publish a release named
+          # after a branch. The image push above is still useful on a manual run; this part is not.
+          if [ "$REF_TYPE" != "tag" ]; then
+            echo "::notice::ref_type is '$REF_TYPE', not 'tag' -- skipping release creation."
+            exit 0
+          fi
+
           # Check if release exists, create if not.
           #
           # The notes come from docs/releases/<tag>.md when that file exists. They used to be the
