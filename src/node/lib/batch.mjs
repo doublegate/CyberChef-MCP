@@ -30,12 +30,16 @@ class BatchProcessor {
      * @returns {Promise<Object>} Batch results.
      */
     async executeBatch(operations, mode = "parallel", context = {}) {
-        if (!BATCH_ENABLED) {
-            throw createInputError("Batch processing is disabled", { batchSize: operations.length });
-        }
-
+        // Shape check FIRST. The disabled-batch guard below reports `operations.length` in its
+        // context, so running it first meant a disabled-batch call with a missing or non-array
+        // `operations` threw a bare TypeError instead of the structured INVALID_INPUT the caller
+        // is promised -- the feature flag turning a validation error into a crash.
         if (!Array.isArray(operations) || operations.length === 0) {
             throw createInputError("Operations must be a non-empty array", { received: typeof operations });
+        }
+
+        if (!BATCH_ENABLED) {
+            throw createInputError("Batch processing is disabled", { batchSize: operations.length });
         }
 
         if (operations.length > BATCH_MAX_SIZE) {
@@ -106,11 +110,14 @@ class BatchProcessor {
      */
     async executeOperation(op, context) {
         if (!op.tool || !op.tool.startsWith("cyberchef_")) {
-            throw new Error(`Invalid tool name: ${op.tool}`);
+            throw createInputError(`Invalid tool name: ${op.tool}`, { tool: op.tool });
         }
 
         if (!op.arguments || typeof op.arguments !== "object") {
-            throw new Error("Operation arguments must be an object");
+            throw createInputError("Operation arguments must be an object", {
+                tool: op.tool,
+                received: typeof op.arguments
+            });
         }
 
         // Validate input if present
@@ -140,7 +147,7 @@ class BatchProcessor {
         // Handle standard operations
         const opName = Object.keys(OperationConfig).find(k => sanitizeToolName(k) === toolName);
         if (!opName) {
-            throw new Error(`Operation not found: ${toolName}`);
+            throw createInputError(`Operation not found: ${toolName}`, { tool: toolName });
         }
 
         const opConfig = OperationConfig[opName];
