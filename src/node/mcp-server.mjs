@@ -9,12 +9,18 @@
 
 import { help } from "./index.mjs";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import {
+    CallToolRequestSchema, ListToolsRequestSchema,
+    ListPromptsRequestSchema, GetPromptRequestSchema,
+    ListResourcesRequestSchema, ReadResourceRequestSchema, ListResourceTemplatesRequestSchema
+} from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import Utils from "../core/Utils.mjs";
 import OperationConfig from "../core/config/OperationConfig.json" with {type: "json"};
 import { toContentBlocks } from "./lib/content-blocks.mjs";
 import { annotationsForOperation, annotationsForMetaTool } from "./lib/tool-annotations.mjs";
+import { listPrompts, getPrompt } from "./lib/prompts.mjs";
+import { listResources, readResource, listResourceTemplates } from "./lib/resources.mjs";
 import { bakeOnCore } from "./lib/core-recipe.mjs";
 import { isExposed, describeSurface } from "./lib/tool-surface.mjs";
 import { categoryIndex, listOperations, describeOperations } from "./lib/tool-catalog.mjs";
@@ -260,16 +266,31 @@ const batchProcessor = new BatchProcessor();
 // Note: CPU_INTENSIVE_OPERATIONS moved to worker-pool.mjs
 // Note: STREAMING_OPERATIONS is imported from streaming.mjs
 
+/**
+ * What this server advertises it can do.
+ *
+ * ONE declaration, for the same reason `registerHandlers` is one registration site: there are two
+ * places a server is constructed -- the module singleton that backs stdio, and the per-session
+ * factory that backs HTTP -- and two capability lists drift. That is not hypothetical. Adding
+ * prompts and resources updated the factory and left the singleton advertising `tools` only, so
+ * every stdio client (which is most of them) would have been told this server has no prompts while
+ * the handlers sat there answering.
+ *
+ * A capability listed here MUST have a handler in `registerHandlers`; advertising one without a
+ * handler makes a client call something that answers "method not found".
+ */
+const SERVER_CAPABILITIES = {
+    tools: {},
+    prompts: {},
+    resources: {}
+};
+
 const server = new Server(
     {
         name: "cyberchef-mcp",
         version: VERSION,
     },
-    {
-        capabilities: {
-            tools: {},
-        },
-    }
+    { capabilities: SERVER_CAPABILITIES }
 );
 
 
@@ -1140,11 +1161,7 @@ function createMcpServer() {
             name: "cyberchef-mcp",
             version: VERSION,
         },
-        {
-            capabilities: {
-                tools: {},
-            },
-        }
+        { capabilities: SERVER_CAPABILITIES }
     );
     registerHandlers(instance);
     return instance;
@@ -1169,6 +1186,19 @@ function registerHandlers(instance) {
     // "the module singleton", which for an HTTP session is precisely the bug this PR fixes,
     // returning silently. Bound this way it degrades to *this session's* server instead.
     instance.setRequestHandler(CallToolRequestSchema, (req, extra) => handleCallTool(req, extra, instance));
+
+    // Prompts: the entry points for someone who does not yet know which of 504 operations
+    // they need. See lib/prompts.mjs.
+    instance.setRequestHandler(ListPromptsRequestSchema, () => listPrompts());
+    instance.setRequestHandler(GetPromptRequestSchema, (req) =>
+        getPrompt(req.params.name, req.params.arguments || {}));
+
+    // Resources: saved recipes, browsable without spending a tool call. See lib/resources.mjs.
+    instance.setRequestHandler(ListResourcesRequestSchema, () => listResources(recipeManager));
+    instance.setRequestHandler(ListResourceTemplatesRequestSchema, () => listResourceTemplates());
+    instance.setRequestHandler(ReadResourceRequestSchema, (req) =>
+        readResource(recipeManager, req.params.uri));
+
     return instance;
 }
 
