@@ -386,11 +386,17 @@ cleanup() {
   local keep_set="${keep_artifacts:-}"
   local -a doomed=()
   local f
-  for f in "$diff_file" "$diff_err" "$meta_file" "$out_file" "$raw" "$body_file"; do
+  # `${v:-}` on every name, even though all of them are pre-declared at the top of the script and
+  # cannot be unset here. Belt-and-braces on purpose: this is an EXIT trap, so if a future edit
+  # ever moves the trap above the pre-declarations, the failure would be an `unbound variable`
+  # abort DURING cleanup -- temp files left behind, and a confusing error masking the real exit
+  # cause. The pre-declaration stays and is still the actual guarantee; this is the cheap second
+  # line for a function that only ever runs while something else is going wrong.
+  for f in "${diff_file:-}" "${diff_err:-}" "${meta_file:-}" "${out_file:-}" "${raw:-}" "${body_file:-}"; do
     [ -n "$f" ] && doomed+=("$f")
   done
   if [ -z "$keep_set" ]; then
-    for f in "$prompt_file" "$agy_diff_file"; do
+    for f in "${prompt_file:-}" "${agy_diff_file:-}"; do
       [ -n "$f" ] && doomed+=("$f")
     done
   fi
@@ -398,8 +404,8 @@ cleanup() {
   # Remove the gitignored diff-handoff scratch dir once its file is gone. `rmdir` only unlinks an
   # empty dir, so a concurrent run's file (a different $$) is never clobbered; a non-empty dir is
   # gitignored and harmless if left behind.
-  [ -n "$agy_work_dir" ] && [ -z "$keep_set" ] && rmdir "$agy_work_dir" 2>/dev/null || true
-  if [ -n "$agy_refs_created" ] && [ -n "${PR:-}" ]; then
+  [ -n "${agy_work_dir:-}" ] && [ -z "$keep_set" ] && rmdir "${agy_work_dir}" 2>/dev/null || true
+  if [ -n "${agy_refs_created:-}" ] && [ -n "${PR:-}" ]; then
     git update-ref -d "refs/agy/pr-${PR}" 2>/dev/null || true
     git update-ref -d "refs/agy/base-${PR}" 2>/dev/null || true
   fi
