@@ -125,7 +125,10 @@ class ResizeImage extends Operation {
             } else {
                 imageBuffer = await image.getBuffer(image.mime);
             }
-            return imageBuffer.buffer;
+            // FORK CHANGE (patches/fork/09): return the image, not the whole pool it was
+            // allocated in. https://nodejs.org/docs/latest-v24.x/api/buffer.html#bufbyteoffset
+            // -- upstream fixed exactly this in GenerateImage.mjs and left the siblings.
+            return imageBuffer.buffer.slice(imageBuffer.byteOffset, imageBuffer.byteOffset + imageBuffer.byteLength);
         } catch (err) {
             throw new OperationError(`Error resizing image. (${err})`);
         }

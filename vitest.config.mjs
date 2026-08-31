@@ -51,6 +51,7 @@ export default defineConfig({
                 "build/**",
                 "dist/**",
                 "src/core/vendor/**",
+                "src/vendor/**",
                 "src/core/operations/legacy/**",
                 "**/*.test.{js,mjs}",
                 "**/*.config.{js,mjs}",

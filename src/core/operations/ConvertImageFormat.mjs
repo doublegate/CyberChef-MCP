@@ -109,7 +109,10 @@ class ConvertImageFormat extends Operation {
                     break;
             }
 
-            return buffer.buffer;
+            // FORK CHANGE (patches/fork/09): return the image, not the whole pool it was
+            // allocated in. https://nodejs.org/docs/latest-v24.x/api/buffer.html#bufbyteoffset
+            // -- upstream fixed exactly this in GenerateImage.mjs and left the siblings.
+            return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
         } catch (err) {
             throw new OperationError(`Error converting image format. (${err})`);
         }

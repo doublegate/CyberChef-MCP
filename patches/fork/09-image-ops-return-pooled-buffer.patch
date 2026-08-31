@@ -1,0 +1,238 @@
+--- a/src/core/operations/AddTextToImage.mjs
++++ b/src/core/operations/AddTextToImage.mjs
+@@ -291,7 +291,10 @@
+             } else {
+                 imageBuffer = await image.getBuffer(image.mime);
+             }
+-            return imageBuffer.buffer;
++            // FORK CHANGE (patches/fork/09): return the image, not the whole pool it was
++            // allocated in. https://nodejs.org/docs/latest-v24.x/api/buffer.html#bufbyteoffset
++            // -- upstream fixed exactly this in GenerateImage.mjs and left the siblings.
++            return imageBuffer.buffer.slice(imageBuffer.byteOffset, imageBuffer.byteOffset + imageBuffer.byteLength);
+         } catch (err) {
+             throw new OperationError(`Error exporting image. (${err})`);
+         }
+--- a/src/core/operations/BlurImage.mjs
++++ b/src/core/operations/BlurImage.mjs
+@@ -82,7 +82,10 @@
+             } else {
+                 imageBuffer = await image.getBuffer(image.mime);
+             }
+-            return imageBuffer.buffer;
++            // FORK CHANGE (patches/fork/09): return the image, not the whole pool it was
++            // allocated in. https://nodejs.org/docs/latest-v24.x/api/buffer.html#bufbyteoffset
++            // -- upstream fixed exactly this in GenerateImage.mjs and left the siblings.
++            return imageBuffer.buffer.slice(imageBuffer.byteOffset, imageBuffer.byteOffset + imageBuffer.byteLength);
+         } catch (err) {
+             throw new OperationError(`Error blurring image. (${err})`);
+         }
+--- a/src/core/operations/ContainImage.mjs
++++ b/src/core/operations/ContainImage.mjs
+@@ -145,7 +145,10 @@
+             } else {
+                 imageBuffer = await image.getBuffer(originalMime);
+             }
+-            return imageBuffer.buffer;
++            // FORK CHANGE (patches/fork/09): return the image, not the whole pool it was
++            // allocated in. https://nodejs.org/docs/latest-v24.x/api/buffer.html#bufbyteoffset
++            // -- upstream fixed exactly this in GenerateImage.mjs and left the siblings.
++            return imageBuffer.buffer.slice(imageBuffer.byteOffset, imageBuffer.byteOffset + imageBuffer.byteLength);
+         } catch (err) {
+             throw new OperationError(`Error containing image. (${err})`);
+         }
+--- a/src/core/operations/ConvertImageFormat.mjs
++++ b/src/core/operations/ConvertImageFormat.mjs
+@@ -109,7 +109,10 @@
+                     break;
+             }
+ 
+-            return buffer.buffer;
++            // FORK CHANGE (patches/fork/09): return the image, not the whole pool it was
++            // allocated in. https://nodejs.org/docs/latest-v24.x/api/buffer.html#bufbyteoffset
++            // -- upstream fixed exactly this in GenerateImage.mjs and left the siblings.
++            return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+         } catch (err) {
+             throw new OperationError(`Error converting image format. (${err})`);
+         }
+--- a/src/core/operations/CoverImage.mjs
++++ b/src/core/operations/CoverImage.mjs
+@@ -125,7 +125,10 @@
+             } else {
+                 imageBuffer = await image.getBuffer(image.mime);
+             }
+-            return imageBuffer.buffer;
++            // FORK CHANGE (patches/fork/09): return the image, not the whole pool it was
++            // allocated in. https://nodejs.org/docs/latest-v24.x/api/buffer.html#bufbyteoffset
++            // -- upstream fixed exactly this in GenerateImage.mjs and left the siblings.
++            return imageBuffer.buffer.slice(imageBuffer.byteOffset, imageBuffer.byteOffset + imageBuffer.byteLength);
+         } catch (err) {
+             throw new OperationError(`Error covering image. (${err})`);
+         }
+--- a/src/core/operations/CropImage.mjs
++++ b/src/core/operations/CropImage.mjs
+@@ -138,7 +138,10 @@
+             } else {
+                 imageBuffer = await image.getBuffer(image.mime);
+             }
+-            return imageBuffer.buffer;
++            // FORK CHANGE (patches/fork/09): return the image, not the whole pool it was
++            // allocated in. https://nodejs.org/docs/latest-v24.x/api/buffer.html#bufbyteoffset
++            // -- upstream fixed exactly this in GenerateImage.mjs and left the siblings.
++            return imageBuffer.buffer.slice(imageBuffer.byteOffset, imageBuffer.byteOffset + imageBuffer.byteLength);
+         } catch (err) {
+             throw new OperationError(`Error cropping image. (${err})`);
+         }
+--- a/src/core/operations/DitherImage.mjs
++++ b/src/core/operations/DitherImage.mjs
+@@ -58,7 +58,10 @@
+             } else {
+                 imageBuffer = await image.getBuffer(image.mime);
+             }
+-            return imageBuffer.buffer;
++            // FORK CHANGE (patches/fork/09): return the image, not the whole pool it was
++            // allocated in. https://nodejs.org/docs/latest-v24.x/api/buffer.html#bufbyteoffset
++            // -- upstream fixed exactly this in GenerateImage.mjs and left the siblings.
++            return imageBuffer.buffer.slice(imageBuffer.byteOffset, imageBuffer.byteOffset + imageBuffer.byteLength);
+         } catch (err) {
+             throw new OperationError(
+                 `Error applying dither to image. (${err})`,
+--- a/src/core/operations/FlipImage.mjs
++++ b/src/core/operations/FlipImage.mjs
+@@ -78,7 +78,10 @@
+             } else {
+                 imageBuffer = await image.getBuffer(image.mime);
+             }
+-            return imageBuffer.buffer;
++            // FORK CHANGE (patches/fork/09): return the image, not the whole pool it was
++            // allocated in. https://nodejs.org/docs/latest-v24.x/api/buffer.html#bufbyteoffset
++            // -- upstream fixed exactly this in GenerateImage.mjs and left the siblings.
++            return imageBuffer.buffer.slice(imageBuffer.byteOffset, imageBuffer.byteOffset + imageBuffer.byteLength);
+         } catch (err) {
+             throw new OperationError(`Error flipping image. (${err})`);
+         }
+--- a/src/core/operations/ImageBrightnessContrast.mjs
++++ b/src/core/operations/ImageBrightnessContrast.mjs
+@@ -81,7 +81,10 @@
+             } else {
+                 imageBuffer = await image.getBuffer(image.mime);
+             }
+-            return imageBuffer.buffer;
++            // FORK CHANGE (patches/fork/09): return the image, not the whole pool it was
++            // allocated in. https://nodejs.org/docs/latest-v24.x/api/buffer.html#bufbyteoffset
++            // -- upstream fixed exactly this in GenerateImage.mjs and left the siblings.
++            return imageBuffer.buffer.slice(imageBuffer.byteOffset, imageBuffer.byteOffset + imageBuffer.byteLength);
+         } catch (err) {
+             throw new OperationError(
+                 `Error adjusting image brightness or contrast. (${err})`,
+--- a/src/core/operations/ImageFilter.mjs
++++ b/src/core/operations/ImageFilter.mjs
+@@ -73,7 +73,10 @@
+             } else {
+                 imageBuffer = await image.getBuffer(image.mime);
+             }
+-            return imageBuffer.buffer;
++            // FORK CHANGE (patches/fork/09): return the image, not the whole pool it was
++            // allocated in. https://nodejs.org/docs/latest-v24.x/api/buffer.html#bufbyteoffset
++            // -- upstream fixed exactly this in GenerateImage.mjs and left the siblings.
++            return imageBuffer.buffer.slice(imageBuffer.byteOffset, imageBuffer.byteOffset + imageBuffer.byteLength);
+         } catch (err) {
+             throw new OperationError(
+                 `Error applying filter to image. (${err})`,
+--- a/src/core/operations/ImageHueSaturationLightness.mjs
++++ b/src/core/operations/ImageHueSaturationLightness.mjs
+@@ -110,7 +110,10 @@
+             } else {
+                 imageBuffer = await image.getBuffer(image.mime);
+             }
+-            return imageBuffer.buffer;
++            // FORK CHANGE (patches/fork/09): return the image, not the whole pool it was
++            // allocated in. https://nodejs.org/docs/latest-v24.x/api/buffer.html#bufbyteoffset
++            // -- upstream fixed exactly this in GenerateImage.mjs and left the siblings.
++            return imageBuffer.buffer.slice(imageBuffer.byteOffset, imageBuffer.byteOffset + imageBuffer.byteLength);
+         } catch (err) {
+             throw new OperationError(
+                 `Error adjusting image hue / saturation / lightness. (${err})`,
+--- a/src/core/operations/ImageOpacity.mjs
++++ b/src/core/operations/ImageOpacity.mjs
+@@ -67,7 +67,10 @@
+             } else {
+                 imageBuffer = await image.getBuffer(image.mime);
+             }
+-            return imageBuffer.buffer;
++            // FORK CHANGE (patches/fork/09): return the image, not the whole pool it was
++            // allocated in. https://nodejs.org/docs/latest-v24.x/api/buffer.html#bufbyteoffset
++            // -- upstream fixed exactly this in GenerateImage.mjs and left the siblings.
++            return imageBuffer.buffer.slice(imageBuffer.byteOffset, imageBuffer.byteOffset + imageBuffer.byteLength);
+         } catch (err) {
+             throw new OperationError(`Error changing image opacity. (${err})`);
+         }
+--- a/src/core/operations/InvertImage.mjs
++++ b/src/core/operations/InvertImage.mjs
+@@ -58,7 +58,10 @@
+             } else {
+                 imageBuffer = await image.getBuffer(image.mime);
+             }
+-            return imageBuffer.buffer;
++            // FORK CHANGE (patches/fork/09): return the image, not the whole pool it was
++            // allocated in. https://nodejs.org/docs/latest-v24.x/api/buffer.html#bufbyteoffset
++            // -- upstream fixed exactly this in GenerateImage.mjs and left the siblings.
++            return imageBuffer.buffer.slice(imageBuffer.byteOffset, imageBuffer.byteOffset + imageBuffer.byteLength);
+         } catch (err) {
+             throw new OperationError(`Error inverting image. (${err})`);
+         }
+--- a/src/core/operations/NormaliseImage.mjs
++++ b/src/core/operations/NormaliseImage.mjs
+@@ -56,7 +56,10 @@
+             } else {
+                 imageBuffer = await image.getBuffer(image.mime);
+             }
+-            return imageBuffer.buffer;
++            // FORK CHANGE (patches/fork/09): return the image, not the whole pool it was
++            // allocated in. https://nodejs.org/docs/latest-v24.x/api/buffer.html#bufbyteoffset
++            // -- upstream fixed exactly this in GenerateImage.mjs and left the siblings.
++            return imageBuffer.buffer.slice(imageBuffer.byteOffset, imageBuffer.byteOffset + imageBuffer.byteLength);
+         } catch (err) {
+             throw new OperationError(`Error normalising image. (${err})`);
+         }
+--- a/src/core/operations/ResizeImage.mjs
++++ b/src/core/operations/ResizeImage.mjs
+@@ -125,7 +125,10 @@
+             } else {
+                 imageBuffer = await image.getBuffer(image.mime);
+             }
+-            return imageBuffer.buffer;
++            // FORK CHANGE (patches/fork/09): return the image, not the whole pool it was
++            // allocated in. https://nodejs.org/docs/latest-v24.x/api/buffer.html#bufbyteoffset
++            // -- upstream fixed exactly this in GenerateImage.mjs and left the siblings.
++            return imageBuffer.buffer.slice(imageBuffer.byteOffset, imageBuffer.byteOffset + imageBuffer.byteLength);
+         } catch (err) {
+             throw new OperationError(`Error resizing image. (${err})`);
+         }
+--- a/src/core/operations/RotateImage.mjs
++++ b/src/core/operations/RotateImage.mjs
+@@ -67,7 +67,10 @@
+             } else {
+                 imageBuffer = await image.getBuffer(image.mime);
+             }
+-            return imageBuffer.buffer;
++            // FORK CHANGE (patches/fork/09): return the image, not the whole pool it was
++            // allocated in. https://nodejs.org/docs/latest-v24.x/api/buffer.html#bufbyteoffset
++            // -- upstream fixed exactly this in GenerateImage.mjs and left the siblings.
++            return imageBuffer.buffer.slice(imageBuffer.byteOffset, imageBuffer.byteOffset + imageBuffer.byteLength);
+         } catch (err) {
+             throw new OperationError(`Error rotating image. (${err})`);
+         }
+--- a/src/core/operations/SharpenImage.mjs
++++ b/src/core/operations/SharpenImage.mjs
+@@ -174,7 +174,10 @@
+             } else {
+                 imageBuffer = await image.getBuffer(image.mime);
+             }
+-            return imageBuffer.buffer;
++            // FORK CHANGE (patches/fork/09): return the image, not the whole pool it was
++            // allocated in. https://nodejs.org/docs/latest-v24.x/api/buffer.html#bufbyteoffset
++            // -- upstream fixed exactly this in GenerateImage.mjs and left the siblings.
++            return imageBuffer.buffer.slice(imageBuffer.byteOffset, imageBuffer.byteOffset + imageBuffer.byteLength);
+         } catch (err) {
+             throw new OperationError(`Error sharpening image. (${err})`);
+         }
