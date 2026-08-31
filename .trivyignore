@@ -1,0 +1,35 @@
+# Trivy suppressions.
+#
+# The bar for an entry here is high on purpose: a suppression is a decision that a finding will
+# NOT be fixed, and an unexplained one is indistinguishable from a finding nobody looked at. Every
+# entry states the vulnerability, why it is unfixable rather than merely inconvenient, why it is
+# not reachable in this project, and what would make it removable. Anything that can be fixed is
+# fixed instead -- see docs/security/audit.md for the full disposition of every open finding.
+#
+# Format: one vulnerability ID per line. Trivy also accepts `exp:` for a dated expiry; none is used
+# here because these are conditions that change on an upstream event, not on a date.
+
+# CVE-2025-14505 / GHSA-848j-6mx2-7j84 -- elliptic <= 6.6.1, "Uses a Cryptographic Primitive with a
+# Risky Implementation" (CVSS 5.6, LOW). ECDSA signing can truncate the nonce `k` when its interim
+# value has leading zeros, which under repetition can leak the private key.
+#
+# NO FIX EXISTS. Every published version of elliptic is in the vulnerable range and the advisory
+# lists no patched version, so this cannot be resolved by a bump. It is not a version this project
+# chose or pinned.
+#
+# NOT REACHABLE HERE. elliptic is not a dependency of this project; it arrives transitively:
+#
+#     crypto-browserify@3.12.1
+#     |- browserify-sign@4.2.6 -> elliptic@6.6.1
+#     `- create-ecdh@4.0.4     -> elliptic@6.6.1
+#
+# and `crypto-browserify` exists solely as a webpack browser polyfill for Node's `crypto`
+# (webpack.config.js: `"crypto": require.resolve("crypto-browserify")`). The MCP server runs on
+# Node, where `crypto` resolves to the built-in module and the alias is never applied. Nothing
+# under src/ imports elliptic, browserify-sign or create-ecdh directly, and no operation performs
+# ECDSA signing through them.
+#
+# REMOVABLE WHEN: elliptic publishes a fixed release, or `crypto-browserify` is dropped along with
+# the vestigial web build (which would be the better outcome -- this fork removed the web app in
+# v1.7.1 and the webpack browser aliases are the last thing keeping the dependency alive).
+CVE-2025-14505

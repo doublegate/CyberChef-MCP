@@ -101,6 +101,10 @@ jobs:
           vuln-type: 'os,library'
           scanners: 'vuln,secret,misconfig'
           timeout: '10m'
+          # Stated explicitly rather than relying on trivy's cwd default, so that a change to the
+          # working directory cannot silently un-suppress a documented, justified finding -- or,
+          # worse, silently suppress nothing while the file suggests otherwise.
+          trivyignores: '.trivyignore'
 
       - name: Upload Trivy scan results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v4
@@ -166,6 +170,7 @@ jobs:
           severity: ${{ steps.severity.outputs.level }}
           vuln-type: 'library'
           scanners: 'vuln'
+          trivyignores: '.trivyignore'
 
       - name: Upload filesystem scan results
         uses: github/codeql-action/upload-sarif@v4

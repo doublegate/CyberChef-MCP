@@ -6,12 +6,14 @@ This document covers security for the **CyberChef MCP Server** fork. For the ori
 
 ## Supported Versions
 
-| Version | Supported          | Notes                                    |
-| ------- | ------------------ | ---------------------------------------- |
-| 1.2.x   | :white_check_mark: | Current release - Security Hardening     |
-| 1.1.x   | :white_check_mark: | Security fixes backported                |
-| 1.0.x   | :x:                | Upgrade to 1.1.x or later                |
-| < 1.0   | :x:                | Not supported                            |
+| Version | Supported          | Notes                                                      |
+| ------- | ------------------ | ---------------------------------------------------------- |
+| 1.9.x   | :white_check_mark: | Current release                                            |
+| 1.8.x   | :white_check_mark: | Security fixes only                                        |
+| < 1.8   | :x:                | Upgrade to 1.9.x                                           |
+
+This table had drifted five releases behind, still naming 1.2.x as current while 1.9.0 shipped in
+February 2026. It is now a release-checklist item rather than something updated when noticed.
 
 ## Reporting a Vulnerability
 
@@ -38,11 +40,11 @@ Report to the upstream project:
 ### Container Security
 
 #### Non-Root Execution
-The container runs as a dedicated `cyberchef` user (UID 1001):
+The container runs as the unprivileged `node` user (UID 65532), Chainguard's `nonroot` identity:
 ```bash
 # Verify non-root execution
-docker run --rm cyberchef-mcp id
-# Output: uid=1001(cyberchef) gid=1001(cyberchef)
+docker run --rm --entrypoint id cyberchef-mcp
+# Output: uid=65532(node) gid=65532(node) groups=65532(node)
 ```
 
 #### Read-Only Filesystem Support
