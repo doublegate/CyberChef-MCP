@@ -14,6 +14,7 @@ import { z } from "zod";
 import Utils from "../core/Utils.mjs";
 import OperationConfig from "../core/config/OperationConfig.json" with {type: "json"};
 import { toContentBlocks } from "./lib/content-blocks.mjs";
+import { annotationsForOperation, annotationsForMetaTool } from "./lib/tool-annotations.mjs";
 import { bakeOnCore } from "./lib/core-recipe.mjs";
 import { isExposed, describeSurface } from "./lib/tool-surface.mjs";
 import { categoryIndex, listOperations, describeOperations } from "./lib/tool-catalog.mjs";
@@ -43,6 +44,21 @@ function batchInputSize(operations) {
     } catch {
         return 0;
     }
+}
+
+/**
+ * A human-readable title for one of this server's own tools.
+ *
+ * `cyberchef_recipe_create` reads poorly in a client's tool picker; "Recipe create" does. Derived
+ * rather than tabulated, so a new meta-tool gets a reasonable title without anyone remembering to
+ * add one.
+ *
+ * @param {string} toolName - The tool name, including the `cyberchef_` prefix.
+ * @returns {string} The title.
+ */
+function metaToolTitle(toolName) {
+    const words = toolName.replace(/^cyberchef_/, "").replace(/_/g, " ");
+    return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
 /**
@@ -480,6 +496,12 @@ const handleListTools = async () => {
         }
     ];
 
+    // Annotations for the meta-tools, applied in one pass rather than repeated across 24 literals
+    // -- where they would drift, and where a missing one is invisible.
+    for (const tool of tools) {
+        tool.annotations = annotationsForMetaTool(tool.name, metaToolTitle(tool.name));
+    }
+
     Object.keys(OperationConfig).forEach(opName => {
         // The default surface is `index`, which pre-loads no ordinary operation tools at all;
         // `curated` and `all` pre-load progressively more, and CYBERCHEF_TOOL_ALLOWLIST overrides
@@ -496,7 +518,10 @@ const handleListTools = async () => {
             tools.push({
                 name: toolName,
                 description: summariseDescription(op.description) || opName,
-                inputSchema: toInputSchema(z.object(argsSchema))
+                inputSchema: toInputSchema(z.object(argsSchema)),
+                // Derived from the operation, not the tool name, because that is what the
+                // read-only/idempotent/open-world facts are actually about.
+                annotations: annotationsForOperation(opName)
             });
         } catch (e) {
             // Log schema generation failures for debugging
