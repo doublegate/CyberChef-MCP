@@ -367,6 +367,13 @@ jobs:
           // No `version` field. This snapshot records the TOOL INVENTORY, and nothing reads a
           // version from it -- carrying one only created a second place the product version had to
           // be bumped, silently disagreeing with package.json whenever it was not.
+          //
+          // tool_count is 504 operations + 2 meta-tools = 506, NOT the 524 that `tools/list`
+          // returns. The difference is the 18 fork-owned subsystem tools (recipe management,
+          // batch, telemetry, cache, quota, worker stats, deprecation stats, migration preview).
+          // They are deliberately excluded: this baseline is a DRIFT GUARD FOR THE UPSTREAM SYNC,
+          // so including tools we add ourselves would make it fire on our own releases -- noise on
+          // exactly the axis it exists to keep quiet.
           const baseline = {
               timestamp: new Date().toISOString(),
               tool_count: Object.keys(OperationConfig).length + 2,
