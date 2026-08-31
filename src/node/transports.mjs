@@ -302,9 +302,11 @@ export async function createTransport(options = {}) {
             );
         }
 
-        const { NodeStreamableHTTPServerTransport: StreamableHTTPServerTransport } = await import(
-            "@modelcontextprotocol/node"
-        );
+        const {
+            NodeStreamableHTTPServerTransport: StreamableHTTPServerTransport,
+            toNodeHandler, toWebRequest
+        } = await import("@modelcontextprotocol/node");
+        const { createMcpHandler, isLegacyRequest } = await import("@modelcontextprotocol/server");
         const http = await import("node:http");
         const { randomUUID } = await import("node:crypto");
 
@@ -415,6 +417,39 @@ export async function createTransport(options = {}) {
         }
 
         /**
+         * Whether the Host header is one this server will answer.
+         *
+         * The modern entry is deliberately validation-free -- the SDK says so explicitly -- so the
+         * DNS-rebinding protection the sessionful transport gets from `enableDnsRebindingProtection`
+         * has to be applied by hand in front of it. Same allowlist, so the two paths cannot end up
+         * with different answers about which hosts are acceptable.
+         *
+         * @param {import("node:http").IncomingMessage} req - The request.
+         * @returns {boolean} True when the request may proceed.
+         */
+        function hostAllowed(req) {
+            const allowed = effectiveAllowedHosts();
+            if (!allowed) return true;              // checking disabled by configuration
+            const host = req.headers.host;
+            if (!host) return false;                // HTTP/1.1 requires it; absent means malformed
+            return allowed.includes(host) || allowed.includes(host.split(":")[0]);
+        }
+
+        // The 2026-07-28 entry. `legacy: 'reject'` because this server routes the eras itself with
+        // `isLegacyRequest` -- 2025 traffic goes to the sessionful wiring below, which has the
+        // session accounting, the idle sweeper and the capacity limit. Letting the entry serve its
+        // own stateless legacy fallback as well would create a second, unaccounted way to reach the
+        // same tools.
+        //
+        // ONE factory for both legs, which is the property that matters: the modern path and the
+        // sessionful path build their servers from the same `createServer`, so the eras cannot
+        // drift apart in what they expose.
+        const modernHandler = toNodeHandler(
+            createMcpHandler(createServer, { legacy: "reject" }),
+            { onerror: (err) => logger.error(`modern MCP handler error: ${err.message}`) }
+        );
+
+        /**
          * Build a fresh Server + transport pair and connect them.
          *
          * @returns {Promise<Object>} The connected transport.
@@ -499,6 +534,24 @@ export async function createTransport(options = {}) {
                 }
 
                 const body = await readJsonBody(req, maxBodyBytes);
+
+                // Era routing. `isLegacyRequest` is the entry's own classification step exported as
+                // a predicate -- the same code `createMcpHandler` runs -- so this branch cannot
+                // disagree with the handler it dispatches to. The body is passed in because it has
+                // already been read: classifying from the request alone would clone a used body and
+                // throw.
+                //
+                // Everything reaching here is a POST; body-less GET and DELETE session operations
+                // are answered above and always classify legacy anyway.
+                if (!(await isLegacyRequest(await toWebRequest(req, body), body))) {
+                    if (!hostAllowed(req)) {
+                        sendJsonRpcError(res, 403, -32000, "Forbidden: Host header not allowed",
+                            requestIdOf(body));
+                        return;
+                    }
+                    await modernHandler(req, res, body);
+                    return;
+                }
 
                 if (sessionId) {
                     const entry = sessions.get(sessionId);

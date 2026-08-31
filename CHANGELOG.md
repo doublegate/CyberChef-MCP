@@ -41,7 +41,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `@modelcontextprotocol/sdk` 1.x to the v2 packages (`@modelcontextprotocol/server`,
   `@modelcontextprotocol/node`). Existing clients are unaffected: a v1-SDK client still negotiates
   2025-11-25 against the same handlers, and `tests/mcp/protocol-eras.test.mjs` spawns the real
-  binary once per era to keep it that way. HTTP continues to serve the 2025 era.
+  binary once per era to keep it that way.
+- **Protocol revision 2026-07-28 over HTTP**, routed per request with `isLegacyRequest`: 2025 traffic
+  keeps the sessionful wiring (session ids, idle sweep, capacity limit), modern traffic is served
+  per request by `createMcpHandler` with `legacy: "reject"` so there is no second, unaccounted route
+  to the same tools. Both legs are built from one server factory. The modern entry performs no
+  validation of its own, so the existing Host allowlist is applied in front of it — a forged Host is
+  refused on both paths.
 - `tests/mcp/image-operations.test.mjs` — 19 tests pinning all 17 image operations end to end, plus
   the operation-boundary assertions that make the buffer-pool defect visible.
 
