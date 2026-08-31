@@ -31,6 +31,7 @@ server. Exposes 504 operations (encryption, encoding, compression, forensics) as
 | Licence | **GPL-3.0-or-later** (from v2.0.0; v1.9.x and earlier are Apache-2.0) |
 | Node | `>=24 <27`; image runs Node 26.8.1, digest-pinned |
 | Tests | 757 MCP (22 files) + 241 Node-API + 2,289 operations |
+| Coverage | 78.8% lines / 75.1% branches / 90.5% functions overall; `src/node/lib/**` at 95.2% lines |
 | Open security alerts | **0** Dependabot, **0** code-scanning |
 
 **Focus:** MCP server (`src/node/mcp-server.mjs` + `src/node/lib/**`), not the web app.

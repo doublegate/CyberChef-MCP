@@ -756,7 +756,7 @@ For contributions to the core CyberChef operations, please credit the original [
 *   **Container Registries**:
     *   **Docker Hub** (Primary): [doublegate/cyberchef-mcp](https://hub.docker.com/r/doublegate/cyberchef-mcp) - With Docker Scout health scores and attestations
     *   **GHCR** (Secondary): [ghcr.io/doublegate/cyberchef-mcp_v2](https://github.com/doublegate/CyberChef-MCP/pkgs/container/cyberchef-mcp_v2) — v2.x
-    *   **GHCR (v1, frozen)**: [ghcr.io/doublegate/cyberchef-mcp_v1](https://github.com/doublegate/CyberChef-MCP/pkgs/container/cyberchef-mcp_v1) — remains pullable and receives security-only patches on the `v1.9.x` line. It is Apache-2.0 and keeps the single-transport HTTP behaviour of [#36](https://github.com/doublegate/CyberChef-MCP/issues/36).
+    *   **GHCR (v1, frozen)**: [ghcr.io/doublegate/cyberchef-mcp_v1](https://github.com/doublegate/CyberChef-MCP/pkgs/container/cyberchef-mcp_v1) — remains pullable and receives security-only patches on the `v1.9.x` line. It is Apache-2.0 and still has the single process-wide HTTP transport that [#36](https://github.com/doublegate/CyberChef-MCP/issues/36) reported — so only one HTTP client can connect at a time. That is fixed in v2.x, not backported.
 *   **Issue Tracker**: [GitHub Issues](https://github.com/doublegate/CyberChef-MCP/issues)
 
 ## Support
