@@ -201,6 +201,17 @@ export async function createTransport(options = {}) {
         // plain 404 instead of being routed into the transport and answered with the confusing
         // "Session not found".
         const mcpPath = options.path || process.env.CYBERCHEF_HTTP_PATH || "/mcp";
+        // Hard cap on concurrent sessions.
+        //
+        // Without one, a single unauthenticated `initialize` creates a Server + transport pair
+        // that is retained for CYBERCHEF_SESSION_TIMEOUT (30 minutes by default), and a loop of
+        // them exhausts the process. Session creation sits OUTSIDE the operation rate limiter and
+        // the resource quota tracker -- both of those govern tool calls, which by definition
+        // happen after a session exists -- so nothing else was bounding this.
+        const maxSessions = numeric(options.maxSessions, "CYBERCHEF_MAX_SESSIONS", 100);
+        // Exposed so the reaping path is testable in bounded time; not an env var, because there
+        // is no operational reason to change it.
+        const sweepIntervalMs = options.sweepIntervalMs ?? DEFAULT_SESSION_SWEEP_MS;
         const host = options.host || process.env.CYBERCHEF_HTTP_HOST || "127.0.0.1";
         const maxBodyBytes = numeric(options.maxBodyBytes, "CYBERCHEF_HTTP_MAX_BODY", 4 * 1024 * 1024);
         const sessionTimeoutMs = numeric(
@@ -278,6 +289,12 @@ export async function createTransport(options = {}) {
 
         /** @type {Map<string, {server: Object, transport: Object, lastSeen: number}>} */
         const sessions = new Map();
+
+        // Sessions being created right now. Counted separately because a session does not enter
+        // the map until `onsessioninitialized` fires inside handleRequest -- so checking only
+        // `sessions.size` lets an unbounded burst of concurrent initializes all pass the capacity
+        // check before any of them lands. Reserving first closes that race.
+        let pendingSessions = 0;
 
         /**
          * Fire-and-forget a closeSession() without dropping a rejection on the floor.
@@ -365,19 +382,23 @@ export async function createTransport(options = {}) {
                 const cors = corsHeaders(req);
                 for (const [k, v] of Object.entries(cors)) res.setHeader(k, v);
 
-                // Preflight. Answered before anything else, since it carries no body and no
-                // session and must not be mistaken for a malformed request.
-                if (req.method === "OPTIONS") {
-                    res.writeHead(204, { "Allow": "GET, POST, DELETE, OPTIONS" });
-                    res.end();
-                    return;
-                }
-
-                // Path check before anything else, so an unrelated request never reaches session
-                // routing. Query strings are ignored; only the path is significant.
+                // Path check first, so an unrelated request never reaches session routing OR the
+                // preflight branch. Query strings are ignored; only the path is significant.
+                //
+                // Ordering matters and an earlier revision had it backwards: answering OPTIONS
+                // before this check made `OPTIONS /anything` return 204, advertising an endpoint
+                // that does not exist and contradicting the documented "every other path 404s".
                 const path = (req.url || "").split("?")[0].replace(/\/+$/, "") || "/";
                 if (path !== mcpPath.replace(/\/+$/, "")) {
                     sendJsonRpcError(res, 404, -32601, `Not Found: the MCP endpoint is ${mcpPath}`);
+                    return;
+                }
+
+                // Preflight. Carries no body and no session, so it is answered before any of the
+                // routing below -- but only for the real endpoint.
+                if (req.method === "OPTIONS") {
+                    res.writeHead(204, { "Allow": "GET, POST, DELETE, OPTIONS" });
+                    res.end();
                     return;
                 }
 
@@ -438,8 +459,31 @@ export async function createTransport(options = {}) {
                     return;
                 }
 
-                const transport = await newSession();
-                await transport.handleRequest(req, res, body);
+                if (sessions.size + pendingSessions >= maxSessions) {
+                    logger.warn(
+                        `refusing new session: at capacity (${sessions.size} active, ` +
+                        `${pendingSessions} pending, limit ${maxSessions})`
+                    );
+                    sendJsonRpcError(
+                        res, 503, -32000,
+                        `Server at session capacity (${maxSessions}). Retry later, or close an idle session with DELETE.`,
+                        requestIdOf(body)
+                    );
+                    return;
+                }
+
+                // Reserved before the await and released in `finally`, so every failure path gives
+                // the slot back -- including one where newSession() throws after constructing the
+                // Server. The count can briefly double-count a session that has already landed in
+                // the map, which errs toward refusing one session too early rather than admitting
+                // one too many.
+                pendingSessions++;
+                try {
+                    const transport = await newSession();
+                    await transport.handleRequest(req, res, body);
+                } finally {
+                    pendingSessions--;
+                }
             } catch (err) {
                 const status = err.statusCode || 500;
                 logger.error(`HTTP transport error (${status}): ${err.message}`);
@@ -478,7 +522,7 @@ export async function createTransport(options = {}) {
             for (const [id, entry] of sessions) {
                 if (entry.lastSeen < cutoff) closeSessionDetached(id, "idle timeout");
             }
-        }, DEFAULT_SESSION_SWEEP_MS);
+        }, sweepIntervalMs);
         // Do not hold the event loop open for the sweeper alone. Unconditional call: `unref` has
         // been on Timeout since node 0.9, far below this package's `engines: >=24` floor, so the
         // optional-call was guarding against nothing.
@@ -486,7 +530,7 @@ export async function createTransport(options = {}) {
 
         httpServer.listen(port, host, () => {
             logger.info(`Streamable HTTP transport listening on ${host}:${port}${mcpPath}`);
-            logger.info(`  session timeout: ${Math.round(sessionTimeoutMs / 1000)}s`);
+            logger.info(`  session timeout: ${Math.round(sessionTimeoutMs / 1000)}s, max sessions: ${maxSessions}`);
             logger.info(`  DNS rebinding protection: ${allowedHosts ? `on (${allowedHosts.join(", ")})` : "off"}`);
             logger.info(`  CORS: ${allowedOrigins ? `on (${allowedOrigins.join(", ")})` : "off -- browser clients need CYBERCHEF_ALLOWED_ORIGINS"}`);
         });

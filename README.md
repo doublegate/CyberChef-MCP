@@ -282,6 +282,7 @@ CYBERCHEF_ALLOWED_ORIGINS=               # Comma-separated Origin allowlist; ena
 CYBERCHEF_SESSION_TIMEOUT=1800000        # Idle HTTP session reap threshold (30 min)
 CYBERCHEF_HTTP_MAX_BODY=4194304          # Maximum accepted HTTP request body (4 MiB)
 CYBERCHEF_HTTP_PATH=/mcp                 # MCP endpoint path; any other path returns 404
+CYBERCHEF_MAX_SESSIONS=100               # Cap on concurrent HTTP sessions; initialize 503s beyond it
 
 # Worker Thread Pool (v1.9.0+)
 CYBERCHEF_WORKER_MIN_THREADS=1           # Minimum worker threads

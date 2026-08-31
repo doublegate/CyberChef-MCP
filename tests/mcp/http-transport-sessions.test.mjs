@@ -16,7 +16,7 @@
  * @license GPL-3.0-or-later
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import {
     ListToolsRequestSchema,
@@ -327,6 +327,121 @@ describe("Streamable HTTP transport - session lifecycle (issue #36)", () => {
         });
         expect(res.status).toBe(200);
         expect(res.headers.get("mcp-session-id")).toBeTruthy();
+    });
+
+    it("404s an OPTIONS to a non-MCP path, rather than advertising an endpoint that isn't there", async () => {
+        // The preflight branch used to run BEFORE the path check, so `OPTIONS /anything` returned
+        // 204 -- contradicting the documented "every other path 404s" and telling a browser the
+        // endpoint exists.
+        const res = await fetch(`${base}/not-mcp`, {
+            method: "OPTIONS",
+            headers: { "Origin": "http://localhost:6274", "Access-Control-Request-Method": "POST" }
+        });
+        expect(res.status).toBe(404);
+    });
+
+    it("refuses a new session once at capacity, and recovers when one is released", async () => {
+        // An unauthenticated initialize creates a Server + transport retained for the full session
+        // timeout. Unbounded, a loop of them exhausts the process -- and session creation sits
+        // outside the operation rate limiter and quota tracker, both of which only govern tool
+        // calls, i.e. things that happen after a session already exists.
+        const capped = await createTransport({
+            type: "http", port: 0, host: "127.0.0.1",
+            createServer: createTinyServer, maxSessions: 2
+        });
+        await new Promise(resolve => {
+            if (capped.httpServer.listening) return resolve();
+            capped.httpServer.once("listening", resolve);
+        });
+        const cappedBase = `http://127.0.0.1:${capped.httpServer.address().port}`;
+        try {
+            const a = await post(cappedBase, INITIALIZE);
+            const b = await post(cappedBase, INITIALIZE);
+            expect(a.status).toBe(200);
+            expect(b.status).toBe(200);
+            expect(capped.sessions.size).toBe(2);
+
+            const refused = await post(cappedBase, INITIALIZE);
+            expect(refused.status).toBe(503);
+            expect(refused.json.error.message).toContain("session capacity");
+            expect(capped.sessions.size).toBe(2);
+
+            // Freeing a slot must actually free it -- a leaked reservation would keep refusing.
+            await fetch(`${cappedBase}/mcp`, { method: "DELETE", headers: { "mcp-session-id": a.sessionId } });
+            await waitFor(() => capped.sessions.size === 1);
+
+            const admitted = await post(cappedBase, INITIALIZE);
+            expect(admitted.status).toBe(200);
+            expect(capped.sessions.size).toBe(2);
+        } finally {
+            await capped.closeAll();
+        }
+    });
+
+    it("holds the cap against a CONCURRENT burst, not just sequential requests", async () => {
+        // The reason a pending counter exists: a session does not enter the map until
+        // onsessioninitialized fires inside handleRequest, so checking only sessions.size lets a
+        // simultaneous burst all pass the capacity check before any of them lands.
+        const capped = await createTransport({
+            type: "http", port: 0, host: "127.0.0.1",
+            createServer: createTinyServer, maxSessions: 3
+        });
+        await new Promise(resolve => {
+            if (capped.httpServer.listening) return resolve();
+            capped.httpServer.once("listening", resolve);
+        });
+        const cappedBase = `http://127.0.0.1:${capped.httpServer.address().port}`;
+        try {
+            const results = await Promise.all(
+                Array.from({ length: 12 }, () => post(cappedBase, INITIALIZE))
+            );
+            const ok = results.filter(r => r.status === 200);
+            const refused = results.filter(r => r.status === 503);
+            expect(ok.length).toBeLessThanOrEqual(3);
+            expect(ok.length + refused.length).toBe(12);
+            expect(capped.sessions.size).toBeLessThanOrEqual(3);
+        } finally {
+            await capped.closeAll();
+        }
+    });
+
+    it("reaps an idle session and closes both of its halves", async () => {
+        // The CYBERCHEF_SESSION_TIMEOUT path. Driven with a short timeout and a short sweep
+        // interval rather than by waiting out the 30-minute default.
+        const reaped = await createTransport({
+            type: "http", port: 0, host: "127.0.0.1",
+            createServer: createTinyServer,
+            sessionTimeoutMs: 30,
+            sweepIntervalMs: 10
+        });
+        await new Promise(resolve => {
+            if (reaped.httpServer.listening) return resolve();
+            reaped.httpServer.once("listening", resolve);
+        });
+        const reapedBase = `http://127.0.0.1:${reaped.httpServer.address().port}`;
+        try {
+            const a = await post(reapedBase, INITIALIZE);
+            expect(reaped.sessions.size).toBe(1);
+            const entry = reaped.sessions.get(a.sessionId);
+            expect(entry).toBeTruthy();
+
+            const transportClosed = vi.spyOn(entry.transport, "close");
+            const serverClosed = vi.spyOn(entry.server, "close");
+
+            await waitFor(() => reaped.sessions.size === 0, 3000);
+
+            // Both halves closed, not just the map entry dropped -- an entry removed without
+            // closing its transport leaks the socket and the Server.
+            expect(transportClosed).toHaveBeenCalled();
+            expect(serverClosed).toHaveBeenCalled();
+
+            // And the id is genuinely gone.
+            const after = await post(reapedBase, { jsonrpc: "2.0", id: 7, method: "tools/list", params: {} },
+                { "mcp-session-id": a.sessionId });
+            expect(after.status).toBe(404);
+        } finally {
+            await reaped.closeAll();
+        }
     });
 
     it("405s an unsupported method", async () => {

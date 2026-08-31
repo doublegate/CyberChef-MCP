@@ -46,6 +46,7 @@ CYBERCHEF_TRANSPORT=http npm run mcp
 | `CYBERCHEF_SESSION_TIMEOUT` | `1800000` | Idle session reap threshold, in ms (30 minutes). |
 | `CYBERCHEF_HTTP_MAX_BODY` | `4194304` | Maximum accepted request body, in bytes (4 MiB). |
 | `CYBERCHEF_HTTP_PATH` | `/mcp` | The endpoint path. Anything else gets a plain `404`. |
+| `CYBERCHEF_MAX_SESSIONS` | `100` | Hard cap on concurrent sessions. Beyond it, `initialize` gets `503`. |
 
 ### On `CYBERCHEF_ALLOWED_HOSTS`
 
@@ -56,7 +57,7 @@ the server as a same-origin request.
 
 Set it to the host values clients actually send, including the port:
 
-```
+```bash
 CYBERCHEF_ALLOWED_HOSTS=localhost:3000,127.0.0.1:3000
 ```
 
@@ -71,7 +72,7 @@ its `POST`, because the request carries a custom `Mcp-Session-Id` header. The se
 preflight, but it sends CORS *allow* headers only for an origin on this list. Without the list the
 preflight is well-formed and the browser correctly refuses to proceed.
 
-```
+```bash
 CYBERCHEF_ALLOWED_ORIGINS=http://localhost:6274
 ```
 
@@ -129,7 +130,7 @@ it and the SDK answers `406` otherwise — a failure that reads like a routing p
 
 An `initialize` is answered as `text/event-stream`, so the body looks like:
 
-```
+```text
 event: message
 data: {"result":{...},"jsonrpc":"2.0","id":1}
 ```
@@ -148,6 +149,7 @@ Real MCP clients handle this. Shell scripts need to strip the `data: ` prefix.
 | Any path other than `CYBERCHEF_HTTP_PATH` | `404` naming the correct endpoint |
 | `OPTIONS` (CORS preflight) | `204`, with allow headers only for an allowlisted origin |
 | Any method other than GET/POST/DELETE/OPTIONS | `405` with an `Allow` header |
+| `initialize` at `CYBERCHEF_MAX_SESSIONS` | `503` — retry later, or `DELETE` an idle session |
 | Body over `CYBERCHEF_HTTP_MAX_BODY` | `413` |
 | Body that is not valid JSON | `400` |
 
@@ -183,6 +185,12 @@ this is [#36](https://github.com/doublegate/CyberChef-MCP/issues/36) and it is f
 **A browser client initializes and then 400s on every following request** — the session id is
 reaching the browser but not the page's JavaScript. Confirm the response carries
 `Access-Control-Expose-Headers: Mcp-Session-Id`, which requires the origin to be allowlisted.
+
+**`503 Server at session capacity`** — `CYBERCHEF_MAX_SESSIONS` (default 100) is reached. Usually
+clients disconnecting without `DELETE`; they are reaped after `CYBERCHEF_SESSION_TIMEOUT`. The cap
+exists because an `initialize` is unauthenticated and creates a `Server` held for the full session
+timeout, and session creation is **not** covered by the operation rate limiter or the quota tracker
+— both of those govern tool calls, which only happen once a session exists.
 
 **Sessions accumulating** — clients are disconnecting without `DELETE`. They are reaped after
 `CYBERCHEF_SESSION_TIMEOUT`; lower it if your clients are short-lived.
