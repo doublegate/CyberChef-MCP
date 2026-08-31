@@ -13,6 +13,7 @@
  * @license GPL-3.0-or-later
  */
 
+import pkg from "../../package.json" with { type: "json" };
 import { describe, it, expect, beforeEach } from "vitest";
 import {
     VERSION,
@@ -33,8 +34,11 @@ describe("v1.8.0 Features - Migration Preview", () => {
     });
 
     describe("VERSION", () => {
-        it("should be 1.9.0", () => {
-            expect(VERSION).toBe("1.9.0");
+        it("matches package.json mcpVersion", () => {
+            // Asserted against package.json rather than a literal. A literal here is a second
+            // source of truth for the version that has to be edited in lockstep with the first,
+            // and the failure when it is not is a test that says nothing about what broke.
+            expect(VERSION).toBe(pkg.mcpVersion);
         });
     });
 

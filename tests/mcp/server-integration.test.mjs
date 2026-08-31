@@ -9,6 +9,7 @@
  * @license GPL-3.0-or-later
  */
 
+import pkg from "../../package.json" with { type: "json" };
 import { describe, it, expect } from "vitest";
 import OperationConfig from "../../src/core/config/OperationConfig.json" with {type: "json"};
 
@@ -201,7 +202,7 @@ describe("MCP Server Integration Tests", () => {
     describe("Configuration Constants", () => {
         it("should export VERSION", async () => {
             const { VERSION } = await import("../../src/node/mcp-server.mjs");
-            expect(VERSION).toBe("1.9.0");
+            expect(VERSION).toBe(pkg.mcpVersion);
         });
 
         it("should export configuration constants", async () => {

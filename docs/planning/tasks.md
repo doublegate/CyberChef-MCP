@@ -1,7 +1,23 @@
 # CyberChef MCP Server - Task Tracker
 
-**Last Updated:** December 2025
-**Current Version:** v1.1.0
+> **⚠️ This file is a stale bootstrap-era artefact and is NOT the current task list.**
+>
+> It was last touched in December 2025, when the current version was v1.1.0, and its per-release
+> checklists were never maintained past that point — v1.2.0 through v2.0.0 all shipped without it
+> being updated. Reading it as current state will mislead you.
+>
+> **The live sources are:**
+> - [`ROADMAP.md`](ROADMAP.md) — release themes, status, and the planning entry point
+> - [`../releases/v2.0.0.md`](../releases/v2.0.0.md) — what actually shipped, and what did not
+> - [`../../CHANGELOG.md`](../../CHANGELOG.md) — user-visible change
+> - GitHub Issues — open work
+>
+> It is kept rather than deleted because it records what was originally intended for each release,
+> which is occasionally useful when asking why something was or was not built. Treat every
+> unchecked box below as "unknown", not as "outstanding".
+
+**Last Updated:** December 2025 (stale — see the notice above)
+**Version at time of writing:** v1.1.0
 **Target Version:** v3.0.0
 
 ## Overview

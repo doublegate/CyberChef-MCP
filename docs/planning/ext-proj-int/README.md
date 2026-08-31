@@ -6,11 +6,29 @@ This directory contains comprehensive planning documentation for integrating ref
 
 ## Current Status
 
+> **Status as of v2.0.0 (2026-08-31): planned, not started.** None of the four phases has shipped.
+> v2.0.0 spent its budget closing a six-release upstream gap, rebuilding the sync mechanism,
+> relicensing, and taking 272 open security findings to zero — see
+> [`../../releases/v2.0.0.md`](../../releases/v2.0.0.md). This programme now targets **v2.1.0+**.
+>
+> **The relicense unblocked it.** These docs were written when the project was Apache-2.0, which
+> could not admit **katana** (GPL-3.0-or-later) or **John the Ripper** (GPL-2.0-or-later) at all.
+> As of v2.0.0 the combined work is GPL-3.0-or-later, so all eight reference projects are now
+> licence-compatible — see [ADR 0001](../../adr/0001-relicense-to-gpl-3-0-or-later.md). Every port
+> must still carry attribution and a `THIRD-PARTY-NOTICES.md` row.
+>
+> **One naming decision changed under these docs.** They specify `cyberchef_<category>_<operation>`
+> and assume DEP001 would strip the prefix. DEP001 is
+> [withdrawn](../../v2.0.0-breaking-changes.md#withdrawn-changes-dep001-dep007-dep008) — the
+> `cyberchef_` prefix is permanent — so new tools keep it. Note also the collision the sprint plans
+> did not anticipate: ext's `recipe_*` presets clash with the existing v1.6.0 recipe-management
+> tools, so the preset corpus should use `preset_*`.
+
 | Metric | Value |
 |--------|-------|
 | Planning Version | 1.1.0 |
-| Planning Status | Complete |
-| Target CyberChef-MCP Version | 2.0.0+ |
+| Planning Status | Complete (planning); **not started** (implementation) |
+| Target CyberChef-MCP Version | **2.1.0+** (was "2.0.0+"; v2.0.0 shipped without it) |
 | Total Phases | 4 |
 | Total Sprints | 12 |
 | Estimated Duration | 24 weeks |

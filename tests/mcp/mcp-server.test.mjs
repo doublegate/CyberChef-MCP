@@ -9,6 +9,7 @@
  * @license GPL-3.0-or-later
  */
 
+import pkg from "../../package.json" with { type: "json" };
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { bake, help } from "../../src/node/index.mjs";
 import {
@@ -228,7 +229,7 @@ describe("MCP Server Core Functions", () => {
 
     describe("VERSION and Configuration", () => {
         it("should have correct version", () => {
-            expect(VERSION).toBe("1.9.0");
+            expect(VERSION).toBe(pkg.mcpVersion);
         });
 
         it("should have valid configuration defaults", () => {
