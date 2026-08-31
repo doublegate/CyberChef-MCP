@@ -158,11 +158,15 @@ jobs:
           $(for f in $UPSTREAM_NODE; do [ -f "$SRC/src/node/$f" ] && echo "src/node/$f"; done)
           EOF
 
+          # Removal scan covers the six upstream-owned src/node files as well as src/core. The
+          # mirror's `rsync --delete` handles src/core deletions itself, but those six are copied
+          # individually -- so if upstream drops one, nothing notices and a stale file lingers.
           while IFS= read -r rel; do
             is_excluded "$rel" && continue
             [ -f "$SRC/$rel" ] || { echo "$rel" >> /tmp/deleted_ops.txt; removed=$((removed+1)); }
           done <<EOF
           $(find src/core -type f | sort)
+          $(for f in $UPSTREAM_NODE; do [ -f "src/node/$f" ] && echo "src/node/$f"; done)
           EOF
 
           {
@@ -195,9 +199,18 @@ jobs:
             "$SRC/src/core/" src/core/
 
           for f in api.mjs apiUtils.mjs File.mjs NodeDish.mjs NodeRecipe.mjs repl.mjs; do
-            [ -f "$SRC/src/node/$f" ] && cp "$SRC/src/node/$f" "src/node/$f"
+            if [ -f "$SRC/src/node/$f" ]; then
+              cp "$SRC/src/node/$f" "src/node/$f"
+            elif [ -f "src/node/$f" ]; then
+              # Upstream removed it. Deleting is the point of mirroring rather than copying.
+              rm -f "src/node/$f"
+            fi
           done
 
+          # `synced_files` is read by the sync report and the job summary. It used to come from
+          # the per-file copy loop, so the mirror has to supply it explicitly.
+          synced=$(( $(wc -l < /tmp/new_ops.txt) + $(wc -l < /tmp/modified_ops.txt) ))
+          echo "synced_files=$synced" >> "$GITHUB_OUTPUT"
           echo "status=success" >> "$GITHUB_OUTPUT"
           echo "mirrored src/core/** and the six upstream-owned src/node files"
 
