@@ -87,8 +87,44 @@ describe("Deprecation Warning System", () => {
                 expect(value).toHaveProperty("description");
                 expect(value).toHaveProperty("alternative");
                 expect(value).toHaveProperty("removalVersion");
-                expect(value.removalVersion).toBe("2.0.0");
+                // A WITHDRAWN code has no removal version, because nothing is being removed.
+                // Asserting "2.0.0" across the board would force a withdrawn entry to keep
+                // claiming a removal that is not happening.
+                if (value.withdrawn) {
+                    expect(value.removalVersion).toBeNull();
+                } else {
+                    expect(value.removalVersion).toBe("2.0.0");
+                }
             });
+        });
+
+        it("marks exactly DEP001, DEP007 and DEP008 as withdrawn", () => {
+            // The `cyberchef_` prefix is permanent. These three announced its removal since
+            // v1.8.0 and were reversed on measurement: dropping the prefix saves 2.6% of the
+            // tools/list payload, collides 19 tool names in MCP's flat namespace, and breaks
+            // every existing integration.
+            const withdrawn = Object.values(DEPRECATION_CODES)
+                .filter(d => d.withdrawn)
+                .map(d => d.code)
+                .sort();
+            expect(withdrawn).toEqual(["DEP001", "DEP007", "DEP008"]);
+
+            // The other five are untouched and still describe real v2.0.0 changes.
+            for (const code of ["DEP002", "DEP003", "DEP004", "DEP005", "DEP006"]) {
+                expect(DEPRECATION_CODES[code].withdrawn).toBeUndefined();
+            }
+        });
+
+        it("never tells a user to migrate away from a name that is staying", () => {
+            for (const code of ["DEP001", "DEP007", "DEP008"]) {
+                const dep = DEPRECATION_CODES[code];
+                expect(dep.description).toContain("WITHDRAWN");
+                expect(dep.description).toContain("NOT");
+                expect(dep.alternative).toContain("No action required");
+                // The pre-withdrawal text promised a rename. If any of it comes back, this fails.
+                expect(dep.description).not.toContain("will be removed");
+                expect(dep.description).not.toContain("will be renamed");
+            }
         });
 
         it("should have 8 deprecation codes for v1.8.0", () => {
@@ -263,7 +299,8 @@ describe("Deprecation Warning System", () => {
 
             expect(detail.code).toBe("DEP001");
             expect(detail.feature).toBe("Tool naming convention");
-            expect(detail.removalVersion).toBe("2.0.0");
+            // null, not "2.0.0" -- DEP001 is withdrawn, so there is no removal version.
+            expect(detail.removalVersion).toBeNull();
         });
     });
 
@@ -305,17 +342,23 @@ describe("Deprecation Warning System", () => {
     });
 
     describe("getToolName", () => {
-        it("should return prefixed name in v1 mode", () => {
+        it("returns the prefixed name", () => {
             expect(getToolName("to_base64")).toBe("cyberchef_to_base64");
         });
 
-        it("should return unprefixed name in v2 mode", () => {
+        it("STILL returns the prefixed name in v2 compatibility mode", () => {
+            // This asserts the withdrawal of DEP001. V2_COMPATIBILITY_MODE previews what v2.0.0
+            // will change -- and v2.0.0 does not change this, so a preview that strips the prefix
+            // would be previewing something that will never exist.
             process.env.V2_COMPATIBILITY_MODE = "true";
-            expect(getToolName("to_base64")).toBe("to_base64");
+            expect(getToolName("to_base64")).toBe("cyberchef_to_base64");
+            expect(getToolName("md5")).toBe("cyberchef_md5");
         });
 
-        it("should respect forV2 override", () => {
-            expect(getToolName("to_base64", true)).toBe("to_base64");
+        it("ignores an explicit forV2 override", () => {
+            // The parameter is kept rather than removed: it is exported and callers pass it, so
+            // changing the arity would be a breaking change to avoid a no-op.
+            expect(getToolName("to_base64", true)).toBe("cyberchef_to_base64");
             expect(getToolName("to_base64", false)).toBe("cyberchef_to_base64");
         });
     });

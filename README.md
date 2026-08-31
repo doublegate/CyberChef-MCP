@@ -64,6 +64,7 @@ The server exposes CyberChef operations as MCP tools:
         - Shows deprecation warnings triggered in current session
         - Reports session duration, suppression status, and v2 compatibility mode
         - Lists all 8 deprecation codes (DEP001-DEP008) with details
+    *   **The `cyberchef_` prefix is permanent.** DEP001, DEP007 and DEP008 announced its removal in v1.8.0 and were **withdrawn** in v2.0.0: removing it saves 2.6% of the `tools/list` payload while colliding 19 tool names in MCP's flat namespace and breaking every existing integration. Keep using `cyberchef_to_base64`, `cyberchef_bake` and `cyberchef_search`. See [v2.0.0 Breaking Changes](docs/v2.0.0-breaking-changes.md#withdrawn-changes-dep001-dep007-dep008).
 *   **Worker Thread Pool** (v1.9.0): CPU-intensive operations offloaded to worker threads
     *   `cyberchef_worker_stats` - Monitor worker pool utilization, active/completed tasks, and pool configuration
     *   Enable with `CYBERCHEF_ENABLE_WORKERS=true` environment variable
@@ -270,10 +271,14 @@ CYBERCHEF_MAX_CONCURRENT_OPS=10          # Maximum concurrent operations
 V2_COMPATIBILITY_MODE=false              # Enable v2.0.0 behavior preview (elevates warnings to errors)
 CYBERCHEF_SUPPRESS_DEPRECATIONS=false    # Suppress deprecation warnings
 
-# Transport (v1.9.0+)
+# Transport (v1.9.0+; per-session HTTP since v2.0.0)
 CYBERCHEF_TRANSPORT=stdio                # Transport type: stdio or http
 CYBERCHEF_HTTP_PORT=3000                 # HTTP transport port
-CYBERCHEF_HTTP_HOST=127.0.0.1            # HTTP transport bind address
+CYBERCHEF_HTTP_HOST=127.0.0.1            # HTTP bind address (use 0.0.0.0 in a container)
+CYBERCHEF_ALLOWED_HOSTS=                 # Comma-separated Host allowlist; enables DNS-rebinding
+                                         # protection. Set this whenever binding 0.0.0.0.
+CYBERCHEF_SESSION_TIMEOUT=1800000        # Idle HTTP session reap threshold (30 min)
+CYBERCHEF_HTTP_MAX_BODY=4194304          # Maximum accepted HTTP request body (4 MiB)
 
 # Worker Thread Pool (v1.9.0+)
 CYBERCHEF_WORKER_MIN_THREADS=1           # Minimum worker threads
@@ -353,8 +358,20 @@ docker run --rm -p 3000:3000 \
   -e CYBERCHEF_TRANSPORT=http \
   -e CYBERCHEF_HTTP_PORT=3000 \
   -e CYBERCHEF_HTTP_HOST=0.0.0.0 \
+  -e CYBERCHEF_ALLOWED_HOSTS=localhost:3000,127.0.0.1:3000 \
   ghcr.io/doublegate/cyberchef-mcp_v1:latest
 ```
+
+`CYBERCHEF_ALLOWED_HOSTS` is new in v2.0.0 and worth setting whenever the server binds `0.0.0.0`:
+it turns on DNS-rebinding protection, without which a page in the user's browser can be made to
+reach the server through a rebound name. It is optional and off by default, because the default
+bind is loopback where it adds nothing.
+
+**Multiple simultaneous clients work from v2.0.0.** Before it, the HTTP transport was a single
+process-wide instance, so the first client to connect succeeded and every one after it was refused
+with `Invalid Request: Server already initialized` ([#36](https://github.com/doublegate/CyberChef-MCP/issues/36)).
+Each client now gets its own session and its own MCP server instance. See the
+[HTTP Transport Guide](docs/guides/http-transport.md).
 
 For detailed performance tuning guidance, see the [Performance Tuning Guide](docs/architecture/performance-tuning.md).
 

@@ -117,7 +117,7 @@ const server = new Server(
 // - executeWithTimeoutAndRetry in retry.mjs
 // - executeWithStreamingStrategy in streaming.mjs
 
-server.setRequestHandler(ListToolsRequestSchema, async () => {
+const handleListTools = async () => {
     const tools = [
         {
             name: "cyberchef_bake",
@@ -339,9 +339,9 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     });
 
     return { tools };
-});
+};
 
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
+const handleCallTool = async (request) => {
     const { name, arguments: args } = request.params;
 
     // Start request tracking
@@ -838,7 +838,49 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         // Return formatted error
         return mcpError.toMCPError();
     }
-});
+};
+
+/**
+ * Build a fresh MCP `Server` with every request handler registered.
+ *
+ * WHY A FACTORY AND NOT THE MODULE SINGLETON
+ * ------------------------------------------
+ * A `Server` carries per-connection lifecycle state -- most importantly whether `initialize`
+ * has already been negotiated. Sharing one across HTTP clients is what produced issue #36:
+ * the first client's handshake marked the instance initialized, and every later client's
+ * `initialize` was rejected with `Invalid Request: Server already initialized`.
+ *
+ * The SDK hardened the same class of bug in GHSA-345p-7cg4-v4c7 -- sharing server or transport
+ * instances between clients leaks state across them -- so a per-session pair is the required
+ * shape, not merely the tidier one.
+ *
+ * Everything a session should NOT own stays module-level and shared on purpose: the operation
+ * cache, telemetry, rate limiter and quota tracker are process-wide resources, and giving each
+ * session its own would silently defeat all four.
+ *
+ * @returns {Server} A new server instance with the tools handlers attached.
+ */
+function createMcpServer() {
+    const instance = new Server(
+        {
+            name: "cyberchef-mcp",
+            version: VERSION,
+        },
+        {
+            capabilities: {
+                tools: {},
+            },
+        }
+    );
+    instance.setRequestHandler(ListToolsRequestSchema, handleListTools);
+    instance.setRequestHandler(CallToolRequestSchema, handleCallTool);
+    return instance;
+}
+
+// The module-level instance backs stdio, which is single-connection by construction, and is what
+// the existing test suite drives. HTTP builds its own per session.
+server.setRequestHandler(ListToolsRequestSchema, handleListTools);
+server.setRequestHandler(CallToolRequestSchema, handleCallTool);
 
 /**
  * Start the MCP Server.
@@ -855,8 +897,13 @@ async function runServer() {
         await initWorkerPool();
     }
 
-    const { transport } = await createTransport();
-    await server.connect(transport);
+    // HTTP builds a Server per session inside createTransport (issue #36), so there is no
+    // process-wide transport to connect and `transport` comes back null. Connecting the module
+    // singleton here would recreate the shared-instance bug the factory exists to avoid.
+    const { transport } = await createTransport({ createServer: createMcpServer });
+    if (transport) {
+        await server.connect(transport);
+    }
 
     // Log server startup with configuration
     logServerStart({
@@ -979,5 +1026,7 @@ export {
     executeWithStreamingProgress,
     // v1.9.0 exports - re-export transport functions
     createTransport,
-    getTransportType
+    getTransportType,
+    // v2.0.0 export - per-session server factory for the HTTP transport (issue #36)
+    createMcpServer
 };

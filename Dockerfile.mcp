@@ -124,6 +124,24 @@ COPY --from=builder --chown=65532:65532 /app /app
 # a base image's default for something this important was the weaker choice regardless.
 USER 65532:65532
 
+# Streamable HTTP transport (opt-in; stdio remains the default).
+#
+# Documentation only -- EXPOSE publishes nothing by itself, and the server does not listen at all
+# unless CYBERCHEF_TRANSPORT=http. It is here so `docker inspect` and registry UIs report the port
+# a reader would otherwise have to find in the source.
+#
+#   docker run --rm -i -p 3000:3000 \
+#     -e CYBERCHEF_TRANSPORT=http \
+#     -e CYBERCHEF_HTTP_HOST=0.0.0.0 \
+#     ghcr.io/doublegate/cyberchef-mcp_v2:latest
+#
+# CYBERCHEF_HTTP_HOST defaults to 127.0.0.1, which inside a container means "unreachable from the
+# host" -- 0.0.0.0 is required for a published port. When binding 0.0.0.0, set
+# CYBERCHEF_ALLOWED_HOSTS to the names clients use (e.g. "localhost:3000,127.0.0.1:3000") to turn
+# on DNS-rebinding protection; without it a browser page can be made to reach the server through a
+# rebound name.
+EXPOSE 3000
+
 # Security: Set TMPDIR to use /tmp (writable via tmpfs in read-only mode)
 ENV TMPDIR=/tmp
 
