@@ -1,8 +1,10 @@
 /**
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
  * Vitest configuration for MCP Server validation tests.
  *
  * @author DoubleGate
- * @license Apache-2.0
+ * @license GPL-3.0-or-later
  */
 
 import { defineConfig } from "vitest/config";
