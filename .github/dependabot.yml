@@ -77,6 +77,15 @@ updates:
         versions: [">=0.9.0"]
       - dependency-name: "geodesy"
         versions: [">=2.0.0"]
+      #   jq-web 0.6 -- its module namespace exports `then`, which makes the namespace object a
+      #     THENABLE. `await import("jq-web")` therefore tries to resolve it as a promise and
+      #     throws `TypeError: Method Promise.prototype.then called on incompatible receiver
+      #     [object Module]`. Measured: it broke 10 test files, before any operation ran. The
+      #     0.5 -> 0.6 API change itself is manageable (the default export becomes async, so
+      #     `Jq.mjs` needs `await`), but that is moot while importing the package is unsafe.
+      #     Upstream pins ^0.5.1.
+      - dependency-name: "jq-web"
+        versions: [">=0.6.0"]
 
   # ------------------------------------------------------- github-actions
   # The 0.28.0 -> v0.36.0 trivy-action breakage that took Security Scan down for months
