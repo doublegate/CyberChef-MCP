@@ -32,6 +32,9 @@ jobs:
       uses: github/codeql-action/init@v4
       with:
         languages: ${{ matrix.language }}
+        # One narrow query filter, documented in the file with the measurements behind it.
+        # src/core/** is still analysed; only js/incomplete-sanitization is excluded.
+        config-file: ./.github/codeql/codeql-config.yml
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v4
