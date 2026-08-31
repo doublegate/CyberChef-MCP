@@ -17,7 +17,9 @@ import { connect, call, expect, step } from "./_lib.mjs";
 
 // A payload built the way a real one arrives: gzipped, then base64'd. Constructed here rather
 // than shipped as a fixture so you can see exactly what the answer should be.
-const SECRET = "Exfil to 203.0.113.42 -- contact ops@example.invalid -- http://evil.example/c2";
+const C2_HOST = "evil.example";
+const C2_URL = `http://${C2_HOST}/c2`;
+const SECRET = `Exfil to 203.0.113.42 -- contact ops@example.invalid -- ${C2_URL}`;
 
 const client = await connect("triage");
 try {
@@ -68,12 +70,16 @@ try {
         recipe: [{ op: "Extract URLs" }]
     });
     console.log(`  URLs:   ${urls.trim()}`);
-    // Compared as a whole extracted line rather than with `.includes(url)`. A substring test
-    // against a URL is the `js/incomplete-url-substring-sanitization` pattern -- "arbitrary hosts
-    // may come before or after it" -- and while this is an assertion rather than a security check,
-    // an example is the last place to demonstrate a habit worth unlearning.
-    expect("found the C2 URL",
-        urls.split("\n").map(u => u.trim()).includes("http://evil.example/c2"), true);
+    // Whole-value equality, not `.includes(url)`.
+    //
+    // A substring test against a URL is the `js/incomplete-url-substring-sanitization` pattern:
+    // "arbitrary hosts may come before or after it", so `evil.example/c2` matches
+    // `https://not-evil.example/c2` and `https://evil.example.attacker.test/c2` alike. Here it is
+    // an assertion rather than a security check, and CodeQL flags `.includes` with a URL literal
+    // regardless of the receiver -- an array `.includes` trips it too. Both reasons point the same
+    // way: an example is the last place to model a habit worth unlearning.
+    const c2Urls = urls.split("\n").map(u => u.trim()).filter(Boolean);
+    expect("found the C2 URL", c2Urls.some(u => u === C2_URL), true);
 
     const emails = await call(client, "cyberchef_bake", {
         input: plain,
