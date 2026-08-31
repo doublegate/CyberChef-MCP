@@ -130,7 +130,7 @@ gantt
 | Release | Theme | Key Features | Effort | Risk |
 |---------|-------|--------------|--------|------|
 | **v2.2.0** | Multi-Modal Support | **Shipped 2026-08-31.** Image and audio content blocks, MIME sniffing, binary base64 opt-in — plus tool annotations, prompts and resources | L | Medium |
-| **v2.3.0** | Advanced Transports | WebSocket, Streamable HTTP, SSE (deprecated) | L | Medium |
+| **v2.3.0** | Protocol currency | **Protocol revision 2026-07-28 on both stdio and HTTP**, served alongside the 2025 era from one set of handlers (MCP SDK v2); npm distribution unblocked; 17 image operations fixed. **Re-scoped:** the original "WebSocket, Streamable HTTP, SSE" line no longer describes anything buildable — see the note below. | L | Medium |
 | **v2.4.0** | Plugin Architecture | Plugin system, sandboxed execution, plugin registry | XL | High |
 | **v2.5.0** | Enterprise Features | OAuth 2.1, RBAC, audit logging, multi-tenancy | XL | High |
 | **v2.6.0** | Distributed Architecture | Kubernetes scaling, service mesh, warm pools | XL | High |
@@ -139,6 +139,28 @@ gantt
 | **v2.9.0** | AI-Native Features | NL-to-recipe, operation suggestions, smart recipes | M | Medium |
 | **v2.9.x** | Pre-v3.0.0 Polish | Migration tooling, deprecation warnings, compatibility mode | M | Medium |
 | **v3.0.0** | Major Release | API evolution, breaking changes, v2.x LTS | XL | High |
+
+
+### Note: why v2.3.0's transport line was re-scoped
+
+The row above originally read "WebSocket, Streamable HTTP, SSE (deprecated)". Checked against the
+specification and the SDK rather than carried forward:
+
+- **Streamable HTTP** already shipped in v2.0.0 (per-session, issue #36) and in v2.3.0 serves both
+  protocol eras. Nothing left to do.
+- **SSE** — the HTTP+SSE transport of 2024-11-05 — is deprecated by the specification and, under
+  SEP-2596's grandfathering policy, **eligible for removal**. Implementing it now would mean adding
+  a transport the spec is in the process of deleting.
+- **WebSocket is not an MCP transport.** The specification defines stdio and Streamable HTTP; there
+  is no WebSocket binding, and SDK v2 ships no WebSocket transport in either
+  `@modelcontextprotocol/server` or `@modelcontextprotocol/client` (checked by grep across both
+  packages: zero occurrences). Building one would produce a transport no existing client could
+  speak.
+
+What the theme was reaching for — transport reach beyond a local pipe — is available in a
+spec-sanctioned form: the stdio binding over a Unix domain socket or TCP stream, which the SDK
+documents explicitly and for which `createTransport` already accepts an injected transport. That is
+the honest successor to this line, and it is not yet built.
 
 **Effort:** S (1-3 days), M (4-7 days), L (1-2 weeks), XL (2-4 weeks)
 
