@@ -102,7 +102,7 @@
     "worker-loader": "^3.0.8"
   },
   "dependencies": {
-    "@alexaltea/capstone-js": "^3.0.5",
+    "@alexaltea/capstone-js": "^5.0.9",
     "@astronautlabs/amf": "^0.0.6",
     "@blu3r4y/lzma": "^2.3.3",
     "@modelcontextprotocol/sdk": "^1.30.0",
