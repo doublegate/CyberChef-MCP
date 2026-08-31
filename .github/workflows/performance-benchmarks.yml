@@ -141,7 +141,14 @@ jobs:
             const longest = (output.match(/`+/g) || []).reduce((n, s) => Math.max(n, s.length), 0);
             const fence = "`".repeat(Math.max(3, longest + 1));
 
+            // Hidden marker used to find this job's previous comment and update it in place.
+            // Without it every push appended another benchmark comment -- invisible while the
+            // step was 403ing, and acutely visible during an upstream catch-up that touches
+            // src/core/** across many pushes.
+            const MARKER = "<!-- performance-benchmark-results -->";
+
             const body = [
+              MARKER,
               "## Performance Benchmark Results",
               "",
               `Benchmark job: **${{ needs.benchmark.result }}**`,
@@ -160,11 +167,52 @@ jobs:
               "> for the v2.0.0 release work.",
             ].join("\n");
 
+            // Update the existing comment if there is one, otherwise post a new one.
+            //
+            // `paginate` returns ONE FLAT ARRAY across all pages. That is the whole reason to use
+            // it here rather than listComments: `gh api --paginate` and the raw REST list emit one
+            // array PER PAGE, so a `.find()` written for a single array silently misses the marker
+            // on a long thread and degrades into exactly the duplicate-posting this fixes. That
+            // failure was reproduced in scripts/agy-review.sh before being fixed there.
+            let existing = null;
+            try {
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                per_page: 100
+              });
+              // Match on the marker AND on authorship. The marker alone is not a claim of
+              // ownership: anyone who can comment on the PR could paste it and have this job
+              // overwrite their comment on the next run. Restricting to the Actions bot means the
+              // worst case is an extra comment, never destroying someone else's text.
+              existing = comments.find(c =>
+                c.body &&
+                c.body.includes(MARKER) &&
+                c.user &&
+                c.user.type === "Bot" &&
+                c.user.login === "github-actions[bot]"
+              ) || null;
+            } catch (err) {
+              // Fall through to a plain create. A duplicate comment is noise; failing to report a
+              // benchmark run at all is worse, so a lookup failure must not fail the job.
+              core.warning(`could not list comments, posting a new one: ${err.message}`);
+            }
+
             // `await`: without it a rejection became an unhandled rejection that took the job
             // down with an opaque stack instead of a readable error.
-            await github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body
-            });
+            if (existing) {
+              await github.rest.issues.updateComment({
+                comment_id: existing.id,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body
+              });
+            }

@@ -45,10 +45,6 @@ module.exports = function (grunt) {
             "clean:config", "clean:nodeConfig", "exec:generateConfig", "exec:generateNodeIndex"
         ]);
 
-    grunt.registerTask("testui",
-        "A task which runs all the UI tests in the tests directory. The prod task must already have been run.",
-        ["connect:prod", "exec:browserTests"]);
-
     grunt.registerTask("testnodeconsumer",
         "A task which checks whether consuming CJS and ESM apps work with the CyberChef build",
         ["exec:setupNodeConsumers", "exec:testCJSNodeConsumer", "exec:testESMNodeConsumer", "exec:teardownNodeConsumers"]);
@@ -115,7 +111,6 @@ module.exports = function (grunt) {
     grunt.loadNpmTasks("grunt-contrib-watch");
     grunt.loadNpmTasks("grunt-exec");
     grunt.loadNpmTasks("grunt-concurrent");
-    grunt.loadNpmTasks("grunt-contrib-connect");
     grunt.loadNpmTasks("grunt-zip");
 
 
@@ -216,7 +211,21 @@ module.exports = function (grunt) {
     function chainCommands(cmds) {
         const win = process.platform === "win32";
         if (!win) {
-            return cmds.join(";");
+            // `&&`, NOT `;`. With `;` every command runs regardless of the previous one's exit
+            // status AND the chain's status is the LAST command's -- which here is always a
+            // trailing `echo`. So a config-generation script could die and `grunt configTests`
+            // would still exit 0, leaving OperationConfig.json as the literal `[]` written by the
+            // first command: an MCP server with zero tools, from a build that reported success.
+            //
+            // Observed twice. During the v11.4.0 landing a missing generator killed
+            // generateConfig silently, and again here when `bson` 7 removed its default export.
+            // Both times grunt said "Done." Verified:
+            //     (true ; false ; echo done)  -> exit 0
+            //     (true && false && echo done) -> exit 1
+            //
+            // Note the Windows branch below already used `&&` and its comment explains exactly
+            // why -- so POSIX was the odd one out, failing open where Windows failed closed.
+            return cmds.join(" && ");
         }
         return cmds
             // && means that subsequent commands will not be executed if the
@@ -290,14 +299,6 @@ module.exports = function (grunt) {
                     "!build/prod/BundleAnalyzerReport.html",
                 ],
                 dest: `build/prod/CyberChef_v${pkg.version}.zip`
-            }
-        },
-        connect: {
-            prod: {
-                options: {
-                    port: grunt.option("port") || 8000,
-                    base: "build/prod/"
-                }
             }
         },
         copy: {
@@ -418,9 +419,6 @@ module.exports = function (grunt) {
                     "echo '--- Node index generated. ---\n'"
                 ]),
                 sync: true
-            },
-            browserTests: {
-                command: "./node_modules/.bin/nightwatch --env prod"
             },
             setupNodeConsumers: {
                 command: chainCommands([

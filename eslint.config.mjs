@@ -140,4 +140,29 @@ export default [
             "no-console": "off"
         }
     },
+    // src/core/** is mirrored VERBATIM from GCHQ CyberChef. The 8 residual src/web/** files
+    // are upstream-derived leftovers from the v1.7.1 web-app removal -- OutputWaiter.mjs
+    // does differ from upstream, so "verbatim" would be wrong for it; they are grouped here
+    // because this fork does not develop the web app, not because they are byte-identical. Rules that fire only there are
+    // unfixable by this fork: a hand-edit is overwritten by the next upstream sync, and the
+    // incident record at docs/security/2026-08-30-saferegex-reverted-by-upstream-sync.md is what
+    // happens when someone tries anyway.
+    {
+        files: ["src/core/**/*", "src/web/**/*"],
+        rules: {
+            // New in ESLint 10's recommended set. It reports 73 times across 42 upstream files
+            // and ZERO times in fork-owned code -- verified by classifying every violation
+            // against the reference checkout before switching it off. Style-level: it flags
+            // assignments whose value is never read, not a correctness defect.
+            //
+            // Deliberately scoped to src/core rather than disabled globally: it stays ACTIVE on
+            // src/node/** and tests/mcp/**, which is the code this fork actually writes.
+            "no-useless-assignment": "off",
+            // Also new in ESLint 10. Both violations are in upstream's
+            // src/core/lib/Protobuf.mjs, which rethrows without `cause`. Same reasoning:
+            // unfixable here, and it stays ACTIVE on fork-owned code where attaching
+            // `cause` is a real improvement we can make and keep.
+            "preserve-caught-error": "off"
+        }
+    },
 ];

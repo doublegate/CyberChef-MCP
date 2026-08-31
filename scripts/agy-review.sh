@@ -42,9 +42,31 @@ log() { printf '[agy-review] %s\n' "$*" >&2; }
 # general helper used throughout the script -- the marker is a comment, so its position
 # changes nothing about where the function is defined.
 have_text() { [ -s "$1" ] && grep -q '[^[:space:]]' "$1"; }
-AGY_ERROR_RE='^[[:space:]]*Error:.*(Eligibility check failed|UNAVAILABLE|unavailable|RESOURCE_EXHAUSTED|INTERNAL|DEADLINE_EXCEEDED|code [45][0-9]{2})'
-# Captures longer than this are assumed to be real reviews even if they open with an error line:
-# a genuine review is thousands of bytes, a bare backend error is a couple of hundred.
+# Any `Error:` on line 1 of a short capture -- NOT an enumeration of known backend messages.
+#
+# This was previously a list: Eligibility check failed | UNAVAILABLE | RESOURCE_EXHAUSTED |
+# INTERNAL | DEADLINE_EXCEEDED | code 4xx/5xx. That list is unmaintainable by construction,
+# and it failed exactly as you would expect. Observed on CyberChef-MCP PR #72, where agy posted
+# this as its entire review and the `review` check went GREEN:
+#
+#     ## Antigravity review (Gemini via Ultra)
+#
+#     Error: timeout waiting for response
+#
+# A timeout is not in the list, so the guard let it through -- reproducing the precise failure
+# the guard exists to prevent, one signature later. Enumerating failure modes only ever catches
+# the ones already seen.
+#
+# Inverted: treat ANY leading `Error:` as a failure. The false-positive protection does not come
+# from the message text at all, and never did -- it comes from the two conditions below, which
+# are unchanged: the error must be on LINE 1, and the whole capture must be under
+# AGY_ERROR_MAX_BYTES. The load-bearing half is the LINE 1 anchor: a review does not *open*
+# with a bare "Error:" line, however short it is.
+AGY_ERROR_RE='^[[:space:]]*Error:'
+# Secondary safety net, not the primary discriminator. A backend failure IS the whole capture and
+# is a couple of hundred bytes; the cap only ensures that if a review ever did open with an
+# "Error:" line, length alone keeps it from being discarded. Reviews shorter than this exist, so
+# the cap is deliberately generous rather than a claim about minimum review length.
 AGY_ERROR_MAX_BYTES="${AGY_ERROR_MAX_BYTES:-2000}"
 # `head -n 1`, not `head -n 5`. grep matches line-by-line, so scanning five lines
 # means "any of the first five lines is an error line" -- which would discard a short,
@@ -290,12 +312,26 @@ auth_failed=0
 service_errors=0
 # Set when the large-diff fallback below creates refs/agy/* so the trap can remove them.
 agy_refs_created=
+# Set by the AGY_DRY_RUN block so cleanup KEEPS the two artefacts dry-run exists to expose. The
+# whole point of dry run is "let me look at the assembled prompt", and the EXIT trap fires on the
+# `exit 0` at the end of that block -- so it deleted the prompt on the way out, every time.
+# Everything else is still removed; only these two are spared, and their paths are printed.
+keep_artifacts=
 cleanup() {
-  rm -f "$diff_file" "$diff_err" "$meta_file" "$prompt_file" "$out_file" "$raw" "$body_file" "$agy_diff_file"
+  # Quoted-but-conditional expansion: `rm -f ""` is silent and exits 0 on GNU coreutils, which is
+  # why an unconditional `rm -f "$unset_var"` never showed up on the Linux runner -- but BSD/macOS
+  # `rm` writes "No such file or directory" to stderr for the empty operand. ${v:+"$v"} expands to
+  # nothing at all when $v is empty, so no operand is passed rather than an empty one.
+  local keep_set="${keep_artifacts:-}"
+  rm -f ${diff_file:+"$diff_file"} ${diff_err:+"$diff_err"} ${meta_file:+"$meta_file"} \
+        ${out_file:+"$out_file"} ${raw:+"$raw"} ${body_file:+"$body_file"}
+  if [ -z "$keep_set" ]; then
+    rm -f ${prompt_file:+"$prompt_file"} ${agy_diff_file:+"$agy_diff_file"}
+  fi
   # Remove the gitignored diff-handoff scratch dir once its file is gone. `rmdir` only unlinks an
   # empty dir, so a concurrent run's file (a different $$) is never clobbered; a non-empty dir is
   # gitignored and harmless if left behind.
-  [ -n "$agy_work_dir" ] && rmdir "$agy_work_dir" 2>/dev/null || true
+  [ -n "$agy_work_dir" ] && [ -z "$keep_set" ] && rmdir "$agy_work_dir" 2>/dev/null || true
   if [ -n "$agy_refs_created" ] && [ -n "${PR:-}" ]; then
     git update-ref -d "refs/agy/pr-${PR}" 2>/dev/null || true
     git update-ref -d "refs/agy/base-${PR}" 2>/dev/null || true
@@ -602,6 +638,12 @@ if [ -n "${AGY_DRY_RUN:-}" ]; then
     log "prompt: $(wc -c < "$prompt_file") bytes (diff inlined, $(wc -c < "$diff_file") bytes)"
   fi
   cat "$prompt_file"
+  # Keep the prompt (and the on-disk diff handoff, if used) so they can actually be inspected --
+  # see `keep_artifacts` at the cleanup trap. Paths go to stderr so a `> prompt.txt` redirect of
+  # stdout still captures only the prompt.
+  keep_artifacts=1
+  log "kept for inspection: $prompt_file${agy_diff_file:+ and $agy_diff_file}"
+  log "(remove them yourself; every other temp file was cleaned up as usual)"
   exit 0
 fi
 
