@@ -7,7 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **A tool registry** for tools that are not CyberChef operations (`src/node/tools/`). Every tool so
+  far is derived from `OperationConfig` — a pure `run(input, args)` over one input — which cannot
+  express an *analysis*: scoring forty candidate key lengths, or composing several operations and
+  comparing results. `cyberchef_bake` does not help, because a recipe is a linear pipeline, not a
+  loop. Registry tools receive capabilities (`{ bake }`), never the engine itself.
+- **`cyberchef_xor_key_length`** — recovers the key length of a repeating-key XOR by index of
+  coincidence, then guesses the key and decrypts. Reports ranked candidates with scores and a
+  confidence figure relative to random, because the method is least reliable on short inputs and on
+  plaintext with its own strong period.
+
+### Changed
+
+- **A registry tool can never shadow a CyberChef operation.** Registration fails loudly on a name
+  collision rather than resolving it by import order, so `cyberchef_aes_decrypt` is always AES
+  Decrypt and the winner can never depend on module load sequence.
+- **No plugin loader, deliberately.** The registry loads nothing from disk; tools are registered by
+  explicit import. "Sandboxed execution" is not achievable with `node:vm` — a host capability handed
+  into a vm context reaches the real `process`, and every useful tool needs a capability. Recorded
+  with the measurement in [ADR 0002](docs/adr/0002-tool-registry-is-not-a-plugin-loader.md).
+- `src/node/tools/**` added to the coverage include list — a new directory is otherwise measured at
+  nothing while appearing in no report, which is how `src/node/worker.mjs` went unmeasured for six
+  releases.
+
 
 ## [2.3.0] - 2026-08-31
 
