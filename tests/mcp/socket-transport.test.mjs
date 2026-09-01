@@ -22,7 +22,7 @@
  * @license GPL-3.0-or-later
  */
 
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, afterAll } from "vitest";
 import net from "node:net";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
@@ -65,7 +65,20 @@ function clientTransportOver(socket) {
 }
 
 const open = [];
-const paths = [];
+
+/**
+ * A private directory for this file's sockets, created 0700 by `mkdtemp`.
+ *
+ * NOT a predictable name under `os.tmpdir()`. That is a shared, world-writable directory, so a
+ * name anyone can guess lets a local user pre-create a symlink at it and redirect whatever the
+ * test writes -- which CodeQL flags as `js/insecure-temporary-file`, at high severity, correctly.
+ * `mkdtemp` returns a directory only this process can enter, so nothing inside it is guessable or
+ * pre-creatable, and one `rm -rf` at the end cleans up every file at once.
+ *
+ * It also keeps socket paths short. `sun_path` is a fixed 108-byte field, and mkdtemp adds only
+ * six characters.
+ */
+const TMP = fs.mkdtempSync(join(os.tmpdir(), "cyberchef-mcp-test-"));
 
 afterEach(async () => {
     while (open.length) {
@@ -74,20 +87,18 @@ afterEach(async () => {
             await closeAll();
         } catch { /* teardown is best-effort */ }
     }
-    while (paths.length) {
-        const p = paths.pop();
-        try {
-            fs.unlinkSync(p);
-        } catch { /* already gone, which is the normal case */ }
-    }
 });
 
-/** @returns {string} A unique socket path under the OS temp dir. */
+afterAll(() => {
+    fs.rmSync(TMP, { recursive: true, force: true });
+});
+
+/** @returns {string} A unique socket path inside this file's private temp directory. */
 function tmpSocket() {
-    const p = join(os.tmpdir(), `cyberchef-mcp-test-${process.pid}-${Math.random().toString(36).slice(2)}.sock`);
-    paths.push(p);
-    return p;
+    return join(TMP, `s${socketSeq++}.sock`);
 }
+
+let socketSeq = 0;
 
 /**
  * Connect a real MCP client over a Unix socket.
@@ -192,9 +203,8 @@ describe("socket transport", () => {
     });
 
     it("refuses to remove a path that is not a socket", async () => {
-        const path = join(os.tmpdir(), `cyberchef-mcp-test-${process.pid}-regular-file`);
+        const path = join(TMP, "regular-file");
         fs.writeFileSync(path, "not a socket");
-        paths.push(path);
         // Existence alone cannot distinguish a stale socket from someone's data. Deleting the
         // wrong one would be silent destruction, so it fails loudly instead.
         await expect(createTransport({ type: "socket", socketPath: path, createServer: makeServer }))
@@ -216,6 +226,36 @@ describe("socket transport", () => {
         open.push(first.closeAll);
         await expect(createTransport({ type: "socket", socketPath: path, createServer: makeServer }))
             .rejects.toThrow(/already served/);
+    });
+});
+
+describe("socket transport: configuration it must refuse or bound", () => {
+    it("rejects a port that is not a number", async () => {
+        await expect(createTransport({
+            type: "socket", port: "not-a-port", createServer: makeServer
+        })).rejects.toThrow(/is not a number/);
+    });
+
+    it("drops connections past the cap instead of accepting unboundedly", async () => {
+        const path = tmpSocket();
+        const handle = await createTransport({
+            type: "socket", socketPath: path, createServer: makeServer, maxConnections: 1
+        });
+        open.push(handle.closeAll);
+
+        const first = await connectClient(path);
+        try {
+            // The cap is a resource control, so the second connection is refused rather than
+            // queued: a queue would just move the unboundedness somewhere less visible.
+            const second = net.connect(path);
+            await new Promise((resolve) => {
+                second.once("close", resolve);
+                second.once("error", resolve);
+            });
+            expect(handle.connections.size).toBe(1);
+        } finally {
+            await first.client.close();
+        }
     });
 });
 

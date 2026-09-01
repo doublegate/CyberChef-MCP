@@ -156,6 +156,20 @@ describe("HTTP protocol eras", () => {
         }
     });
 
+    it("refuses a request with no Host header at all", async () => {
+        // HTTP/1.1 requires Host, so its absence is a malformed request rather than a permissive
+        // case: "no host" must never read as "no objection". Which layer catches it is not the
+        // point and is not asserted -- an empty Host is rejected as a bad request (400) before it
+        // reaches the allowlist check, which would have answered 403. Either way it does not
+        // reach a server.
+        const res = await post(
+            { jsonrpc: "2.0", id: 4, method: "tools/list", params: { _meta: MODERN_META } },
+            { host: "" }
+        );
+        expect(res.status).toBeGreaterThanOrEqual(400);
+        expect(res.status).toBeLessThan(500);
+    });
+
     it("refuses a forged Host on the modern path, as the sessionful path already does", async () => {
         const res = await post(
             { jsonrpc: "2.0", id: 3, method: "tools/list", params: { _meta: MODERN_META } },

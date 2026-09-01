@@ -72,6 +72,9 @@ Nothing yet.
   refused unless explicitly allowed, the Unix socket is created `0600` rather than at the mercy of
   the umask, and a stale socket file is probed before it is removed. Replaces the roadmap's
   "WebSocket" line, which named a transport MCP does not define.
+- **Test temp files moved into a private `mkdtemp` directory.** The socket suite wrote predictable
+  names into `os.tmpdir()`, which is shared and world-writable — CodeQL flagged it `high`, correctly:
+  a predictable name there is a symlink-attack vector.
 - `tests/mcp/image-operations.test.mjs` — 19 tests pinning all 17 image operations end to end, plus
   the operation-boundary assertions that make the buffer-pool defect visible.
 
