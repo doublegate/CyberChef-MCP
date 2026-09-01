@@ -1083,7 +1083,11 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
                     // a working analysis into a failed tool call. The input here is a plain string.
                     logRequestComplete(requestId, {
                         tool: name,
-                        inputSize: typeof args?.input === "string" ? Buffer.byteLength(args.input, "utf8") : 0,
+                        // The whole argument object, not `args.input`. Half the registry tools have
+                        // no field called `input` -- `rsa_attack` takes `modulus`, `cyclic_pattern`
+                        // takes `fragment` -- so keying on that name logged 0 for them, and a
+                        // telemetry figure that is silently zero is worse than an absent one.
+                        inputSize: Buffer.byteLength(JSON.stringify(args ?? {}), "utf8"),
                         outputSize: Buffer.byteLength(output, "utf8"),
                         duration: Date.now() - startTime, cached: false, streamed: false
                     });
