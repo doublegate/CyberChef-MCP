@@ -186,7 +186,10 @@ export class ToolRegistry {
      * @returns {Object<string, string[]>} Category name to exposed tool names.
      */
     byCategory() {
-        const out = {};
+        // Null prototype: "__proto__" and "constructor" are valid category strings, and on a
+        // plain object `out["__proto__"]` reads an inherited value that is truthy, so `||= []`
+        // never assigns and the `.push` below throws instead of grouping.
+        const out = Object.create(null);
         for (const tool of this._tools.values()) {
             (out[tool.category] ||= []).push(ToolRegistry.exposedName(tool.name));
         }

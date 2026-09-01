@@ -160,7 +160,10 @@ capability and stays contained.
 
 So tools are registered by explicit import, in a reviewed pull request, and the roadmap line is
 recorded as re-scoped rather than quietly dropped. It becomes buildable if the boundary becomes a
-real isolate — a worker thread with no host objects passed across, or a WASM runtime — which is a
+real one: **process isolation plus an explicit capability allowlist** — a child process under
+Node's permission model or equivalent, a defined IPC surface, and a written decision about what a
+plugin may read and reach. Not a worker thread: a worker bounds CPU, not authority, and shares the
+process's filesystem, network and environment. That is a design with a threat model, and a
 different piece of work from a tidier `vm`. [ADR 0002](../adr/0002-tool-registry-is-not-a-plugin-loader.md).
 
 ### Note: why v2.3.0's transport line was re-scoped

@@ -99,7 +99,7 @@ The server exposes CyberChef operations as MCP tools:
 *   **Advanced Features** (v1.7.0): Enterprise-grade capabilities with batch processing (parallel/sequential execution of up to 100 operations), privacy-first telemetry collection (disabled by default, no input/output data captured), sliding window rate limiting for resource protection, enhanced caching with inspection tools, and resource quota tracking (concurrent operations, data sizes). All features are configurable via environment variables with secure defaults. See [Release Notes](docs/releases/v1.7.0.md) for details.
 *   **Enhanced Observability** (v1.5.0): Structured JSON logging with Pino for production monitoring, comprehensive error handling with actionable recovery suggestions, automatic retry logic with exponential backoff, request correlation with UUID tracking, circuit breaker pattern for cascading failure prevention, and streaming infrastructure for progressive results on large operations. See [Release Notes](docs/releases/v1.5.0.md) for details.
 *   **Performance Optimized** (v1.4.0): LRU cache for operation results (100MB default), automatic streaming for large inputs (10MB+ threshold), configurable resource limits (100MB max input, 30s timeout), memory monitoring, and comprehensive benchmark suite. See [Performance Tuning Guide](docs/architecture/performance-tuning.md) for configuration options.
-*   **Upstream Sync Automation** (v1.3.0; **rebuilt in v2.0.0**): Weekly monitoring of upstream releases, an atomic whole-tree mirror, fork changes carried as patches that fail the sync if they stop applying, comprehensive validation (1,094 MCP + 241 Node-API + 2,289 operation tests), and an emergency rollback. See the [Upstream Sync Guide](docs/guides/upstream-sync-guide.md).
+*   **Upstream Sync Automation** (v1.3.0; **rebuilt in v2.0.0**): Weekly monitoring of upstream releases, an atomic whole-tree mirror, fork changes carried as patches that fail the sync if they stop applying, comprehensive validation (1,106 MCP + 241 Node-API + 2,289 operation tests), and an emergency rollback. See the [Upstream Sync Guide](docs/guides/upstream-sync-guide.md).
 *   **Security Hardened** (v1.4.5+): Chainguard distroless base image with zero-CVE baseline, non-root execution (UID 65532), automated Trivy vulnerability scanning with build-fail thresholds, dual SBOM strategy (Docker Scout attestations + CycloneDX), read-only filesystem support, SLSA Build Level 3 provenance, and 7-day SLA for critical CVE patches. Fixed 11 of 12 code scanning vulnerabilities including critical cryptographic randomness weakness and 7 ReDoS vulnerabilities. See [Security Policy](SECURITY.md) and [Security Fixes Report](docs/security/SECURITY_FIX_REPORT.md) for details.
 *   **Production Ready**: Comprehensive CI/CD with CodeQL v4, automated testing, and dual-registry container publishing (Docker Hub + GHCR) with complete supply chain attestations.
 
@@ -701,8 +701,8 @@ This project uses GitHub Actions to ensure stability and security:
 **Code Quality & Coverage:**
 *   **Codecov Integration**: Comprehensive code quality analytics with three distinct components
     *   **Coverage Analytics**: Automated coverage tracking with V8 provider and status checks on pull requests
-        *   Project coverage threshold: 70% (lines, functions, statements)
-        *   Patch coverage threshold: 75% for new code
+        *   Project coverage threshold: 95% (`codecov.yml`)
+        *   Patch coverage threshold: 90% for new code
         *   Multiple coverage formats: lcov, JSON, HTML, Cobertura
         *   Component-level tracking: MCP Server, Core Operations, Node API
     *   **Bundle Analysis**: Webpack bundle size tracking and visualization via @codecov/webpack-plugin
@@ -733,7 +733,7 @@ All workflows use the latest CodeQL Action v4 for security scanning and SARIF up
 # Run all tests (requires Node.js >=24 <27; 241 Node-API + 2,289 operation tests)
 npm test
 
-# Run MCP validation test suite (798 tests across 25 files, with Vitest)
+# Run MCP validation test suite (1,106 tests across 39 files, with Vitest)
 npm run test:mcp
 
 # Run MCP tests with coverage report
@@ -754,9 +754,9 @@ npm run lint
 
 **Test Coverage:**
 The MCP server maintains comprehensive test coverage:
-- **1,094 MCP tests** across 39 suites, plus 241 Node-API tests, 2,289 operation tests and 9 runnable examples executed by CI
-- **Coverage thresholds**: 95% statements/lines, 88% branches, 96% functions, with `src/node/lib/**` held separately at 99/94/100/99
-- **Current coverage**: 96.48% lines, 95.62% statements, 96.38% functions, 88.68% branches
+- **1,106 MCP tests** across 39 suites, plus 241 Node-API tests, 2,289 operation tests and 9 runnable examples executed by CI
+- **Coverage thresholds** (`vitest.config.mjs`): 96% lines, 95% statements, 88% branches, 96% functions, with `src/node/lib/**` held separately at 99 lines / 99 statements / 94 branches / 100 functions
+- **Current coverage**: 96.59% lines, 95.77% statements, 96.40% functions, 89.26% branches
 - Note: individual suite names are not listed here because the list went stale three times;
   `ls tests/mcp/*.test.mjs` is authoritative.
 

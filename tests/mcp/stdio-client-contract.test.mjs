@@ -105,6 +105,43 @@ describe("stdio contract, via the official MCP client", () => {
         });
         expect(res.content[0].text).toBe(Buffer.from("Hello v2.1.0").toString("base64"));
     }, BOOT_TIMEOUT_MS);
+
+    it("dispatches a registry tool, which is a different branch from an operation", async () => {
+        // Registry tools are not in OperationConfig and take a separate path through
+        // `handleCallTool`. Exercised through the client rather than by calling `run` directly,
+        // because that path is where the schema, the capability hand-off, the timeout wrapper and
+        // the content block all live -- and a direct `run` call touches none of them.
+        const res = await client.callTool({
+            name: "cyberchef_hash_identify",
+            arguments: { input: "$2b$12$GhvMmNVjRW29ulnudl.LbuAnUtN/LRfe1JsBm1Xu6LE3059z5Tr8m" }
+        });
+        expect(res.isError).toBeFalsy();
+        const parsed = JSON.parse(res.content[0].text);
+        expect(parsed.most_likely.format).toBe("bcrypt");
+        expect(parsed.next).toBe("hashcat -m 3200");
+    }, BOOT_TIMEOUT_MS);
+
+    it("returns a structured error for a malformed registry call", async () => {
+        // The invalid-argument branch of the registry dispatch. It has to come back as a normal
+        // MCP error result rather than a thrown internal, which is what a Zod issue would be if it
+        // escaped -- and the message has to name the field the caller got wrong.
+        const res = await client.callTool({
+            name: "cyberchef_rsa_attack",
+            arguments: { modulus: "f".repeat(9000) }
+        });
+        expect(res.isError).toBe(true);
+        expect(res.content[0].text).toMatch(/INVALID_INPUT/);
+        expect(res.content[0].text).toMatch(/modulus/);
+    }, BOOT_TIMEOUT_MS);
+
+    it("reports an unknown argument on a registry tool rather than ignoring it", async () => {
+        const res = await client.callTool({
+            name: "cyberchef_hash_identify",
+            arguments: { hash: "5f4dcc3b5aa765d61d8327deb882cf99" }   // the field is `input`
+        });
+        expect(res.isError).toBe(true);
+        expect(res.content[0].text).toMatch(/input/);
+    }, BOOT_TIMEOUT_MS);
 });
 
 describe("stdio stream separation", () => {

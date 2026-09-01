@@ -72,6 +72,11 @@ function findOffset(pattern, fragment, n) {
     // Only the first `n` symbols are unique, so a longer fragment is truncated rather than
     // rejected -- a caller pasting eight bytes from a 64-bit register is doing the normal thing.
     const needle = fragment.length > n ? fragment.slice(0, n) : fragment;
+    // SHORTER than `n` is a different matter: uniqueness is a property of length-`n` windows only.
+    // With n=4, "aa" occurs 282 times in a 1024-byte pattern, and `indexOf` reported the first of
+    // them as *the* offset -- a confident wrong overflow offset, which is the single failure this
+    // tool exists to prevent. Reported as ambiguous rather than answered.
+    if (needle.length < n) return { ambiguous: true, matched: needle };
     const at = pattern.indexOf(needle);
     return at === -1 ? null : { offset: at, matched: needle };
 }
@@ -91,15 +96,27 @@ function fragmentReadings(value, format) {
     const trimmed = value.trim();
     const readings = [];
     const asText = () => readings.push({ reading: "text", text: trimmed });
-    const asHex = () => {
+    const asHex = (strict = false) => {
         const hex = trimmed.replace(/^0x/i, "").replace(/[\s_]/g, "");
-        if (!/^[0-9a-f]+$/i.test(hex) || hex.length % 2) return;
+        if (!/^[0-9a-f]+$/i.test(hex) || hex.length % 2) {
+            // In Auto mode this is just "not hex, try text". Under an explicit `Hex` it is a parse
+            // failure, and staying silent made the caller reach the "does not appear in the
+            // pattern" error further down -- which sent them to check the pattern length and
+            // alphabet, both of which were fine. Say what actually went wrong.
+            if (strict) {
+                throw createInputError(
+                    "fragment_format=Hex needs an even number of hexadecimal digits, optionally " +
+                    "prefixed with 0x. Use fragment_format=Text if the fragment is literal bytes.",
+                    { fragment: trimmed.slice(0, 40), digits: hex.length });
+            }
+            return;
+        }
         const bytes = hex.match(/../g).map(h => parseInt(h, 16));
         readings.push({ reading: "hex, big-endian", text: String.fromCharCode(...bytes) });
         readings.push({ reading: "hex, little-endian", text: String.fromCharCode(...bytes.reverse()) });
     };
     if (format === "Text") asText();
-    else if (format === "Hex") asHex();
+    else if (format === "Hex") asHex(true);
     else {
         // Auto: a bare hex-looking string is far more often a register dump than four letters that
         // happen to be hex digits -- but "dead" and "face" ARE valid fragments, so text is offered
@@ -189,9 +206,27 @@ export default {
         }
 
         const found = [];
+        const tooShort = [];
         for (const reading of fragmentReadings(fragment, format)) {
             const hit = findOffset(pattern, reading.text, n);
-            if (hit) found.push({ reading: reading.reading, fragment: reading.text, offset: hit.offset });
+            if (!hit) continue;
+            if (hit.ambiguous) tooShort.push(reading.text);
+            else found.push({ reading: reading.reading, fragment: reading.text, offset: hit.offset });
+        }
+
+        // Every reading was shorter than the uniqueness window. There IS a first match for each,
+        // and returning it would look like an answer -- so refuse, and say which knob to turn.
+        if (!found.length && tooShort.length) {
+            // The LONGEST reading, so the number quoted back is the one the caller recognises: for
+            // "aa" the hex reading is one byte and the text reading is two, and being told
+            // "1 byte" about a two-character fragment reads like a different bug.
+            const shortest = tooShort.reduce((a, b) => (a.length >= b.length ? a : b));
+            throw createInputError(
+                `The fragment is ${shortest.length} byte(s) and the pattern is only unique in ` +
+                `windows of ${n}. Several positions match, so any offset reported would be a guess ` +
+                "rather than the answer. Supply the full width of the register you recovered, or " +
+                "lower subsequence_length if the pattern was generated with a smaller one.",
+                { fragmentLength: shortest.length, subsequenceLength: n });
         }
 
         if (!found.length) {

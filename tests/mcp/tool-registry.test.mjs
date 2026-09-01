@@ -287,6 +287,93 @@ describe("input bounds: what stops a tool blocking the server", () => {
     }, 30000);
 });
 
+describe("answers refused rather than guessed", () => {
+    const reg = buildRegistry();
+    const run = async (name, args) => {
+        const t = reg.getByExposedName(`cyberchef_${name}`);
+        return await t.run(t.inputSchema.parse(args));
+    };
+
+    it("refuses an offset for a fragment shorter than the uniqueness window", async () => {
+        // Uniqueness is a property of length-n windows only. With n=4, "aa" occurs 282 times in a
+        // 1024-byte pattern, and indexOf reported the first as *the* offset -- a confident wrong
+        // overflow offset, which is the one failure this tool exists to prevent.
+        await expect(run("cyclic_pattern", { mode: "find", fragment: "aa" }))
+            .rejects.toThrow(/only unique in windows of 4/);
+    });
+
+    it("still answers for a fragment at or above the window", async () => {
+        expect((await run("cyclic_pattern", { mode: "find", fragment: "aaha" })).most_likely.offset)
+            .toBe(26);
+        // Longer is fine: eight bytes from a 64-bit register is the normal thing to paste.
+        expect((await run("cyclic_pattern", { mode: "find", fragment: "aahaaaia" })).most_likely.offset)
+            .toBe(26);
+    });
+
+    it("blames the hex parse rather than the pattern when Hex is explicit", async () => {
+        // Staying silent sent the caller to the "does not appear in the pattern" error, and from
+        // there to check the pattern length and alphabet -- both of which were fine.
+        await expect(run("cyclic_pattern",
+            { mode: "find", fragment: "zzz", "fragment_format": "Hex" }))
+            .rejects.toThrow(/even number of hexadecimal digits/);
+    });
+
+    it("rejects an alphabet with a repeated symbol", async () => {
+        await expect(run("cyclic_pattern", { mode: "generate", alphabet: "aab" }))
+            .rejects.toThrow();
+    });
+
+    it("says what is missing when mode=find has no fragment", async () => {
+        await expect(run("cyclic_pattern", { mode: "find" }))
+            .rejects.toThrow(/needs a `fragment`/);
+    });
+
+    it("does not let a non-exclusive pattern suppress the ambiguity behind it", async () => {
+        // The Cisco type 7 pattern is two decimal digits followed by hex, which an ordinary
+        // MD5-length digest beginning "01" satisfies by coincidence. Treated as a definitive
+        // structural hit it suppressed every length candidate and reported "Identified by
+        // structure, so this is reliable" for what is almost certainly an MD5.
+        const out = await run("hash_identify", { input: "0123456789abcdef0123456789abcdef" });
+        expect(out.ambiguous).toBe(true);
+        expect(out.candidates.map(c => c.format)).toEqual(
+            expect.arrayContaining(["Cisco IOS type 7 (reversible)", "MD5", "NTLM"]));
+        expect(out.most_likely.confidence).toBe("structural, but not exclusive");
+        expect(out.note).toMatch(/not exclusive/);
+    });
+
+    it("still identifies a real Cisco type 7, and says it is not a hash", async () => {
+        const out = await run("hash_identify", { input: "094F471A1A0A" });
+        expect(out.most_likely.format).toBe("Cisco IOS type 7 (reversible)");
+        expect(out.most_likely.note).toMatch(/NOT a hash/);
+        expect(out.next).toMatch(/No hashcat mode/);
+    });
+
+    it("says a hex string of unrecognised length is one, rather than guessing", async () => {
+        const out = await run("hash_identify", { input: "abcdef123456" });
+        expect(out.identified).toBe(false);
+        expect(out.note).toMatch(/matches no digest length this tool knows/);
+    });
+
+    it("computes the totient correctly when the two factors are equal", async () => {
+        // n = p^2 is a real case, not a hypothetical: Fermat returns p === q for it on its first
+        // iteration. phi(p^2) is p(p-1), not (p-1)^2 -- and with the wrong totient the tool
+        // reported a private exponent that decrypted 424242 as 368518651580054785.
+        const p = 1000000007n;
+        const n = p * p;
+        const e = 65537n;
+        const plain = 424242n;
+        let c = 1n, b = plain % n, ex = e;
+        while (ex > 0n) {
+            if (ex & 1n) c = c * b % n;
+            b = b * b % n;
+            ex >>= 1n;
+        }
+        const out = await run("rsa_attack", { modulus: n.toString(), ciphertext: c.toString() });
+        expect(out.p).toBe(out.q);
+        expect(out.plaintext_int).toBe(plain.toString());
+    });
+});
+
 describe("the edges that only show up on bad input", () => {
     let tool;
     let bake;

@@ -381,7 +381,12 @@ export default {
         }
 
         const { p, q } = factors;
-        const phi = (p - 1n) * (q - 1n);
+        // n = p^2 is a real case here, not a hypothetical: Fermat returns p === q for it in its
+        // first iteration, because a = isqrt(n) gives b^2 = 0. phi(p^2) is p(p-1), NOT (p-1)^2,
+        // and the difference is not academic -- with the wrong totient the tool reported a
+        // private exponent that decrypted 424242 as 368518651580054785. A silently wrong answer
+        // from a tool whose entire output is an answer.
+        const phi = p === q ? p * (p - 1n) : (p - 1n) * (q - 1n);
         const d = modInverse(e, phi);
         const result = {
             factored: true,

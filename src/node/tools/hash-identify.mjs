@@ -79,7 +79,14 @@ const FORMATS = [
     { name: "NetNTLMv1", pattern: /^[^:]+::[^:]*:[0-9a-f]{48}:[0-9a-f]{48}:[0-9a-f]{16}$/i, hashcat: 5500, john: "netntlm" },
     { name: "/etc/shadow line", pattern: /^[^:]+:\$[^:]+:\d*:/, hashcat: null, john: null,
         note: "A whole shadow line. Pass just the hash field (between the first and second colon)." },
-    { name: "Cisco IOS type 7 (reversible)", pattern: /^[0-9]{2}[0-9A-F]{4,}$/i, hashcat: null, john: null,
+    // `weak` marks a pattern that matches things it does not own. This one is two decimal digits
+    // followed by hex, which every hex digest beginning "01".."99" also satisfies:
+    // 0123456789abcdef0123456789abcdef is a perfectly ordinary MD5-length digest. Treating that as
+    // a definitive structural hit suppressed the length candidates entirely and reported
+    // "Identified by structure, so this is reliable" for a value that is almost certainly an MD5 --
+    // the exact confident-wrong-answer this tool exists to avoid.
+    { name: "Cisco IOS type 7 (reversible)", pattern: /^[0-9]{2}[0-9A-F]{4,}$/i, hashcat: null,
+        john: null, weak: true,
         note: "NOT a hash: a reversible obfuscation. Decode it rather than cracking it." }
 ];
 
@@ -133,20 +140,25 @@ export default {
         const hash = args.input.trim();
         if (!hash) throw createInputError("Empty input: supply a hash.", {});
 
-        const matches = FORMATS
-            .filter(f => f.pattern.test(hash))
-            .map(f => ({
-                format: f.name,
-                confidence: "structural",
-                "hashcat_mode": f.hashcat,
-                "john_format": f.john,
-                ...(f.note ? { note: f.note } : {})
-            }));
+        const hit = FORMATS.filter(f => f.pattern.test(hash));
+        const matches = hit.map(f => ({
+            format: f.name,
+            confidence: f.weak ? "structural, but not exclusive" : "structural",
+            "hashcat_mode": f.hashcat,
+            "john_format": f.john,
+            ...(f.note ? { note: f.note } : {})
+        }));
+        // A structural match is only decisive if it is exclusive. Every match being `weak` means
+        // the pattern is satisfied by values it does not own, so the length candidates have to
+        // stand beside it rather than be suppressed by it.
+        const decisive = hit.some(f => !f.weak);
 
-        // Length-based candidates only when nothing structural matched. Offering both would bury a
-        // definite answer under five guesses, which is the failure this tool exists to correct.
+        // Length-based candidates when nothing decisive matched. Offering both unconditionally
+        // would bury a definite answer under five guesses, which is the failure this tool exists
+        // to correct -- but suppressing them behind a non-exclusive match is the same failure
+        // wearing the opposite sign.
         let byLength = [];
-        if (!matches.length && /^[0-9a-f]+$/i.test(hash)) {
+        if (!decisive && /^[0-9a-f]+$/i.test(hash)) {
             byLength = (BY_HEX_LENGTH[hash.length] || []).map(([name, hashcat, john]) => ({
                 format: name,
                 confidence: "length only",
@@ -174,9 +186,13 @@ export default {
             candidates: all,
             "most_likely": all[0],
             ambiguous: all.length > 1,
-            note: matches.length ?
+            note: decisive ?
                 "Identified by structure, so this is reliable." :
-                "Identified by digest length ALONE, which cannot distinguish these — MD5 and NTLM " +
+                matches.length && byLength.length ?
+                    `A structural pattern matched (${matches[0].format}), but it is not exclusive — ` +
+                    `a ${hash.length}-character hex string satisfies it by coincidence. The ` +
+                    "length-based candidates are listed alongside it, and context decides." :
+                    "Identified by digest length ALONE, which cannot distinguish these — MD5 and NTLM " +
                 "are both 32 hex characters. Context decides: an NTLM hash comes from Windows, an " +
                 "MD5 from almost anywhere.",
             next: all[0].hashcat_mode !== null && all[0].hashcat_mode !== undefined ?

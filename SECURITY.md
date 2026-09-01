@@ -73,7 +73,7 @@ a decision to ignore you.
 
 ## Security Measures
 
-Describes the **current** posture (2.3.x), not a historical snapshot. It previously carried a
+Describes the **current** posture (2.4.x), not a historical snapshot. It previously carried a
 `(v1.3.0)` stamp that was never updated, so a reader could not tell whether it described the
 shipped image or a state six releases old. Verified against the published
 `ghcr.io/doublegate/cyberchef-mcp_v2:2.4.0` image rather than against the Dockerfile.

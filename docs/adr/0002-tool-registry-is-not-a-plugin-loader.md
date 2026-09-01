@@ -36,7 +36,9 @@ narrow API") is exactly what fails:
 const hostBake = () => "result";                       // the one capability a tool needs
 const ctx = vm.createContext({ bake: hostBake });
 vm.runInContext('bake.constructor("return process")()', ctx);
-// -> the real process object: pid, cwd(), env, child_process by require
+// -> the real process object: pid, cwd(), env, argv
+//    (`require` is module-scoped, not global, so it is NOT reachable this way -- measured:
+//     `typeof require` is "undefined" inside the context. `process` alone is enough.)
 ```
 
 Measured on Node 26.8.1, not quoted. A host function carries its own realm with it, and

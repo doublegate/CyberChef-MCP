@@ -23,6 +23,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   registry tools with retries off, and a cooperative yield in the Fermat loop so that timeout can
   actually fire. Verified end to end: **72,125 ms → 2 ms**, with a genuine RSA-4096 modulus still
   accepted. Found by the Antigravity reviewer on PR #100.
+- **Three tools no longer answer confidently where they should refuse.** `phi(n)` was computed as
+  `(p-1)(q-1)` even when Fermat returned `p === q` — which it does on its first iteration for
+  `n = p²` — so the reported private exponent decrypted `424242` as `368518651580054785`.
+  `hash_identify` treated the Cisco IOS type 7 pattern (two decimal digits then hex) as a
+  definitive structural match, so an ordinary MD5-length digest beginning `01` suppressed every
+  length candidate and came back as "Identified by structure, so this is reliable"; non-exclusive
+  patterns are now flagged and listed alongside the length candidates. `cyclic_pattern` returned an
+  offset for a fragment shorter than the uniqueness window — `"aa"` occurs 282 times in a
+  1024-byte pattern and the first was reported as *the* offset, which is the one failure that tool
+  exists to prevent. Found by CodeRabbit on PR #100.
 - **The small-`e` attack is no longer reachable with an exponent that kills the process.**
   `integerRoot` computes `hi ** k` with `k` the caller's public exponent, and raising to a huge
   power is fatal rather than slow — a 400-digit exponent, well inside the bound above, returned
@@ -69,6 +79,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   explicit import. "Sandboxed execution" is not achievable with `node:vm` — a host capability handed
   into a vm context reaches the real `process`, and every useful tool needs a capability. Recorded
   with the measurement in [ADR 0002](docs/adr/0002-tool-registry-is-not-a-plugin-loader.md).
+- **Two summaries of ADR 0002 contradicted the ADR they link to.** The roadmap and release notes
+  named a worker thread as the "real isolate" that would make a plugin loader buildable; the ADR
+  says, in the paragraph both of them cite, that a worker bounds CPU rather than authority and
+  shares the process's filesystem, network and environment. Both now say what it says: process
+  isolation plus an explicit capability allowlist. The ADR itself over-claimed too — it listed
+  `child_process by require` among what the vm escape reaches, and `require` is module-scoped, so
+  it is not reachable that way (`process` alone is, and is enough). In a document whose authority
+  rests on having measured rather than argued, an unmeasured clause is the worst thing to leave in.
 - **Three more documents corrected to describe the code that exists.** `deBruijn` carried a comment
   claiming it was "written iteratively: an explicit stack rather than recursion because a long
   pattern nests deeply enough to matter" — it is recursive, and depth is bounded by the subsequence
