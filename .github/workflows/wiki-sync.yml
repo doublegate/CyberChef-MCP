@@ -1,0 +1,115 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Publishes docs/wiki/ to the repository's GitHub wiki.
+#
+# The wiki is a SEPARATE git repository (<repo>.wiki.git), which has two consequences that are easy
+# to trip over and are the reason this file reads the way it does:
+#
+#   1. `GITHUB_TOKEN` cannot push to it. The token is scoped to the source repository, and the wiki
+#      is not that repository. A Personal Access Token with `repo` scope, stored as the WIKI_TOKEN
+#      secret, is required. Without it this workflow skips with an explanation rather than failing
+#      a build for a reason nobody can act on from the log.
+#   2. The wiki repository does not exist until the first page is saved in the web UI. There is no
+#      API for creating it. If it has never been initialised, a push fails with "Repository not
+#      found" -- which reads like a permissions problem and is not.
+#
+# The source of truth is docs/wiki/ in this repository. Editing a page in the wiki UI works, and is
+# then overwritten by the next sync; the footer on every page says so.
+name: Wiki Sync
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "docs/wiki/**"
+      - ".github/workflows/wiki-sync.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wiki-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Publish docs/wiki to the wiki
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check for the wiki token
+        id: guard
+        env:
+          WIKI_TOKEN: ${{ secrets.WIKI_TOKEN }}
+        run: |
+          if [ -z "$WIKI_TOKEN" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Wiki sync skipped"
+              echo
+              echo 'No `WIKI_TOKEN` secret is set. The wiki is a separate git repository, so the'
+              echo 'built-in `GITHUB_TOKEN` cannot push to it.'
+              echo
+              echo 'To enable: create a fine-grained or classic PAT with `repo` scope and add it as'
+              echo 'the repository secret `WIKI_TOKEN`. Then re-run this workflow.'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish
+        if: steps.guard.outputs.ready == 'true'
+        env:
+          WIKI_TOKEN: ${{ secrets.WIKI_TOKEN }}
+        run: |
+          set -euo pipefail
+          REPO="${GITHUB_REPOSITORY}"
+          if ! git clone --quiet "https://x-access-token:${WIKI_TOKEN}@github.com/${REPO}.wiki.git" wiki 2>/dev/null; then
+            # Two different causes produce the same failure here, and telling the maintainer to
+            # create a wiki page does not fix a bad token. Report both rather than guessing.
+            {
+              echo "### Wiki sync failed: could not clone \`${REPO}.wiki.git\`"
+              echo
+              echo "\`git clone\` failed. There are two likely causes and the error does not"
+              echo "distinguish them:"
+              echo
+              echo "1. **The wiki has never been initialised.** GitHub creates the wiki repository"
+              echo "   only when the first page is saved in the web UI; there is no API for it."
+              echo "   Open the repository's **Wiki** tab and create any page -- the content does"
+              echo "   not matter, this workflow overwrites it."
+              echo "2. **\`WIKI_TOKEN\` is invalid, expired, or lacks \`repo\` scope.** A wiki is a"
+              echo "   separate repository, so the token needs access to it, not just to this one."
+              echo
+              echo "Check (1) first: it is the more common cause on a repository that has never"
+              echo "had a wiki."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::Could not clone the wiki. Either it has never been initialised, or WIKI_TOKEN is invalid or under-scoped. See the job summary."
+            exit 1
+          fi
+
+          # Mirror docs/wiki/ exactly: a page deleted from the repository should disappear from the
+          # wiki too, or the wiki slowly accumulates pages nothing maintains.
+          find wiki -maxdepth 1 -name '*.md' -delete
+          cp docs/wiki/*.md wiki/
+
+          cd wiki
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "wiki already up to date"
+            echo "Wiki already up to date." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git commit -m "docs(wiki): sync from ${GITHUB_SHA:0:8}"
+          git push
+          {
+            echo "### Wiki updated"
+            echo
+            # `find`, not `ls *.md`: a page named `-draft.md` makes `ls` read the filename as an
+            # option, and with `pipefail` set that fails the job AFTER the push has already
+            # succeeded -- a red build for work that landed.
+            echo "Synced $(find . -maxdepth 1 -name '*.md' | wc -l) pages from \`docs/wiki/\` at \`${GITHUB_SHA:0:8}\`."
+          } >> "$GITHUB_STEP_SUMMARY"
