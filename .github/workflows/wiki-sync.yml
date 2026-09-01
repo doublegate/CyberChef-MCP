@@ -67,14 +67,25 @@ jobs:
           set -euo pipefail
           REPO="${GITHUB_REPOSITORY}"
           if ! git clone --quiet "https://x-access-token:${WIKI_TOKEN}@github.com/${REPO}.wiki.git" wiki 2>/dev/null; then
+            # Two different causes produce the same failure here, and telling the maintainer to
+            # create a wiki page does not fix a bad token. Report both rather than guessing.
             {
-              echo "### Wiki sync failed: the wiki has never been initialised"
+              echo "### Wiki sync failed: could not clone \`${REPO}.wiki.git\`"
               echo
-              echo "GitHub creates \`${REPO}.wiki.git\` only when the first page is saved in the web UI;"
-              echo "there is no API for it. Open the repository's **Wiki** tab, create any page (the"
-              echo "content does not matter -- this workflow overwrites it), then re-run."
+              echo "\`git clone\` failed. There are two likely causes and the error does not"
+              echo "distinguish them:"
+              echo
+              echo "1. **The wiki has never been initialised.** GitHub creates the wiki repository"
+              echo "   only when the first page is saved in the web UI; there is no API for it."
+              echo "   Open the repository's **Wiki** tab and create any page -- the content does"
+              echo "   not matter, this workflow overwrites it."
+              echo "2. **\`WIKI_TOKEN\` is invalid, expired, or lacks \`repo\` scope.** A wiki is a"
+              echo "   separate repository, so the token needs access to it, not just to this one."
+              echo
+              echo "Check (1) first: it is the more common cause on a repository that has never"
+              echo "had a wiki."
             } >> "$GITHUB_STEP_SUMMARY"
-            echo "::error::The wiki repository does not exist yet. Create one page in the Wiki tab first."
+            echo "::error::Could not clone the wiki. Either it has never been initialised, or WIKI_TOKEN is invalid or under-scoped. See the job summary."
             exit 1
           fi
 
@@ -97,5 +108,8 @@ jobs:
           {
             echo "### Wiki updated"
             echo
-            echo "Synced $(ls *.md | wc -l) pages from \`docs/wiki/\` at \`${GITHUB_SHA:0:8}\`."
+            # `find`, not `ls *.md`: a page named `-draft.md` makes `ls` read the filename as an
+            # option, and with `pipefail` set that fails the job AFTER the push has already
+            # succeeded -- a red build for work that landed.
+            echo "Synced $(find . -maxdepth 1 -name '*.md' | wc -l) pages from \`docs/wiki/\` at \`${GITHUB_SHA:0:8}\`."
           } >> "$GITHUB_STEP_SUMMARY"

@@ -27,6 +27,7 @@
  */
 
 import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { dirname, join, resolve, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -131,14 +132,40 @@ function stripTitle(body) {
  * @param {string} body - Markdown body.
  * @param {number} [order] - Sidebar order.
  */
-function emit(section, slug, title, description, body, order) {
+/**
+ * The last commit date for a repository path, for a source-derived `lastUpdated`.
+ *
+ * Starlight's own `lastUpdated` reads git history for the file it rendered -- which here is a
+ * regenerated, gitignored copy with no history at all. Left alone it would show every page as
+ * changing on every build, which is worse than showing nothing. The date comes from the SOURCE.
+ *
+ * @param {string} repoPath - Repository-relative path.
+ * @returns {string|null} ISO date, or null if git is unavailable or the file is untracked.
+ */
+function sourceDate(repoPath) {
+    try {
+        const out = execFileSync("git", ["log", "-1", "--format=%cI", "--", repoPath],
+            { cwd: REPO, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+        return out || null;
+    } catch {
+        return null;   // a shallow clone or an untracked file: omit rather than invent a date
+    }
+}
+
+function emit(section, slug, title, description, body, order, sourcePath) {
     const dir = join(OUT, section);
     mkdirSync(dir, { recursive: true });
+    const updated = sourcePath ? sourceDate(sourcePath) : null;
     const fm = [
         "---",
         `title: ${yaml(title)}`,
         description ? `description: ${yaml(description)}` : null,
         order !== undefined ? `sidebar:\n  order: ${order}` : null,
+        // Point the edit link at the file someone should actually edit. Starlight would otherwise
+        // append the GENERATED path, sending a contributor to a build artefact whose changes the
+        // next build discards.
+        sourcePath ? `editUrl: ${yaml("https://github.com/doublegate/CyberChef-MCP/edit/master/" + sourcePath)}` : "editUrl: false",
+        updated ? `lastUpdated: ${updated}` : null,
         "---",
         ""
         // `!== null`, NOT `Boolean`: the trailing "" is the blank line that separates the
@@ -169,10 +196,15 @@ let count = 0;
 for (const [i, [section, src, slug, title, description]] of PAGES.entries()) {
     const abs = join(REPO, src);
     if (!existsSync(abs)) {
-        console.error(`  MISSING (skipped): ${src}`);
-        continue;
+        // Fail, do not skip. The generated reference alone clears the workflow's 50-page floor,
+        // so a curated page that was moved or deleted would vanish from the site with the build
+        // still green -- the site quietly losing a page it promises is worse than a red build.
+        // When a page is removed on purpose, remove it from PAGES in the same change.
+        throw new Error(
+            `collect: allowlisted source is missing: ${src}\n` +
+            "  If this page was removed or renamed deliberately, update PAGES in this script.");
     }
-    emit(section, slug, title, description, rewriteLinks(stripTitle(readFileSync(abs, "utf8")), src), i);
+    emit(section, slug, title, description, rewriteLinks(stripTitle(readFileSync(abs, "utf8")), src), i, src);
     count++;
 }
 
@@ -186,7 +218,7 @@ releases.forEach((f, i) => {
     const src = `docs/releases/${f}`;
     const version = f.replace(/\.md$/, "");
     emit("releases", releaseSlug(f), `${version} release notes`, `What changed in ${version}.`,
-        rewriteLinks(stripTitle(readFileSync(join(REPO, src), "utf8")), src), i);
+        rewriteLinks(stripTitle(readFileSync(join(REPO, src), "utf8")), src), i, src);
     count++;
 });
 
@@ -201,9 +233,55 @@ if (!existsSync(configPath)) {
     for (const [name, op] of Object.entries(config)) {
         (byCategory.get(op.module) ?? byCategory.set(op.module, []).get(op.module)).push([name, op]);
     }
-    const toolName = (n) => "cyberchef_" + n.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
-    const argName = (n) => n.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
-    const strip = (html) => String(html || "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+    // The server's OWN naming and default resolution, imported rather than reimplemented.
+    //
+    // Reimplementing them is how a generated reference becomes confidently wrong, which is worse
+    // than a hand-written one that is merely stale. Two cases proved it during review, both caught
+    // before this shipped:
+    //
+    //   - 31 operations -- including AES Encrypt and AES Decrypt -- have an argument literally
+    //     named "Input". `input` is reserved for the tool's own input, so the server renames it to
+    //     `input_arg`. A naive sanitiser emits `input`, and a caller following the reference gets
+    //     "Unknown argument".
+    //   - 40 arguments carry a non-zero `defaultIndex`, so the default is not `value[0]`.
+    //
+    // Importing across the package boundary is deliberate: these live in the server's tree, the
+    // root `npm ci` has already run to produce OperationConfig.json, and Node resolves their own
+    // imports from the repository root. If that import ever breaks, this script fails loudly
+    // rather than silently reverting to a private copy that can drift.
+    const { sanitizeToolName, toolArgName, resolveArgValue } =
+        await import("../../src/node/lib/tool-schema.mjs");
+    /**
+     * Operation descriptions to plain text.
+     *
+     * Upstream writes them as HTML fragments -- `<br>`, `<code>`, links -- and they end up in
+     * markdown that Astro renders, so a tag that survives is a tag the site executes.
+     *
+     * A single `.replace(/<[^>]+>/g, "")` is NOT enough, and CodeQL was right to say so
+     * (`js/incomplete-multi-character-sanitization`, high): one pass over `<<script>>` leaves
+     * `<script`. Two defences, because either alone is a promise about inputs rather than a
+     * property of the output:
+     *
+     *   1. Strip to a FIXPOINT, so nesting cannot smuggle a tag through by being eaten once.
+     *   2. Escape whatever remains. After this, the result cannot contain a tag by construction,
+     *      whatever the input was -- which is the only version of this that is worth relying on.
+     *
+     * @param {string} html - An operation description.
+     * @returns {string} Plain, escaped text.
+     */
+    const strip = (html) => {
+        let text = String(html || "");
+        for (let previous = null; previous !== text;) {
+            previous = text;
+            text = text.replace(/<[^>]*>/g, "");
+        }
+        return text
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/\s+/g, " ")
+            .trim();
+    };
 
     const modules = [...byCategory.keys()].sort();
     emit("reference", "index", "Tool reference",
@@ -224,7 +302,7 @@ if (!existsSync(configPath)) {
             ...modules.map(m => `| [${m}](/CyberChef-MCP/reference/${m.toLowerCase()}/) | ${byCategory.get(m).length} |`),
             "",
             `**${Object.keys(config).length} operations in ${modules.length} categories.**`
-        ].join("\n"), 0);
+        ].join("\n"), 0, null);
     count++;
 
     modules.forEach((mod, i) => {
@@ -238,16 +316,26 @@ if (!existsSync(configPath)) {
             lines.push(`## ${name}`, "");
             const d = strip(op.description);
             if (d) lines.push(d, "");
-            lines.push(`- **Tool name:** \`${toolName(name)}\``);
+            lines.push(`- **Tool name:** \`${sanitizeToolName(name)}\``);
             lines.push(`- **Input / output:** \`${op.inputType}\` → \`${op.outputType}\``);
             if (op.flowControl) lines.push("- **Flow control:** yes");
             if (op.args?.length) {
                 lines.push("", "| Argument | Type | Default |", "|---|---|---|");
                 for (const a of op.args) {
-                    const def = Array.isArray(a.value) ?
-                        (typeof a.value[0] === "string" ? a.value[0] : a.value[0]?.name ?? "") :
-                        a.value;
-                    lines.push(`| \`${argName(a.name)}\` | ${a.type} | ${def === undefined || def === "" ? "—" : `\`${String(def).slice(0, 40)}\``} |`);
+                    // The default the SERVER resolves when the caller omits the argument, not the
+                    // first entry of `value`. That honours `defaultIndex`, and for a toggleString
+                    // it produces the `{option, string}` pair the operation actually receives.
+                    let shown;
+                    try {
+                        const resolved = resolveArgValue(a, undefined);
+                        shown = resolved && typeof resolved === "object" ?
+                            JSON.stringify(resolved) : String(resolved ?? "");
+                    } catch {
+                        shown = "";   // an argument shape resolveArgValue does not handle
+                    }
+                    const cell = shown === "" || shown === "undefined" ?
+                        "—" : `\`${strip(shown).slice(0, 48)}\``;
+                    lines.push(`| \`${toolArgName(a.name)}\` | ${a.type} | ${cell} |`);
                 }
             } else {
                 lines.push("- **Arguments:** none");
@@ -255,7 +343,7 @@ if (!existsSync(configPath)) {
             lines.push("");
         }
         emit("reference", mod.toLowerCase(), mod, `${ops.length} CyberChef operations in the ${mod} category.`,
-            lines.join("\n"), i + 1);
+            lines.join("\n"), i + 1, null);
         count++;
     });
 }

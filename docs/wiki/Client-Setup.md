@@ -103,12 +103,22 @@ stdio gives each client its own process. If you want a single instance that seve
 run it over HTTP:
 
 ```bash
-docker run -d --name cyberchef-mcp -p 3000:3000 \
+docker run -d --name cyberchef-mcp -p 127.0.0.1:3000:3000 \
   -e CYBERCHEF_TRANSPORT=http \
   -e CYBERCHEF_HTTP_HOST=0.0.0.0 \
   -e CYBERCHEF_ALLOWED_HOSTS=localhost:3000,127.0.0.1:3000 \
   ghcr.io/doublegate/cyberchef-mcp_v2:latest
 ```
+
+**Note the `127.0.0.1:` in front of the port mapping.** A bare `-p 3000:3000` publishes on *every*
+interface, and **the HTTP transport has no authentication** — anyone who can reach the port gets
+every operation. `CYBERCHEF_ALLOWED_HOSTS` is DNS-rebinding protection, not access control: it
+checks the `Host` header, which a direct client simply sets correctly.
+
+If you genuinely need it reachable from another machine, put authentication in front of it (a
+reverse proxy with auth, an SSH tunnel, or a private network) rather than removing the loopback
+binding. `CYBERCHEF_HTTP_HOST=0.0.0.0` binds inside the container; the published port is what
+decides who can reach it.
 
 ```json
 { "mcpServers": { "cyberchef": { "url": "http://127.0.0.1:3000/mcp" } } }
