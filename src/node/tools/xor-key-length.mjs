@@ -234,7 +234,7 @@ export default {
         let preview = null;
         if (previewBytes > 0) {
             const decrypted = await ctx.bake(
-                String.fromCharCode(...bytes.subarray(0, Math.min(bytes.length, previewBytes))),
+                Buffer.from(bytes.subarray(0, Math.min(bytes.length, previewBytes))).toString("latin1"),
                 [{ op: "XOR", args: { key: { string: key.map(b => b.toString(16).padStart(2, "0")).join(""), option: "Hex" } } }]);
             preview = String(decrypted);
         }

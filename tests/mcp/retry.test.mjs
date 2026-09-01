@@ -78,12 +78,24 @@ describe("calculateBackoff", () => {
     });
 
     it("should add jitter to prevent thundering herd", () => {
-        const backoff1 = calculateBackoff(0);
-        const backoff2 = calculateBackoff(0);
+        // Sampled rather than compared pairwise. The previous version drew TWO values and asserted
+        // they differ, with a comment conceding it "could theoretically fail" -- and it did, once,
+        // on a release PR, for no reason connected to the change under review. The delay is rounded
+        // to a millisecond, so two draws collide about once in every few hundred runs: rare enough
+        // to look like a real failure and common enough to happen. A flaky assertion in a merge
+        // gate is worse than no assertion, because it teaches people to re-run rather than read.
+        //
+        // Twenty draws collapsing to a single value would mean jitter is genuinely absent.
+        const samples = new Set(Array.from({ length: 20 }, () => calculateBackoff(0)));
+        expect(samples.size).toBeGreaterThan(1);
 
-        // Due to jitter, values should differ (with very high probability)
-        // Note: This could theoretically fail but is extremely unlikely
-        expect(backoff1).not.toBe(backoff2);
+        // And the jitter stays inside the +/-25% band it documents, which is the property that
+        // actually matters and which the pairwise comparison never checked.
+        const base = RetryConfig.INITIAL_BACKOFF;
+        for (const value of samples) {
+            expect(value).toBeGreaterThanOrEqual(Math.round(base * 0.75));
+            expect(value).toBeLessThanOrEqual(Math.round(base * 1.25));
+        }
     });
 
     it("should accept custom config", () => {

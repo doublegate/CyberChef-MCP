@@ -94,7 +94,7 @@ function isqrt(n) {
     // Fermat loop calls on every iteration. It over-estimates by up to 3 bits, which is harmless --
     // Newton needs a starting point at or above the root, and a slightly high one costs at most one
     // extra step. Verified not to under-estimate; that direction would break the convergence.
-    let x = 1n << (BigInt(n.toString(16).length * 4) / 2n + 1n);
+    let x = 1n << (BigInt(n.toString(16).length * 2) + 1n);
     let y = (x + n / x) / 2n;
     while (y < x) {
         x = y;
@@ -306,7 +306,11 @@ function asMessage(m) {
     if (hex.length % 2) hex = "0" + hex;
     const bytes = hex.match(/../g)?.map(h => parseInt(h, 16)) ?? [];
     const printable = bytes.length > 0 && bytes.every(b => b === 9 || b === 10 || b === 13 || (b >= 32 && b < 127));
-    return printable ? String.fromCharCode(...bytes) : `0x${hex}`;
+    // Buffer rather than String.fromCharCode(...bytes): the spread passes one argument per byte,
+    // which throws "Maximum call stack size exceeded" past tens of thousands. The operand bounds
+    // keep this well short of that today, so this is removing a constraint rather than fixing a
+    // bug -- but the constraint is invisible at the call site, which is how it would be tripped.
+    return printable ? Buffer.from(bytes).toString("latin1") : `0x${hex}`;
 }
 
 export default {

@@ -112,8 +112,11 @@ function fragmentReadings(value, format) {
             return;
         }
         const bytes = hex.match(/../g).map(h => parseInt(h, 16));
-        readings.push({ reading: "hex, big-endian", text: String.fromCharCode(...bytes) });
-        readings.push({ reading: "hex, little-endian", text: String.fromCharCode(...bytes.reverse()) });
+        readings.push({ reading: "hex, big-endian", text: Buffer.from(bytes).toString("latin1") });
+        readings.push({
+            reading: "hex, little-endian",
+            text: Buffer.from(bytes.reverse()).toString("latin1")
+        });
     };
     if (format === "Text") asText();
     else if (format === "Hex") asHex(true);
