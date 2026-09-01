@@ -1,0 +1,20 @@
+{
+  "name": "cyberchef-mcp-docs",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Documentation site for CyberChef MCP Server. Deliberately a SEPARATE package: its dependency tree is not the server's, so nothing here can reach the published artefact or the npm audit surface of cyberchef-mcp.",
+  "license": "GPL-3.0-or-later",
+  "scripts": {
+    "collect": "node scripts/collect.mjs",
+    "dev": "npm run collect && astro dev",
+    "build": "npm run collect && astro build",
+    "preview": "astro preview",
+    "check": "astro check"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.41.10",
+    "astro": "^7.2.10",
+    "sharp": "^0.34.2"
+  }
+}

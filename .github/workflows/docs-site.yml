@@ -1,0 +1,99 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Builds the documentation site and deploys it to GitHub Pages.
+#
+# The site's content is GENERATED from this repository by docs-site/scripts/collect.mjs -- `docs/`
+# and `README.md` stay the single source of truth, and the generated tree is gitignored. So this
+# workflow must run the collector, and the collector needs `OperationConfig.json`, which is itself
+# generated. Both steps below exist for that reason and neither is optional.
+name: Documentation Site
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "docs/**"
+      - "docs-site/**"
+      - "README.md"
+      - "SECURITY.md"
+      - "src/core/config/scripts/**"      # changes what OperationConfig contains
+      - "package.json"                     # the landing page reads the version from it
+      - ".github/workflows/docs-site.yml"
+  # The tool reference is generated from the operation set, so a release that changes it should
+  # refresh the site even when no documentation file was touched.
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: false
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            docs-site/package-lock.json
+
+      # The server's own dependencies, needed only to generate OperationConfig.json. `--ignore-scripts`
+      # because nothing here executes the server -- the postinstall patches are for running it.
+      - name: Install server dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Generate OperationConfig
+        run: npx grunt configTests
+
+      - name: Install site dependencies
+        working-directory: docs-site
+        run: npm ci
+
+      - name: Build site
+        working-directory: docs-site
+        run: npm run build
+
+      # A site that builds but has lost its content is the failure mode this guards: the content
+      # collection silently produced one 404 page during development and the build still reported
+      # success. A floor, not an exact count, so adding a page does not fail the build.
+      - name: Verify the build is not empty
+        run: |
+          PAGES=$(find docs-site/dist -name 'index.html' | wc -l)
+          echo "built $PAGES pages"
+          if [ "$PAGES" -lt 50 ]; then
+            echo "::error::Only $PAGES pages were built; expected at least 50. The content collection is probably empty."
+            exit 1
+          fi
+          test -f docs-site/dist/index.html || { echo "::error::No landing page"; exit 1; }
+          test -d docs-site/dist/reference || { echo "::error::No generated tool reference"; exit 1; }
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: docs-site/dist
+
+  deploy:
+    name: Deploy to Pages
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

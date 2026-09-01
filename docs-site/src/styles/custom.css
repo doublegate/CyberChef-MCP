@@ -1,0 +1,8 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+:root {
+    --sl-color-accent-low: #0b283a;
+    --sl-color-accent: #0b7285;
+    --sl-color-accent-high: #99e9f2;
+}
+/* The generated tool reference has wide tables; let them scroll rather than break the page. */
+.sl-markdown-content table { display: block; overflow-x: auto; }
