@@ -201,8 +201,24 @@ if (!existsSync(configPath)) {
     for (const [name, op] of Object.entries(config)) {
         (byCategory.get(op.module) ?? byCategory.set(op.module, []).get(op.module)).push([name, op]);
     }
-    const toolName = (n) => "cyberchef_" + n.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
-    const argName = (n) => n.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+    // The server's OWN naming and default resolution, imported rather than reimplemented.
+    //
+    // Reimplementing them is how a generated reference becomes confidently wrong, which is worse
+    // than a hand-written one that is merely stale. Two cases proved it during review, both caught
+    // before this shipped:
+    //
+    //   - 31 operations -- including AES Encrypt and AES Decrypt -- have an argument literally
+    //     named "Input". `input` is reserved for the tool's own input, so the server renames it to
+    //     `input_arg`. A naive sanitiser emits `input`, and a caller following the reference gets
+    //     "Unknown argument".
+    //   - 40 arguments carry a non-zero `defaultIndex`, so the default is not `value[0]`.
+    //
+    // Importing across the package boundary is deliberate: these live in the server's tree, the
+    // root `npm ci` has already run to produce OperationConfig.json, and Node resolves their own
+    // imports from the repository root. If that import ever breaks, this script fails loudly
+    // rather than silently reverting to a private copy that can drift.
+    const { sanitizeToolName, toolArgName, resolveArgValue } =
+        await import("../../src/node/lib/tool-schema.mjs");
     /**
      * Operation descriptions to plain text.
      *
@@ -268,16 +284,26 @@ if (!existsSync(configPath)) {
             lines.push(`## ${name}`, "");
             const d = strip(op.description);
             if (d) lines.push(d, "");
-            lines.push(`- **Tool name:** \`${toolName(name)}\``);
+            lines.push(`- **Tool name:** \`${sanitizeToolName(name)}\``);
             lines.push(`- **Input / output:** \`${op.inputType}\` → \`${op.outputType}\``);
             if (op.flowControl) lines.push("- **Flow control:** yes");
             if (op.args?.length) {
                 lines.push("", "| Argument | Type | Default |", "|---|---|---|");
                 for (const a of op.args) {
-                    const def = Array.isArray(a.value) ?
-                        (typeof a.value[0] === "string" ? a.value[0] : a.value[0]?.name ?? "") :
-                        a.value;
-                    lines.push(`| \`${argName(a.name)}\` | ${a.type} | ${def === undefined || def === "" ? "—" : `\`${String(def).slice(0, 40)}\``} |`);
+                    // The default the SERVER resolves when the caller omits the argument, not the
+                    // first entry of `value`. That honours `defaultIndex`, and for a toggleString
+                    // it produces the `{option, string}` pair the operation actually receives.
+                    let shown;
+                    try {
+                        const resolved = resolveArgValue(a, undefined);
+                        shown = resolved && typeof resolved === "object" ?
+                            JSON.stringify(resolved) : String(resolved ?? "");
+                    } catch {
+                        shown = "";   // an argument shape resolveArgValue does not handle
+                    }
+                    const cell = shown === "" || shown === "undefined" ?
+                        "—" : `\`${strip(shown).slice(0, 48)}\``;
+                    lines.push(`| \`${toolArgName(a.name)}\` | ${a.type} | ${cell} |`);
                 }
             } else {
                 lines.push("- **Arguments:** none");
