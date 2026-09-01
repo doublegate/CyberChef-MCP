@@ -23,6 +23,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   registry tools with retries off, and a cooperative yield in the Fermat loop so that timeout can
   actually fire. Verified end to end: **72,125 ms → 2 ms**, with a genuine RSA-4096 modulus still
   accepted. Found by the Antigravity reviewer on PR #100.
+- **The Fermat search now stops at a ten-second budget, and each iteration is ~187x cheaper.** The
+  bound added above was still four orders of magnitude too loose at its own ceiling: 10,000
+  iterations against a 16,384-bit modulus measured 223,909 ms, so the *default* 100,000
+  extrapolated to roughly 37 minutes. The yield did not save it, because `Promise.race` does not
+  cancel the loser — the caller got a timeout while the loop ran on, so a client could accumulate
+  runaway searches behind its own error responses. Fixed by starting `isqrt`'s Newton iteration at
+  `2^(bits/2+1)` rather than at `n` (it was doing ~8,000 big-integer divisions per call, once per
+  Fermat iteration) and by checking a deadline inside the loop so the work actually stops. Worst
+  case measured after: **10,002 ms**, reported honestly as a search that gave up rather than one
+  that found nothing. `xor_key_length`'s scan also dropped its per-column arrays — up to 32,896 of
+  them — taking 1 MB from 3,213 ms to 594 ms, and now yields between candidate lengths. Found by
+  the Antigravity reviewer on PR #100.
 - **Three tools no longer answer confidently where they should refuse.** `phi(n)` was computed as
   `(p-1)(q-1)` even when Fermat returned `p === q` — which it does on its first iteration for
   `n = p²` — so the reported private exponent decrypted `424242` as `368518651580054785`.

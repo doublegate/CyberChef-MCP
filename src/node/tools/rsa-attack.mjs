@@ -84,8 +84,13 @@ function isqrt(n) {
        private export that would exist only to move a number. */
     if (n < 0n) throw new RangeError("isqrt of a negative number");
     if (n < 2n) return n;
-    let x = n;
-    let y = (x + 1n) / 2n;
+    // Start from 2^(bits/2 + 1) rather than from n. Newton converges quadratically only once it is
+    // near the root; starting at n it merely HALVES each step until it gets there, so the cost is
+    // O(bits) big-integer divisions -- about 8,000 of them for a 16,384-bit modulus, and isqrt is
+    // called once per Fermat iteration through isPerfectSquare. The shifted guess is already within
+    // a factor of two, so only the quadratic phase remains.
+    let x = 1n << (BigInt(n.toString(2).length) / 2n + 1n);
+    let y = (x + n / x) / 2n;
     while (y < x) {
         x = y;
         y = (x + n / x) / 2n;
@@ -161,7 +166,7 @@ function integerRoot(n, k) {
  * @param {number} maxIterations - Bound on the search.
  * @returns {{p: bigint, q: bigint}|null} The factors, or null.
  */
-async function fermat(n, maxIterations) {
+async function fermat(n, maxIterations, deadline) {
     if (n % 2n === 0n) return { p: 2n, q: n / 2n };
     let a = isqrt(n);
     if (a * a < n) a += 1n;
@@ -170,7 +175,17 @@ async function fermat(n, maxIterations) {
         // synchronous block, and the call timeout wrapped around it cannot fire -- `Promise.race`
         // never gets a turn, so the "timeout" would resolve only after the work it was meant to
         // bound had already finished. A bound that cannot be enforced is not a bound.
-        if ((i & 0xfff) === 0xfff) await new Promise(resolve => setImmediate(resolve));
+        if ((i & 0xff) === 0xff) {
+            // Yielding alone is not enough, and measuring showed why. `Promise.race` does not
+            // CANCEL the loser: a timed-out call returns to the client while this loop keeps
+            // running to completion. At 16,384 bits -- which the size guard permits -- the default
+            // 100,000 iterations extrapolate to roughly 37 minutes, so a client could time out
+            // repeatedly and accumulate runaway loops behind its own error responses.
+            //
+            // The deadline is checked here, in the loop, so the work actually stops.
+            if (Date.now() > deadline) return { exhausted: false, iterations: i };
+            await new Promise(resolve => setImmediate(resolve));
+        }
         const b2 = a * a - n;
         if (isPerfectSquare(b2)) {
             const b = isqrt(b2);
@@ -182,6 +197,9 @@ async function fermat(n, maxIterations) {
     }
     return null;
 }
+
+/** How long the Fermat search may run before it gives up, in milliseconds. */
+const FERMAT_BUDGET_MS = 10000;
 
 /**
  * Wiener's attack: recovers a private exponent that was chosen small.
@@ -339,11 +357,18 @@ export default {
         }
 
         if (!factors && requested.has("fermat")) {
-            attempted.push(`fermat (${args.fermat_iterations} iterations)`);
-            const found = await fermat(n, args.fermat_iterations);
-            if (found) {
+            attempted.push(`fermat (up to ${args.fermat_iterations} iterations)`);
+            const found = await fermat(n, args.fermat_iterations, Date.now() + FERMAT_BUDGET_MS);
+            if (found && found.p) {
                 factors = found;
                 via = "fermat";
+            } else if (found) {
+                // Cut short by the time budget rather than exhausted. Saying "fermat found
+                // nothing" here would be a claim the search never made.
+                attempted[attempted.length - 1] =
+                    `fermat (stopped at the ${FERMAT_BUDGET_MS / 1000}s limit after ` +
+                    `${found.iterations} of ${args.fermat_iterations} iterations — the modulus is ` +
+                    "large enough that each iteration is expensive)";
             }
         }
 

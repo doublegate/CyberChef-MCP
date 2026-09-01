@@ -270,6 +270,22 @@ describe("input bounds: what stops a tool blocking the server", () => {
         expect(out.small_e_recovery.message_int).toBe(m.toString());
     });
 
+    it("stops the Fermat search at its time budget instead of running for half an hour", async () => {
+        // Yielding alone was not enough, and only measurement showed it. `Promise.race` does not
+        // CANCEL the loser, so a timed-out call returns to the client while the loop runs on. At
+        // 16,384 bits -- which the size guard permits -- the default 100,000 iterations measured
+        // out to roughly 37 minutes, so a client could time out repeatedly and accumulate runaway
+        // loops behind its own error responses.
+        const big = (2n ** 16384n - 1n) - 12345678n;
+        const started = Date.now();
+        const out = await run("rsa_attack", { modulus: big.toString() });
+        const elapsed = Date.now() - started;
+        expect(out.factored).toBe(false);
+        expect(elapsed).toBeLessThan(20000);
+        // And it says it gave up, rather than reporting a search it never finished as exhausted.
+        expect(out.attempted.join(" ")).toMatch(/fermat \(stopped at the 10s limit after \d+ of/);
+    }, 60000);
+
     it("leaves the Fermat loop interruptible so a timeout can actually fire", async () => {
         // A synchronous loop cannot be timed out: Promise.race never gets a turn, so the bound
         // would only be checked after the work it was meant to bound had finished. The loop

@@ -38,13 +38,20 @@ const UNIFORM_IC = 1 / 256;
  * @param {number[]} column - Bytes taken at one offset modulo the candidate key length.
  * @returns {number} The probability that two bytes drawn from it are equal.
  */
-function indexOfCoincidence(column) {
-    if (column.length < 2) return 0;
-    const counts = new Array(256).fill(0);
-    for (const b of column) counts[b]++;
+function indexOfCoincidence(bytes, offset, stride) {
+    // Reads the column in place. Materialising it as a JS Array first allocated one array per
+    // column -- max_key_length * (max_key_length + 1) / 2 of them per call, up to 32,896 arrays
+    // holding a megabyte between them -- for a statistic that only ever needs the counts.
+    const counts = new Uint32Array(256);
+    let length = 0;
+    for (let i = offset; i < bytes.length; i += stride) {
+        counts[bytes[i]]++;
+        length++;
+    }
+    if (length < 2) return 0;
     let sum = 0;
     for (const c of counts) sum += c * (c - 1);
-    return sum / (column.length * (column.length - 1));
+    return sum / (length * (length - 1));
 }
 
 /**
@@ -54,19 +61,20 @@ function indexOfCoincidence(column) {
  * @param {number} maxLength - Longest candidate to consider.
  * @returns {Array<{length: number, score: number}>} Candidates, best first.
  */
-function rankKeyLengths(bytes, maxLength) {
+async function rankKeyLengths(bytes, maxLength) {
     const ranked = [];
     for (let k = 1; k <= maxLength; k++) {
+        // Yield between candidate lengths. The scan is O(input x max_key_length) and the input
+        // bound puts the worst case at a few seconds -- bounded, but a few seconds of unbroken
+        // synchronous work still starves every other request on a shared server, and leaves the
+        // call timeout unable to fire. One yield per candidate costs nothing measurable.
+        if ((k & 0x7) === 0) await new Promise(resolve => setImmediate(resolve));
         // Four samples per column is the floor at which the statistic means anything; below it a
         // long key length scores highly on noise alone, which is how these tools produce
         // confident nonsense on short inputs.
         if (bytes.length < k * 4) break;
         let total = 0;
-        for (let offset = 0; offset < k; offset++) {
-            const column = [];
-            for (let i = offset; i < bytes.length; i += k) column.push(bytes[i]);
-            total += indexOfCoincidence(column);
-        }
+        for (let offset = 0; offset < k; offset++) total += indexOfCoincidence(bytes, offset, k);
         ranked.push({ length: k, score: total / k });
     }
     return ranked.sort((a, b) => b.score - a.score);
@@ -163,11 +171,13 @@ export default {
         openWorldHint: false
     },
     inputSchema: z.object({
-        // Bounded by measurement, not by taste. The scan is O(input x max_key_length): at the
-        // 256-length ceiling, 128 KB costs 374 ms and 1 MB costs 3.2 s. The server's general input
-        // ceiling is 100 MB, which here would be roughly five minutes of blocked event loop -- ten
-        // times the 30-second timeout every operation tool is held to. Index of coincidence needs
-        // a few hundred bytes to work, so 1 MB is already far more than the method uses.
+        // Bounded by measurement, not by taste. The scan is O(input x max_key_length), so the
+        // server's general 100 MB input ceiling would be about a minute of event loop even after
+        // the in-place rewrite -- against a 30-second timeout. Index of coincidence needs a few
+        // hundred bytes to say anything, so 1 MB is already far more than the method uses.
+        //
+        // At the 256-length ceiling: 128 KB costs 110 ms and 1 MB costs 594 ms, measured after
+        // dropping the per-column arrays (they were 374 ms and 3.2 s before).
         input: z.string().min(1).max(1048576).describe("The ciphertext. At most 1 MB."),
         "input_format": z.enum(["Raw", "Hex", "Base64"]).default("Raw")
             .describe("How `input` is encoded. Raw treats it as latin1 bytes."),
@@ -216,7 +226,7 @@ export default {
         // always qualifies. A guard for the empty case would be unreachable code claiming to handle
         // a situation that cannot arise, and the only way to cover it would be to fake it.
         // If the 8-byte floor above is ever lowered below 4, revisit this.
-        const ranked = rankKeyLengths(bytes, maxLength);
+        const ranked = await rankKeyLengths(bytes, maxLength);
         const chosen = chooseLength(ranked);
 
         const { key, confidence } = recoverKey(bytes, chosen);
