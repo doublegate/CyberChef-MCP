@@ -7,7 +7,149 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+## [2.4.0] - 2026-09-01
+
+### Security
+
+- **Every string argument on the four new tools is now bounded, and the registry path is held to the
+  same 30-second timeout as an operation.** The numeric arguments were all bounded from the start
+  and none of the string ones were, which is what made the gap easy to miss. Measurement settled
+  which bound mattered: 1,000,000 Fermat iterations against a 65-bit modulus costs 582 ms, while
+  **100 iterations against a 262,144-bit one blocked for 72 seconds** — the cost is in the size of
+  the numbers, so `fermat_iterations` bounded nothing. `xor_key_length` had the same shape more
+  gently (3.2 s at 1 MB, roughly five minutes at the server's 100 MB ceiling). Fixed with per-tool
+  limits carrying stated reasons, a bit-length guard behind the character limit (4,990 decimal
+  digits is 16,577 bits — inside one bound and outside the other), the operation timeout applied to
+  registry tools with retries off, and a cooperative yield in the Fermat loop so that timeout can
+  actually fire. Verified end to end: **72,125 ms → 2 ms**, with a genuine RSA-4096 modulus still
+  accepted. Found by the Antigravity reviewer on PR #100.
+- **`cyberchef_xor_key_length` no longer reports a divisor of the key length as the key length.**
+  It took the smallest candidate within 80% of the best score, which is right for multiples — every
+  multiple of the true length scores about as well — and wrong for divisors. The case is not
+  exotic: `secret` has `e` at positions 1 and 4, so at period 3 one column is a single key byte and
+  scores respectably, and the tool answered **3 for a six-byte key with "Clearly structured"
+  confidence**. A candidate is now rejected when a multiple of it scores materially higher, since a
+  divisor is beaten by the true length while a multiple is not. The margin was measured over 400
+  cases (5 plaintexts x 4 lengths x 20 keys): 82.5% against the previous rule's 79.5%. It remains a
+  heuristic that is wrong about one time in six, which is what `confidence` reports.
+- **Wiener's convergent walk is bounded and interruptible too.** It was measured at 2 ms and
+  dismissed — with the default `e = 65537`, where `e/n` is tiny and the continued fraction
+  terminates almost at once. That is not the case Wiener exists for: the convergent count is the
+  Euclidean chain length, and against a Fibonacci pair at the same modulus size it is **1,522 ms**
+  of uninterruptible synchronous work. Now yields and honours a five-second backstop, like Fermat.
+- **The perfect-square pre-filter widened to mod 64 (81.3% rejection), with the residues computed
+  rather than listed.** A hand-written set is how this becomes a silent correctness bug: the set
+  proposed for it omitted 41 and 57, which would have made `isPerfectSquare` reject genuine squares
+  and Fermat quietly fail on a subset of moduli.
+- **The Fermat search at the size ceiling went from ~37 minutes to 3.5 seconds.** Two hot-loop
+  changes on top of the deadline below: a quadratic-residue pre-filter (a perfect square is
+  0, 1, 4 or 9 mod 16, verified exhaustively, rejecting 75% of candidates before the expensive
+  path) and taking the bit length from the hex string rather than the binary one, a quarter of the
+  allocation in a function called every iteration. The full default 100,000 iterations against a
+  16,384-bit modulus now finishes in **3,498 ms** and no longer reaches the budget at all.
+- **The Fermat search now stops at a ten-second budget, and each iteration is ~187x cheaper.** The
+  bound added above was still four orders of magnitude too loose at its own ceiling: 10,000
+  iterations against a 16,384-bit modulus measured 223,909 ms, so the *default* 100,000
+  extrapolated to roughly 37 minutes. The yield did not save it, because `Promise.race` does not
+  cancel the loser — the caller got a timeout while the loop ran on, so a client could accumulate
+  runaway searches behind its own error responses. Fixed by starting `isqrt`'s Newton iteration at
+  `2^(bits/2+1)` rather than at `n` (it was doing ~8,000 big-integer divisions per call, once per
+  Fermat iteration) and by checking a deadline inside the loop so the work actually stops. Worst
+  case measured after: **10,002 ms**, reported honestly as a search that gave up rather than one
+  that found nothing. `xor_key_length`'s scan also dropped its per-column arrays — up to 32,896 of
+  them — taking 1 MB from 3,213 ms to 594 ms, and now yields between candidate lengths. Found by
+  the Antigravity reviewer on PR #100.
+- **Three tools no longer answer confidently where they should refuse.** `phi(n)` was computed as
+  `(p-1)(q-1)` even when Fermat returned `p === q` — which it does on its first iteration for
+  `n = p²` — so the reported private exponent decrypted `424242` as `368518651580054785`.
+  `hash_identify` treated the Cisco IOS type 7 pattern (two decimal digits then hex) as a
+  definitive structural match, so an ordinary MD5-length digest beginning `01` suppressed every
+  length candidate and came back as "Identified by structure, so this is reliable"; non-exclusive
+  patterns are now flagged and listed alongside the length candidates. `cyclic_pattern` returned an
+  offset for a fragment shorter than the uniqueness window — `"aa"` occurs 282 times in a
+  1024-byte pattern and the first was reported as *the* offset, which is the one failure that tool
+  exists to prevent. Found by CodeRabbit on PR #100.
+- **The small-`e` attack is no longer reachable with an exponent that kills the process.**
+  `integerRoot` computes `hi ** k` with `k` the caller's public exponent, and raising to a huge
+  power is fatal rather than slow — a 400-digit exponent, well inside the bound above, returned
+  `RangeError: Maximum BigInt size exceeded` instead of an answer. Bounding `e` globally would be
+  wrong: a *large* `e` is exactly the signature Wiener's attack looks for, so the guard is on the
+  small-`e` attack alone, which is meaningful only for `e = 3` and occasionally 5 or 17. Skipping is
+  reported in `attempted` rather than silently omitted. Found by Copilot on PR #100.
+
+### Added
+
+- **A tool registry** for tools that are not CyberChef operations (`src/node/tools/`). Every tool so
+  far is derived from `OperationConfig` — a pure `run(input, args)` over one input — which cannot
+  express an *analysis*: scoring dozens of candidate key lengths, or composing several operations and
+  comparing results. `cyberchef_bake` does not help, because a recipe is a linear pipeline, not a
+  loop. Registry tools receive capabilities (`{ bake }`), never the engine itself.
+- **`cyberchef_xor_key_length`** — recovers the key length of a repeating-key XOR by index of
+  coincidence, then guesses the key and decrypts. Reports ranked candidates with scores and a
+  confidence figure relative to random, because the method is least reliable on short inputs and on
+  plaintext with its own strong period.
+- **`cyberchef_cyclic_pattern`** — generates a De Bruijn pattern and finds the offset of a fragment
+  in it, for locating the return-address bytes in a stack overflow. Byte-compatible with pwntools'
+  `cyclic`, so an offset found here matches one found there. Reads a recovered register value as hex
+  in either endianness and returns both offsets when both match, rather than picking one silently.
+  Refuses a pattern longer than the alphabet can keep unique — past that point every offset it could
+  report would be ambiguous.
+- **`cyberchef_hash_identify`** — identifies a password hash by structure and returns the hashcat
+  mode and John format name, so the output is a command you can run. Falls back to digest length for
+  bare hex, and says so: 32 hex characters is MD5, NTLM, MD4 and more, and naming one would be a
+  guess dressed as an answer. Fills a real gap — CyberChef computes around forty digests and cannot
+  tell you what one is, and `Magic` reports `Invalid hash` for bcrypt, sha512crypt and argon2.
+- **`cyberchef_rsa_attack`** — tests an RSA public key for the four generation flaws that make it
+  breakable (Fermat's close primes, a prime shared with a second modulus, Wiener's small private
+  exponent, unpadded small `e`) and recovers the private key when one applies, decrypting a supplied
+  ciphertext. None of these threatens a correctly generated key, so a negative result is reported as
+  four flaws ruled out — explicitly *not* as evidence the key is strong. CyberChef can encrypt,
+  decrypt, sign, verify and generate RSA keys, and had no way to assess one.
+
+### Changed
+
+- **A registry tool can never shadow a CyberChef operation.** Registration fails loudly on a name
+  collision rather than resolving it by import order, so `cyberchef_aes_decrypt` is always AES
+  Decrypt and the winner can never depend on module load sequence.
+- **No plugin loader, deliberately.** The registry loads nothing from disk; tools are registered by
+  explicit import. "Sandboxed execution" is not achievable with `node:vm` — a host capability handed
+  into a vm context reaches the real `process`, and every useful tool needs a capability. Recorded
+  with the measurement in [ADR 0002](docs/adr/0002-tool-registry-is-not-a-plugin-loader.md).
+- **Two summaries of ADR 0002 contradicted the ADR they link to.** The roadmap and release notes
+  named a worker thread as the "real isolate" that would make a plugin loader buildable; the ADR
+  says, in the paragraph both of them cite, that a worker bounds CPU rather than authority and
+  shares the process's filesystem, network and environment. Both now say what it says: process
+  isolation plus an explicit capability allowlist. The ADR itself over-claimed too — it listed
+  `child_process by require` among what the vm escape reaches, and `require` is module-scoped, so
+  it is not reachable that way (`process` alone is, and is enough). In a document whose authority
+  rests on having measured rather than argued, an unmeasured clause is the worst thing to leave in.
+- **Three more documents corrected to describe the code that exists.** `deBruijn` carried a comment
+  claiming it was "written iteratively: an explicit stack rather than recursion because a long
+  pattern nests deeply enough to matter" — it is recursive, and depth is bounded by the subsequence
+  length (at most 8) rather than by the pattern length, so the justification was invented for a
+  decision nobody made. The tools guide documented `xor_key_length` as defaulting to
+  `input_format: Hex` and `max_key_length: 40` where the schema says `Raw` and `32`; a caller
+  trusting that would omit `input_format` for hex input and get a confident wrong key length rather
+  than an error. And the registry was described as guarding against "506 operation tools" where
+  `OperationConfig` holds 504.
+- **The third-party notices no longer claim work that has not happened.** The reference-tool
+  section said eight projects had been "incorporated in v2.0.0" with per-file provenance comments
+  naming a source file and commit. What the tools actually take is a wire format, an algorithm
+  choice or an identifier table, and four of the eight projects contributed nothing at all —
+  `Magic` already does what Ciphey, Ares and katana's core do, and cryptii's encodings have 26
+  equivalents among the 504 operations. Rewritten to say per tool what was taken from where, with
+  the four evaluated-and-dropped projects listed as such. The `cyberchef-recipes` note likewise
+  claimed a corpus that has not been built.
+- **The default `tools/list` index grew from 24 tools (~3.4k tokens) to 28 (~4.9k).** The four
+  analysis tools are exposed at every surface — index, curated and all — because each replaces a
+  separate command-line tool and none has an equivalent reachable through `cyberchef_bake`. The
+  ~1.5k tokens they add is the honest cost of that decision, stated rather than buried: measured on
+  the serialised `tools/list` payload, not estimated. `curated` is 106 tools (~20.7k) and `all` is
+  531 (~100k).
+- `src/node/tools/**` added to the coverage include list — a new directory is otherwise measured at
+  nothing while appearing in no report, which is how `src/node/worker.mjs` went unmeasured for six
+  releases.
+
 
 ## [2.3.0] - 2026-08-31
 

@@ -251,6 +251,9 @@ if (!existsSync(configPath)) {
     // rather than silently reverting to a private copy that can drift.
     const { sanitizeToolName, toolArgName, resolveArgValue } =
         await import("../../src/node/lib/tool-schema.mjs");
+    const { ToolRegistry } = await import("../../src/node/tools/registry.mjs");
+    const analysisCount = (await import("../../src/node/tools/index.mjs"))
+        .buildRegistry().size;
     /**
      * Operation descriptions to plain text.
      *
@@ -300,8 +303,10 @@ if (!existsSync(configPath)) {
             "| Category | Operations |",
             "|---|---|",
             ...modules.map(m => `| [${m}](/CyberChef-MCP/reference/${m.toLowerCase()}/) | ${byCategory.get(m).length} |`),
+            `| [Analysis](/CyberChef-MCP/reference/analysis/) | ${analysisCount} (not operations) |`,
             "",
-            `**${Object.keys(config).length} operations in ${modules.length} categories.**`
+            `**${Object.keys(config).length} operations in ${modules.length} categories**, plus`,
+            `${analysisCount} analysis tools that are not operations.`
         ].join("\n"), 0, null);
     count++;
 
@@ -346,6 +351,56 @@ if (!existsSync(configPath)) {
             lines.join("\n"), i + 1, null);
         count++;
     });
+
+    // The registry tools, which are NOT in OperationConfig.
+    //
+    // Without this the generated reference silently omits four tools the server exposes at every
+    // surface, while the page above it promises it "cannot disagree with the running server". A
+    // reference that makes that claim and then leaves things out is worse than one that makes no
+    // claim at all, so the registry is read here the same way the server reads it.
+    const { buildRegistry } = await import("../../src/node/tools/index.mjs");
+    const registryTools = buildRegistry().list();
+    const registryLines = [
+        `${registryTools.length} tools that are not CyberChef operations. An operation is a pure`,
+        "`run(input, args)` over one input, which cannot express an *analysis* -- scoring forty",
+        "candidate key lengths, or composing several operations and comparing the results.",
+        "`cyberchef_bake` does not help, because a recipe is a linear pipeline, not a loop.",
+        "",
+        "These are exposed at **every** tool surface, including the default index, because they are",
+        "few and each one replaces a separate command-line tool.",
+        ""
+    ];
+    for (const tool of registryTools.sort((a, b) => a.name.localeCompare(b.name))) {
+        registryLines.push(`## ${tool.title}`, "");
+        registryLines.push(strip(tool.description), "");
+        registryLines.push(`- **Tool name:** \`${ToolRegistry.exposedName(tool.name)}\``);
+        registryLines.push(`- **Category:** ${tool.category}`);
+        const shape = tool.inputSchema?.shape ?? {};
+        if (Object.keys(shape).length) {
+            registryLines.push("", "| Argument | Type | Default | Description |", "|---|---|---|---|");
+            for (const [arg, schema] of Object.entries(shape)) {
+                // `def.type` is "default"/"optional" for a wrapped schema, so the useful type name
+                // is the inner one. The default comes from parsing `undefined` rather than reading
+                // `def.defaultValue`, which is the one form that has stayed stable across Zod
+                // majors -- and it is also exactly what the caller gets when they omit the field.
+                const inner = schema.def?.innerType;
+                const type = inner?.def?.type ?? schema.def?.type ?? "";
+                const parsed = schema.safeParse(undefined);
+                const dflt = parsed.success && parsed.data !== undefined ?
+                    `\`${strip(JSON.stringify(parsed.data)).slice(0, 32)}\`` :
+                    (parsed.success ? "—" : "**required**");
+                const desc = strip(schema.description ?? inner?.description ?? "");
+                registryLines.push(`| \`${arg}\` | ${type} | ${dflt} | ${desc} |`);
+            }
+        } else {
+            registryLines.push("- **Arguments:** none");
+        }
+        registryLines.push("");
+    }
+    emit("reference", "analysis", "Analysis",
+        `${registryTools.length} analysis tools that are not CyberChef operations.`,
+        registryLines.join("\n"), modules.length + 1, null);
+    count++;
 }
 
 // The landing page, with its figures read from the repository rather than typed in. A splash

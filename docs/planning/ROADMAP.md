@@ -62,7 +62,7 @@ gantt
     section Phase 4 Expansion
     v2.2.0 Multi-Modal Support          :done, 2026-08-31, 1d
     v2.3.0 Protocol Currency            :done, 2026-08-31, 1d
-    v2.4.0 Plugin Architecture          :2026-09-15, 4w
+    v2.4.0 Tool Registry                :done, 2026-09-01, 1d
     section Phase 5 Enterprise
     v2.5.0 Enterprise Features          :2027-01-01, 4w
     v2.6.0 Distributed Architecture     :2027-02-01, 4w
@@ -131,7 +131,7 @@ gantt
 |---------|-------|--------------|--------|------|
 | **v2.2.0** | Multi-Modal Support | **Shipped 2026-08-31.** Image and audio content blocks, MIME sniffing, binary base64 opt-in — plus tool annotations, prompts and resources | L | Medium |
 | **v2.3.0** | Protocol currency | **Released 2026-08-31.** Protocol revision 2026-07-28 on both stdio and HTTP, served alongside the 2025 era from one set of handlers (MCP SDK v2); npm distribution unblocked; 17 image operations fixed. **Re-scoped:** the original "WebSocket, Streamable HTTP, SSE" line no longer describes anything buildable — see the note below. | L | Medium |
-| **v2.4.0** | Plugin Architecture | Plugin system, sandboxed execution, plugin registry | XL | High |
+| **v2.4.0** | Tool registry | **Released 2026-09-01.** A registry for tools that are not CyberChef operations, and its first four: `xor_key_length`, `cyclic_pattern`, `hash_identify`, `rsa_attack`. **Re-scoped:** "plugin system, sandboxed execution, plugin registry" shipped as the registry without the loader — see the note below. | L | Low |
 | **v2.5.0** | Enterprise Features | OAuth 2.1, RBAC, audit logging, multi-tenancy | XL | High |
 | **v2.6.0** | Distributed Architecture | Kubernetes scaling, service mesh, warm pools | XL | High |
 | **v2.7.0** | Observability | OpenTelemetry traces/metrics/logs, dashboards, alerts | L | Medium |
@@ -140,6 +140,31 @@ gantt
 | **v2.9.x** | Pre-v3.0.0 Polish | Migration tooling, deprecation warnings, compatibility mode | M | Medium |
 | **v3.0.0** | Major Release | API evolution, breaking changes, v2.x LTS | XL | High |
 
+
+### Note: why v2.4.0's plugin line was re-scoped
+
+The theme was "plugin system, sandboxed execution, plugin registry". The registry shipped. The
+loader did not, and will not until the sandbox is real rather than nominal.
+
+`node:vm` is not a security boundary, and this was measured rather than argued:
+
+```js
+const ctx = vm.createContext({ bake });
+vm.runInContext("bake.constructor('return process')()", ctx);   // the real process
+```
+
+A function passed into a vm context carries a `constructor` that closes over the host realm. Since
+every tool worth loading needs at least one host capability, the "narrow API" defence is unavailable
+by construction — there is no version of the design where a third-party plugin gets a useful
+capability and stays contained.
+
+So tools are registered by explicit import, in a reviewed pull request, and the roadmap line is
+recorded as re-scoped rather than quietly dropped. It becomes buildable if the boundary becomes a
+real one: **process isolation plus an explicit capability allowlist** — a child process under
+Node's permission model or equivalent, a defined IPC surface, and a written decision about what a
+plugin may read and reach. Not a worker thread: a worker bounds CPU, not authority, and shares the
+process's filesystem, network and environment. That is a design with a threat model, and a
+different piece of work from a tidier `vm`. [ADR 0002](../adr/0002-tool-registry-is-not-a-plugin-loader.md).
 
 ### Note: why v2.3.0's transport line was re-scoped
 

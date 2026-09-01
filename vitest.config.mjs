@@ -54,6 +54,10 @@ export default defineConfig({
                 // measured -- absent from this list, so present in no report.
                 "src/node/worker.mjs",
                 "src/node/lib/**/*.{js,mjs}",
+                // Added with the registry in v2.4.0. Omitting a new directory is exactly how
+                // src/node/worker.mjs went unmeasured for six releases -- it was our code, on a
+                // real path, absent from this list and therefore from every report.
+                "src/node/tools/**/*.{js,mjs}",
             ],
             exclude: [
                 "node_modules/**",

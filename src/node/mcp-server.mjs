@@ -25,6 +25,7 @@ import { bakeOnCore } from "./lib/core-recipe.mjs";
 import { isExposed, describeSurface } from "./lib/tool-surface.mjs";
 import { categoryIndex, listOperations, describeOperations } from "./lib/tool-catalog.mjs";
 import { installWasmFetch } from "./lib/wasm-fetch.mjs";
+import { buildRegistry, ToolRegistry } from "./tools/index.mjs";
 
 // Installed BEFORE any operation can run. `argon2-browser` fetches its .wasm by filesystem path,
 // which Node's fetch rejects, and jq-web's Emscripten runtime turns that unhandled rejection into
@@ -317,267 +318,322 @@ const server = new Server(
 // - executeWithTimeoutAndRetry in retry.mjs
 // - executeWithStreamingStrategy in streaming.mjs
 
-const handleListTools = async () => {
-    const tools = [
-        {
-            name: "cyberchef_bake",
-            description: "Execute a CyberChef recipe. Use this for complex chains of operations.",
-            inputSchema: toInputSchema(z.object({
-                input: z.string().describe("The input data"),
-                recipe: z.array(z.object({
-                    op: z.string().describe("Operation name"),
-                    // BOTH forms, because both are supported and only one was advertised.
-                    //
-                    // This declared `z.array(z.any())` -- positional only -- while the
-                    // implementation has accepted named arguments since DEP005, and named
-                    // arguments are the entire reason a model can use these operations correctly.
-                    // A client that validates outbound arguments against `inputSchema` therefore
-                    // could not send the supported form at all, and `cyberchef_recipe_create`
-                    // disagreed with it two tools away by declaring `z.record(z.any())`.
-                    //
-                    // Named is listed first so it reads as the primary form.
-                    args: z.union([
-                        z.record(z.string(), z.any()),
-                        z.array(z.any())
-                    ]).optional().describe(
-                        "Operation arguments. Either named -- {\"key\": \"...\", \"iv\": \"...\"} " +
-                        "-- or positional, as the CyberChef UI writes them. Use " +
-                        "cyberchef_describe_operation for the argument names."
-                    )
-                })).describe("List of operations to perform")
-            }))
-        },
-        {
-            name: "cyberchef_categories",
-            description: "List CyberChef's operation categories with counts and examples. " +
-                "Start here to browse what this server can do, then use cyberchef_list_operations.",
-            inputSchema: toInputSchema(z.object({})),
-            // Declared only for the tools whose shape THIS SERVER defines. The 504 operations are
-            // not given one: their output is whatever CyberChef returns, undocumented and varying
-            // per operation, and inventing a schema for it would be a claim rather than a contract.
-            outputSchema: toInputSchema(z.object({
-                categories: z.array(z.object({
-                    category: z.string(),
-                    operations: z.number(),
-                    examples: z.array(z.string())
-                })),
-                totalOperations: z.number(),
-                usage: z.string()
-            }))
-        },
-        {
-            name: "cyberchef_list_operations",
-            outputSchema: toInputSchema(z.object({
+/**
+ * The meta-tools: everything not derived from OperationConfig and not from the registry.
+ *
+ * Lifted to module scope so the names are ADDRESSABLE. The registry needs them as reserved
+ * names -- a registry tool must never be able to shadow `cyberchef_bake` -- and a hand-listed
+ * copy would be a second source of truth, which is always the one that goes stale.
+ *
+ * A static literal: nothing here reads configuration or the operation set, which is what makes
+ * lifting it safe.
+ */
+const META_TOOLS = [
+    {
+        name: "cyberchef_bake",
+        description: "Execute a CyberChef recipe. Use this for complex chains of operations.",
+        inputSchema: toInputSchema(z.object({
+            input: z.string().describe("The input data"),
+            recipe: z.array(z.object({
+                op: z.string().describe("Operation name"),
+                // BOTH forms, because both are supported and only one was advertised.
+                //
+                // This declared `z.array(z.any())` -- positional only -- while the
+                // implementation has accepted named arguments since DEP005, and named
+                // arguments are the entire reason a model can use these operations correctly.
+                // A client that validates outbound arguments against `inputSchema` therefore
+                // could not send the supported form at all, and `cyberchef_recipe_create`
+                // disagreed with it two tools away by declaring `z.record(z.any())`.
+                //
+                // Named is listed first so it reads as the primary form.
+                args: z.union([
+                    z.record(z.string(), z.any()),
+                    z.array(z.any())
+                ]).optional().describe(
+                    "Operation arguments. Either named -- {\"key\": \"...\", \"iv\": \"...\"} " +
+                    "-- or positional, as the CyberChef UI writes them. Use " +
+                    "cyberchef_describe_operation for the argument names."
+                )
+            })).describe("List of operations to perform")
+        }))
+    },
+    {
+        name: "cyberchef_categories",
+        description: "List CyberChef's operation categories with counts and examples. " +
+            "Start here to browse what this server can do, then use cyberchef_list_operations.",
+        inputSchema: toInputSchema(z.object({})),
+        // Declared only for the tools whose shape THIS SERVER defines. The 504 operations are
+        // not given one: their output is whatever CyberChef returns, undocumented and varying
+        // per operation, and inventing a schema for it would be a claim rather than a contract.
+        outputSchema: toInputSchema(z.object({
+            categories: z.array(z.object({
                 category: z.string(),
-                operations: z.array(z.object({
-                    operation: z.string(),
-                    summary: z.string(),
-                    args: z.number()
-                })),
-                next: z.string()
+                operations: z.number(),
+                examples: z.array(z.string())
             })),
-            description: "List the operations in one category, with a one-line summary of each. " +
-                "Use cyberchef_describe_operation for full argument schemas.",
-            inputSchema: toInputSchema(z.object({
-                category: z.string().describe(
-                    "Category name, e.g. \"Encryption / Encoding\", \"Hashing\", \"Extractors\"")
-            }))
-        },
-        {
-            name: "cyberchef_describe_operation",
-            description: "Full argument schema, defaults and types for one or more operations. " +
-                "This is what you need before calling cyberchef_bake with a new operation.",
-            inputSchema: toInputSchema(z.object({
-                operations: z.union([z.string(), z.array(z.string())]).describe(
-                    "One operation name, or several, e.g. \"AES Encrypt\" or [\"Gzip\", \"To Base64\"]")
-            }))
-        },
-        {
-            name: "cyberchef_search",
-            description: "Search for available CyberChef operations.",
-            inputSchema: toInputSchema(z.object({
-                query: z.string().describe("Search query")
-            }))
-        },
-        // Recipe management tools (v1.6.0)
-        {
-            name: "cyberchef_recipe_create",
-            description: "Create a new recipe with multiple operations.",
-            inputSchema: toInputSchema(z.object({
-                name: z.string().describe("Recipe name"),
-                description: z.string().optional().describe("Recipe description"),
-                operations: z.array(z.object({
-                    op: z.string().optional().describe("Operation name"),
-                    args: z.record(z.any()).optional().describe("Operation arguments"),
-                    recipe: z.string().optional().describe("Reference to another recipe ID")
-                })).describe("List of operations"),
-                tags: z.array(z.string()).optional().describe("Recipe tags"),
-                author: z.string().optional().describe("Author email"),
-                metadata: z.object({
-                    complexity: z.string().optional(),
-                    estimatedTime: z.string().optional(),
-                    category: z.string().optional()
-                }).optional()
-            }))
-        },
-        {
-            name: "cyberchef_recipe_get",
-            description: "Get a recipe by ID.",
-            inputSchema: toInputSchema(z.object({
-                id: z.string().uuid().describe("Recipe UUID")
-            }))
-        },
-        {
-            name: "cyberchef_recipe_list",
-            description: "List all recipes with optional filtering.",
-            inputSchema: toInputSchema(z.object({
-                tag: z.string().optional().describe("Filter by tag"),
-                category: z.string().optional().describe("Filter by category"),
-                search: z.string().optional().describe("Search in name/description"),
-                limit: z.number().optional().describe("Maximum results"),
-                offset: z.number().optional().describe("Pagination offset")
-            }))
-        },
-        {
-            name: "cyberchef_recipe_update",
-            description: "Update an existing recipe.",
-            inputSchema: toInputSchema(z.object({
-                id: z.string().uuid().describe("Recipe UUID"),
-                name: z.string().optional().describe("New recipe name"),
-                description: z.string().optional().describe("New description"),
+            totalOperations: z.number(),
+            usage: z.string()
+        }))
+    },
+    {
+        name: "cyberchef_list_operations",
+        outputSchema: toInputSchema(z.object({
+            category: z.string(),
+            operations: z.array(z.object({
+                operation: z.string(),
+                summary: z.string(),
+                args: z.number()
+            })),
+            next: z.string()
+        })),
+        description: "List the operations in one category, with a one-line summary of each. " +
+            "Use cyberchef_describe_operation for full argument schemas.",
+        inputSchema: toInputSchema(z.object({
+            category: z.string().describe(
+                "Category name, e.g. \"Encryption / Encoding\", \"Hashing\", \"Extractors\"")
+        }))
+    },
+    {
+        name: "cyberchef_describe_operation",
+        description: "Full argument schema, defaults and types for one or more operations. " +
+            "This is what you need before calling cyberchef_bake with a new operation.",
+        inputSchema: toInputSchema(z.object({
+            operations: z.union([z.string(), z.array(z.string())]).describe(
+                "One operation name, or several, e.g. \"AES Encrypt\" or [\"Gzip\", \"To Base64\"]")
+        }))
+    },
+    {
+        name: "cyberchef_search",
+        description: "Search for available CyberChef operations.",
+        inputSchema: toInputSchema(z.object({
+            query: z.string().describe("Search query")
+        }))
+    },
+    // Recipe management tools (v1.6.0)
+    {
+        name: "cyberchef_recipe_create",
+        description: "Create a new recipe with multiple operations.",
+        inputSchema: toInputSchema(z.object({
+            name: z.string().describe("Recipe name"),
+            description: z.string().optional().describe("Recipe description"),
+            operations: z.array(z.object({
+                op: z.string().optional().describe("Operation name"),
+                args: z.record(z.any()).optional().describe("Operation arguments"),
+                recipe: z.string().optional().describe("Reference to another recipe ID")
+            })).describe("List of operations"),
+            tags: z.array(z.string()).optional().describe("Recipe tags"),
+            author: z.string().optional().describe("Author email"),
+            metadata: z.object({
+                complexity: z.string().optional(),
+                estimatedTime: z.string().optional(),
+                category: z.string().optional()
+            }).optional()
+        }))
+    },
+    {
+        name: "cyberchef_recipe_get",
+        description: "Get a recipe by ID.",
+        inputSchema: toInputSchema(z.object({
+            id: z.string().uuid().describe("Recipe UUID")
+        }))
+    },
+    {
+        name: "cyberchef_recipe_list",
+        description: "List all recipes with optional filtering.",
+        inputSchema: toInputSchema(z.object({
+            tag: z.string().optional().describe("Filter by tag"),
+            category: z.string().optional().describe("Filter by category"),
+            search: z.string().optional().describe("Search in name/description"),
+            limit: z.number().optional().describe("Maximum results"),
+            offset: z.number().optional().describe("Pagination offset")
+        }))
+    },
+    {
+        name: "cyberchef_recipe_update",
+        description: "Update an existing recipe.",
+        inputSchema: toInputSchema(z.object({
+            id: z.string().uuid().describe("Recipe UUID"),
+            name: z.string().optional().describe("New recipe name"),
+            description: z.string().optional().describe("New description"),
+            operations: z.array(z.object({
+                op: z.string().optional(),
+                args: z.record(z.any()).optional(),
+                recipe: z.string().optional()
+            })).optional().describe("New operations"),
+            tags: z.array(z.string()).optional().describe("New tags"),
+            metadata: z.object({
+                complexity: z.string().optional(),
+                estimatedTime: z.string().optional(),
+                category: z.string().optional()
+            }).optional()
+        }))
+    },
+    {
+        name: "cyberchef_recipe_delete",
+        description: "Delete a recipe by ID.",
+        inputSchema: toInputSchema(z.object({
+            id: z.string().uuid().describe("Recipe UUID")
+        }))
+    },
+    {
+        name: "cyberchef_recipe_execute",
+        description: "Execute a saved recipe with input data.",
+        inputSchema: toInputSchema(z.object({
+            id: z.string().uuid().describe("Recipe UUID"),
+            input: z.string().describe("Input data to process")
+        }))
+    },
+    {
+        name: "cyberchef_recipe_export",
+        description: "Export a recipe to various formats (json, yaml, url, cyberchef).",
+        inputSchema: toInputSchema(z.object({
+            id: z.string().uuid().describe("Recipe UUID"),
+            format: z.enum(["json", "yaml", "url", "cyberchef"]).describe("Export format")
+        }))
+    },
+    {
+        name: "cyberchef_recipe_import",
+        description: "Import a recipe from various formats.",
+        inputSchema: toInputSchema(z.object({
+            data: z.string().describe("Recipe data to import"),
+            format: z.enum(["json", "yaml", "url", "cyberchef"]).describe("Import format")
+        }))
+    },
+    {
+        name: "cyberchef_recipe_validate",
+        description: "Validate a recipe without saving it.",
+        inputSchema: toInputSchema(z.object({
+            recipe: z.object({
+                name: z.string(),
                 operations: z.array(z.object({
                     op: z.string().optional(),
                     args: z.record(z.any()).optional(),
                     recipe: z.string().optional()
-                })).optional().describe("New operations"),
-                tags: z.array(z.string()).optional().describe("New tags"),
-                metadata: z.object({
-                    complexity: z.string().optional(),
-                    estimatedTime: z.string().optional(),
-                    category: z.string().optional()
-                }).optional()
-            }))
-        },
-        {
-            name: "cyberchef_recipe_delete",
-            description: "Delete a recipe by ID.",
-            inputSchema: toInputSchema(z.object({
-                id: z.string().uuid().describe("Recipe UUID")
-            }))
-        },
-        {
-            name: "cyberchef_recipe_execute",
-            description: "Execute a saved recipe with input data.",
-            inputSchema: toInputSchema(z.object({
-                id: z.string().uuid().describe("Recipe UUID"),
-                input: z.string().describe("Input data to process")
-            }))
-        },
-        {
-            name: "cyberchef_recipe_export",
-            description: "Export a recipe to various formats (json, yaml, url, cyberchef).",
-            inputSchema: toInputSchema(z.object({
-                id: z.string().uuid().describe("Recipe UUID"),
-                format: z.enum(["json", "yaml", "url", "cyberchef"]).describe("Export format")
-            }))
-        },
-        {
-            name: "cyberchef_recipe_import",
-            description: "Import a recipe from various formats.",
-            inputSchema: toInputSchema(z.object({
-                data: z.string().describe("Recipe data to import"),
-                format: z.enum(["json", "yaml", "url", "cyberchef"]).describe("Import format")
-            }))
-        },
-        {
-            name: "cyberchef_recipe_validate",
-            description: "Validate a recipe without saving it.",
-            inputSchema: toInputSchema(z.object({
-                recipe: z.object({
-                    name: z.string(),
-                    operations: z.array(z.object({
-                        op: z.string().optional(),
-                        args: z.record(z.any()).optional(),
-                        recipe: z.string().optional()
-                    }))
-                }).describe("Recipe to validate")
-            }))
-        },
-        {
-            name: "cyberchef_recipe_test",
-            description: "Test a recipe with sample inputs.",
-            inputSchema: toInputSchema(z.object({
-                recipe: z.object({
-                    name: z.string(),
-                    operations: z.array(z.object({
-                        op: z.string().optional(),
-                        args: z.record(z.any()).optional(),
-                        recipe: z.string().optional()
-                    }))
-                }).describe("Recipe to test"),
-                testInputs: z.array(z.string()).describe("Array of test inputs")
-            }))
-        },
-        // v1.7.0 tools
-        {
-            name: "cyberchef_batch",
-            description: "Execute multiple CyberChef operations in batch (parallel or sequential mode). Supports partial success.",
-            inputSchema: toInputSchema(z.object({
+                }))
+            }).describe("Recipe to validate")
+        }))
+    },
+    {
+        name: "cyberchef_recipe_test",
+        description: "Test a recipe with sample inputs.",
+        inputSchema: toInputSchema(z.object({
+            recipe: z.object({
+                name: z.string(),
                 operations: z.array(z.object({
-                    tool: z.string().describe("Tool name (e.g., cyberchef_to_base64)"),
-                    arguments: z.record(z.any()).describe("Tool arguments")
-                })).describe("Array of operations to execute"),
-                mode: z.enum(["parallel", "sequential"]).default("parallel").describe("Execution mode")
-            }))
-        },
-        {
-            name: "cyberchef_telemetry_export",
-            description: "Export collected telemetry metrics. Returns anonymized usage statistics.",
-            inputSchema: toInputSchema(z.object({
-                format: z.enum(["json", "summary"]).default("json").describe("Export format")
-            }))
-        },
-        {
-            name: "cyberchef_cache_stats",
-            description: "Get cache statistics including hits, misses, size, and items.",
-            inputSchema: toInputSchema(z.object({}))
-        },
-        {
-            name: "cyberchef_cache_clear",
-            description: "Clear the operation result cache.",
-            inputSchema: toInputSchema(z.object({}))
-        },
-        {
-            name: "cyberchef_quota_info",
-            description: "Get current resource quota information including concurrent operations and data sizes.",
-            inputSchema: toInputSchema(z.object({}))
-        },
-        // v1.8.0 tools - Breaking Changes Preparation
-        {
-            name: "cyberchef_migration_preview",
-            description: "Analyze recipes and configurations for v2.0.0 compatibility. Returns compatibility issues and optionally transforms recipes to v2.0.0 format.",
-            inputSchema: toInputSchema(z.object({
-                recipe: z.any().describe("Recipe object or array to analyze"),
-                mode: z.enum(["analyze", "transform"]).default("analyze").describe("analyze: check compatibility, transform: convert to v2.0.0 format")
-            }))
-        },
-        {
-            name: "cyberchef_deprecation_stats",
-            description: "Get statistics on deprecated API usage in current session. Shows which deprecation warnings have been triggered and v2.0.0 preparation status.",
-            inputSchema: toInputSchema(z.object({}))
-        },
-        // v1.9.0 tools - Worker Thread Pool
-        {
-            name: "cyberchef_worker_stats",
-            description: "Get worker thread pool statistics including thread count, utilization, and completed tasks. Only available when ENABLE_WORKERS=true.",
-            inputSchema: toInputSchema(z.object({}))
-        }
-    ];
+                    op: z.string().optional(),
+                    args: z.record(z.any()).optional(),
+                    recipe: z.string().optional()
+                }))
+            }).describe("Recipe to test"),
+            testInputs: z.array(z.string()).describe("Array of test inputs")
+        }))
+    },
+    // v1.7.0 tools
+    {
+        name: "cyberchef_batch",
+        description: "Execute multiple CyberChef operations in batch (parallel or sequential mode). Supports partial success.",
+        inputSchema: toInputSchema(z.object({
+            operations: z.array(z.object({
+                tool: z.string().describe("Tool name (e.g., cyberchef_to_base64)"),
+                arguments: z.record(z.any()).describe("Tool arguments")
+            })).describe("Array of operations to execute"),
+            mode: z.enum(["parallel", "sequential"]).default("parallel").describe("Execution mode")
+        }))
+    },
+    {
+        name: "cyberchef_telemetry_export",
+        description: "Export collected telemetry metrics. Returns anonymized usage statistics.",
+        inputSchema: toInputSchema(z.object({
+            format: z.enum(["json", "summary"]).default("json").describe("Export format")
+        }))
+    },
+    {
+        name: "cyberchef_cache_stats",
+        description: "Get cache statistics including hits, misses, size, and items.",
+        inputSchema: toInputSchema(z.object({}))
+    },
+    {
+        name: "cyberchef_cache_clear",
+        description: "Clear the operation result cache.",
+        inputSchema: toInputSchema(z.object({}))
+    },
+    {
+        name: "cyberchef_quota_info",
+        description: "Get current resource quota information including concurrent operations and data sizes.",
+        inputSchema: toInputSchema(z.object({}))
+    },
+    // v1.8.0 tools - Breaking Changes Preparation
+    {
+        name: "cyberchef_migration_preview",
+        description: "Analyze recipes and configurations for v2.0.0 compatibility. Returns compatibility issues and optionally transforms recipes to v2.0.0 format.",
+        inputSchema: toInputSchema(z.object({
+            recipe: z.any().describe("Recipe object or array to analyze"),
+            mode: z.enum(["analyze", "transform"]).default("analyze").describe("analyze: check compatibility, transform: convert to v2.0.0 format")
+        }))
+    },
+    {
+        name: "cyberchef_deprecation_stats",
+        description: "Get statistics on deprecated API usage in current session. Shows which deprecation warnings have been triggered and v2.0.0 preparation status.",
+        inputSchema: toInputSchema(z.object({}))
+    },
+    // v1.9.0 tools - Worker Thread Pool
+    {
+        name: "cyberchef_worker_stats",
+        description: "Get worker thread pool statistics including thread count, utilization, and completed tasks. Only available when ENABLE_WORKERS=true.",
+        inputSchema: toInputSchema(z.object({}))
+    }
+];
+
+/** @returns {string[]} Every meta-tool name, for collision checks. */
+function metaToolNames() {
+    return META_TOOLS.map(t => t.name);
+}
+
+/**
+ * Tools that are not CyberChef operations.
+ *
+ * Built at startup, from an explicit manifest -- nothing is loaded from disk. See
+ * `src/node/tools/registry.mjs` and ADR 0002 for why there is no plugin loader.
+ *
+ * The reserved-name set is every tool name that already exists: all 504 operation tools plus the
+ * meta-tools. Passing it in means a registry tool that would shadow one fails HERE, at startup,
+ * rather than silently winning or losing a race at call time depending on import order.
+ */
+const toolRegistry = buildRegistry({
+    reservedNames: new Set([
+        ...Object.keys(OperationConfig).map(sanitizeToolName).filter(Boolean),
+        // Derived from the tool list rather than hand-listed: a hardcoded copy is a second source
+        // of truth, and the one that goes stale is always the copy. `handleListTools` builds the
+        // meta-tools before the registry's are appended, so calling it here would recurse -- the
+        // names come from `metaToolNames()` instead, which reads the same literal array.
+        ...metaToolNames()
+    ])
+});
+
+const handleListTools = async () => {
+    // A fresh copy each call: annotations are attached below, and mutating the module-level
+    // constant would accumulate them across calls.
+    const tools = META_TOOLS.map(t => ({ ...t }));
 
     // Annotations for the meta-tools, applied in one pass rather than repeated across 24 literals
     // -- where they would drift, and where a missing one is invisible.
     for (const tool of tools) {
         tool.annotations = annotationsForMetaTool(tool.name, metaToolTitle(tool.name));
+    }
+
+    // Registry tools: analyses that are not CyberChef operations. Always exposed, regardless of
+    // CYBERCHEF_TOOL_SURFACE -- that setting exists to keep 504 operation schemas out of the
+    // default payload, and there are a handful of these. They carry their own annotations,
+    // because what is read-only or open-world about them is a property of the tool rather than of
+    // its name.
+    for (const tool of toolRegistry.list()) {
+        tools.push({
+            name: ToolRegistry.exposedName(tool.name),
+            description: tool.description,
+            inputSchema: toInputSchema(tool.inputSchema),
+            annotations: tool.annotations ?? annotationsForMetaTool(
+                ToolRegistry.exposedName(tool.name), tool.title)
+        });
     }
 
     Object.keys(OperationConfig).forEach(opName => {
@@ -985,6 +1041,59 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
 
             const startTime = Date.now();
             try {
+                // Registry tools first. They are checked BEFORE the operation lookup only because
+                // the registry guarantees the two sets are disjoint -- registration throws on a
+                // collision with an operation name -- so the order cannot change an answer. It is
+                // inside the rate limit and quota block because these tools do real work: this one
+                // scores forty candidate key lengths and then calls the engine.
+                const registryTool = toolRegistry.getByExposedName(name);
+                if (registryTool) {
+                    const parsed = registryTool.inputSchema.safeParse(args ?? {});
+                    if (!parsed.success) {
+                        throw createInputError(
+                            `Invalid arguments for ${name}: ${parsed.error.issues.map(i =>
+                                `${i.path.join(".") || "(root)"} ${i.message}`).join("; ")}`,
+                            { tool: name, issues: parsed.error.issues });
+                    }
+                    // The tool receives capabilities, never the engine itself. Today that is one
+                    // function; keeping it a named object is what makes "what can a tool reach"
+                    // answerable by reading one line rather than by auditing every tool.
+                    //
+                    // Held to the SAME timeout as an operation. Without this the registry path was
+                    // the one tool path with no time bound at all, which an analysis tool needs
+                    // more than a transformation does: its cost comes from the input's shape
+                    // rather than its size, so it cannot be predicted from a byte count the way
+                    // `validateInputSize` predicts an operation's.
+                    //
+                    // `maxRetries: 0` deliberately. Retrying a timed-out analysis repeats the
+                    // expensive work that caused the timeout -- for an idempotent, purely
+                    // CPU-bound tool a retry can only ever make the same call cost twice as much.
+                    const result = await executeWithTimeoutAndRetry(
+                        () => registryTool.run(parsed.data, { bake: bakeOnCore }),
+                        OPERATION_TIMEOUT,
+                        { requestId, maxRetries: 0, context: { tool: name } }
+                    );
+                    // Every registry tool returns an object; `JSON.stringify` of a bare string
+                    // would wrap it in quotes, so a string branch here would be a silent
+                    // corruption rather than a convenience. If a tool ever needs to return text it
+                    // returns a field containing it.
+                    const output = JSON.stringify(result, null, 2);
+                    // `contentSize` takes an array of content BLOCKS, not a raw string -- passing
+                    // the argument straight in threw `content.reduce is not a function` and turned
+                    // a working analysis into a failed tool call. The input here is a plain string.
+                    logRequestComplete(requestId, {
+                        tool: name,
+                        // The whole argument object, not `args.input`. Half the registry tools have
+                        // no field called `input` -- `rsa_attack` takes `modulus`, `cyclic_pattern`
+                        // takes `fragment` -- so keying on that name logged 0 for them, and a
+                        // telemetry figure that is silently zero is worse than an absent one.
+                        inputSize: Buffer.byteLength(JSON.stringify(args ?? {}), "utf8"),
+                        outputSize: Buffer.byteLength(output, "utf8"),
+                        duration: Date.now() - startTime, cached: false, streamed: false
+                    });
+                    return { content: [{ type: "text", text: output }] };
+                }
+
                 const opName = Object.keys(OperationConfig).find(k => sanitizeToolName(k) === name);
 
                 if (!opName) {

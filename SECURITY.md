@@ -8,8 +8,8 @@ This document covers security for the **CyberChef MCP Server** fork. For the ori
 
 | Version | Supported          | Notes                                                                 |
 | ------- | ------------------ | --------------------------------------------------------------------- |
-| 2.3.x   | :white_check_mark: | Current release. Fixes land here.                                     |
-| 2.2.x   | :white_check_mark: | Security fixes only, until the next minor.                            |
+| 2.4.x   | :white_check_mark: | Current release. Fixes land here.                                     |
+| 2.3.x   | :white_check_mark: | Security fixes only, until the next minor.                            |
 | 1.9.x   | :white_check_mark: | Security fixes only, until ~March 2027. Published to `cyberchef-mcp_v1`, and it stays **Apache-2.0** — the GPL-3.0-or-later relicensing applies from v2.0.0 forward. |
 | < 1.9   | :x:                | Upgrade. Note that v2.0.0 has breaking changes; see [the migration guide](docs/v2.0.0-breaking-changes.md). |
 
@@ -73,10 +73,10 @@ a decision to ignore you.
 
 ## Security Measures
 
-Describes the **current** posture (2.3.x), not a historical snapshot. It previously carried a
+Describes the **current** posture (2.4.x), not a historical snapshot. It previously carried a
 `(v1.3.0)` stamp that was never updated, so a reader could not tell whether it described the
 shipped image or a state six releases old. Verified against the published
-`ghcr.io/doublegate/cyberchef-mcp_v2:2.3.0` image rather than against the Dockerfile.
+`ghcr.io/doublegate/cyberchef-mcp_v2:2.4.0` image rather than against the Dockerfile.
 
 ### Container Security
 
@@ -138,6 +138,14 @@ patterns.
 
 ### Security Audits
 
+- **v2.4.0 (2026-09-01)**: No fixes — one decision worth recording here instead. The tool registry
+  added in this release deliberately has **no plugin loader**: tools are registered by explicit
+  import, nothing is loaded from disk, and no path comes from configuration. `node:vm` was tested
+  as an isolation boundary and is not one — a capability handed into a vm context carries a
+  `constructor` that reaches the host realm and yields the real `process`, and every useful tool
+  needs at least one capability. So the server still executes only code that is in the image.
+  Reasoning and the conditions for revisiting it:
+  [ADR 0002](docs/adr/0002-tool-registry-is-not-a-plugin-loader.md).
 - **v2.3.0 (2026-08-31)**: Fixed a pooled-buffer defect in 17 image operations — the surplus bytes
   were adjacent heap, which on a multi-caller server can be another caller's data — and reported it
   and two related findings privately to upstream (GHSA-hj7h-fgw7-x6w8). Closed a `umask` window

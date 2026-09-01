@@ -139,17 +139,21 @@ it computes that in pure JavaScript, so every operation works on a stock Node wi
 
 ## The tool surface — how many tools you see, and why
 
-`tools/list` is sent to the model on **every** request. Exposing all 504 operations costs roughly
-**86,000 tokens** before the user has typed anything, and model tool-selection quality is known to
+`tools/list` is sent to the model on **every** request. Exposing everything costs roughly
+**100,000 tokens** before the user has typed anything, and model tool-selection quality is known to
 degrade well before that many definitions.
 
-So the default is an **index**, not a catalogue:
+So the default is an **index**, not a catalogue. Measured on the serialised `tools/list` payload at
+v2.4.0, not estimated:
 
-| `CYBERCHEF_TOOL_SURFACE` | Tools in `tools/list` | Approx. tokens |
-|---|---|---|
-| **`index`** *(default)* | ~24 | **~2,500** |
-| `curated` | ~100 | ~16,600 |
-| `all` | 524 | ~86,000 |
+| `CYBERCHEF_TOOL_SURFACE` | Tools in `tools/list` | Payload | Approx. tokens |
+|---|---|---|---|
+| **`index`** *(default)* | 28 | 19 KB | **~4,900** |
+| `curated` | 106 | 81 KB | ~20,700 |
+| `all` | 531 | 391 KB | ~100,000 |
+
+The figures grew across v2.2.0-v2.4.0 as tools gained annotations, titles and fuller argument
+descriptions — the ratio between the three modes is what matters, and it has held.
 
 **Nothing becomes unreachable.** `cyberchef_bake` runs any of the 504 operations by name, and three
 navigation tools let a client find the name and its arguments:
@@ -165,6 +169,12 @@ cyberchef_categories            16 categories, with counts and examples   (~2 KB
 
 **`Magic` is exposed in every surface**, including `index`. It is what you reach for *before* you
 know what you are looking at, so making it three calls deep would invert the cost.
+
+**The four analysis tools are in every surface too** — `cyberchef_xor_key_length`,
+`cyberchef_cyclic_pattern`, `cyberchef_hash_identify` and `cyberchef_rsa_attack`. Unlike an
+operation, none of them is reachable through `cyberchef_bake`: they are not in `OperationConfig`,
+because each performs an analysis rather than a transformation. Hiding them behind a surface setting
+would make them unreachable rather than merely inconvenient. They cost about 1,500 tokens together.
 
 Fine-grained control:
 

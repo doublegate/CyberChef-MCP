@@ -190,6 +190,141 @@ Get current resource quota information including concurrent operations, data siz
 
 ---
 
+## Analysis Tools (v2.4.0)
+
+Tools that are not CyberChef operations. An operation is a pure `run(input, args)` over one input,
+which cannot express an *analysis* — scoring dozens of candidate key lengths, or composing several
+operations and comparing the results. `cyberchef_bake` does not help, because a recipe is a linear
+pipeline, not a loop.
+
+These are always exposed, at every tool surface, because they are few and each replaces a separate
+command-line tool.
+
+### cyberchef_xor_key_length
+Recover the key length of a repeating-key XOR by index of coincidence, then guess the key and
+decrypt.
+
+**Arguments:** `input` (required, at most 1 MB), `input_format` (`Raw`/`Hex`/`Base64`, default
+`Raw`), `max_key_length` (default 32), `candidates` (default 5), `preview_bytes` (default 256)
+
+`input_format` defaults to `Raw`, so pass `"input_format": "Hex"` explicitly when the ciphertext is
+hex — analysing hex text as raw bytes gives a confident wrong answer rather than an error.
+
+**Example:**
+```json
+{
+  "name": "cyberchef_xor_key_length",
+  "arguments": { "input": "1d0f0a...", "input_format": "Hex" }
+}
+```
+
+The response ranks candidate lengths with scores, and carries a `confidence` block giving the
+winner's ratio to random. The method is least reliable on short inputs and on plaintext with a
+strong period of its own, so read that block before trusting the answer.
+
+### cyberchef_cyclic_pattern
+Generate a De Bruijn pattern, and find the offset of a fragment within one. This is how you locate
+the return-address bytes in a stack overflow: send the pattern, crash the target, then look up the
+bytes that landed in the instruction pointer.
+
+Byte-compatible with pwntools' `cyclic`, so an offset found here equals the one `cyclic -l` reports.
+
+**Arguments:** `mode` (`generate`/`find`, required), `length` (default 1024), `fragment`
+(`find` only), `fragment_format` (`Auto`/`Text`/`Hex`, default `Auto`), `subsequence_length`
+(default 4 — use 8 for 64-bit), `alphabet`
+
+**Example:**
+```json
+{
+  "name": "cyberchef_cyclic_pattern",
+  "arguments": { "mode": "find", "fragment": "0x61616861" }
+}
+```
+
+A hex fragment is read as both big- and little-endian and **both** offsets are returned when both
+match, because a crash dump rarely tells you the endianness and silently picking one would hand
+back a plausible wrong number. Generating a pattern longer than the alphabet can keep unique is
+refused rather than truncated: past that point every offset is ambiguous.
+
+### cyberchef_hash_identify
+Identify a password hash by its structure, and return the hashcat mode and John format name so the
+output is a command you can run.
+
+CyberChef computes around forty digests and cannot tell you what one is; `Magic` reports
+`Invalid hash` for bcrypt, sha512crypt and argon2, which is the opposite of helpful when those are
+exactly what you are holding.
+
+**Arguments:** `input` (required — one hash per call)
+
+**Example:**
+```json
+{
+  "name": "cyberchef_hash_identify",
+  "arguments": { "input": "$2b$12$GhvMmNVjRW29ulnudl.LbuAnUtN/LRfe1JsBm1Xu6LE3059z5Tr8m" }
+}
+```
+
+**Response:**
+```json
+{
+  "identified": true,
+  "candidates": [
+    { "format": "bcrypt", "confidence": "structural", "hashcat_mode": 3200, "john_format": "bcrypt",
+      "note": "Cost is the number after the second $: 10 means 2^10 rounds." }
+  ],
+  "ambiguous": false,
+  "next": "hashcat -m 3200"
+}
+```
+
+For bare hex the answer can only come from the digest length, and the tool says so — 32 hex
+characters is MD5, NTLM, MD4, LM and RIPEMD-128, `confidence` is `length only`, and `ambiguous` is
+`true`. Context decides between them: an NTLM hash comes from Windows, an MD5 from anywhere.
+
+### cyberchef_rsa_attack
+Test an RSA public key for the generation flaws that make it breakable, and recover the private key
+when one applies.
+
+| Attack | The flaw it detects |
+|---|---|
+| Fermat | `p` and `q` chosen too close together — a generator that picked one prime and searched upward for the next |
+| Common factor | A prime shared with a second modulus — devices generating keys from a low-entropy pool at first boot. One `gcd` breaks both keys |
+| Wiener | A private exponent chosen small to make decryption fast |
+| Small `e`, unpadded | `e=3` with a message short enough that `m^e` never wrapped the modulus |
+
+**None of these threatens a correctly generated key** — a sound 2048-bit modulus defeats all four,
+quickly and by design. A negative result is reported as four flaws ruled out, and explicitly not as
+evidence the key is strong.
+
+**Arguments:** `modulus` (required, decimal or hex), `public_exponent` (default `65537`),
+`ciphertext`, `other_modulus`, `attacks`, `fermat_iterations` (default 100000)
+
+**Example:**
+```json
+{
+  "name": "cyberchef_rsa_attack",
+  "arguments": { "modulus": "1000000016000000063", "ciphertext": "..." }
+}
+```
+
+**Response:**
+```json
+{
+  "factored": true,
+  "via": "fermat",
+  "p": "1000000007",
+  "q": "1000000009",
+  "private_exponent": "648946405777194593",
+  "assessment": "The primes are close together — the generator almost certainly picked one prime and searched upward for the next."
+}
+```
+
+Pass `other_modulus` whenever you hold a second key from the same source; it is by far the cheapest
+of the four attacks and the only one that breaks two keys at once. A recovered plaintext is raw RSA
+output, so expect PKCS#1 or OAEP padding ahead of the message.
+
+---
+
 ## Operation Tools (By Category)
 
 ### Favourites
