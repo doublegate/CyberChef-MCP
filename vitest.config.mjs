@@ -73,7 +73,14 @@ export default defineConfig({
             // Two tiers, because one global number is exactly how a 50%-covered file hid behind
             // ten healthy ones before v2.0.0:
             thresholds: {
-                // The whole measured surface. Set just under actual so a real regression trips it.
+                // The whole measured surface. Each sits just under its own actual figure
+                // (95.71 / 88.79 / 96.34 / 96.57) so a real regression trips it.
+                //
+                // NOTE the order. Vitest takes these as named keys; the docs quote them in the
+                // conventional statements/branches/functions/lines order, so the gate written here
+                // as lines/functions/branches/statements is the same "95/88/96/96" the CHANGELOG
+                // and release notes describe. They are not swapped -- a reviewer read them as
+                // swapped once, which is why this note exists.
                 lines: 96,
                 functions: 96,
                 branches: 88,

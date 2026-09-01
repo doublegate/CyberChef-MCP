@@ -41,7 +41,8 @@ This repository hosts the **Model Context Protocol (MCP) Server** adaptation of 
 - **Core Operations:** `src/core/operations/` - Individual CyberChef operation implementations
 
 ### Technology Stack
-- **Runtime:** Node.js v22+ (Alpine Linux in Docker)
+- **Runtime:** Node.js **>=24 <27** (matches `package.json` `engines`, and upstream
+  v11.4.0's floor). Chainguard distroless, Wolfi-based, in Docker - NOT Alpine.
 - **Protocol:** Model Context Protocol (MCP) via `@modelcontextprotocol/server` +
   `@modelcontextprotocol/node` (SDK v2). Serves protocol revision **2026-07-28** and the
   2025 era from one set of handlers; the era decision lives in the `serveStdio` entry.
@@ -51,10 +52,10 @@ This repository hosts the **Model Context Protocol (MCP) Server** adaptation of 
 
 ## Critical Development Requirements
 
-### Node.js v22+ Compatibility
+### Node.js >=24 Compatibility
 - **ALWAYS** use `import ... with {type: "json"}` for JSON imports
 - **NEVER** use `assert {type: "json"}` syntax (deprecated)
-- **SlowBuffer Patches:** Dependencies `avsc` and `buffer-equal-constant-time` require patches in `Dockerfile.mcp` for Node v22+ compatibility
+- **SlowBuffer Patches:** Dependencies `avsc` and `buffer-equal-constant-time` require patches in `Dockerfile.mcp` for Node >=24 compatibility
 
 ### Configuration Generation
 Before running the server or tests, configuration files **must** be generated:
@@ -155,7 +156,7 @@ npm run mcp  # Runs server on stdin/stdout
 ## Troubleshooting Common Issues
 
 ### "SlowBuffer is not defined"
-- Cause: Node modules haven't been patched for Node v22+
+- Cause: Node modules haven't been patched for Node >=24
 - Fix: See `Dockerfile.mcp` for required `sed` patches on `avsc` and `buffer-equal-constant-time`
 
 ### "Cannot find module .../OperationConfig.json"
@@ -168,12 +169,12 @@ npm run mcp  # Runs server on stdin/stdout
 
 ### Import Assertion Errors
 - Cause: Using deprecated `assert {type: "json"}` syntax
-- Fix: Use `with {type: "json"}` instead for Node v22+ compatibility
+- Fix: Use `with {type: "json"}` instead for Node >=24 compatibility
 
 ## Contributing Guidelines
 
 When reviewing or suggesting code changes:
-1. Ensure Node.js v22+ compatibility (use `with` not `assert` for JSON imports)
+1. Ensure Node.js >=24 compatibility (use `with` not `assert` for JSON imports)
 2. Follow existing code style conventions (4 space indentation, camelCase)
 3. Run `npx grunt configTests` after operation changes
 4. Test with `npm run test` and `npm run lint`

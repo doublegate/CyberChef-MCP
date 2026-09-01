@@ -21,7 +21,7 @@ This file will contain the server logic.
     // v2 dispatches on the method name; request schemas are no longer the handler key.
     // server.setRequestHandler("tools/list", handler)
     import { z } from "zod";
-    import OperationConfig from "../core/config/OperationConfig.json" assert {type: "json"};
+    import OperationConfig from "../core/config/OperationConfig.json" with {type: "json"};
     ```
 -   **Tool Normalization:**
     Convert CyberChef operation names (which may contain spaces, special chars) to valid MCP tool names (regex `^[a-zA-Z0-9_-]+$`).
