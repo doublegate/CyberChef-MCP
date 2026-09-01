@@ -102,7 +102,7 @@ function modPow(base, exp, m) {
 }
 
 /** @returns {bigint} The floor of the k-th root of n, by binary search. */
-function iroot(n, k) {
+function integerRoot(n, k) {
     if (n < 2n) return n;
     let lo = 1n;
     let hi = 2n;
@@ -294,7 +294,7 @@ export default {
         if (requested.has("small_e") && args.ciphertext) {
             attempted.push("small_e");
             const c = parseInteger(args.ciphertext, "ciphertext");
-            const root = iroot(c, e);
+            const root = integerRoot(c, e);
             if (root ** e === c) smallE = { message: asMessage(root), "message_int": root.toString() };
         }
 

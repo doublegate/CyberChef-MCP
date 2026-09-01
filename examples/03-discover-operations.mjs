@@ -43,8 +43,8 @@ try {
     expect("decoded the subject", decoded.includes("1234567890"), true);
 
     step("Browsing: categories -> operations -> full schema");
-    // The default tool surface is an INDEX, not a catalogue. `tools/list` carries ~24 tools
-    // instead of 524 -- about 2,500 tokens instead of 86,000 -- and the detail is fetched only
+    // The default tool surface is an INDEX, not a catalogue. `tools/list` carries 28 tools
+    // instead of 531 -- about 4,900 tokens instead of 100,000 -- and the detail is fetched only
     // for what you actually use. These three tools are that hierarchy.
     const cats = JSON.parse(await call(client, "cyberchef_categories", {}));
     console.log(`  ${cats.categories.length} categories covering ${cats.totalOperations} operations`);

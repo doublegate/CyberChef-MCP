@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-09-01
+
 ### Added
 
 - **A tool registry** for tools that are not CyberChef operations (`src/node/tools/`). Every tool so
@@ -53,6 +55,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   equivalents among the 504 operations. Rewritten to say per tool what was taken from where, with
   the four evaluated-and-dropped projects listed as such. The `cyberchef-recipes` note likewise
   claimed a corpus that has not been built.
+- **The default `tools/list` index grew from 24 tools (~3.4k tokens) to 28 (~4.9k).** The four
+  analysis tools are exposed at every surface — index, curated and all — because each replaces a
+  separate command-line tool and none has an equivalent reachable through `cyberchef_bake`. The
+  ~1.5k tokens they add is the honest cost of that decision, stated rather than buried: measured on
+  the serialised `tools/list` payload, not estimated. `curated` is 106 tools (~20.7k) and `all` is
+  531 (~100k).
 - `src/node/tools/**` added to the coverage include list — a new directory is otherwise measured at
   nothing while appearing in no report, which is how `src/node/worker.mjs` went unmeasured for six
   releases.

@@ -20,24 +20,25 @@
 <<< MC-PROJECT-START >>>
 ## Project: CyberChef
 
-**CyberChef MCP Server** (v2.3.0) - Fork of GCHQ CyberChef wrapping the Node.js API into an MCP
+**CyberChef MCP Server** (v2.4.0) - Fork of GCHQ CyberChef wrapping the Node.js API into an MCP
 server. Exposes 504 operations (encryption, encoding, compression, forensics) as AI assistant tools.
 
 | Metric | Value |
 |--------|-------|
-| MCP Version | 2.3.0 (single source: `package.json` `version`, read by `src/node/lib/config.mjs`). `mcpVersion` was removed in v2.2.0 -- npm requires `version` to be the published version, so the upstream base moved to `cyberchefUpstreamVersion`. |
+| MCP Version | 2.4.0 (single source: `package.json` `version`, read by `src/node/lib/config.mjs`). `mcpVersion` was removed in v2.2.0 -- npm requires `version` to be the published version, so the upstream base moved to `cyberchefUpstreamVersion`. |
 | Upstream base | CyberChef **v11.4.0** |
-| Operations / tools | 504 operations. `tools/list` is an **index** by default (~24 tools, ~3.4k tokens); `CYBERCHEF_TOOL_SURFACE=curated\|all` for ~102 (~19.2k) or all 527 (~98.5k). All 504 reachable via `cyberchef_bake` + the three navigation tools. Every tool carries annotations + a title. |
+| Operations / tools | 504 operations **plus 4 registry tools** that are not operations. `tools/list` is an **index** by default (28 tools, ~4.9k tokens); `CYBERCHEF_TOOL_SURFACE=curated\|all` for 106 (~20.7k) or all 531 (~100k). All 504 reachable via `cyberchef_bake` + the three navigation tools. Every tool carries annotations + a title. |
 | Licence | **GPL-3.0-or-later** (from v2.0.0; v1.9.x and earlier are Apache-2.0) |
 | Node | `>=24 <27`; image runs Node 26.8.1, digest-pinned |
-| Tests | 1,023 MCP (38 files) + 241 Node-API + 2,289 operations + 9 CI-executed examples |
-| Coverage | 96.4% lines / 88.7% branches / 96.3% functions / 95.5% statements. Thresholds raised in v2.3.0 from 75/70/90/75 to **95/88/96/96**, with `src/node/lib/**` held separately at 99/94/100/99 -- the old numbers were twenty points below actual, so the gate could not fail. `perFile` is off deliberately; see `vitest.config.mjs` for why. Gated on **pull requests** since v2.2.0. |
+| Tests | 1,087 MCP (39 files) + 241 Node-API + 2,289 operations + 9 CI-executed examples |
+| Coverage | 96.5% lines / 88.6% branches / 96.6% functions / 95.6% statements. Thresholds raised in v2.3.0 from 75/70/90/75 to **95/88/96/96**, with `src/node/lib/**` held separately at 99/94/100/99 -- the old numbers were twenty points below actual, so the gate could not fail. `perFile` is off deliberately; see `vitest.config.mjs` for why. Gated on **pull requests** since v2.2.0. |
 | Open security alerts | **0** Dependabot, **0** code-scanning (55 dispositioned in v2.1.1) |
 | MCP surfaces | tools + **prompts** (5) + **resources** (`recipe://<id>`), all three declared from one `SERVER_CAPABILITIES` -- there are two server construction sites and two capability lists drift. |
 | Protocol | **2026-07-28 and the 2025 era**, both served from one set of handlers, on stdio and HTTP. SDK v2 (`@modelcontextprotocol/server` + `/node`); `@modelcontextprotocol/sdk` 1.x is a **devDependency only**, kept so the suite can prove a legacy client still connects. The era decision lives in the `serveStdio` entry, NOT in the transport -- a bare `StdioServerTransport` plus `server.connect()` serves 2025 only. |
 | Transports | `stdio` (default), `http` (Streamable HTTP, per session), `socket` (Unix domain socket or loopback TCP, one pinned server per connection). No WebSocket: MCP does not define one and no SDK ships one. |
 | Fork patches | 9 in `patches/fork/` (01, 03-10). A patch that stops applying **fails the sync** -- that is the alarm SafeRegex never had. |
 | Vendored | `src/vendor/crypto-api/` (MIT -- the published package cannot be loaded: no `main` file in its tarball, extensionless ESM imports) and `src/vendor/bmfonts/` (Apache-2.0, for `Add Text To Image`). Both are lint- and coverage-exempt and carry a README explaining when to delete them. |
+| Registry tools | 4 in `src/node/tools/` (`xor_key_length`, `cyclic_pattern`, `hash_identify`, `rsa_attack`), added in v2.4.0 for analyses an operation cannot express. Loading is an explicit import list in `index.mjs` -- **no loader, no directory scan, no path from configuration.** `node:vm` is not a security boundary and this was measured: a capability passed into a vm context reaches the real `process` via `constructor`. Registration **throws** if a tool would shadow an operation or meta-tool. [ADR 0002](docs/adr/0002-tool-registry-is-not-a-plugin-loader.md). |
 | npm | **Publishable, not published.** The install script that blocked it is gone; `npm install --ignore-scripts` of the packed tarball starts and serves. `server.json` carries no npm record until an actual publish happens. |
 
 **Focus:** MCP server (`src/node/mcp-server.mjs` + `src/node/lib/**`), not the web app.
