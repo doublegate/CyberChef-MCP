@@ -13,6 +13,8 @@ export default [
             "src/core/config/OperationConfig.json",
             "src/node/index.mjs",
             "build/**",
+            // Separate package with its own toolchain; it is not part of the server build.
+            "docs-site/**",
             "node_modules/**"
         ]
     },
