@@ -203,7 +203,37 @@ if (!existsSync(configPath)) {
     }
     const toolName = (n) => "cyberchef_" + n.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
     const argName = (n) => n.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
-    const strip = (html) => String(html || "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+    /**
+     * Operation descriptions to plain text.
+     *
+     * Upstream writes them as HTML fragments -- `<br>`, `<code>`, links -- and they end up in
+     * markdown that Astro renders, so a tag that survives is a tag the site executes.
+     *
+     * A single `.replace(/<[^>]+>/g, "")` is NOT enough, and CodeQL was right to say so
+     * (`js/incomplete-multi-character-sanitization`, high): one pass over `<<script>>` leaves
+     * `<script`. Two defences, because either alone is a promise about inputs rather than a
+     * property of the output:
+     *
+     *   1. Strip to a FIXPOINT, so nesting cannot smuggle a tag through by being eaten once.
+     *   2. Escape whatever remains. After this, the result cannot contain a tag by construction,
+     *      whatever the input was -- which is the only version of this that is worth relying on.
+     *
+     * @param {string} html - An operation description.
+     * @returns {string} Plain, escaped text.
+     */
+    const strip = (html) => {
+        let text = String(html || "");
+        for (let previous = null; previous !== text;) {
+            previous = text;
+            text = text.replace(/<[^>]*>/g, "");
+        }
+        return text
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/\s+/g, " ")
+            .trim();
+    };
 
     const modules = [...byCategory.keys()].sort();
     emit("reference", "index", "Tool reference",
