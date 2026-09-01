@@ -892,16 +892,25 @@ export async function createTransport(options = {}) {
             });
         });
 
-        await new Promise((resolve, reject) => {
-            socketServer.once("error", reject);
-            if (socketPath) socketServer.listen(socketPath, resolve);
-            else socketServer.listen(port, host, resolve);
-        });
+        // The mode has to be right AT CREATION, not shortly after. `listen()` creates the socket
+        // with the process umask, and a `chmodSync` on the next line still leaves a window in
+        // which a permissive umask published a world-writable socket -- and a connection accepted
+        // during that window survives the mode change. So the umask is tightened around the bind
+        // and restored immediately, and the chmod stays as a belt-and-braces assertion of the
+        // final mode.
+        const previousUmask = socketPath === undefined ? undefined : process.umask(0o177);
+        try {
+            await new Promise((resolve, reject) => {
+                socketServer.once("error", reject);
+                if (socketPath) socketServer.listen(socketPath, resolve);
+                else socketServer.listen(port, host, resolve);
+            });
+        } finally {
+            if (previousUmask !== undefined) process.umask(previousUmask);
+        }
 
         if (socketPath) {
-            // Owner-only. A Unix socket's access control IS its file mode, and node creates it
-            // with the process umask, which on a permissive umask is world-writable -- i.e. any
-            // local user could drive this server.
+            // Owner-only. A Unix socket's access control IS its file mode.
             fs.chmodSync(socketPath, 0o600);
         }
 
@@ -916,8 +925,21 @@ export async function createTransport(options = {}) {
          * @returns {Promise<void>} Resolves once everything is closed.
          */
         async function closeAll() {
-            for (const entry of [...connections]) entry.socket.destroy();
+            // Close the pinned server instances EXPLICITLY rather than relying on each socket's
+            // "close" listener. `destroy()` emits "close" asynchronously, so a synchronous
+            // `connections.clear()` here would run first, `drop()`'s `connections.delete(entry)`
+            // would then return false, and it would return before ever calling `handle.close()` --
+            // leaking one Server per connection. In `runServer()` the process exits immediately
+            // afterwards so the impact is bounded, but the tests and any embedded caller keep
+            // running.
+            const entries = [...connections];
             connections.clear();
+            await Promise.all(entries.map(async entry => {
+                entry.socket.destroy();
+                try {
+                    await entry.handle.close();
+                } catch { /* the peer may already be gone; teardown is best-effort */ }
+            }));
             await new Promise((resolve, reject) => {
                 socketServer.close(err => {
                     if (err && err.code !== "ERR_SERVER_NOT_RUNNING") reject(err);

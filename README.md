@@ -135,11 +135,13 @@ For environments without direct GHCR access, download the pre-built Docker image
     ```
 
 2.  **Load the image into Docker:**
+
     ```bash
     docker load < cyberchef-mcp-v2.3.0-docker-image.tar.gz
     ```
 
 3.  **Tag for easier usage:**
+
     ```bash
     docker tag ghcr.io/doublegate/cyberchef-mcp_v2:v2.3.0 cyberchef-mcp
     ```
@@ -631,7 +633,7 @@ Detailed documentation is organized in the [`docs/`](docs/) directory:
 *   [**Security Fixes Report**](docs/security/SECURITY_FIX_REPORT.md): Detailed report of 11 vulnerability fixes (ReDoS and cryptographic weaknesses)
 *   [**Security Fixes Summary**](docs/security/SECURITY_FIXES_SUMMARY.md): Quick reference for recent security improvements
 *   [**v2.0.0 Breaking Changes**](docs/v2.0.0-breaking-changes.md): Comprehensive migration guide for v2.0.0 with deprecation codes, examples, and FAQ
-*   [**Release Notes v2.3.0**](docs/releases/v2.3.0.md): Protocol revision 2026-07-28 on stdio and HTTP, a socket transport, npm distribution unblocked, 17 image operations returning heap instead of images, `Add Text To Image` working for the first time, the coverage gate raised from 75/70/90/75 to 95/88/96/96, 1,023 MCP tests
+*   [**Release Notes v2.3.0**](docs/releases/v2.3.0.md): Protocol revision 2026-07-28 on stdio and HTTP, a socket transport, npm distribution unblocked, 17 image operations returning a pooled backing `ArrayBuffer` — unrelated bytes — instead of the image, `Add Text To Image` working for the first time, the coverage gate raised from 75/70/90/75 to 95/88/96/96, 1,023 MCP tests
 *   [**Release Notes v2.2.0**](docs/releases/v2.2.0.md): Images and audio as content blocks (`Generate QR Code` returned `""` and never worked), tool annotations on all 527 tools, prompts and resources, LM Hash off OpenSSL, unknown arguments rejected instead of silently defaulted, 955 MCP tests
 *   [**Release Notes v2.1.0**](docs/releases/v2.1.0.md): Tool-list hierarchy (~97% smaller `tools/list`), Zod 4 schema fix, all 10 flow-control operations working, AES and 62 other toggleString operations fixed, logs to stderr, 60s shutdown hang removed, tutorial + 8 runnable examples
 *   [**Release Notes v2.0.0**](docs/releases/v2.0.0.md): Upstream v11.4.0 (504 operations), GPL-3.0-or-later relicense, Node 24 floor, per-session HTTP transport (#36), 272 security findings closed, 757 MCP tests

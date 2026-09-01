@@ -28,9 +28,22 @@ loaded as published is not a dependency; it is source we have to carry.
 
 ## What was changed
 
-Exactly one mechanical transformation, applied to 16 of the 24 `.mjs` files:
+`src/index.mjs` was **removed**, not vendored. It reads
 
+```js
+import CryptoApi from './crypto-api'
+module.exports = CryptoApi
 ```
+
+which mixes an ES import with a CommonJS export and names a file that does not exist
+(`crypto-api.mjs` does). It cannot load under any Node version, nothing here imports it — the
+consumers name `crypto-api.mjs`, `hasher/sm3.mjs` and `encoder/hex.mjs` directly — and it is part of
+why the published package is unusable. Carrying a file that cannot be loaded would just be shipping
+the defect.
+
+Otherwise, exactly one mechanical transformation, applied to 16 of the 24 `.mjs` files:
+
+```text
 from "./foo"   ->   from "./foo.mjs"
 ```
 

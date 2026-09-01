@@ -95,16 +95,28 @@ export default defineConfig({
                     statements: 99
                 }
             },
-            // `perFile: true` is NOT set yet, and the reason is specific rather than reluctance.
+            // A note on the glob tier's semantics, because a reviewer asked and the answer is not
+            // obvious: WITHOUT `perFile: true` inside the glob object, those numbers are checked
+            // against the glob's AGGREGATE, not against each file. That is deliberate here.
+            // Per-file enforcement on this tier would be floored by `lib/prompts.mjs` at 72%
+            // branches, whose uncovered branches are `args?.x ?? ""` fallbacks that `getPrompt`
+            // makes unreachable -- it rejects a missing or empty required argument two lines
+            // earlier. Setting the tier to 72 to accommodate one file's dead defensive code would
+            // be a WEAKER gate than the 94% aggregate, not a stronger one. So: aggregate, stated
+            // plainly, rather than a per-file number chosen by the worst case.
+            //
+            // `perFile: true` is NOT set globally either, and the reason is specific rather than
+            // reluctance.
             // Two files carry the whole deficit -- mcp-server.mjs (72.5% branches) and
             // transports.mjs -- and both are dominated by SDK error callbacks and per-request
             // handler bodies that only become individually testable after the `registerTool`
             // decomposition. That decomposition was deliberately NOT done in v2.3.0: the SDK v2
             // migration reached protocol revision 2026-07-28 without it (see
             // docs/internal/v2.3.0-findings-log.md, F-04), so forcing it now would be a large
-            // rewrite bought purely to move a number. The per-glob tier above delivers the
-            // property `perFile` was wanted for -- a weak module cannot hide behind healthy ones --
-            // for the half of the tree where it is achievable today.
+            // rewrite bought purely to move a number. The per-glob tier above does not deliver
+            // per-file enforcement either (see the note above); what it does deliver is a much
+            // higher bar for the half of the tree that has no excuse, so a regression there trips
+            // long before it would move the global number.
             //
             // `thresholds.autoUpdate` stays off: it silently ratchets and turns a regression gate
             // into a rubber stamp. Raise these deliberately.

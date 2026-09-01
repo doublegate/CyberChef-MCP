@@ -58,11 +58,11 @@ gantt
     section Phase 3 Maturity
     v1.8.0 Breaking Changes Prep        :2026-07-01, 4w
     v1.9.0 Pre-v2.0.0 Polish            :2026-08-01, 4w
-    v2.0.0 Major Release                :2026-09-01, 4w
+    v2.0.0 Major Release                :done, 2026-08-31, 1d
     section Phase 4 Expansion
-    v2.2.0 Multi-Modal Support          :2026-10-01, 4w
+    v2.2.0 Multi-Modal Support          :done, 2026-08-31, 1d
     v2.3.0 Protocol Currency            :done, 2026-08-31, 1d
-    v2.4.0 Plugin Architecture          :2026-12-01, 4w
+    v2.4.0 Plugin Architecture          :2026-09-15, 4w
     section Phase 5 Enterprise
     v2.5.0 Enterprise Features          :2027-01-01, 4w
     v2.6.0 Distributed Architecture     :2027-02-01, 4w

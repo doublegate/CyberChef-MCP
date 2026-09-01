@@ -28,6 +28,12 @@ Nothing yet.
   imports under `src/web/`, removed in v1.7.1, and resolved them against `self.docURL`, which does
   not exist under Node — so every call failed while the tool stayed advertised. The fonts are now
   vendored at `src/vendor/bmfonts/` and loaded from disk (`patches/fork/10`).
+- **The socket transport's `closeAll()` leaked one `Server` per connection.** `socket.destroy()`
+  emits `"close"` asynchronously, so a synchronous `connections.clear()` ran first and the drop
+  handler returned before closing the pinned instance. The handles are now closed explicitly.
+- **A umask window before the Unix socket's `chmod`.** `listen()` created the socket at the process
+  umask and the mode was tightened a line later; a connection accepted in between survives the
+  change. The umask is now tightened around the bind (CWE-732).
 - **A failing operation on the progress path hung the request.** `streamOperationWithProgress`
   ended its bake with `.catch(err => { throw err; })` inside a promise nobody held, so the rejection
   was unhandled *and* `resolve` was never called — the `await` below it waited forever. It now

@@ -101,6 +101,22 @@ describe("the underlying defect, at the operation boundary", () => {
         expect([...new Uint8Array(output).subarray(0, 4)]).toEqual(MAGIC["image/png"]);
     }, 30000);
 
+    it("names an unknown font face instead of failing somewhere inside jimp", async () => {
+        const { default: AddTextToImage } =
+            await import("../../src/core/operations/AddTextToImage.mjs");
+
+        const png = Buffer.from(PNG8X8, "base64");
+        const input = png.buffer.slice(png.byteOffset, png.byteOffset + png.byteLength);
+        // Args are positional: Text, Horizontal align, Vertical align, X, Y, Size, Font face, RGBA.
+        const args = ["hi", "Center", "Middle", 0, 0, 32, "Comic Sans", 255, 255, 255, 255];
+
+        // Patch 10 replaced a webpack import map with a face-to-filename map, which introduces a
+        // lookup that can miss. It has to say so: without the check, an unknown face reaches
+        // loadFont as `undefined` and fails as a path error from inside jimp, naming a file rather
+        // than the argument the caller got wrong.
+        await expect(new AddTextToImage().run(input, args)).rejects.toThrow(/Unknown font face/);
+    }, 30000);
+
     it("present() accepts what run() returned", async () => {
         const { default: InvertImage } =
             await import("../../src/core/operations/InvertImage.mjs");

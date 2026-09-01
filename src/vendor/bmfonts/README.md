@@ -15,7 +15,7 @@ Upstream loads them with webpack-only `import()` of `.fnt`/`.png` under `src/web
 absolute URL from `self.docURL`. This fork **removed `src/web/` in v1.7.1** and runs under plain
 Node, where neither the webpack loader nor `self.docURL` exists — so every call failed with
 
-```
+```text
 Error preparing fonts. (Cannot find module '/src/web/static/fonts/bmfonts/RobotoBlack72White.fnt')
 ```
 

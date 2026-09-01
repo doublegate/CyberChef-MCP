@@ -432,10 +432,23 @@ describe("telemetry: the disabled path and the ring buffer", () => {
     it("records nothing at all when telemetry is off", async () => {
         // The default. Recording into a collector nobody exports is pure cost, so the guard is the
         // first statement in `record` and this is the branch the running server always takes.
-        const { TelemetryCollector } = await import("../../src/node/lib/telemetry.mjs");
-        const c = new TelemetryCollector();
-        c.record({ tool: "x", duration: 1, success: true });
-        expect(c.metrics).toHaveLength(0);
+        //
+        // The env var is unset and the module cache reset FIRST: `TELEMETRY_ENABLED` is evaluated
+        // once when `config.mjs` loads, and a top-level import in this file can load it before
+        // this test runs. A developer with CYBERCHEF_TELEMETRY_ENABLED=true in their environment
+        // would otherwise see this fail for a reason that has nothing to do with the code.
+        vi.resetModules();
+        const prev = process.env.CYBERCHEF_TELEMETRY_ENABLED;
+        delete process.env.CYBERCHEF_TELEMETRY_ENABLED;
+        try {
+            const { TelemetryCollector } = await import("../../src/node/lib/telemetry.mjs");
+            const c = new TelemetryCollector();
+            c.record({ tool: "x", duration: 1, success: true });
+            expect(c.metrics).toHaveLength(0);
+        } finally {
+            if (prev !== undefined) process.env.CYBERCHEF_TELEMETRY_ENABLED = prev;
+            vi.resetModules();
+        }
     });
 
     it("defaults `cached` and evicts oldest-first once full", async () => {
@@ -512,6 +525,16 @@ describe("prompts: every prompt renders, including without its arguments", () =>
             expect(text.length).toBeGreaterThan(50);
             if ((p.arguments || []).length) expect(text).toContain("SAMPLE");
         }
+    });
+
+    it("renders a prompt with its optional argument omitted", async () => {
+        const { getPrompt } = await import("../../src/node/lib/prompts.mjs");
+        // `decode-chain` is the only prompt with an optional argument (`hint`), and the earlier
+        // test supplies every declared argument, so it never exercises the omitted path. Omitting
+        // an optional argument must render, not throw and not print "undefined".
+        const text = getPrompt("decode-chain", { data: "SGVsbG8=" }).messages[0].content.text;
+        expect(text).toContain("SGVsbG8=");
+        expect(text).not.toContain("undefined");
     });
 
     it("refuses a prompt whose required argument is missing or empty", async () => {
