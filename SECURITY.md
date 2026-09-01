@@ -6,40 +6,77 @@ This document covers security for the **CyberChef MCP Server** fork. For the ori
 
 ## Supported Versions
 
-| Version | Supported          | Notes                                                      |
-| ------- | ------------------ | ---------------------------------------------------------- |
-| 1.9.x   | :white_check_mark: | Current release                                            |
-| 1.8.x   | :white_check_mark: | Security fixes only                                        |
-| < 1.8   | :x:                | Upgrade to 1.9.x                                           |
+| Version | Supported          | Notes                                                                 |
+| ------- | ------------------ | --------------------------------------------------------------------- |
+| 2.3.x   | :white_check_mark: | Current release. Fixes land here.                                     |
+| 2.2.x   | :white_check_mark: | Security fixes only, until the next minor.                            |
+| 1.9.x   | :white_check_mark: | Security fixes only, until ~March 2027. Published to `cyberchef-mcp_v1`, and it stays **Apache-2.0** — the GPL-3.0-or-later relicensing applies from v2.0.0 forward. |
+| < 1.9   | :x:                | Upgrade. Note that v2.0.0 has breaking changes; see [the migration guide](docs/v2.0.0-breaking-changes.md). |
 
-This table had drifted five releases behind, still naming 1.2.x as current while 1.9.0 shipped in
-February 2026. It is now a release-checklist item rather than something updated when noticed.
+Updating this table is a release-checklist item, not something done when someone notices. It had
+previously drifted five releases behind — naming 1.2.x as current while 1.9.0 was shipping — which
+is how a support promise quietly becomes false.
 
 ## Reporting a Vulnerability
 
 We take security vulnerabilities seriously. If you discover a security issue:
 
-### For MCP Server Issues
-1. **Do NOT** create a public GitHub issue for security vulnerabilities
-2. Create a [private security advisory](https://github.com/doublegate/CyberChef-MCP/security/advisories/new)
-3. Or contact [@doublegate](https://github.com/doublegate) via GitHub private messaging
+### For MCP server issues — use private reporting
 
-### For Core CyberChef Issues
-Report to the upstream project:
-- [Raise an issue](https://github.com/gchq/CyberChef/issues/new/choose) for public disclosure
-- Email [oss@gchq.gov.uk](mailto:oss@gchq.gov.uk) for private disclosure
+**Please do not open a public issue for a vulnerability.**
 
-### What to Expect
-- **Acknowledgment**: Within 48 hours
-- **Assessment**: Within 7 days
-- **Resolution**: Critical issues within 30 days
-- **Disclosure**: Coordinated after fix is available
+[**Report a vulnerability privately**](https://github.com/doublegate/CyberChef-MCP/security/advisories/new) —
+GitHub private vulnerability reporting is **enabled** on this repository, so you do not need a
+mail round-trip or any prior contact. The same button is on the repository's **Security** tab under
+*Report a vulnerability*. The report is visible only to you and the maintainers, it carries a
+private discussion thread, and it can become a published advisory with a CVE and credit to you if
+that is what it turns out to be.
+
+If for any reason that form is unavailable to you, contact [@doublegate](https://github.com/doublegate)
+on GitHub and say only that you have a security report — no details in a public channel.
+
+**What is in scope here:** the MCP layer this fork owns — `src/node/**` (the server, transports,
+recipe storage, tool schemas), `Dockerfile.mcp` and the published images, the release workflows, and
+the fork's own patches under `patches/fork/`.
+
+### For issues in CyberChef itself
+
+Anything in `src/core/**` is upstream code, mirrored verbatim from
+[gchq/CyberChef](https://github.com/gchq/CyberChef). Report it to them, and note that **their policy
+forbids a public issue for a vulnerability**:
+
+> If you discover a vulnerability in CyberChef, please do not publicly disclose it, and do not
+> create a GitHub issue. Instead, send an email as soon as possible to
+> [CyberChefSecurity@gchq.gov.uk](mailto:CyberChefSecurity@gchq.gov.uk).
+
+Private vulnerability reporting is also enabled on `gchq/CyberChef`, which satisfies that policy
+without email. *(An earlier version of this file told readers to raise a public issue upstream for
+disclosure. That was wrong, and directly contrary to upstream's stated policy.)*
+
+If you are unsure which side a finding belongs to, report it here and we will route it — getting it
+to the wrong maintainer privately is much better than guessing publicly.
+
+### What to expect
+
+This project is maintained by one person, so these are honest intentions rather than a service
+commitment:
+
+- **Acknowledgement:** usually within a few days.
+- **Assessment:** a severity and a plan once the report is understood; we will tell you what we
+  think it is and why, including if we think it is not a vulnerability.
+- **Fix:** critical issues take priority over everything else, including a release in progress.
+- **Disclosure:** coordinated with you. We will not publish before a fix is available unless you ask
+  us to, and we will credit you unless you would rather we did not.
+
+If you do not hear back within a week, please chase — a missed notification is far more likely than
+a decision to ignore you.
 
 ## Security Measures
 
-Describes the **current** posture (1.9.x), not a historical snapshot. It previously carried a
+Describes the **current** posture (2.3.x), not a historical snapshot. It previously carried a
 `(v1.3.0)` stamp that was never updated, so a reader could not tell whether it described the
-shipped image or a state six releases old.
+shipped image or a state six releases old. Verified against the published
+`ghcr.io/doublegate/cyberchef-mcp_v2:2.3.0` image rather than against the Dockerfile.
 
 ### Container Security
 
@@ -70,13 +107,40 @@ docker run -i --rm \
 
 - **Trivy**: Container and dependency vulnerability scanning on every build
 - **SBOM**: Software Bill of Materials (CycloneDX) generated for each release
-- **CodeQL**: Automated code analysis for security issues
+- **CodeQL**: Automated code analysis on push, on pull requests, and weekly. `src/vendor/**` is
+  excluded — vendored third-party source we do not modify — while `src/core/vendor/**` stays
+  analysed, because its alerts have been individually dispositioned and hiding them would lose that
+  record. See [`.github/codeql/codeql-config.yml`](.github/codeql/codeql-config.yml).
 - **Weekly Scans**: Scheduled scans catch newly discovered vulnerabilities
 
 Results are uploaded to the GitHub Security tab automatically.
 
+### Repository security settings
+
+What is switched on, so you know what protects this project and what does not:
+
+| Feature | State |
+|---|---|
+| Private vulnerability reporting | **Enabled** — the reporting route above |
+| Dependabot alerts and security updates | **Enabled** |
+| Secret scanning | **Enabled** |
+| Secret scanning push protection | **Enabled** |
+| Code scanning (CodeQL) | **Enabled** — push, PR, and weekly |
+| Secret scanning: non-provider patterns | Not available (requires GitHub Advanced Security) |
+| Secret scanning: validity checks | Not available (requires GitHub Advanced Security) |
+
+The last two are listed rather than omitted: they are off because the plan this repository is on
+does not offer them, not because they were considered and declined.
+
 ### Security Audits
 
+- **v2.3.0 (2026-08-31)**: Fixed a pooled-buffer defect in 17 image operations — the surplus bytes
+  were adjacent heap, which on a multi-caller server can be another caller's data — and reported it
+  and two related findings privately to upstream (GHSA-hj7h-fgw7-x6w8). Closed a `umask` window
+  before the Unix socket's `chmod` (CWE-732), and a CodeQL `js/insecure-temporary-file` in the test
+  suite. Coverage gate raised from 75/70/90/75 to 95/88/96/96.
+- **v2.1.1 (2026-08-31)**: 55 open alerts dispositioned — fixed, suppressed with a written
+  justification, or dismissed with a reason.
 - **2026-08-31**: Full sweep of every open Dependabot and code-scanning alert — CVE-2026-42615 (XSS in `Show Base64 offsets`) fixed by adopting upstream's file, minimatch and uuid cleared at the root, Dockerfile pinned by digest and given an explicit non-root `USER`, one justified `.trivyignore` entry, three CodeQL alerts on upstream-identical code dismissed with reasons. See [docs/security/2026-08-31-open-alert-sweep.md](docs/security/2026-08-31-open-alert-sweep.md).
 - **v1.3.0**: Upstream sync automation, comprehensive MCP validation testing, GitHub Actions security best practices
 - **v1.2.6**: Web app Dockerfile nginx:alpine-slim optimization with non-root permission fixes
