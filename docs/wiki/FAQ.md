@@ -1,5 +1,23 @@
 # FAQ
 
+## Why do I only see 28 tools when you say there are 504 operations?
+
+Because `tools/list` goes to the model on **every** request, and sending all 531 costs about
+100,000 tokens before anyone types anything. The default is an index: 28 tools, ~4,900 tokens.
+
+**Nothing becomes unreachable.** `cyberchef_bake` runs any of the 504 by name, and
+`cyberchef_categories` → `cyberchef_list_operations` → `cyberchef_describe_operation` walks down to
+any of them. Set `CYBERCHEF_TOOL_SURFACE=curated` (106) or `=all` (531) if you would rather
+pre-load. Full detail: **[The Tool Surface](Tool-Surface)**.
+
+## What are the four tools that are not operations?
+
+`cyberchef_xor_key_length`, `cyberchef_cyclic_pattern`, `cyberchef_hash_identify` and
+`cyberchef_rsa_attack`, added in v2.4.0. An operation is a pure `run(input, args)` over one input,
+which cannot express an *analysis* — and `cyberchef_bake` cannot either, because a recipe is a
+pipeline, not a loop. They are in every tool surface because none is reachable through `bake`. See
+**[Analysis Tools](Analysis-Tools)**.
+
 ## Is this GCHQ's CyberChef?
 
 It is a **fork** of it. All 504 operations come from
@@ -30,9 +48,12 @@ payload — and produced 19 names that would collide with other servers, includi
 
 ## Can I use it without Docker?
 
-Yes — clone, `npm install`, `npx grunt configTests`, `npm run mcp`. Publishing to npm is *prepared*
-as of v2.3.0 (a `--ignore-scripts` install of the packed tarball starts and serves) but the package
-is **not yet on the registry**, so `npx cyberchef-mcp` does not work today.
+Yes — clone, `npm install`, `npx grunt configTests`, `npm run mcp`. See **[Installation](Installation)**.
+
+Publishing to npm is *prepared* as of v2.3.0 — the install script that blocked it is gone, and a
+`--ignore-scripts` install of the packed tarball starts and serves — but the package is **not yet
+on the registry**, so `npx cyberchef-mcp` does not work today. `server.json` carries no npm record
+for the same reason.
 
 ## Which protocol revisions does it speak?
 
@@ -64,6 +85,20 @@ them, and named objects:
 ```json
 { "input": "…", "recipe": [{ "op": "From Base64" }, { "op": "Gunzip" }] }
 ```
+
+## Why is there no plugin system?
+
+Because `node:vm` is not a security boundary, and that was measured rather than argued: a capability
+handed into a vm context reaches the real `process` through its own `constructor`, and every useful
+tool needs at least one capability. Tools are registered by explicit import, in a reviewed pull
+request. See **[Security](Security)** and
+[ADR 0002](https://github.com/doublegate/CyberChef-MCP/blob/master/docs/adr/0002-tool-registry-is-not-a-plugin-loader.md).
+
+## Can several clients share one server?
+
+Yes, over HTTP — each session gets its own server and transport instance. Sharing them leaks data
+between clients, which is the substance of the SDK's own GHSA-345p-7cg4-v4c7 advisory. Bind to
+`127.0.0.1`: there is **no authentication** on any transport. See **[Transports](Transports)**.
 
 ## What is the difference between the wiki and the documentation site?
 

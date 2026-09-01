@@ -152,11 +152,73 @@ cyberchef_list_operations  everything in one category
 cyberchef_describe_operation  full argument schema for one
 ```
 
-That path exists because `tools/list` deliberately pre-loads only about 24 tools. See the
+That path exists because `tools/list` deliberately pre-loads only 28 tools. See the
 [FAQ](FAQ).
+
+## Break a repeating-key XOR
+
+The classic first exercise, and the case a recipe cannot express — you have to score every
+candidate key length, which is a loop.
+
+```
+> This blob is hex and I think it is XORed with a repeating key: 1d0f0a...
+
+cyberchef_xor_key_length { "input": "1d0f0a...", "input_format": "Hex" }
+```
+
+Returns the ranked lengths, a guessed key, a decrypted preview, and a `confidence` block. **Read
+the confidence** — the method is weakest on short inputs and on plaintext with a period of its own,
+and it is wrong about one time in six.
+
+`input_format` defaults to `Raw`. Pass `Hex` explicitly for hex, or you get a confident wrong
+answer rather than an error.
+
+## Find a stack-overflow offset
+
+```
+> Generate a 512-byte pattern for me to feed the target.
+cyberchef_cyclic_pattern { "mode": "generate", "length": 512 }
+
+> It crashed with EIP = 0x61616861.
+cyberchef_cyclic_pattern { "mode": "find", "fragment": "0x61616861" }
+```
+
+The offset comes back for **both** endiannesses when both match, because a crash dump rarely tells
+you which it is. Byte-compatible with `pwntools cyclic`, so the answer matches what a colleague
+gets from `cyclic -l`.
+
+For 64-bit targets pass `"subsequence_length": 8` to both calls — it must match between generate
+and find.
+
+## Identify a hash before trying to crack it
+
+```
+cyberchef_hash_identify { "input": "$2b$12$GhvMmNVjRW29ulnudl.Lbu..." }
+```
+
+Gives you the format, the **hashcat mode**, the **John format name**, and a runnable `next` line.
+For a bare hex digest it says the answer comes from length alone and lists every candidate — 32 hex
+characters is MD5, NTLM, MD4, LM and RIPEMD-128, and context decides.
+
+## Check whether an RSA key is weak
+
+```
+cyberchef_rsa_attack { "modulus": "0xc7f1a...", "ciphertext": "0x4b2e..." }
+```
+
+Tries Fermat, Wiener and unpadded small-`e`. Hold a second key from the same source? Pass it as
+`other_modulus` — a shared prime breaks **both** keys with a single `gcd`, and it is by far the
+cheapest of the four.
+
+A negative result means four specific generation flaws are ruled out. It is **not** evidence the
+key is strong, and the tool says so rather than letting you infer otherwise.
+
+See **[Analysis Tools](Analysis-Tools)** for what each attack detects and why the limits are where
+they are.
 
 ## Prompts
 
 Five workflow prompts ship with the server for when you do not yet know where to start:
 `analyse-unknown-data`, `extract-iocs`, `deobfuscate-script`, `identify-hash`, `decode-chain`.
-Most clients surface them as slash commands or an attachment menu.
+Most clients surface them as slash commands or an attachment menu. See
+**[Prompts & Resources](Prompts-and-Resources)**.

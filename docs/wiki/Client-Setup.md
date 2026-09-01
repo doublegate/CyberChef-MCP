@@ -62,8 +62,8 @@ Use `docker` in place of `podman` if that is what you have. If LM Studio runs as
 inherits your desktop environment's `PATH`, so a bare `podman`/`docker` resolves — no absolute path
 needed.
 
-**Set the tool surface deliberately for a local model.** The default (`index`, ~24 tools,
-~3,400 tokens) is usually right; `all` is 527 tools and ~98,000 tokens, which will swamp most
+**Set the tool surface deliberately for a local model.** The default (`index`, 28 tools,
+~4,900 tokens) is usually right; `all` is 531 tools and ~100,000 tokens, which will swamp most
 locally-hosted context windows:
 
 ```json
@@ -124,11 +124,10 @@ decides who can reach it.
 { "mcpServers": { "cyberchef": { "url": "http://127.0.0.1:3000/mcp" } } }
 ```
 
-`CYBERCHEF_HTTP_HOST=0.0.0.0` binds inside the container. `CYBERCHEF_ALLOWED_HOSTS` is required
-because DNS-rebinding protection is on by default and only permits loopback names it knows about.
-Sessions are isolated per client, so several clients on one container is supported rather than
-merely tolerated.
+`CYBERCHEF_ALLOWED_HOSTS` is required here because DNS-rebinding protection is on by default and
+only permits loopback names it already knows. Sessions are isolated per client, so several clients
+against one container is supported rather than merely tolerated.
 
-There is also a **socket transport** (Unix domain socket or loopback TCP) from v2.3.0 — see the
-[user guide](https://doublegate.github.io/CyberChef-MCP/guides/user-guide/). It carries no
-authentication, so a non-loopback bind is refused unless you explicitly allow it.
+There is also a **socket transport** — Unix domain socket or loopback TCP — from v2.3.0. See
+**[Transports](Transports)** for all three, and **[Configuration](Configuration)** for every
+variable.
