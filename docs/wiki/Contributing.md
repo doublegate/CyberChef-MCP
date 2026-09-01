@@ -70,6 +70,29 @@ Antigravity reviewer. **Reply to every review thread**, whether you adopt, rejec
 verify each claim against the code before answering. In v2.4.0 two suggestions would have
 introduced bugs if taken on trust, and several correct ones were nearly dismissed.
 
+## Changing the wiki
+
+**Edit `docs/wiki/` in the repository, not the wiki itself.** The wiki is published from that
+directory by `.github/workflows/wiki-sync.yml` on every push to `master` that touches it, so an
+edit made in the wiki UI is overwritten by the next sync. The footer on every page says so.
+
+That indirection buys something: wiki content goes through review like code, and the pages cannot
+drift from a release without the diff being visible in the same pull request.
+
+Two things about the mechanism are worth knowing before you debug it:
+
+- **The wiki is a separate git repository** (`<repo>.wiki.git`), so the built-in `GITHUB_TOKEN`
+  cannot push to it. The workflow uses a `WIKI_TOKEN` secret — a **classic** PAT with `repo` scope,
+  because a wiki is not covered by any fine-grained token permission.
+- **The wiki repository does not exist until the first page is saved in the web UI.** There is no
+  API for creating it. Before that, a push fails with "Repository not found", which reads like a
+  permissions problem and is not — the workflow's job summary names both causes rather than
+  guessing between them.
+
+Page filenames become URLs: `Client-Setup.md` is `/wiki/Client-Setup`. Link between pages with a
+plain relative link — `[Installation](Installation)` — and keep `_Sidebar.md` in step, since a page
+absent from it is reachable only by URL.
+
 ## Where decisions are recorded
 
 - `docs/adr/` — architecture decisions, Nygard format
