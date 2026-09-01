@@ -151,7 +151,7 @@ npm run mcp  # Runs server on stdin/stdout
 - **docs/security/audit.md** - Security audit report
 - **docs/releases/v1.0.0.md** - v1.0.0 release notes
 - **src/node/mcp-server.mjs** - Main MCP server implementation
-- **Dockerfile.mcp** - Production Docker build with Node v22 patches
+- **Dockerfile.mcp** - Production Docker build with the dependency patches Node >=24 needs
 
 ## Troubleshooting Common Issues
 
