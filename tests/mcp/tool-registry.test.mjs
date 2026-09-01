@@ -276,14 +276,28 @@ describe("input bounds: what stops a tool blocking the server", () => {
         // 16,384 bits -- which the size guard permits -- the default 100,000 iterations measured
         // out to roughly 37 minutes, so a client could time out repeatedly and accumulate runaway
         // loops behind its own error responses.
+        // The iteration ceiling, against the largest modulus the size guard admits. The DEFAULT
+        // 100,000 now finishes in ~3.5 s after the isqrt work, so the budget has to be provoked
+        // with the maximum to be exercised at all -- which is the right shape: the deadline is a
+        // backstop for the pathological case, not something ordinary calls meet.
         const big = (2n ** 16384n - 1n) - 12345678n;
         const started = Date.now();
-        const out = await run("rsa_attack", { modulus: big.toString() });
+        const out = await run("rsa_attack", { modulus: big.toString(), "fermat_iterations": 10000000 });
         const elapsed = Date.now() - started;
         expect(out.factored).toBe(false);
         expect(elapsed).toBeLessThan(20000);
         // And it says it gave up, rather than reporting a search it never finished as exhausted.
         expect(out.attempted.join(" ")).toMatch(/fermat \(stopped at the 10s limit after \d+ of/);
+    }, 60000);
+
+    it("finishes the default search at the size ceiling well inside the budget", async () => {
+        // The counterpart assertion, and the one that would catch a performance regression: at
+        // 16,384 bits the default 100,000 iterations used to extrapolate to ~37 minutes. If this
+        // starts hitting the 10-second budget, the isqrt fast paths have been undone.
+        const big = (2n ** 16384n - 1n) - 12345678n;
+        const out = await run("rsa_attack", { modulus: big.toString() });
+        expect(out.attempted.join(" ")).toMatch(/fermat \(up to 100000 iterations\)/);
+        expect(out.attempted.join(" ")).not.toMatch(/stopped at the/);
     }, 60000);
 
     it("leaves the Fermat loop interruptible so a timeout can actually fire", async () => {

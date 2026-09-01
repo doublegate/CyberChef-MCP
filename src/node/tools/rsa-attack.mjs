@@ -89,7 +89,12 @@ function isqrt(n) {
     // O(bits) big-integer divisions -- about 8,000 of them for a 16,384-bit modulus, and isqrt is
     // called once per Fermat iteration through isPerfectSquare. The shifted guess is already within
     // a factor of two, so only the quadratic phase remains.
-    let x = 1n << (BigInt(n.toString(2).length) / 2n + 1n);
+    //
+    // Bit length via the HEX string: a quarter the allocation of `toString(2)`, in a function the
+    // Fermat loop calls on every iteration. It over-estimates by up to 3 bits, which is harmless --
+    // Newton needs a starting point at or above the root, and a slightly high one costs at most one
+    // extra step. Verified not to under-estimate; that direction would break the convergence.
+    let x = 1n << (BigInt(n.toString(16).length * 4) / 2n + 1n);
     let y = (x + n / x) / 2n;
     while (y < x) {
         x = y;
@@ -102,6 +107,12 @@ function isqrt(n) {
 const isPerfectSquare = (n) => {
     /* v8 ignore next -- same invariant as isqrt: callers test the discriminant's sign first. */
     if (n < 0n) return false;
+    // A perfect square is congruent to 0, 1, 4 or 9 mod 16 -- verified exhaustively, and it rejects
+    // 75% of candidates with one mask. Worth the line because the Fermat loop calls this on every
+    // iteration and the alternative is a full isqrt: a string allocation and a Newton descent over
+    // a number that may be 16,384 bits wide.
+    const low = Number(n & 15n);
+    if (low !== 0 && low !== 1 && low !== 4 && low !== 9) return false;
     const r = isqrt(n);
     return r * r === n;
 };

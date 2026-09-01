@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   registry tools with retries off, and a cooperative yield in the Fermat loop so that timeout can
   actually fire. Verified end to end: **72,125 ms → 2 ms**, with a genuine RSA-4096 modulus still
   accepted. Found by the Antigravity reviewer on PR #100.
+- **The Fermat search at the size ceiling went from ~37 minutes to 3.5 seconds.** Two hot-loop
+  changes on top of the deadline below: a quadratic-residue pre-filter (a perfect square is
+  0, 1, 4 or 9 mod 16, verified exhaustively, rejecting 75% of candidates before the expensive
+  path) and taking the bit length from the hex string rather than the binary one, a quarter of the
+  allocation in a function called every iteration. The full default 100,000 iterations against a
+  16,384-bit modulus now finishes in **3,498 ms** and no longer reaches the budget at all.
 - **The Fermat search now stops at a ten-second budget, and each iteration is ~187x cheaper.** The
   bound added above was still four orders of magnitude too loose at its own ceiling: 10,000
   iterations against a 16,384-bit modulus measured 223,909 ms, so the *default* 100,000
