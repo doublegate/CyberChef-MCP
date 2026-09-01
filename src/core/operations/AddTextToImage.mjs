@@ -17,6 +17,7 @@ import {
     measureTextHeight,
     loadFont,
 } from "jimp";
+import { fileURLToPath } from "node:url";
 
 /**
  * Add Text To Image operation
@@ -137,54 +138,32 @@ class AddTextToImage extends Operation {
         if (isWorkerEnvironment())
             self.sendStatusMessage("Adding text to image...");
 
-        const fontsMap = {};
-        try {
-            const fonts = [
-                import(
-                    /* webpackMode: "eager" */ "../../web/static/fonts/bmfonts/Roboto72White.fnt"
-                ),
-                import(
-                    /* webpackMode: "eager" */ "../../web/static/fonts/bmfonts/RobotoBlack72White.fnt"
-                ),
-                import(
-                    /* webpackMode: "eager" */ "../../web/static/fonts/bmfonts/RobotoMono72White.fnt"
-                ),
-                import(
-                    /* webpackMode: "eager" */ "../../web/static/fonts/bmfonts/RobotoSlab72White.fnt"
-                ),
-            ];
-
-            await Promise.all(fonts).then((fonts) => {
-                fontsMap.Roboto = fonts[0];
-                fontsMap["Roboto Black"] = fonts[1];
-                fontsMap["Roboto Mono"] = fonts[2];
-                fontsMap["Roboto Slab"] = fonts[3];
-            });
-            // Make Webpack load the png font images
-            await Promise.all([
-                import(
-                    /* webpackMode: "eager" */ "../../web/static/fonts/bmfonts/Roboto72White.png"
-                ),
-                import(
-                    /* webpackMode: "eager" */ "../../web/static/fonts/bmfonts/RobotoSlab72White.png"
-                ),
-                import(
-                    /* webpackMode: "eager" */ "../../web/static/fonts/bmfonts/RobotoMono72White.png"
-                ),
-                import(
-                    /* webpackMode: "eager" */ "../../web/static/fonts/bmfonts/RobotoBlack72White.png"
-                ),
-            ]);
-        } catch (err) {
-            throw new OperationError(`Error preparing fonts. (${err})`);
-        }
+        // FORK CHANGE (patches/fork/10): load the bitmap fonts from disk, not from webpack.
+        //
+        // Upstream reached them with webpack-only `import()` of `.fnt`/`.png` under
+        // `src/web/static/fonts/bmfonts/`, then built an absolute URL from `self.docURL`. This fork
+        // removed `src/web/` in v1.7.1 and runs under plain Node, where neither exists -- so every
+        // call threw "Error preparing fonts. (Cannot find module ...RobotoBlack72White.fnt)" and the
+        // operation had never once worked here, while still being advertised in `tools/list`.
+        //
+        // The four fonts are vendored at `src/vendor/bmfonts/` (see its README). jimp's
+        // `loadFont()` takes a filesystem path in Node and resolves each font's page atlas relative
+        // to its descriptor, so no document URL is needed.
+        const FONT_FILES = {
+            "Roboto": "Roboto72White.fnt",
+            "Roboto Black": "RobotoBlack72White.fnt",
+            "Roboto Mono": "RobotoMono72White.fnt",
+            "Roboto Slab": "RobotoSlab72White.fnt",
+        };
 
         let jimpFont;
         try {
-            const font = fontsMap[fontFace];
+            const fontFile = FONT_FILES[fontFace];
+            if (!fontFile)
+                throw new OperationError(`Unknown font face: ${fontFace}`);
 
-            // LoadFont needs an absolute url, so append the font name to self.docURL
-            jimpFont = await loadFont(self.docURL + "/" + font.default);
+            jimpFont = await loadFont(
+                fileURLToPath(new URL(`../../vendor/bmfonts/${fontFile}`, import.meta.url)));
 
             jimpFont.pages.forEach(function (page) {
                 if (page.bitmap) {
@@ -291,7 +270,10 @@ class AddTextToImage extends Operation {
             } else {
                 imageBuffer = await image.getBuffer(image.mime);
             }
-            return imageBuffer.buffer;
+            // FORK CHANGE (patches/fork/09): return the image, not the whole pool it was
+            // allocated in. https://nodejs.org/docs/latest-v24.x/api/buffer.html#bufbyteoffset
+            // -- upstream fixed exactly this in GenerateImage.mjs and left the siblings.
+            return imageBuffer.buffer.slice(imageBuffer.byteOffset, imageBuffer.byteOffset + imageBuffer.byteLength);
         } catch (err) {
             throw new OperationError(`Error exporting image. (${err})`);
         }

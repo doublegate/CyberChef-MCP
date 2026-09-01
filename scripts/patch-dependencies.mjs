@@ -31,7 +31,7 @@
  * @license GPL-3.0-or-later
  */
 
-import { readFileSync, writeFileSync, readdirSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join, dirname, parse } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
@@ -49,8 +49,10 @@ const require = createRequire(import.meta.url);
  *
  *     Cannot find module '.../node_modules/crypto-api/src/hasher/has160'
  *
- * which is the crypto-api patch not having been applied. Resolution first, then an upward walk for
- * packages whose `exports` map refuses a deep path.
+ * which was the crypto-api patch not having been applied. (That patch is gone -- crypto-api is
+ * vendored now, see src/vendor/crypto-api/README.md -- but the resolution bug it exposed applies
+ * to every patch below.) Resolution first, then an upward walk for packages whose `exports` map
+ * refuses a deep path.
  *
  * @param {string} name - Package name.
  * @returns {string|null} Absolute path to the package directory, or null if it is not installed.
@@ -112,68 +114,19 @@ function patch(pkgName, relPath, edit, label) {
     changed++;
 }
 
-/**
- * Every file under a directory, recursively, skipping `.git`.
- *
- * @param {string} dir - Absolute path.
- * @returns {string[]} Absolute file paths.
- */
-function walk(dir) {
-    const found = [];
-    let entries;
-    try {
-        entries = readdirSync(dir, { withFileTypes: true });
-    } catch {
-        return found;      // absent or unreadable: nothing to patch, which is not an error
-    }
-    for (const entry of entries) {
-        if (entry.name === ".git") continue;
-        const full = join(dir, entry.name);
-        // `withFileTypes` avoids a second stat() per entry, and avoids stat-ing a path that may
-        // have gone away since the directory was listed.
-        if (entry.isDirectory()) found.push(...walk(full));
-        else found.push(full);
-    }
-    return found;
-}
-
-// 1. crypto-api ships extensionless relative imports, which Node's ESM resolver rejects.
-//    `from "./foo"` -> `from "./foo.mjs"`, leaving anything already suffixed alone.
-const cryptoApiDir = packageDir("crypto-api");
-const cryptoApiSrc = cryptoApiDir && join(cryptoApiDir, "src");
-const cryptoApiFiles = cryptoApiSrc ? walk(cryptoApiSrc) : [];
-if (cryptoApiFiles.length) {
-    let files = 0;
-    for (const file of cryptoApiFiles) {
-        const before = readFileSync(file, "utf8");
-        const after = before.replace(/from "(\.[^"]*)";/g, (whole, spec) =>
-            (spec.endsWith(".mjs") ? whole : `from "${spec}.mjs";`));
-        if (after !== before) {
-            writeFileSync(file, after);
-            files++;
-        }
-    }
-    if (files) {
-        console.log(`  patched  crypto-api relative imports (${files} file(s))`);
-        changed++;
-    }
-} else {
-    skipped++;
-}
-
-// 2. snackbarjs ships a self-closing div that is not valid HTML.
+// 1. snackbarjs ships a self-closing div that is not valid HTML.
 patch("snackbarjs", "src/snackbar.js",
     (s) => s.replace(/<div id=snackbar-container\/>/g, "<div id=snackbar-container>"),
     "snackbarjs container markup");
 
-// 3. jimp's package.json omits `"type": "module"`, so its ESM build loads as CommonJS.
+// 2. jimp's package.json omits `"type": "module"`, so its ESM build loads as CommonJS.
 patch("jimp", "package.json", (s) => {
     if (/"type"\s*:\s*"module"/.test(s)) return null;      // already declared
     if (!s.includes("\"es/index.js\",")) return null;      // shape changed; leave it alone
     return s.replace("\"es/index.js\",", "\"es/index.js\",\n  \"type\": \"module\",");
 }, "jimp type: module");
 
-// 4. serialize-javascript calls `crypto.getRandomValues` without checking that `crypto` is global.
+// 3. serialize-javascript calls `crypto.getRandomValues` without checking that `crypto` is global.
 patch("serialize-javascript", "index.js", (s) => {
     if (s.includes("var nodeCrypto = require")) return null;   // already patched
     if (!s.includes("crypto.getRandomValues(new Uint8Array(UID_LENGTH))")) return null;
@@ -183,7 +136,7 @@ patch("serialize-javascript", "index.js", (s) => {
         "    var bytes = nodeCrypto.randomBytes(UID_LENGTH);");
 }, "serialize-javascript crypto");
 
-// 5. @natlibfi/loglevel-message-prefix has a typo'd scoped require: `@natlibfi(es6-polyfills`.
+// 4. @natlibfi/loglevel-message-prefix has a typo'd scoped require: `@natlibfi(es6-polyfills`.
 patch("@natlibfi/loglevel-message-prefix", "lib/main.js",
     (s) => s.replace(/@natlibfi\(es6-polyfills/g, "@natlibfi/es6-polyfills"),
     "loglevel-message-prefix scoped require");

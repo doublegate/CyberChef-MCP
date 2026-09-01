@@ -427,3 +427,303 @@ describe("tool-schema: rejecting argument names the operation does not have", ()
         }
     });
 });
+
+describe("telemetry: the disabled path and the ring buffer", () => {
+    it("records nothing at all when telemetry is off", async () => {
+        // The default. Recording into a collector nobody exports is pure cost, so the guard is the
+        // first statement in `record` and this is the branch the running server always takes.
+        //
+        // The env var is unset and the module cache reset FIRST: `TELEMETRY_ENABLED` is evaluated
+        // once when `config.mjs` loads, and a top-level import in this file can load it before
+        // this test runs. A developer with CYBERCHEF_TELEMETRY_ENABLED=true in their environment
+        // would otherwise see this fail for a reason that has nothing to do with the code.
+        vi.resetModules();
+        const prev = process.env.CYBERCHEF_TELEMETRY_ENABLED;
+        delete process.env.CYBERCHEF_TELEMETRY_ENABLED;
+        try {
+            const { TelemetryCollector } = await import("../../src/node/lib/telemetry.mjs");
+            const c = new TelemetryCollector();
+            c.record({ tool: "x", duration: 1, success: true });
+            expect(c.metrics).toHaveLength(0);
+        } finally {
+            if (prev !== undefined) process.env.CYBERCHEF_TELEMETRY_ENABLED = prev;
+            vi.resetModules();
+        }
+    });
+
+    it("defaults `cached` and evicts oldest-first once full", async () => {
+        vi.resetModules();
+        const prev = process.env.CYBERCHEF_TELEMETRY_ENABLED;
+        process.env.CYBERCHEF_TELEMETRY_ENABLED = "true";
+        try {
+            const { TelemetryCollector } = await import("../../src/node/lib/telemetry.mjs");
+            const c = new TelemetryCollector();
+            c.maxMetrics = 2;
+            // `cached` omitted: it must land as false rather than undefined, or an exported metric
+            // set has a third state that no consumer expects.
+            c.record({ tool: "a", duration: 1, success: true });
+            expect(c.metrics[0].cached).toBe(false);
+            c.record({ tool: "b", duration: 1, success: true, cached: true });
+            c.record({ tool: "c", duration: 1, success: true });
+            // Bounded, and it is the OLDEST that goes -- an unbounded array here is a slow leak in
+            // a long-running server.
+            expect(c.metrics).toHaveLength(2);
+            expect(c.metrics.map(m => m.tool)).toEqual(["b", "c"]);
+        } finally {
+            if (prev === undefined) delete process.env.CYBERCHEF_TELEMETRY_ENABLED;
+            else process.env.CYBERCHEF_TELEMETRY_ENABLED = prev;
+            vi.resetModules();
+        }
+    });
+});
+
+describe("resources: shapes the recipe store might hand back", () => {
+    /** @param {Array} list - Recipes to serve. @returns {Object} A stub manager. */
+    const managerReturning = (list) => ({ listRecipes: async () => list });
+
+    it("accepts both a bare array and a wrapped {recipes} object", async () => {
+        const { listResources } = await import("../../src/node/lib/resources.mjs");
+        const one = [{ id: "a", name: "A", description: "d", operations: [1, 2] }];
+
+        const bare = await listResources(managerReturning(one));
+        const wrapped = await listResources(managerReturning({ recipes: one }));
+        // This module has no business knowing which shape `listRecipes` returns today, so both
+        // work and neither is the "real" one.
+        expect(bare).toEqual(wrapped);
+        expect(bare.resources[0].uri).toBe("recipe://a");
+    });
+
+    it("falls back to an operation count when a recipe has no description", async () => {
+        const { listResources } = await import("../../src/node/lib/resources.mjs");
+        const res = await listResources(managerReturning([
+            { id: "b", name: "B", operations: [1, 2, 3] },
+            { id: "c", name: "C" }
+        ]));
+        expect(res.resources[0].description).toBe("3 operation(s)");
+        // No `operations` key at all still has to produce a sentence, not "undefined operation(s)".
+        expect(res.resources[1].description).toBe("0 operation(s)");
+    });
+
+    it("rejects a scheme-only URI, which names no recipe", async () => {
+        const { readResource } = await import("../../src/node/lib/resources.mjs");
+        await expect(readResource(managerReturning([]), "recipe://")).rejects.toThrow(/No recipe id/);
+    });
+});
+
+describe("prompts: every prompt renders, including without its arguments", () => {
+    it("renders all five with their arguments", async () => {
+        const { listPrompts, getPrompt } = await import("../../src/node/lib/prompts.mjs");
+        const { prompts } = listPrompts();
+        expect(prompts.length).toBe(5);
+
+        for (const p of prompts) {
+            // Supply every declared argument, so each prompt's own `build` actually runs. Two of
+            // them had never been rendered by any test.
+            const args = Object.fromEntries((p.arguments || []).map(a => [a.name, "SAMPLE"]));
+            const result = getPrompt(p.name, args);
+            const text = result.messages[0].content.text;
+            expect(text.length).toBeGreaterThan(50);
+            if ((p.arguments || []).length) expect(text).toContain("SAMPLE");
+        }
+    });
+
+    it("renders a prompt with its optional argument omitted", async () => {
+        const { getPrompt } = await import("../../src/node/lib/prompts.mjs");
+        // `decode-chain` is the only prompt with an optional argument (`hint`), and the earlier
+        // test supplies every declared argument, so it never exercises the omitted path. Omitting
+        // an optional argument must render, not throw and not print "undefined".
+        const text = getPrompt("decode-chain", { data: "SGVsbG8=" }).messages[0].content.text;
+        expect(text).toContain("SGVsbG8=");
+        expect(text).not.toContain("undefined");
+    });
+
+    it("refuses a prompt whose required argument is missing or empty", async () => {
+        const { getPrompt } = await import("../../src/node/lib/prompts.mjs");
+        // Empty string counts as missing: a prompt rendered without its data asks the model to
+        // analyse nothing, and that surfaces much later as a confusing answer.
+        expect(() => getPrompt("analyse-unknown-data", {})).toThrow(/requires/);
+        expect(() => getPrompt("analyse-unknown-data", { data: "" })).toThrow(/requires/);
+    });
+});
+
+describe("tool-catalog: degenerate inputs", () => {
+    it("summarises a missing or empty description as an empty string", async () => {
+        const { describeOperations } = await import("../../src/node/lib/tool-catalog.mjs");
+        // A single name rather than an array is accepted: callers pass both.
+        const one = describeOperations("MD5", (n) => n);
+        expect(one.operations).toHaveLength(1);
+        expect(one.operations[0].operation).toBe("MD5");
+    });
+
+    it("reports an unknown operation instead of throwing", async () => {
+        const { describeOperations } = await import("../../src/node/lib/tool-catalog.mjs");
+        const res = describeOperations(["Definitely Not An Operation"], (n) => n);
+        // Reported per operation rather than thrown, so one bad name in a batch does not discard
+        // the descriptions of the good ones -- and the message names the way out.
+        expect(res.operations[0].error).toMatch(/No such operation/);
+        expect(res.operations[0].error).toMatch(/cyberchef_search/);
+    });
+
+    it("rejects an unknown category by name, listing the real ones", async () => {
+        const { listOperations } = await import("../../src/node/lib/tool-catalog.mjs");
+        expect(() => listOperations("Nonexistent")).toThrow(/Unknown category/);
+        // No category at all is the same error, not a crash on `undefined.toLowerCase()`.
+        expect(() => listOperations(undefined)).toThrow(/Unknown category/);
+    });
+});
+
+describe("tool-schema: the argument types a schema has to describe", () => {
+    /** @param {Object} arg - One CyberChef argument definition. @returns {Object} Its Zod shape. */
+    const shapeFor = async (arg) => {
+        const { mapArgsToZod } = await import("../../src/node/lib/tool-schema.mjs");
+        return mapArgsToZod([arg]);
+    };
+
+    it("maps argSelector to a strict enum, not a free-text field", async () => {
+        // 19 operations use argSelector, including AES Encrypt/Decrypt. Falling through to the
+        // string default would offer free text where only a fixed set of modes is valid, and push
+        // the failure all the way to validateIngredients at execution time.
+        const named = await shapeFor({ name: "Mode", type: "argSelector", value: [{ name: "CBC" }, { name: "GCM" }] });
+        expect(named.mode.safeParse("CBC").success).toBe(true);
+        expect(named.mode.safeParse("Nope").success).toBe(false);
+
+        // Plain strings are the other shape it comes in.
+        const plain = await shapeFor({ name: "Mode", type: "argSelector", value: ["A", "B"] });
+        expect(plain.mode.safeParse("B").success).toBe(true);
+
+        // An empty selector cannot become an enum; it degrades to a string rather than throwing
+        // while the tool list is being built.
+        const empty = await shapeFor({ name: "Mode", type: "argSelector", value: [] });
+        expect(empty.mode.safeParse("anything").success).toBe(true);
+    });
+
+    it("accepts both forms of a toggleString: a bare string and {string, option}", async () => {
+        const s = await shapeFor({ name: "Key", type: "toggleString", value: "", toggleValues: ["Hex", "UTF8"] });
+        expect(s.key.safeParse("6f6d0bab").success).toBe(true);
+        expect(s.key.safeParse({ string: "hunter2", option: "UTF8" }).success).toBe(true);
+        expect(s.key.safeParse({ string: "hunter2", option: "Klingon" }).success).toBe(false);
+
+        // Without toggleValues the option cannot be enumerated, so it stays an open string.
+        const open = await shapeFor({ name: "Key", type: "toggleString", value: "" });
+        expect(open.key.safeParse({ string: "x", option: "whatever" }).success).toBe(true);
+    });
+
+    it("does not repeat the type as a description", async () => {
+        // Across 524 tools, appending a description that only restates `type`/`enum` came to
+        // roughly 42 KB paid on every tools/list, carrying nothing a client could not already read.
+        const { mapArgsToZod } = await import("../../src/node/lib/tool-schema.mjs");
+        const shape = mapArgsToZod([{ name: "Flag", type: "boolean" }]);
+        expect(shape.flag.description).toBeUndefined();
+    });
+});
+
+describe("tool-schema: resolving a toggleString the caller wrote in some other form", () => {
+    /** @returns {Function} resolveArgValue */
+    const resolver = async () => (await import("../../src/node/lib/tool-schema.mjs")).resolveArgValue;
+    const KEY = { name: "Key", type: "toggleString", value: "seed", toggleValues: ["Hex", "UTF8"] };
+
+    it("supplies the default option when the caller sent nothing", async () => {
+        const resolveArgValue = await resolver();
+        // The default used to be returned as a bare string, which is what produced
+        // "Cannot read properties of undefined (reading 'option')" across all 63 of these
+        // operations.
+        expect(resolveArgValue(KEY, undefined)).toEqual({ option: "Hex", string: "seed" });
+        expect(resolveArgValue(KEY, null)).toEqual({ option: "Hex", string: "seed" });
+    });
+
+    it("wraps a bare string in the default option", async () => {
+        const resolveArgValue = await resolver();
+        expect(resolveArgValue(KEY, "abc")).toEqual({ option: "Hex", string: "abc" });
+    });
+
+    it("corrects an unrecognised option rather than passing it through", async () => {
+        const resolveArgValue = await resolver();
+        // Passing it through would have the operation decode the key with a scheme it does not
+        // know, and a wrongly-decoded key fails as "bad decrypt" a long way from the mistake.
+        expect(resolveArgValue(KEY, { string: "abc", option: "Klingon" }))
+            .toEqual({ option: "Hex", string: "abc" });
+        expect(resolveArgValue(KEY, { string: "abc", option: "UTF8" }))
+            .toEqual({ option: "UTF8", string: "abc" });
+        // A missing `string` is an empty one, not undefined.
+        expect(resolveArgValue(KEY, { option: "UTF8" })).toEqual({ option: "UTF8", string: "" });
+    });
+
+    it("falls back to UTF8 when the operation declares no toggle values", async () => {
+        const resolveArgValue = await resolver();
+        expect(resolveArgValue({ name: "Key", type: "toggleString", value: 0 }, undefined))
+            .toEqual({ option: "UTF8", string: "" });
+    });
+});
+
+describe("recipe-validator: argument types, checked before the engine sees them", () => {
+    /** @returns {Function} validateOperationArguments */
+    const validate = async () => (await import("../../src/node/recipe-validator.mjs")).validateOperationArguments;
+
+    it("passes over steps it has no business checking", async () => {
+        const validateOperationArguments = await validate();
+        // A recipe reference, a step with no op, a step with no args, and an operation the config
+        // does not know are all skipped rather than rejected: this function checks argument types,
+        // and validateOperationNames is what rejects unknown operations.
+        expect(() => validateOperationArguments({ operations: [
+            { recipe: "other-recipe" },
+            { args: { x: 1 } },
+            { op: "MD5" },
+            { op: "Definitely Not An Operation", args: { x: 1 } }
+        ] })).not.toThrow();
+    });
+
+    it("rejects a wrong-typed boolean or number, naming both what it wanted and what it got", async () => {
+        const validateOperationArguments = await validate();
+        expect(() => validateOperationArguments({ operations: [
+            { op: "To Base64", args: {} },
+            { op: "Bit shift left", args: { amount: "three" } }
+        ] })).toThrow(/expected number, got string/);
+    });
+
+    it("rejects an option outside the operation's own list", async () => {
+        const validateOperationArguments = await validate();
+        // A plain `option` argument (432 of them across the catalogue).
+        expect(() => validateOperationArguments({
+            operations: [{ op: "A1Z26 Cipher Decode", args: { delimiter: "Interpretive Dance" } }]
+        })).toThrow(/not in allowed options/);
+        expect(() => validateOperationArguments({
+            operations: [{ op: "A1Z26 Cipher Decode", args: { delimiter: "Comma" } }]
+        })).not.toThrow();
+
+        // And an `argSelector`, which is also a closed set. It used to fall through to the
+        // flexible default, so an invalid mode passed here and failed later inside the engine,
+        // with an error pointing at the operation rather than at the argument.
+        expect(() => validateOperationArguments({ operations: [{ op: "SHA2", args: { size: "999" } }] }))
+            .toThrow(/not in allowed options/);
+        expect(() => validateOperationArguments({ operations: [{ op: "SHA2", args: { size: "256" } }] }))
+            .not.toThrow();
+    });
+
+    it("leaves an argument the caller omitted to the operation's default", async () => {
+        const validateOperationArguments = await validate();
+        expect(() => validateOperationArguments({ operations: [{ op: "SHA2", args: {} }] })).not.toThrow();
+    });
+});
+
+describe("core-recipe: what the caller receives when the engine refuses", () => {
+    it("turns an engine error into a structured input error naming the recipe", async () => {
+        const { bakeOnCore } = await import("../../src/node/lib/core-recipe.mjs");
+        await expect(bakeOnCore("not-hex", [{ op: "From Hex" }, { op: "Gunzip" }]))
+            .rejects.toMatchObject({ code: "INVALID_INPUT" });
+    });
+
+    it("presents an html result as text, and a non-string result as JSON", async () => {
+        const { bakeOnCore } = await import("../../src/node/lib/core-recipe.mjs");
+
+        // `Magic` has outputType html. toString() must reduce the markup rather than hand a
+        // caller a page of tags -- while `toContentBlocks` is what keeps an actual image.
+        const magic = await bakeOnCore("aGVsbG8=", [{ op: "Magic" }]);
+        expect(magic.outputType).toBe("html");
+        expect(String(magic)).not.toMatch(/<table|<tr>/);
+
+        // An empty recipe has no last operation, so there is no output type to read.
+        const passthrough = await bakeOnCore("plain", []);
+        expect(passthrough.outputType).toBeUndefined();
+        expect(String(passthrough)).toBe("plain");
+    });
+});

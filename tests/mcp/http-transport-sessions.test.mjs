@@ -20,11 +20,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 // Raw http, because `fetch` refuses to let a caller set Host -- and a forged Host is the entire
 // subject of the DNS-rebinding tests below.
 import http from "node:http";
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import {
-    ListToolsRequestSchema,
-    CallToolRequestSchema
-} from "@modelcontextprotocol/sdk/types.js";
+// The v2 SDK, matching production: `createMcpServer()` returns a v2 `Server`, so a v1 server here
+// would leave the real pairing untested while still passing (the generations are wire-compatible).
+import { Server } from "@modelcontextprotocol/server";
 import {
     createTransport, isInitializeBody, normalizeSessionId, normalizeEndpointPath
 } from "../../src/node/transports.mjs";
@@ -49,14 +47,14 @@ function createTinyServer() {
         { name: "test-server", version: "0.0.0" },
         { capabilities: { tools: {} } }
     );
-    server.setRequestHandler(ListToolsRequestSchema, async () => ({
+    server.setRequestHandler("tools/list", async () => ({
         tools: [{
             name: "echo",
             description: `echo from server instance ${id}`,
             inputSchema: { type: "object", properties: { text: { type: "string" } } }
         }]
     }));
-    server.setRequestHandler(CallToolRequestSchema, async (request) => ({
+    server.setRequestHandler("tools/call", async (request) => ({
         content: [{ type: "text", text: `instance ${id}: ${request.params.arguments?.text ?? ""}` }]
     }));
     return server;

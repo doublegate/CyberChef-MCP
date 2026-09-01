@@ -5,7 +5,7 @@ This document details the steps required to convert the project into an MCP serv
 ## 1. Dependencies
 We need to add the MCP SDK to the project.
 ```bash
-npm install @modelcontextprotocol/sdk zod
+npm install @modelcontextprotocol/server @modelcontextprotocol/node zod
 ```
 
 ## 2. New File: `src/node/mcp-server.mjs`
@@ -16,11 +16,12 @@ This file will contain the server logic.
 -   **Importing Core:**
     ```javascript
     import { bake, help } from "./index.mjs";
-    import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-    import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-    import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+    import { Server } from "@modelcontextprotocol/server";
+    import { serveStdio } from "@modelcontextprotocol/server/stdio";
+    // v2 dispatches on the method name; request schemas are no longer the handler key.
+    // server.setRequestHandler("tools/list", handler)
     import { z } from "zod";
-    import OperationConfig from "../core/config/OperationConfig.json" assert {type: "json"};
+    import OperationConfig from "../core/config/OperationConfig.json" with {type: "json"};
     ```
 -   **Tool Normalization:**
     Convert CyberChef operation names (which may contain spaces, special chars) to valid MCP tool names (regex `^[a-zA-Z0-9_-]+$`).

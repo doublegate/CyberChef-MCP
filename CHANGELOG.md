@@ -9,6 +9,81 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Nothing yet.
 
+## [2.3.0] - 2026-08-31
+
+### Fixed
+
+- **17 image operations returned Node's shared buffer pool instead of the image.** Each ended
+  `run()` with `return imageBuffer.buffer`; a Node `Buffer` is a view, so for a small allocation
+  `.buffer` is the pool. A 129-byte PNG came back as a 65,599-byte ArrayBuffer at byteOffset 32, so
+  `present()` found no magic bytes and threw `Invalid file type.` — and the surplus 65 KB was
+  whatever else the process had recently allocated, which on a multi-caller server is other callers'
+  data. Upstream fixed exactly this in `GenerateImage.mjs` and left the siblings; the same fix is
+  now applied to all 17 (`patches/fork/09`). Affects `Add Text To Image`, `Blur Image`,
+  `Contain Image`, `Convert Image Format`, `Cover Image`, `Crop Image`, `Dither Image`,
+  `Flip Image`, `Image Brightness / Contrast`, `Image Filter`, `Image Hue/Saturation/Lightness`,
+  `Image Opacity`, `Invert Image`, `Normalise Image`, `Resize Image`, `Rotate Image` and
+  `Sharpen Image`.
+- **`Add Text To Image` had never worked in this fork.** It loaded bitmap fonts through webpack-only
+  imports under `src/web/`, removed in v1.7.1, and resolved them against `self.docURL`, which does
+  not exist under Node — so every call failed while the tool stayed advertised. The fonts are now
+  vendored at `src/vendor/bmfonts/` and loaded from disk (`patches/fork/10`).
+- **The socket transport's `closeAll()` leaked one `Server` per connection.** `socket.destroy()`
+  emits `"close"` asynchronously, so a synchronous `connections.clear()` ran first and the drop
+  handler returned before closing the pinned instance. The handles are now closed explicitly.
+- **A umask window before the Unix socket's `chmod`.** `listen()` created the socket at the process
+  umask and the mode was tightened a line later; a connection accepted in between survives the
+  change. The umask is now tightened around the bind (CWE-732).
+- **A failing operation on the progress path hung the request.** `streamOperationWithProgress`
+  ended its bake with `.catch(err => { throw err; })` inside a promise nobody held, so the rejection
+  was unhandled *and* `resolve` was never called — the `await` below it waited forever. It now
+  rejects. Verified against a snapshot of the old code, where the new test times out at 30s.
+- **`argSelector` arguments were not validated.** 21 arguments across 19 operations, including AES
+  Encrypt/Decrypt, are a closed set, but `validateOperationArguments` had no case for them, so an
+  invalid mode passed recipe validation and failed later inside the engine with a less useful error.
+- **`terser` was a devDependency but is imported at runtime** by `JavaScript Minify`, so an
+  installed package could not start. Moved to `dependencies`.
+
+### Changed
+
+- **Coverage thresholds raised from 75/70/90/75 to 95/88/96/96**, with `src/node/lib/**` held
+  separately at 99/94/100/99. The old numbers were more than twenty points below actual coverage, so
+  the gate could not fail. `codecov.yml` was corrected to match: project 70% → 95%, patch 75% → 100%,
+  the `mcp-tests` flag widened from two paths to all fork-owned `src/node/**` (twelve modules were
+  absent from flag reporting), and dead configuration removed. `src/node/worker.mjs` is measured for
+  the first time.
+- **`crypto-api` is vendored at `src/vendor/crypto-api/` (MIT) instead of installed.** The published
+  package cannot be loaded as shipped: its `main` names an `index` file absent from its own tarball,
+  and its ESM sources use extensionless relative imports Node rejects. Patching it required a
+  dependency install script, which npm 12 blocks by default — the last thing blocking npm as a
+  distribution channel. A `--ignore-scripts` install of the packed tarball now starts and serves.
+
+### Added
+
+- **Protocol revision 2026-07-28**, alongside the 2025 era, over stdio. The server moved from
+  `@modelcontextprotocol/sdk` 1.x to the v2 packages (`@modelcontextprotocol/server`,
+  `@modelcontextprotocol/node`). Existing clients are unaffected: a v1-SDK client still negotiates
+  2025-11-25 against the same handlers, and `tests/mcp/protocol-eras.test.mjs` spawns the real
+  binary once per era to keep it that way.
+- **Protocol revision 2026-07-28 over HTTP**, routed per request with `isLegacyRequest`: 2025 traffic
+  keeps the sessionful wiring (session ids, idle sweep, capacity limit), modern traffic is served
+  per request by `createMcpHandler` with `legacy: "reject"` so there is no second, unaccounted route
+  to the same tools. Both legs are built from one server factory. The modern entry performs no
+  validation of its own, so the existing Host allowlist is applied in front of it — a forged Host is
+  refused on both paths.
+- **Socket transport** (`CYBERCHEF_TRANSPORT=socket`): the stdio binding over a Unix domain socket or
+  loopback TCP stream, one pinned server instance per connection, so two clients never share one.
+  Configured with `CYBERCHEF_SOCKET_PATH` or `CYBERCHEF_SOCKET_PORT` (plus `_HOST`,
+  `_MAX_CONNECTIONS`, `_ALLOW_REMOTE`). It carries no authentication, so a non-loopback bind is
+  refused unless explicitly allowed, the Unix socket is created `0600` rather than at the mercy of
+  the umask, and a stale socket file is probed before it is removed. Replaces the roadmap's
+  "WebSocket" line, which named a transport MCP does not define.
+- **Test temp files moved into a private `mkdtemp` directory.** The socket suite wrote predictable
+  names into `os.tmpdir()`, which is shared and world-writable — CodeQL flagged it `high`, correctly:
+  a predictable name there is a symlink-attack vector.
+- `tests/mcp/image-operations.test.mjs` — 19 tests pinning all 17 image operations end to end, plus
+  the operation-boundary assertions that make the buffer-pool defect visible.
+
 ## [2.2.0] - 2026-08-31
 
 Multi-modal results, and the two MCP surfaces this server never had. Every finding below came from

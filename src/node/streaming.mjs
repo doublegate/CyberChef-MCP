@@ -263,7 +263,7 @@ export async function* streamOperationWithProgress(bakeFunction, operation, inpu
         // Simulate progress updates while processing
         // Note: Actual CyberChef operations don't provide progress callbacks yet
         // This is a placeholder for future enhancement
-        const progressPromise = new Promise((resolve) => {
+        const progressPromise = new Promise((resolve, reject) => {
             const interval = setInterval(() => {
                 // This would be replaced with actual progress from CyberChef
             }, 1000);
@@ -273,9 +273,17 @@ export async function* streamOperationWithProgress(bakeFunction, operation, inpu
             bakeFunction(input, recipe).then(result => {
                 clearInterval(interval);
                 resolve(result);
-            }).catch(err => {
+            }, err => {
+                // `reject`, not `throw`. This used to be `.catch(err => { throw err; })`, which
+                // has two failure modes and neither is visible from reading it: the throw happens
+                // inside a callback of a promise nobody holds, so it becomes an UNHANDLED
+                // REJECTION, and `resolve` is never called, so `await progressPromise` below waits
+                // forever. A failing operation on the progress path therefore hung the request
+                // until its timeout rather than reporting the error. The rejection handler is the
+                // second argument to `then` rather than a chained `.catch` so it cannot observe
+                // an error thrown by the fulfilment handler itself and settle twice.
                 clearInterval(interval);
-                throw err;
+                reject(err);
             });
         });
 

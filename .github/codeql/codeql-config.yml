@@ -7,6 +7,18 @@ name: "CyberChef-MCP CodeQL config"
 queries:
   - uses: security-and-quality
 
+# Vendored third-party source, carried verbatim so that a package which cannot be loaded as
+# published is still usable. It is already exempt from this repository's linter (eslint.config.mjs)
+# and from coverage (vitest.config.mjs), for the same reason it is exempt here: it is not ours to
+# change, and an alert on it is a finding we can neither act on nor sensibly dismiss one by one.
+# `src/vendor/crypto-api/` alone produced a `js/useless-assignment-to-local` on a line of upstream's
+# Snefru implementation.
+#
+# This does NOT cover `src/core/vendor/**`, which stays analysed: alerts there have been individually
+# dispositioned and removing them from view would lose that record.
+paths-ignore:
+  - src/vendor/**
+
 query-filters:
   # js/incomplete-sanitization -- excluded, with evidence.
   #

@@ -277,6 +277,12 @@ export function validateOperationArguments(recipe) {
                     }
                     break;
 
+                // `argSelector` alongside `option` because it is also a closed set -- 21 arguments
+                // across 19 operations, including AES Encrypt/Decrypt. Without this case it fell to
+                // the flexible `default`, so an invalid mode passed validation here and failed much
+                // later inside the engine, with an error that points at the operation rather than
+                // at the argument the caller got wrong. Same shape, same check.
+                case "argSelector":
                 case "option":
                     // Validate that value is one of the allowed options
                     if (Array.isArray(argDef.value) && argDef.value.length > 0) {

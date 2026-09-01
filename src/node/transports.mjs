@@ -3,8 +3,15 @@
  *
  * MCP Transport Factory for CyberChef.
  *
- * Provides stdio (default) or Streamable HTTP transport based on
- * the CYBERCHEF_TRANSPORT environment variable.
+ * Provides stdio (default), Streamable HTTP, or a socket binding, selected by the
+ * CYBERCHEF_TRANSPORT environment variable.
+ *
+ *   stdio   - the process's own stdin/stdout. One connection by construction.
+ *   http    - Streamable HTTP, per session, serving both protocol eras.
+ *   socket  - the stdio binding over a Unix domain socket or loopback TCP stream, one pinned
+ *             server instance per connection. CYBERCHEF_SOCKET_PATH or CYBERCHEF_SOCKET_PORT
+ *             (+ CYBERCHEF_SOCKET_HOST, CYBERCHEF_SOCKET_MAX_CONNECTIONS,
+ *             CYBERCHEF_SOCKET_ALLOW_REMOTE).
  *
  * THE HTTP BRANCH IS PER-SESSION, AND THAT IS THE WHOLE POINT
  * ----------------------------------------------------------
@@ -34,7 +41,7 @@
  * @license GPL-3.0-or-later
  */
 
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { getLogger } from "./logger.mjs";
 
 /**
@@ -42,8 +49,32 @@ import { getLogger } from "./logger.mjs";
  */
 export const TransportType = {
     STDIO: "stdio",
-    HTTP: "http"
+    HTTP: "http",
+    SOCKET: "socket"
 };
+
+/** Connections accepted concurrently on the socket transport, unless configured otherwise. */
+export const DEFAULT_SOCKET_MAX_CONNECTIONS = 16;
+
+/**
+ * Whether a bind address is loopback-only.
+ *
+ * The socket transport carries NO authentication -- it is the stdio binding over a stream, and the
+ * stdio binding's security model is "the peer already has your process". On a Unix socket that is
+ * filesystem permissions; on TCP it is nothing at all. So a non-loopback bind is refused unless it
+ * is asked for explicitly, because the failure mode is an unauthenticated MCP server, exposing 504
+ * operations, reachable from the network by anyone who can route to it.
+ *
+ * @param {string} host - The bind address.
+ * @returns {boolean} True when the address is loopback.
+ */
+export function isLoopbackAddress(host) {
+    if (!host) return false;
+    const bare = host.replace(/^\[|\]$/g, "").toLowerCase();
+    if (bare === "localhost" || bare === "::1" || bare === "0:0:0:0:0:0:0:1") return true;
+    // The whole 127.0.0.0/8 block is loopback, not just 127.0.0.1.
+    return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(bare);
+}
 
 /** Header carrying the session id, per the Streamable HTTP spec. Node lowercases header names. */
 const SESSION_HEADER = "mcp-session-id";
@@ -53,6 +84,20 @@ export const DEFAULT_SESSION_TIMEOUT_MS = 30 * 60 * 1000;
 
 /** How often the reaper runs. */
 export const DEFAULT_SESSION_SWEEP_MS = 60 * 1000;
+
+/**
+ * The longest usable Unix domain socket path on this platform.
+ *
+ * `sockaddr_un.sun_path` is a fixed 108-byte field on Linux and 104 on macOS/BSD, NUL included, and
+ * the kernel rejects anything longer with a bare `EINVAL: invalid argument` that names the path but
+ * says nothing about why. That is close to unguessable -- it was hit here with a perfectly ordinary
+ * 128-character path under a temp directory -- so the length is checked up front instead.
+ *
+ * @returns {number} Maximum path length in bytes.
+ */
+export function maxSocketPathLength() {
+    return process.platform === "darwin" ? 103 : 107;
+}
 
 /**
  * Read a JSON request body, bounded.
@@ -189,6 +234,8 @@ function sendJsonRpcError(res, status, code, message, id = null) {
  * @param {number} options.port - HTTP port (default: 3000).
  * @param {string} options.host - HTTP host (default: "127.0.0.1").
  * @param {Function} options.createServer - Factory returning a fresh MCP `Server` per session.
+ * @param {Object} [options.transport] - stdio only: serve over this transport instead of the
+ *   process's own stdin/stdout. Used by the tests, and by any stdio binding over a socket.
  *   Required for HTTP; a session cannot share one.
  * @param {number} options.maxBodyBytes - Maximum accepted request body (default 4 MiB).
  * @param {number} options.sessionTimeoutMs - Idle-session reap threshold.
@@ -300,9 +347,11 @@ export async function createTransport(options = {}) {
             );
         }
 
-        const { StreamableHTTPServerTransport } = await import(
-            "@modelcontextprotocol/sdk/server/streamableHttp.js"
-        );
+        const {
+            NodeStreamableHTTPServerTransport: StreamableHTTPServerTransport,
+            toNodeHandler, toWebRequest
+        } = await import("@modelcontextprotocol/node");
+        const { createMcpHandler, isLegacyRequest } = await import("@modelcontextprotocol/server");
         const http = await import("node:http");
         const { randomUUID } = await import("node:crypto");
 
@@ -413,6 +462,39 @@ export async function createTransport(options = {}) {
         }
 
         /**
+         * Whether the Host header is one this server will answer.
+         *
+         * The modern entry is deliberately validation-free -- the SDK says so explicitly -- so the
+         * DNS-rebinding protection the sessionful transport gets from `enableDnsRebindingProtection`
+         * has to be applied by hand in front of it. Same allowlist, so the two paths cannot end up
+         * with different answers about which hosts are acceptable.
+         *
+         * @param {import("node:http").IncomingMessage} req - The request.
+         * @returns {boolean} True when the request may proceed.
+         */
+        function hostAllowed(req) {
+            const allowed = effectiveAllowedHosts();
+            if (!allowed) return true;              // checking disabled by configuration
+            const host = req.headers.host;
+            if (!host) return false;                // HTTP/1.1 requires it; absent means malformed
+            return allowed.includes(host) || allowed.includes(host.split(":")[0]);
+        }
+
+        // The 2026-07-28 entry. `legacy: 'reject'` because this server routes the eras itself with
+        // `isLegacyRequest` -- 2025 traffic goes to the sessionful wiring below, which has the
+        // session accounting, the idle sweeper and the capacity limit. Letting the entry serve its
+        // own stateless legacy fallback as well would create a second, unaccounted way to reach the
+        // same tools.
+        //
+        // ONE factory for both legs, which is the property that matters: the modern path and the
+        // sessionful path build their servers from the same `createServer`, so the eras cannot
+        // drift apart in what they expose.
+        const modernHandler = toNodeHandler(
+            createMcpHandler(createServer, { legacy: "reject" }),
+            { onerror: (err) => logger.error(`modern MCP handler error: ${err.message}`) }
+        );
+
+        /**
          * Build a fresh Server + transport pair and connect them.
          *
          * @returns {Promise<Object>} The connected transport.
@@ -497,6 +579,24 @@ export async function createTransport(options = {}) {
                 }
 
                 const body = await readJsonBody(req, maxBodyBytes);
+
+                // Era routing. `isLegacyRequest` is the entry's own classification step exported as
+                // a predicate -- the same code `createMcpHandler` runs -- so this branch cannot
+                // disagree with the handler it dispatches to. The body is passed in because it has
+                // already been read: classifying from the request alone would clone a used body and
+                // throw.
+                //
+                // Everything reaching here is a POST; body-less GET and DELETE session operations
+                // are answered above and always classify legacy anyway.
+                if (!(await isLegacyRequest(await toWebRequest(req, body), body))) {
+                    if (!hostAllowed(req)) {
+                        sendJsonRpcError(res, 403, -32000, "Forbidden: Host header not allowed",
+                            requestIdOf(body));
+                        return;
+                    }
+                    await modernHandler(req, res, body);
+                    return;
+                }
 
                 if (sessionId) {
                     const entry = sessions.get(sessionId);
@@ -646,9 +746,256 @@ export async function createTransport(options = {}) {
         return { transport: null, httpServer, sessions, closeAll };
     }
 
-    // Default: stdio. Single connection by construction, so the module-level server is correct.
-    const transport = new StdioServerTransport();
-    return { transport, httpServer: null };
+    if (type === TransportType.SOCKET) {
+        // The stdio binding over a stream rather than a pipe. This is the SDK's own documented
+        // custom-transport route ("a `StdioServerTransport` constructed over a Unix domain socket
+        // or TCP stream"), and it is what the v2.3.0 roadmap's "advanced transports" line was
+        // actually reaching for -- WebSocket, which that line named, is not an MCP transport at
+        // all. See docs/planning/ROADMAP.md.
+        //
+        // Per connection: one transport over the socket, handed to `serveStdio`, which pins ONE
+        // server instance for that connection's lifetime. So this inherits the same isolation the
+        // HTTP branch was rewritten for in issue #36 -- no two clients share a `Server` -- without
+        // needing session ids, because the socket IS the session.
+        const net = await import("node:net");
+        const fs = await import("node:fs");
+        const { StdioServerTransport } = await import("@modelcontextprotocol/server/stdio");
+
+        const createServer = options.createServer;
+        if (typeof createServer !== "function") {
+            throw new TypeError(
+                "createTransport({type:'socket'}) requires a createServer factory: each " +
+                "connection is pinned to its own MCP Server instance."
+            );
+        }
+
+        const socketPath = options.socketPath ?? process.env.CYBERCHEF_SOCKET_PATH;
+        const host = options.host ?? process.env.CYBERCHEF_SOCKET_HOST ?? "127.0.0.1";
+        const portRaw = options.port ?? process.env.CYBERCHEF_SOCKET_PORT;
+        const port = portRaw === undefined || portRaw === null || portRaw === "" ?
+            undefined : parseInt(portRaw, 10);
+        const maxConnections = parseInt(
+            options.maxConnections ?? process.env.CYBERCHEF_SOCKET_MAX_CONNECTIONS, 10
+        ) || DEFAULT_SOCKET_MAX_CONNECTIONS;
+
+        if (!socketPath && port === undefined) {
+            throw new TypeError(
+                "createTransport({type:'socket'}) needs CYBERCHEF_SOCKET_PATH (a Unix domain " +
+                "socket) or CYBERCHEF_SOCKET_PORT (TCP)."
+            );
+        }
+        if (socketPath && port !== undefined) {
+            throw new TypeError(
+                "createTransport({type:'socket'}): set CYBERCHEF_SOCKET_PATH or " +
+                "CYBERCHEF_SOCKET_PORT, not both -- one server binds one address."
+            );
+        }
+        if (port !== undefined && Number.isNaN(port)) {
+            throw new TypeError("createTransport({type:'socket'}): CYBERCHEF_SOCKET_PORT is not a number.");
+        }
+
+        // Fail closed on a network-reachable bind. See isLoopbackAddress for why.
+        const allowRemote = String(
+            options.allowRemote ?? process.env.CYBERCHEF_SOCKET_ALLOW_REMOTE ?? ""
+        ).toLowerCase() === "true";
+        if (port !== undefined && !isLoopbackAddress(host) && !allowRemote) {
+            throw new TypeError(
+                `createTransport({type:'socket'}): refusing to bind ${host}:${port}. This ` +
+                "transport has no authentication, so a non-loopback bind exposes every operation " +
+                "to anyone who can reach the port. Set CYBERCHEF_SOCKET_ALLOW_REMOTE=true to " +
+                "override, and put your own authentication in front of it."
+            );
+        }
+
+        if (socketPath) {
+            const limit = maxSocketPathLength();
+            const length = Buffer.byteLength(socketPath);
+            if (length > limit) {
+                throw new TypeError(
+                    `createTransport({type:'socket'}): socket path is ${length} bytes, and this ` +
+                    `platform allows ${limit}. The kernel reports this only as a bare EINVAL, ` +
+                    "which names the path but not the reason. Use a shorter path."
+                );
+            }
+        }
+
+        if (socketPath) {
+            // A stale socket file from a crashed process must be removed, and a LIVE one must not
+            // be. Existence alone cannot tell them apart, so probe it: a connection that is
+            // refused means nothing is listening. Anything else -- a live server, or a path that
+            // is not a socket at all -- is left alone and the bind fails loudly instead.
+            let stat = null;
+            try {
+                stat = fs.statSync(socketPath);
+            } catch (err) {
+                if (err.code !== "ENOENT") throw err;
+            }
+            if (stat) {
+                if (!stat.isSocket()) {
+                    throw new Error(
+                        `createTransport({type:'socket'}): ${socketPath} exists and is not a ` +
+                        "socket. Refusing to remove it."
+                    );
+                }
+                const live = await new Promise((resolve) => {
+                    const probe = net.connect(socketPath);
+                    probe.once("connect", () => {
+                        probe.destroy();
+                        resolve(true);
+                    });
+                    probe.once("error", () => resolve(false));
+                });
+                if (live) {
+                    throw new Error(
+                        `createTransport({type:'socket'}): ${socketPath} is already served by a ` +
+                        "running process."
+                    );
+                }
+                fs.unlinkSync(socketPath);
+                logger.warn(`removed stale socket file ${socketPath}`);
+            }
+        }
+
+        /** Open connections, so shutdown can close them and the tests can count them. */
+        const connections = new Set();
+
+        const socketServer = net.createServer((socket) => {
+            if (connections.size >= maxConnections) {
+                logger.warn(`refusing connection: at capacity (${connections.size}/${maxConnections})`);
+                socket.destroy();
+                return;
+            }
+            // Nagle batches small writes, which for a request/response protocol on a local socket
+            // is latency for no benefit.
+            socket.setNoDelay?.(true);
+
+            const handle = serveStdio(createServer, {
+                transport: new StdioServerTransport(socket, socket),
+                onerror: (err) => logger.error(`socket connection error: ${err.message}`)
+            });
+            const entry = { socket, handle };
+            connections.add(entry);
+            logger.info(`socket connection opened [${connections.size} active]`);
+
+            const drop = () => {
+                if (!connections.delete(entry)) return;   // already dropped
+                // Close the pinned server instance too. Dropping only the socket would leak one
+                // Server per connection for the process's lifetime.
+                // Not awaited, because `drop` is a synchronous close/error listener -- there is
+                // nothing here to await into. Not silent either: a teardown failure is expected
+                // when the peer has already gone, but expected is not the same as uninteresting,
+                // and a close that fails for some OTHER reason should leave a trace.
+                Promise.resolve(handle.close()).catch(err =>
+                    logger.debug(`socket connection teardown failed: ${err.message}`));
+                logger.info(`socket connection closed [${connections.size} active]`);
+            };
+            socket.once("close", drop);
+            socket.once("error", (err) => {
+                // ECONNRESET is a client that hung up mid-write; it is normal, not an incident.
+                if (err.code !== "ECONNRESET") logger.warn(`socket error: ${err.message}`);
+                drop();
+            });
+        });
+
+        // The mode has to be right AT CREATION, not shortly after. `listen()` creates the socket
+        // with the process umask, and a `chmodSync` on the next line still leaves a window in
+        // which a permissive umask published a world-writable socket -- and a connection accepted
+        // during that window survives the mode change. So the umask is tightened around the bind
+        // and restored immediately, and the chmod stays as a belt-and-braces assertion of the
+        // final mode.
+        const previousUmask = socketPath === undefined ? undefined : process.umask(0o177);
+        try {
+            await new Promise((resolve, reject) => {
+                socketServer.once("error", reject);
+                if (socketPath) socketServer.listen(socketPath, resolve);
+                else socketServer.listen(port, host, resolve);
+            });
+        } finally {
+            if (previousUmask !== undefined) process.umask(previousUmask);
+        }
+
+        if (socketPath) {
+            // Owner-only. A Unix socket's access control IS its file mode.
+            fs.chmodSync(socketPath, 0o600);
+        }
+
+        const bound = socketServer.address();
+        logger.info(`Running on socket transport: ${
+            typeof bound === "string" ? bound : `${bound.address}:${bound.port}`
+        } (max ${maxConnections} connections)`);
+
+        /**
+         * Close every connection and stop listening.
+         *
+         * @returns {Promise<void>} Resolves once everything is closed.
+         */
+        async function closeAll() {
+            // Close the pinned server instances EXPLICITLY rather than relying on each socket's
+            // "close" listener. `destroy()` emits "close" asynchronously, so a synchronous
+            // `connections.clear()` here would run first, `drop()`'s `connections.delete(entry)`
+            // would then return false, and it would return before ever calling `handle.close()` --
+            // leaking one Server per connection. In `runServer()` the process exits immediately
+            // afterwards so the impact is bounded, but the tests and any embedded caller keep
+            // running.
+            const entries = [...connections];
+            connections.clear();
+            await Promise.all(entries.map(async entry => {
+                entry.socket.destroy();
+                try {
+                    await entry.handle.close();
+                } catch (err) {
+                    // Best-effort by design -- one connection failing to close must not abort the
+                    // shutdown of the others -- but recorded rather than discarded.
+                    logger.debug(`socket connection teardown failed during shutdown: ${err.message}`);
+                }
+            }));
+            await new Promise((resolve, reject) => {
+                socketServer.close(err => {
+                    if (err && err.code !== "ERR_SERVER_NOT_RUNNING") reject(err);
+                    else resolve();
+                });
+            });
+            // node removes the socket file on a clean close; this is for the case where it did not.
+            if (socketPath) {
+                try {
+                    fs.unlinkSync(socketPath);
+                } catch (err) {
+                    if (err.code !== "ENOENT") throw err;
+                }
+            }
+        }
+
+        return { transport: null, httpServer: null, socketServer, connections, closeAll };
+    }
+
+    // Default: stdio.
+    //
+    // `serveStdio` rather than a bare `StdioServerTransport`, because the era decision lives in the
+    // entry, not in the transport. Measured against SDK v2.0.0: a bare transport plus
+    // `server.connect()` serves the 2025 era only -- a client pinning protocol revision 2026-07-28
+    // fails negotiation outright with ERA_NEGOTIATION_FAILED, because nothing answers its
+    // `server/discover` probe. `serveStdio` classifies the opening exchange, pins ONE instance from
+    // the factory for the connection's lifetime, and serves whichever era the client opened with.
+    //
+    // So this returns `transport: null` for the same reason the HTTP branch does: there is no
+    // process-wide transport to connect any more, and `server.connect(transport)` in `runServer()`
+    // would bypass the entry that makes the modern era reachable.
+    const createServer = options.createServer;
+    if (typeof createServer !== "function") {
+        throw new TypeError(
+            "createTransport({type:'stdio'}) requires a createServer factory: the stdio entry " +
+            "pins one instance per connection and owns the era decision."
+        );
+    }
+    const handle = serveStdio(createServer, {
+        // `options.transport` is how a caller drives the stdio entry WITHOUT touching the
+        // process's own stdin/stdout: the entry defaults to real process stdio, which a test
+        // runner must never hand over. It is also the seam the SDK documents for a stdio binding
+        // over a socket rather than a pipe.
+        ...(options.transport ? { transport: options.transport } : {}),
+        onerror: (err) => logger.error(`stdio transport error: ${err.message}`)
+    });
+    return { transport: null, httpServer: null, closeAll: () => handle.close() };
 }
 
 /**

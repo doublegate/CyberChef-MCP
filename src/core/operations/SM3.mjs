@@ -6,8 +6,9 @@
 
 import Operation from "../Operation.mjs";
 import Utils from "../Utils.mjs";
-import Sm3 from "crypto-api/src/hasher/sm3.mjs";
-import {toHex} from "crypto-api/src/encoder/hex.mjs";
+// FORK CHANGE (patches/fork/08): vendored crypto-api -- see src/vendor/crypto-api/README.md
+import Sm3 from "../../vendor/crypto-api/hasher/sm3.mjs";
+import {toHex} from "../../vendor/crypto-api/encoder/hex.mjs";
 
 /**
  * SM3 operation

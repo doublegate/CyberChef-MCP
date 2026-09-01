@@ -43,7 +43,9 @@ This repository hosts the **Model Context Protocol (MCP) Server** adaptation of 
 ### Technology Stack
 - **Runtime:** Node.js **>=24 <27** (matches `package.json` `engines`, and upstream v11.4.0's floor).
   Chainguard distroless, Wolfi-based, in Docker - NOT Alpine.
-- **Protocol:** Model Context Protocol (MCP) via `@modelcontextprotocol/sdk`
+- **Protocol:** Model Context Protocol (MCP) via `@modelcontextprotocol/server` +
+  `@modelcontextprotocol/node` (SDK v2). Serves protocol revision **2026-07-28** and the
+  2025 era from one set of handlers; the era decision lives in the `serveStdio` entry.
 - **Validation:** `zod` and `zod-to-json-schema` for input validation
 - **Build System:** Grunt (legacy config generation) + NPM Scripts
 - **Module System:** ES Modules (`.mjs` files)

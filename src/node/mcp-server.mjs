@@ -13,12 +13,7 @@
  */
 
 import { help } from "./index.mjs";
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import {
-    CallToolRequestSchema, ListToolsRequestSchema,
-    ListPromptsRequestSchema, GetPromptRequestSchema,
-    ListResourcesRequestSchema, ReadResourceRequestSchema, ListResourceTemplatesRequestSchema
-} from "@modelcontextprotocol/sdk/types.js";
+import { Server } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import Utils from "../core/Utils.mjs";
 import OperationConfig from "../core/config/OperationConfig.json" with {type: "json"};
@@ -1234,24 +1229,24 @@ function createMcpServer() {
  * @returns {Server} The same instance, for chaining.
  */
 function registerHandlers(instance) {
-    instance.setRequestHandler(ListToolsRequestSchema, handleListTools);
+    instance.setRequestHandler("tools/list", handleListTools);
     // The instance is bound in as the notification FALLBACK. `extra.sendNotification` remains the
     // primary path -- it is the SDK's documented per-request routing and is correct by
     // construction -- but if a future SDK reshapes `extra`, the fallback must not quietly become
     // "the module singleton", which for an HTTP session is precisely the bug this PR fixes,
     // returning silently. Bound this way it degrades to *this session's* server instead.
-    instance.setRequestHandler(CallToolRequestSchema, (req, extra) => handleCallTool(req, extra, instance));
+    instance.setRequestHandler("tools/call", (req, extra) => handleCallTool(req, extra, instance));
 
     // Prompts: the entry points for someone who does not yet know which of 504 operations
     // they need. See lib/prompts.mjs.
-    instance.setRequestHandler(ListPromptsRequestSchema, () => listPrompts());
-    instance.setRequestHandler(GetPromptRequestSchema, (req) =>
+    instance.setRequestHandler("prompts/list", () => listPrompts());
+    instance.setRequestHandler("prompts/get", (req) =>
         getPrompt(req.params.name, req.params.arguments || {}));
 
     // Resources: saved recipes, browsable without spending a tool call. See lib/resources.mjs.
-    instance.setRequestHandler(ListResourcesRequestSchema, () => listResources(recipeManager));
-    instance.setRequestHandler(ListResourceTemplatesRequestSchema, () => listResourceTemplates());
-    instance.setRequestHandler(ReadResourceRequestSchema, (req) =>
+    instance.setRequestHandler("resources/list", () => listResources(recipeManager));
+    instance.setRequestHandler("resources/templates/list", () => listResourceTemplates());
+    instance.setRequestHandler("resources/read", (req) =>
         readResource(recipeManager, req.params.uri));
 
     return instance;
@@ -1291,6 +1286,11 @@ async function runServer() {
     //
     // Registered only when there is something to close, so stdio -- where the process ending IS
     // the teardown -- keeps its current behaviour and its default signal handling.
+    /* v8 ignore start -- signal wiring: the handlers end in process.exit(), so exercising them
+       in-process would kill the test runner. Covering them would mean mocking process.exit and
+       process.once, which asserts that the mocks were called rather than that the server shuts
+       down -- a number, not a guarantee. What is testable IS tested: transports.mjs's closeAll,
+       which is the part that actually closes sessions and severs sockets, has its own tests. */
     if (typeof closeAll === "function") {
         let shuttingDown = false;
         // POSIX exit status for a signal death: 128 + signum. Exiting 0 tells a supervisor the
@@ -1302,7 +1302,9 @@ async function runServer() {
             if (shuttingDown) return;
             shuttingDown = true;
             const logger = getLogger();
-            logger.info(`${signal} received: closing HTTP sessions and listener`);
+            // Not "HTTP sessions": the socket transport has a `closeAll` too, and naming the wrong
+            // transport in a shutdown line is how an operator ends up debugging the wrong thing.
+            logger.info(`${signal} received: closing connections and listener`);
             closeAll()
                 .catch(err => logger.error(`shutdown failed: ${err.message}`))
                 .finally(() => process.exit(128 + (SIGNAL_NUMBERS[signal] ?? 0)));
@@ -1314,6 +1316,7 @@ async function runServer() {
         process.once("SIGINT", () => shutdown("SIGINT"));
         process.once("SIGTERM", () => shutdown("SIGTERM"));
     }
+    /* v8 ignore stop */
 
     // Log server startup with configuration
     logServerStart({

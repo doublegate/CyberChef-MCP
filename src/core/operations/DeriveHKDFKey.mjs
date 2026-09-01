@@ -7,7 +7,8 @@
 import Operation from "../Operation.mjs";
 import Utils from "../Utils.mjs";
 import OperationError from "../errors/OperationError.mjs";
-import CryptoApi from "crypto-api/src/crypto-api.mjs";
+// FORK CHANGE (patches/fork/08): vendored crypto-api -- see src/vendor/crypto-api/README.md
+import CryptoApi from "../../vendor/crypto-api/crypto-api.mjs";
 
 /**
  * Derive HKDF Key operation
