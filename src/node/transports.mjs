@@ -881,7 +881,12 @@ export async function createTransport(options = {}) {
                 if (!connections.delete(entry)) return;   // already dropped
                 // Close the pinned server instance too. Dropping only the socket would leak one
                 // Server per connection for the process's lifetime.
-                Promise.resolve(handle.close()).catch(() => { /* the peer is already gone */ });
+                // Not awaited, because `drop` is a synchronous close/error listener -- there is
+                // nothing here to await into. Not silent either: a teardown failure is expected
+                // when the peer has already gone, but expected is not the same as uninteresting,
+                // and a close that fails for some OTHER reason should leave a trace.
+                Promise.resolve(handle.close()).catch(err =>
+                    logger.debug(`socket connection teardown failed: ${err.message}`));
                 logger.info(`socket connection closed [${connections.size} active]`);
             };
             socket.once("close", drop);
@@ -938,7 +943,11 @@ export async function createTransport(options = {}) {
                 entry.socket.destroy();
                 try {
                     await entry.handle.close();
-                } catch { /* the peer may already be gone; teardown is best-effort */ }
+                } catch (err) {
+                    // Best-effort by design -- one connection failing to close must not abort the
+                    // shutdown of the others -- but recorded rather than discarded.
+                    logger.debug(`socket connection teardown failed during shutdown: ${err.message}`);
+                }
             }));
             await new Promise((resolve, reject) => {
                 socketServer.close(err => {
