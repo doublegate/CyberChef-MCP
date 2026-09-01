@@ -1058,8 +1058,26 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
                     // The tool receives capabilities, never the engine itself. Today that is one
                     // function; keeping it a named object is what makes "what can a tool reach"
                     // answerable by reading one line rather than by auditing every tool.
-                    const result = await registryTool.run(parsed.data, { bake: bakeOnCore });
-                    const output = typeof result === "string" ? result : JSON.stringify(result, null, 2);
+                    //
+                    // Held to the SAME timeout as an operation. Without this the registry path was
+                    // the one tool path with no time bound at all, which an analysis tool needs
+                    // more than a transformation does: its cost comes from the input's shape
+                    // rather than its size, so it cannot be predicted from a byte count the way
+                    // `validateInputSize` predicts an operation's.
+                    //
+                    // `maxRetries: 0` deliberately. Retrying a timed-out analysis repeats the
+                    // expensive work that caused the timeout -- for an idempotent, purely
+                    // CPU-bound tool a retry can only ever make the same call cost twice as much.
+                    const result = await executeWithTimeoutAndRetry(
+                        () => registryTool.run(parsed.data, { bake: bakeOnCore }),
+                        OPERATION_TIMEOUT,
+                        { requestId, maxRetries: 0, context: { tool: name } }
+                    );
+                    // Every registry tool returns an object; `JSON.stringify` of a bare string
+                    // would wrap it in quotes, so a string branch here would be a silent
+                    // corruption rather than a convenience. If a tool ever needs to return text it
+                    // returns a field containing it.
+                    const output = JSON.stringify(result, null, 2);
                     // `contentSize` takes an array of content BLOCKS, not a raw string -- passing
                     // the argument straight in threw `content.reduce is not a function` and turned
                     // a working analysis into a failed tool call. The input here is a plain string.

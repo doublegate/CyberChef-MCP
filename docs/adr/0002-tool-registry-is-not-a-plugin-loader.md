@@ -15,7 +15,7 @@ properties:
 - A **registry** for tools that are not CyberChef operations — first-party code, written in this
   repository, reviewed here and shipped in the package. Needed regardless: every tool exposed so
   far is derived from `OperationConfig`, a pure `run(input, args)` over one input, and that shape
-  cannot express an *analysis* — trying forty candidate key lengths and scoring each, or composing
+  cannot express an *analysis* — trying dozens of candidate key lengths and scoring each, or composing
   several operations and comparing results. `cyberchef_bake` does not help, because a recipe is a
   linear pipeline, not a loop.
 - A **plugin loader** that reads code from disk at runtime. That is a different trust decision

@@ -33,6 +33,45 @@ import { z } from "zod";
 import { createInputError } from "../errors.mjs";
 
 /**
+ * The largest operand this tool will accept, in characters.
+ *
+ * Cost here is driven by the SIZE of the numbers, not by the iteration count, and the difference
+ * is four orders of magnitude. Measured:
+ *
+ *   fermat, 1,000,000 iterations, 65-bit modulus            582 ms
+ *   fermat,       100 iterations, 262,144-bit modulus    72,125 ms
+ *
+ * So bounding `fermat_iterations` alone bounds nothing. A 262,144-bit "modulus" is not a key --
+ * nobody has generated one -- and it blocked for 72 seconds, well past the 30-second timeout every
+ * operation tool is held to.
+ *
+ * 5,000 characters admits a 16,384-bit key as hex (4,096 chars) or decimal (4,933 digits), far
+ * beyond anything in use; RSA-4096 is already unusual. Above that the input is not a key, so
+ * refusing it costs no real capability.
+ */
+const MAX_OPERAND_CHARS = 5000;
+
+/** Bit length above which an operand is not a key, whatever it claims to be. */
+const MAX_MODULUS_BITS = 16384;
+
+/**
+ * Largest public exponent for which the small-e attack is attempted.
+ *
+ * `integerRoot` computes `hi ** k`, so a large `k` is not slow -- it is fatal:
+ *
+ *     RangeError: Maximum BigInt size exceeded
+ *         at integerRoot (rsa-attack.mjs:131)
+ *
+ * A 400-digit exponent reaches that, and the caller gets an internal V8 error instead of an answer.
+ * `e` cannot be bounded globally, because a LARGE e is the signature Wiener's attack looks for --
+ * a small private exponent implies a large public one -- so the guard belongs on this attack alone.
+ *
+ * 1024 is far past the point of usefulness in any case. Unpadded small-e is meaningful for e = 3,
+ * occasionally 5 or 17; it needs m^e < n, and above a few dozen no message short enough exists.
+ */
+const MAX_SMALL_E = 1024n;
+
+/**
  * Floor integer square root, by Newton's method on BigInt.
  *
  * @param {bigint} n - A non-negative integer.
@@ -122,11 +161,16 @@ function integerRoot(n, k) {
  * @param {number} maxIterations - Bound on the search.
  * @returns {{p: bigint, q: bigint}|null} The factors, or null.
  */
-function fermat(n, maxIterations) {
+async function fermat(n, maxIterations) {
     if (n % 2n === 0n) return { p: 2n, q: n / 2n };
     let a = isqrt(n);
     if (a * a < n) a += 1n;
     for (let i = 0; i < maxIterations; i++) {
+        // Yield to the event loop periodically. Without this the loop is one uninterruptible
+        // synchronous block, and the call timeout wrapped around it cannot fire -- `Promise.race`
+        // never gets a turn, so the "timeout" would resolve only after the work it was meant to
+        // bound had already finished. A bound that cannot be enforced is not a bound.
+        if ((i & 0xfff) === 0xfff) await new Promise(resolve => setImmediate(resolve));
         const b2 = a * a - n;
         if (isPerfectSquare(b2)) {
             const b = isqrt(b2);
@@ -229,11 +273,15 @@ export default {
         openWorldHint: false
     },
     inputSchema: z.object({
-        modulus: z.string().min(1).describe("The modulus n, as decimal or hex."),
-        "public_exponent": z.string().default("65537").describe("The public exponent e."),
-        ciphertext: z.string().optional()
+        // MAX_OPERAND_CHARS bounds every operand. Cost here is driven by the SIZE of the numbers,
+        // not by the iteration count -- see the note on the constant.
+        modulus: z.string().min(1).max(MAX_OPERAND_CHARS)
+            .describe("The modulus n, as decimal or hex."),
+        "public_exponent": z.string().max(MAX_OPERAND_CHARS).default("65537")
+            .describe("The public exponent e."),
+        ciphertext: z.string().max(MAX_OPERAND_CHARS).optional()
             .describe("Optional. Decrypted if the private key is recovered."),
-        "other_modulus": z.string().optional()
+        "other_modulus": z.string().max(MAX_OPERAND_CHARS).optional()
             .describe("A second modulus, to test for a shared prime factor. Breaks both keys if one exists."),
         attacks: z.array(z.enum(["fermat", "common_factor", "wiener", "small_e"])).optional()
             .describe("Which attacks to try. All of them by default."),
@@ -250,6 +298,16 @@ export default {
         const e = parseInteger(args.public_exponent, "public_exponent");
         if (n < 4n) throw createInputError("The modulus must be at least 4.", { modulus: n.toString() });
         if (e < 2n) throw createInputError("The public exponent must be at least 2.", { e: e.toString() });
+        // The character bound is a proxy; this is the real limit. A decimal string well under
+        // MAX_OPERAND_CHARS can still describe a number too large to work with, and every attack
+        // below is superlinear in the operand's bit length.
+        const bits = n.toString(2).length;
+        if (bits > MAX_MODULUS_BITS) {
+            throw createInputError(
+                `The modulus is ${bits} bits. Nothing above ${MAX_MODULUS_BITS} is an RSA key, and ` +
+                "the attacks here are superlinear in its size, so it is refused rather than run.",
+                { bits, maximum: MAX_MODULUS_BITS });
+        }
 
         const requested = args.attacks?.length ?
             new Set(args.attacks) :
@@ -282,7 +340,7 @@ export default {
 
         if (!factors && requested.has("fermat")) {
             attempted.push(`fermat (${args.fermat_iterations} iterations)`);
-            const found = fermat(n, args.fermat_iterations);
+            const found = await fermat(n, args.fermat_iterations);
             if (found) {
                 factors = found;
                 via = "fermat";
@@ -291,11 +349,17 @@ export default {
 
         // Needs no factorisation at all: if m^e never exceeded n, the ciphertext is a plain power.
         let smallE = null;
-        if (requested.has("small_e") && args.ciphertext) {
+        if (requested.has("small_e") && args.ciphertext && e <= MAX_SMALL_E) {
             attempted.push("small_e");
             const c = parseInteger(args.ciphertext, "ciphertext");
             const root = integerRoot(c, e);
             if (root ** e === c) smallE = { message: asMessage(root), "message_int": root.toString() };
+        } else if (requested.has("small_e") && args.ciphertext) {
+            // Skipped rather than attempted, and said so rather than silently omitted: "the
+            // small-e attack found nothing" and "the small-e attack was never run" are different
+            // answers, and only one of them is true here.
+            attempted.push(
+                `small_e (skipped: e is larger than ${MAX_SMALL_E}, so m^e always wraps the modulus)`);
         }
 
         if (!factors) {

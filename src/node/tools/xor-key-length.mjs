@@ -163,7 +163,12 @@ export default {
         openWorldHint: false
     },
     inputSchema: z.object({
-        input: z.string().describe("The ciphertext."),
+        // Bounded by measurement, not by taste. The scan is O(input x max_key_length): at the
+        // 256-length ceiling, 128 KB costs 374 ms and 1 MB costs 3.2 s. The server's general input
+        // ceiling is 100 MB, which here would be roughly five minutes of blocked event loop -- ten
+        // times the 30-second timeout every operation tool is held to. Index of coincidence needs
+        // a few hundred bytes to work, so 1 MB is already far more than the method uses.
+        input: z.string().min(1).max(1048576).describe("The ciphertext. At most 1 MB."),
         "input_format": z.enum(["Raw", "Hex", "Base64"]).default("Raw")
             .describe("How `input` is encoded. Raw treats it as latin1 bytes."),
         "max_key_length": z.number().int().min(1).max(256).default(32)

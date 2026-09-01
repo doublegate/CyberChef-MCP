@@ -197,6 +197,96 @@ describe("xor_key_length", () => {
     }, 60000);
 });
 
+describe("input bounds: what stops a tool blocking the server", () => {
+    const reg = buildRegistry();
+    // `async` deliberately: `inputSchema.parse` throws SYNCHRONOUSLY, so a plain arrow would
+    // throw before returning a promise and every `.rejects` assertion below would miss it.
+    const run = async (name, args) => {
+        const t = reg.getByExposedName(`cyberchef_${name}`);
+        return await t.run(t.inputSchema.parse(args));
+    };
+
+    it("refuses a modulus too large to be a key, in milliseconds rather than minutes", async () => {
+        // The measurement that produced this bound: 100 Fermat iterations against a 262,144-bit
+        // "modulus" blocked for 72 seconds -- more than twice the 30-second timeout every
+        // operation tool is held to, from ONE call. Bounding fermat_iterations does not help,
+        // because the cost is in the size of the numbers: a million iterations against a 65-bit
+        // modulus is 582 ms.
+        const started = Date.now();
+        await expect(run("rsa_attack", { modulus: "f".repeat(65536), "fermat_iterations": 100 }))
+            .rejects.toThrow();
+        expect(Date.now() - started).toBeLessThan(1000);
+    });
+
+    it("catches a modulus that is short as text but huge as a number", async () => {
+        // 4,990 decimal digits is 16,577 bits: inside the character bound and outside the real
+        // one. The character limit is a cheap proxy; the bit length is the property that matters.
+        const n = BigInt("9".repeat(4990));
+        expect(n.toString(2).length).toBeGreaterThan(16384);
+        await expect(run("rsa_attack", { modulus: n.toString() }))
+            .rejects.toThrow(/16577 bits.*Nothing above 16384 is an RSA key/s);
+    });
+
+    it("still accepts a modulus the size of a real RSA-4096 key", async () => {
+        // The bound has to be loose enough to be useless to nobody. RSA-4096 is already unusual,
+        // and this is one of them.
+        const out = await run("rsa_attack",
+            { modulus: "c" + "f".repeat(1023), "fermat_iterations": 50 });
+        expect(out.factored).toBe(false);
+    });
+
+    it("bounds every string argument on every tool", async () => {
+        // Each numeric argument was bounded from the start and every string one was not, which is
+        // the shape of the gap: a schema that looks careful because the obvious fields are capped.
+        await expect(run("xor_key_length", { input: "a".repeat(1048577) })).rejects.toThrow();
+        await expect(run("hash_identify", { input: "a".repeat(4097) })).rejects.toThrow();
+        await expect(run("cyclic_pattern", { mode: "find", fragment: "a".repeat(4097) }))
+            .rejects.toThrow();
+        await expect(run("rsa_attack", { modulus: "1", ciphertext: "9".repeat(5001) }))
+            .rejects.toThrow();
+    });
+
+    it("skips the small-e attack for an exponent that would kill the process", async () => {
+        // integerRoot computes `hi ** k`, so a large k is not slow, it is fatal:
+        // "RangeError: Maximum BigInt size exceeded". A 400-digit exponent reached that and the
+        // caller got an internal V8 error instead of an answer. `e` cannot be bounded globally --
+        // a LARGE e is exactly the signature Wiener's attack looks for.
+        const out = await run("rsa_attack", {
+            modulus: (1000000007n * 1000000009n).toString(),
+            "public_exponent": "9".repeat(400),
+            ciphertext: "12345678901234567",
+            attacks: ["small_e"]
+        });
+        expect(out.small_e_recovery).toBeUndefined();
+        expect(out.attempted.join(" ")).toMatch(/small_e \(skipped/);
+    });
+
+    it("still runs the small-e attack for the exponent it is actually for", async () => {
+        const m = 4241788n;
+        const out = await run("rsa_attack", {
+            modulus: (2n ** 4096n - 1n).toString(), "public_exponent": "3",
+            ciphertext: (m ** 3n).toString(), attacks: ["small_e"]
+        });
+        expect(out.small_e_recovery.message_int).toBe(m.toString());
+    });
+
+    it("leaves the Fermat loop interruptible so a timeout can actually fire", async () => {
+        // A synchronous loop cannot be timed out: Promise.race never gets a turn, so the bound
+        // would only be checked after the work it was meant to bound had finished. The loop
+        // yields, and this proves the event loop still runs during a long search.
+        let ticked = false;
+        const timer = setTimeout(() => {
+            ticked = true;
+        }, 5);
+        await run("rsa_attack", {
+            modulus: (1000003n * 32416190071n).toString(), "fermat_iterations": 200000,
+            attacks: ["fermat"]
+        });
+        clearTimeout(timer);
+        expect(ticked).toBe(true);
+    }, 30000);
+});
+
 describe("the edges that only show up on bad input", () => {
     let tool;
     let bake;

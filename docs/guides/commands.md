@@ -193,7 +193,7 @@ Get current resource quota information including concurrent operations, data siz
 ## Analysis Tools (v2.4.0)
 
 Tools that are not CyberChef operations. An operation is a pure `run(input, args)` over one input,
-which cannot express an *analysis* — scoring forty candidate key lengths, or composing several
+which cannot express an *analysis* — scoring dozens of candidate key lengths, or composing several
 operations and comparing the results. `cyberchef_bake` does not help, because a recipe is a linear
 pipeline, not a loop.
 
@@ -204,8 +204,11 @@ command-line tool.
 Recover the key length of a repeating-key XOR by index of coincidence, then guess the key and
 decrypt.
 
-**Arguments:** `input` (required), `input_format` (`Hex`/`Base64`/`Raw`, default `Hex`),
-`max_key_length` (default 40), `candidates` (default 5), `preview_bytes` (default 256)
+**Arguments:** `input` (required, at most 1 MB), `input_format` (`Raw`/`Hex`/`Base64`, default
+`Raw`), `max_key_length` (default 32), `candidates` (default 5), `preview_bytes` (default 256)
+
+`input_format` defaults to `Raw`, so pass `"input_format": "Hex"` explicitly when the ciphertext is
+hex — analysing hex text as raw bytes gives a confident wrong answer rather than an error.
 
 **Example:**
 ```json

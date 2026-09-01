@@ -9,11 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2.4.0] - 2026-09-01
 
+### Security
+
+- **Every string argument on the four new tools is now bounded, and the registry path is held to the
+  same 30-second timeout as an operation.** The numeric arguments were all bounded from the start
+  and none of the string ones were, which is what made the gap easy to miss. Measurement settled
+  which bound mattered: 1,000,000 Fermat iterations against a 65-bit modulus costs 582 ms, while
+  **100 iterations against a 262,144-bit one blocked for 72 seconds** — the cost is in the size of
+  the numbers, so `fermat_iterations` bounded nothing. `xor_key_length` had the same shape more
+  gently (3.2 s at 1 MB, roughly five minutes at the server's 100 MB ceiling). Fixed with per-tool
+  limits carrying stated reasons, a bit-length guard behind the character limit (4,990 decimal
+  digits is 16,577 bits — inside one bound and outside the other), the operation timeout applied to
+  registry tools with retries off, and a cooperative yield in the Fermat loop so that timeout can
+  actually fire. Verified end to end: **72,125 ms → 2 ms**, with a genuine RSA-4096 modulus still
+  accepted. Found by the Antigravity reviewer on PR #100.
+- **The small-`e` attack is no longer reachable with an exponent that kills the process.**
+  `integerRoot` computes `hi ** k` with `k` the caller's public exponent, and raising to a huge
+  power is fatal rather than slow — a 400-digit exponent, well inside the bound above, returned
+  `RangeError: Maximum BigInt size exceeded` instead of an answer. Bounding `e` globally would be
+  wrong: a *large* `e` is exactly the signature Wiener's attack looks for, so the guard is on the
+  small-`e` attack alone, which is meaningful only for `e = 3` and occasionally 5 or 17. Skipping is
+  reported in `attempted` rather than silently omitted. Found by Copilot on PR #100.
+
 ### Added
 
 - **A tool registry** for tools that are not CyberChef operations (`src/node/tools/`). Every tool so
   far is derived from `OperationConfig` — a pure `run(input, args)` over one input — which cannot
-  express an *analysis*: scoring forty candidate key lengths, or composing several operations and
+  express an *analysis*: scoring dozens of candidate key lengths, or composing several operations and
   comparing results. `cyberchef_bake` does not help, because a recipe is a linear pipeline, not a
   loop. Registry tools receive capabilities (`{ bake }`), never the engine itself.
 - **`cyberchef_xor_key_length`** — recovers the key length of a repeating-key XOR by index of
@@ -47,6 +69,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   explicit import. "Sandboxed execution" is not achievable with `node:vm` — a host capability handed
   into a vm context reaches the real `process`, and every useful tool needs a capability. Recorded
   with the measurement in [ADR 0002](docs/adr/0002-tool-registry-is-not-a-plugin-loader.md).
+- **Three more documents corrected to describe the code that exists.** `deBruijn` carried a comment
+  claiming it was "written iteratively: an explicit stack rather than recursion because a long
+  pattern nests deeply enough to matter" — it is recursive, and depth is bounded by the subsequence
+  length (at most 8) rather than by the pattern length, so the justification was invented for a
+  decision nobody made. The tools guide documented `xor_key_length` as defaulting to
+  `input_format: Hex` and `max_key_length: 40` where the schema says `Raw` and `32`; a caller
+  trusting that would omit `input_format` for hex input and get a confident wrong key length rather
+  than an error. And the registry was described as guarding against "506 operation tools" where
+  `OperationConfig` holds 504.
 - **The third-party notices no longer claim work that has not happened.** The reference-tool
   section said eight projects had been "incorporated in v2.0.0" with per-file provenance comments
   naming a source file and commit. What the tools actually take is a wire format, an algorithm

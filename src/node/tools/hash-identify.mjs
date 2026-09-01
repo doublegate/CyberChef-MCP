@@ -116,7 +116,13 @@ export default {
         openWorldHint: false
     },
     inputSchema: z.object({
-        input: z.string().min(1).describe("The hash, one per call. Whitespace is trimmed.")
+        // Bounded on domain grounds rather than performance: matching is a list of anchored
+        // regexes over single character classes, so it is linear -- 8 MB of junk costs 56 ms, and
+        // there is no backtracking to exploit. But no hash is 8 MB. The longest format here is a
+        // NetNTLMv2 line at a few hundred characters, so past 4 KB it is not a hash, and accepting
+        // it only invites someone to find out what else is linear.
+        input: z.string().min(1).max(4096)
+            .describe("The hash, one per call. Whitespace is trimmed.")
     }),
 
     /**

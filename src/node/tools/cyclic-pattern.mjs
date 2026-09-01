@@ -39,8 +39,9 @@ function deBruijn(alphabet, n, length) {
     const a = new Array(k * n).fill(0);
     const out = [];
 
-    // Standard recursive construction, written iteratively: an explicit stack rather than
-    // recursion because a long pattern over a small alphabet nests deeply enough to matter.
+    // The standard recursive construction, left recursive. Depth is bounded by `n` -- the
+    // subsequence length, capped at 8 -- and NOT by the pattern length, so a 1 MB pattern nests
+    // no deeper than an 8-byte one. An explicit stack would buy nothing here.
     const db = (t, p) => {
         if (out.length >= length) return;
         if (t > n) {
@@ -130,7 +131,9 @@ export default {
         mode: z.enum(["generate", "find"]).describe("Generate a pattern, or find an offset in one."),
         length: z.number().int().min(1).max(1048576).default(1024)
             .describe("generate: how many bytes to produce. find: how long the pattern was."),
-        fragment: z.string().optional()
+        // A fragment is a register value or a handful of bytes, and `length` is already bounded at
+        // 1 MB -- a fragment larger than the pattern cannot be in it.
+        fragment: z.string().max(4096).optional()
             .describe("find: the bytes recovered, as text or hex (e.g. \"aabc\" or 0x63626161)."),
         "fragment_format": z.enum(["Auto", "Text", "Hex"]).default("Auto")
             .describe("find: how to read `fragment`. Auto tries hex first, then text."),
