@@ -19,12 +19,12 @@ export default defineConfig({
             social: [
                 { icon: "github", label: "GitHub", href: "https://github.com/doublegate/CyberChef-MCP" }
             ],
-            editLink: {
-                // Points at the SOURCE file under docs/, not at the generated copy under
-                // src/content/docs/ -- an edit link that lands on a build artefact invites a change
-                // the next build silently discards.
-                baseUrl: "https://github.com/doublegate/CyberChef-MCP/edit/master/"
-            },
+            // Per-page `editUrl` and `lastUpdated` are emitted by collect.mjs from each page's
+            // SOURCE file, because a site-wide `editLink.baseUrl` would append the GENERATED path
+            // -- sending a contributor to a build artefact whose changes the next build discards --
+            // and `lastUpdated: true` would read git history for a regenerated, gitignored file
+            // that has none. Generated pages (the tool reference) carry `editUrl: false`, since
+            // there is no single file to edit.
             lastUpdated: true,
             favicon: "/favicon.svg",
             customCss: ["./src/styles/custom.css"],

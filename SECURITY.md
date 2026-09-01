@@ -126,11 +126,15 @@ What is switched on, so you know what protects this project and what does not:
 | Secret scanning | **Enabled** |
 | Secret scanning push protection | **Enabled** |
 | Code scanning (CodeQL) | **Enabled** — push, PR, and weekly |
-| Secret scanning: non-provider patterns | Not available (requires GitHub Advanced Security) |
-| Secret scanning: validity checks | Not available (requires GitHub Advanced Security) |
+| Secret scanning: non-provider patterns | Not enabled — the repository-level setting requires GitHub Secret Protection |
+| Secret scanning: validity checks (partner patterns) | Not enabled — same |
 
 The last two are listed rather than omitted: they are off because the plan this repository is on
-does not offer them, not because they were considered and declined.
+does not offer the repository-level setting, not because they were considered and declined. The
+REST API accepts a request enabling them and silently leaves them disabled, which is how their
+state was established rather than assumed. Note the scope: GitHub still performs its own token
+validity checking; what is unavailable here is the repository-level setting covering partner
+patterns.
 
 ### Security Audits
 
@@ -139,8 +143,10 @@ does not offer them, not because they were considered and declined.
   and two related findings privately to upstream (GHSA-hj7h-fgw7-x6w8). Closed a `umask` window
   before the Unix socket's `chmod` (CWE-732), and a CodeQL `js/insecure-temporary-file` in the test
   suite. Coverage gate raised from 75/70/90/75 to 95/88/96/96.
-- **v2.1.1 (2026-08-31)**: 55 open alerts dispositioned — fixed, suppressed with a written
-  justification, or dismissed with a reason.
+- **v2.1.1 (2026-08-31)**: **55 code-scanning alerts** dispositioned on `master` — fixed, suppressed with a written justification, or dismissed with a reason. See
+  [docs/security/2026-08-31-code-scanning-disposition.md](docs/security/2026-08-31-code-scanning-disposition.md).
+  The separate open-alert sweep below covers a different set (3 Dependabot, 10 code-scanning);
+  the two counts are not the same number seen twice.
 - **2026-08-31**: Full sweep of every open Dependabot and code-scanning alert — CVE-2026-42615 (XSS in `Show Base64 offsets`) fixed by adopting upstream's file, minimatch and uuid cleared at the root, Dockerfile pinned by digest and given an explicit non-root `USER`, one justified `.trivyignore` entry, three CodeQL alerts on upstream-identical code dismissed with reasons. See [docs/security/2026-08-31-open-alert-sweep.md](docs/security/2026-08-31-open-alert-sweep.md).
 - **v1.3.0**: Upstream sync automation, comprehensive MCP validation testing, GitHub Actions security best practices
 - **v1.2.6**: Web app Dockerfile nginx:alpine-slim optimization with non-root permission fixes

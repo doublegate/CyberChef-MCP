@@ -40,6 +40,10 @@ jobs:
       - uses: actions/checkout@v5
         with:
           submodules: false
+          # A `release` event checks out the RELEASE TAG by default, so publishing a release from
+          # an older tag would deploy that tag's documentation over the current site. Pages only
+          # ever serves the default branch, so the source is pinned to it explicitly.
+          ref: ${{ github.event_name == 'release' && 'master' || github.ref }}
 
       - uses: actions/setup-node@v5
         with:

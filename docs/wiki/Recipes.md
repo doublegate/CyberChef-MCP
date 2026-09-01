@@ -78,13 +78,19 @@ inspection and never what you want for a security decision. Use `JWT Verify` wit
 ## Steganography and file carving
 
 ```json
-{ "recipe": [{ "op": "Detect File Type" },
-              { "op": "Extract EXIF" },
-              { "op": "Scan for Embedded Files" }] }
+{ "input": "<base64 image>", "recipe": [{ "op": "Detect File Type" }] }
 ```
 
-Run the steps separately rather than chained — each consumes the original bytes, and you want all
-three answers, not the last one. `Extract LSB` and `View Bit Plane` are the next moves when a PNG
+```json
+{ "input": "<base64 image>", "recipe": [{ "op": "Extract EXIF" }] }
+```
+
+```json
+{ "input": "<base64 image>", "recipe": [{ "op": "Scan for Embedded Files" }] }
+```
+
+Three separate calls, not one chained recipe — each consumes the original bytes, so a chain would
+give you only the last answer. `Extract LSB` and `View Bit Plane` are the next moves when a PNG
 looks larger than its content justifies.
 
 ## Images come back as images
@@ -112,9 +118,15 @@ suggests it is not. Pair with `Chi Square` and `Frequency distribution`.
 ## Classical ciphers (CTF)
 
 ```json
-{ "recipe": [{ "op": "ROT13 Brute Force" }] }
-{ "recipe": [{ "op": "Vigenère Decode", "args": { "key": "cyberchef" } }] }
-{ "recipe": [{ "op": "XOR Brute Force", "args": { "key_length": 1, "crib": "flag{" } }] }
+{ "input": "<ciphertext>", "recipe": [{ "op": "ROT13 Brute Force" }] }
+```
+
+```json
+{ "input": "<ciphertext>", "recipe": [{ "op": "Vigenère Decode", "args": { "key": "cyberchef" } }] }
+```
+
+```json
+{ "input": "<ciphertext>", "recipe": [{ "op": "XOR Brute Force", "args": { "key_length": 1, "crib": "flag{" } }] }
 ```
 
 The `crib` argument on `XOR Brute Force` is the one that turns 255 candidate outputs into one

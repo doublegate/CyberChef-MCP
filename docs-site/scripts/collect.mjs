@@ -27,6 +27,7 @@
  */
 
 import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { dirname, join, resolve, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -131,14 +132,40 @@ function stripTitle(body) {
  * @param {string} body - Markdown body.
  * @param {number} [order] - Sidebar order.
  */
-function emit(section, slug, title, description, body, order) {
+/**
+ * The last commit date for a repository path, for a source-derived `lastUpdated`.
+ *
+ * Starlight's own `lastUpdated` reads git history for the file it rendered -- which here is a
+ * regenerated, gitignored copy with no history at all. Left alone it would show every page as
+ * changing on every build, which is worse than showing nothing. The date comes from the SOURCE.
+ *
+ * @param {string} repoPath - Repository-relative path.
+ * @returns {string|null} ISO date, or null if git is unavailable or the file is untracked.
+ */
+function sourceDate(repoPath) {
+    try {
+        const out = execFileSync("git", ["log", "-1", "--format=%cI", "--", repoPath],
+            { cwd: REPO, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+        return out || null;
+    } catch {
+        return null;   // a shallow clone or an untracked file: omit rather than invent a date
+    }
+}
+
+function emit(section, slug, title, description, body, order, sourcePath) {
     const dir = join(OUT, section);
     mkdirSync(dir, { recursive: true });
+    const updated = sourcePath ? sourceDate(sourcePath) : null;
     const fm = [
         "---",
         `title: ${yaml(title)}`,
         description ? `description: ${yaml(description)}` : null,
         order !== undefined ? `sidebar:\n  order: ${order}` : null,
+        // Point the edit link at the file someone should actually edit. Starlight would otherwise
+        // append the GENERATED path, sending a contributor to a build artefact whose changes the
+        // next build discards.
+        sourcePath ? `editUrl: ${yaml("https://github.com/doublegate/CyberChef-MCP/edit/master/" + sourcePath)}` : "editUrl: false",
+        updated ? `lastUpdated: ${updated}` : null,
         "---",
         ""
         // `!== null`, NOT `Boolean`: the trailing "" is the blank line that separates the
@@ -169,10 +196,15 @@ let count = 0;
 for (const [i, [section, src, slug, title, description]] of PAGES.entries()) {
     const abs = join(REPO, src);
     if (!existsSync(abs)) {
-        console.error(`  MISSING (skipped): ${src}`);
-        continue;
+        // Fail, do not skip. The generated reference alone clears the workflow's 50-page floor,
+        // so a curated page that was moved or deleted would vanish from the site with the build
+        // still green -- the site quietly losing a page it promises is worse than a red build.
+        // When a page is removed on purpose, remove it from PAGES in the same change.
+        throw new Error(
+            `collect: allowlisted source is missing: ${src}\n` +
+            "  If this page was removed or renamed deliberately, update PAGES in this script.");
     }
-    emit(section, slug, title, description, rewriteLinks(stripTitle(readFileSync(abs, "utf8")), src), i);
+    emit(section, slug, title, description, rewriteLinks(stripTitle(readFileSync(abs, "utf8")), src), i, src);
     count++;
 }
 
@@ -186,7 +218,7 @@ releases.forEach((f, i) => {
     const src = `docs/releases/${f}`;
     const version = f.replace(/\.md$/, "");
     emit("releases", releaseSlug(f), `${version} release notes`, `What changed in ${version}.`,
-        rewriteLinks(stripTitle(readFileSync(join(REPO, src), "utf8")), src), i);
+        rewriteLinks(stripTitle(readFileSync(join(REPO, src), "utf8")), src), i, src);
     count++;
 });
 
@@ -270,7 +302,7 @@ if (!existsSync(configPath)) {
             ...modules.map(m => `| [${m}](/CyberChef-MCP/reference/${m.toLowerCase()}/) | ${byCategory.get(m).length} |`),
             "",
             `**${Object.keys(config).length} operations in ${modules.length} categories.**`
-        ].join("\n"), 0);
+        ].join("\n"), 0, null);
     count++;
 
     modules.forEach((mod, i) => {
@@ -311,7 +343,7 @@ if (!existsSync(configPath)) {
             lines.push("");
         }
         emit("reference", mod.toLowerCase(), mod, `${ops.length} CyberChef operations in the ${mod} category.`,
-            lines.join("\n"), i + 1);
+            lines.join("\n"), i + 1, null);
         count++;
     });
 }
