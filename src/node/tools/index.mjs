@@ -14,10 +14,13 @@
  */
 
 import { ToolRegistry } from "./registry.mjs";
+import cyclicPattern from "./cyclic-pattern.mjs";
+import hashIdentify from "./hash-identify.mjs";
+import rsaAttack from "./rsa-attack.mjs";
 import xorKeyLength from "./xor-key-length.mjs";
 
 /** Tools, in the order they should appear in `tools/list`. */
-const TOOLS = [xorKeyLength];
+const TOOLS = [cyclicPattern, hashIdentify, rsaAttack, xorKeyLength];
 
 /**
  * Build the registry.

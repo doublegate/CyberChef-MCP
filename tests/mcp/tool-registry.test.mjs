@@ -248,3 +248,314 @@ describe("the edges that only show up on bad input", () => {
         expect(out.confidence.note).toMatch(/random|samples per column/);
     }, 30000);
 });
+
+describe("cyclic_pattern", () => {
+    const tool = buildRegistry().getByExposedName("cyberchef_cyclic_pattern");
+    const run = (args) => tool.run(tool.inputSchema.parse(args));
+
+    it("generates the same pattern pwntools does", async () => {
+        // The whole value of this tool is interoperability: an offset found here has to match the
+        // one a colleague found with `cyclic -l`. Pinned to pwntools' canonical output, which is
+        // the de-facto standard for the format.
+        const out = await run({ mode: "generate", length: 20 });
+        expect(out.pattern).toBe("aaaabaaacaaadaaaeaaa");
+    });
+
+    it("finds the offset of a fragment", async () => {
+        const out = await run({ mode: "find", fragment: "aaha" });
+        expect(out.most_likely.offset).toBe(26);
+        expect(out.most_likely.reading).toBe("text");
+    });
+
+    it("reads a register value both ways round and offers both offsets", async () => {
+        // A crash dump gives you a register, not a string, and the endianness is often unknown.
+        // Silently picking one would hand back a plausible wrong number, so both are returned.
+        const out = await run({ mode: "find", fragment: "0x61616861" });
+        const readings = out.offsets.map(o => `${o.reading}:${o.offset}`);
+        expect(readings).toEqual(expect.arrayContaining([
+            "hex, big-endian:26", "hex, little-endian:27"
+        ]));
+        expect(out.note).toMatch(/More than one reading matched/);
+    });
+
+    it("every window of the pattern is unique, which is what the offset lookup rests on", async () => {
+        const out = await run({ mode: "generate", length: 1024, "subsequence_length": 4 });
+        const windows = new Set();
+        for (let i = 0; i + 4 <= out.pattern.length; i++) windows.add(out.pattern.slice(i, i + 4));
+        expect(windows.size).toBe(out.pattern.length - 3);
+    });
+
+    it("refuses a pattern longer than the alphabet can keep unique", async () => {
+        // 26^2 = 676 distinct 2-byte windows. Producing 700 would repeat, and a repeated window
+        // makes every offset ambiguous -- the one failure mode that matters for this tool.
+        await expect(run({ mode: "generate", length: 700, "subsequence_length": 2 }))
+            .rejects.toThrow(/676 unique bytes/);
+    });
+
+    it("says the fragment is absent rather than guessing an offset", async () => {
+        await expect(run({ mode: "find", fragment: "zzzz" }))
+            .rejects.toThrow(/does not appear in a 1024-byte pattern/);
+    });
+});
+
+describe("hash_identify", () => {
+    const tool = buildRegistry().getByExposedName("cyberchef_hash_identify");
+    const run = (args) => tool.run(tool.inputSchema.parse(args));
+
+    /** Canonical published examples, one per structural format. */
+    const CASES = [
+        ["$2b$12$GhvMmNVjRW29ulnudl.LbuAnUtN/LRfe1JsBm1Xu6LE3059z5Tr8m", "bcrypt", 3200],
+        ["$6$usesomesillystri$nnCrG0XcyKwkRXepV1dRXhqEhP0r2sdjV8bt5gCcljMzCikm9bUX/" +
+            "7p3XFtKdxi5sTwUISBZHwcTXhwXYM/rl1", "sha512crypt", 1800],
+        ["$1$28772684$iEwNOgGugqO9.bIz5sk8k/", "md5crypt", 500],
+        ["$argon2id$v=19$m=65536,t=3,p=4$c29tZXNhbHQ$RdescudvJCsgt3ub+b+dWRWJTmaaJObG",
+         "argon2id", null],
+        ["$P$984478476IagS59wHZvyQMArzfx58u.", "PHPass (WordPress, phpBB)", 400],
+        ["pbkdf2_sha256$260000$abcdefghij$3jFPQqZq0dCJmZWJVbSbwWJcz3Ns1MoLDVLLbAMHhIA=",
+         "Django PBKDF2-SHA256", 10000],
+        ["{SSHA}0l+HRHhaXA5Y5S6Bh8gYZ+D9dxYzYWx0", "LDAP SSHA (salted SHA-1)", 111],
+        ["*2470C0C06DEE42FD1618BB99005ADCA2EC9D1E19", "MySQL 4.1+ (SHA-1 twice)", 300]
+    ];
+
+    it.each(CASES)("identifies %s as %s", async (hash, format, hashcat) => {
+        const out = await run({ input: hash });
+        expect(out.most_likely.format).toBe(format);
+        expect(out.most_likely.confidence).toBe("structural");
+        if (hashcat !== null) expect(out.most_likely.hashcat_mode).toBe(hashcat);
+    });
+
+    it("recognises the explicit-rounds form of a crypt hash", async () => {
+        // glibc writes `$6$rounds=N$` when the round count is not the default, and that extra
+        // field is a separate branch of the pattern. The digest below is the real hash above with
+        // the rounds field spliced in: only the structure is under test here, not the digest.
+        const out = await run({
+            input: "$6$rounds=656000$usesomesillystri$nnCrG0XcyKwkRXepV1dRXhqEhP0r2sdjV8bt5gCcl" +
+                "jMzCikm9bUX/7p3XFtKdxi5sTwUISBZHwcTXhwXYM/rl1"
+        });
+        expect(out.most_likely.format).toBe("sha512crypt");
+    });
+
+    it("gives a runnable hashcat line and the John format name", async () => {
+        const out = await run({
+            input: "$2b$12$GhvMmNVjRW29ulnudl.LbuAnUtN/LRfe1JsBm1Xu6LE3059z5Tr8m"
+        });
+        expect(out.next).toBe("hashcat -m 3200");
+        expect(out.most_likely.john_format).toBe("bcrypt");
+        expect(out.ambiguous).toBe(false);
+    });
+
+    it("does not pretend a bare hex digest is one algorithm", async () => {
+        // 32 hex characters is MD5, NTLM, MD4 and more. Naming one would be a guess dressed as an
+        // answer, so all are listed, `ambiguous` is set, and the note says what the evidence is.
+        const out = await run({ input: "5f4dcc3b5aa765d61d8327deb882cf99" });
+        const formats = out.candidates.map(c => c.format);
+        expect(formats).toEqual(expect.arrayContaining(["MD5", "NTLM", "MD4"]));
+        expect(out.ambiguous).toBe(true);
+        expect(out.candidates.every(c => c.confidence === "length only")).toBe(true);
+        expect(out.note).toMatch(/length ALONE/);
+    });
+
+    it("recognises a JWT and says it is not a password hash", async () => {
+        const out = await run({
+            input: "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0." +
+                "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+        });
+        expect(out.most_likely.format).toBe("JWT");
+        expect(out.most_likely.note).toMatch(/Not a password hash/);
+    });
+
+    it("returns no candidates rather than a wrong one for something that is not a hash", async () => {
+        const out = await run({ input: "hello world" });
+        expect(out.identified).toBe(false);
+        expect(out.candidates).toEqual([]);
+        expect(out.note).toMatch(/cyberchef_magic/);
+    });
+});
+
+describe("rsa_attack", () => {
+    const tool = buildRegistry().getByExposedName("cyberchef_rsa_attack");
+    const run = (args) => tool.run(tool.inputSchema.parse(args));
+
+    /** Modular inverse, to build a Wiener case from a chosen small d. */
+    const modinv = (a, m) => {
+        let [old, r] = [a % m, m];
+        let [s, t] = [1n, 0n];
+        while (r) {
+            const q = old / r;
+            [old, r] = [r, old - q * r];
+            [s, t] = [t, s - q * t];
+        }
+        return ((s % m) + m) % m;
+    };
+
+    it("factors a modulus whose primes are close together (Fermat)", async () => {
+        const p = 1000000007n, q = 1000000009n;
+        const out = await run({ modulus: (p * q).toString() });
+        expect(out.factored).toBe(true);
+        expect(out.via).toBe("fermat");
+        expect([out.p, out.q].sort()).toEqual([p.toString(), q.toString()].sort());
+        expect(out.assessment).toMatch(/close together/);
+    });
+
+    it("breaks both keys when two moduli share a prime", async () => {
+        const shared = 32416190071n;
+        const n1 = shared * 32416189381n;
+        const n2 = shared * 32416187567n;
+        const out = await run({ modulus: n1.toString(), "other_modulus": n2.toString() });
+        expect(out.via).toBe("common_factor");
+        expect([out.p, out.q]).toContain(shared.toString());
+        expect(out.assessment).toMatch(/BOTH keys are broken/);
+    });
+
+    it("recovers a private exponent that was chosen small (Wiener)", async () => {
+        const p = 1000003n, q = 1000033n;
+        const phi = (p - 1n) * (q - 1n);
+        const d = 5n;
+        const out = await run({
+            modulus: (p * q).toString(),
+            "public_exponent": modinv(d, phi).toString(),
+            attacks: ["wiener"]
+        });
+        expect(out.via).toBe("wiener");
+        expect(out.private_exponent).toBe("5");
+    });
+
+    it("recovers an unpadded small-e message without factoring anything", async () => {
+        // e=3 and a message short enough that m^3 never wrapped the modulus. This is a padding
+        // failure, not a key failure, and the tool has to report it as the former.
+        const m = 4241788n;
+        const out = await run({
+            modulus: (2n ** 2048n - 1n).toString(),
+            "public_exponent": "3",
+            ciphertext: (m ** 3n).toString(),
+            attacks: ["small_e"]
+        });
+        expect(out.factored).toBe(false);
+        expect(out.small_e_recovery.message_int).toBe(m.toString());
+        expect(out.assessment).toMatch(/padding failure/);
+    });
+
+    it("decrypts a ciphertext once it has the factors", async () => {
+        const p = 1000000007n, q = 1000000009n, n = p * q, e = 65537n;
+        const plain = 123456789n;
+        let c = 1n, b = plain % n, ex = e;
+        while (ex > 0n) {
+            if (ex & 1n) c = c * b % n;
+            b = b * b % n;
+            ex >>= 1n;
+        }
+        const out = await run({ modulus: n.toString(), ciphertext: c.toString() });
+        expect(out.plaintext_int).toBe(plain.toString());
+        expect(out.padding_note).toMatch(/padding/);
+    });
+
+    it("reports a key it cannot break as unbroken, without claiming it is strong", async () => {
+        // Distant primes, so Fermat will not reach it in the iteration budget. The wording matters
+        // as much as the result: four ruled-out flaws is not a proof of strength, and a tool that
+        // implies otherwise is worse than one that says nothing.
+        const out = await run({
+            modulus: (1000003n * 32416190071n).toString(),
+            "fermat_iterations": 500
+        });
+        expect(out.factored).toBe(false);
+        expect(out.assessment).toMatch(/NOT proof the key is strong/);
+        expect(out.next).toMatch(/other_modulus/);
+    });
+
+    it("accepts hex as well as decimal, and refuses anything that is neither", async () => {
+        const p = 1000000007n, q = 1000000009n;
+        const out = await run({ modulus: "0x" + (p * q).toString(16) });
+        expect(out.factored).toBe(true);
+
+        await expect(run({ modulus: "not a number" })).rejects.toThrow(/not an integer/);
+    });
+
+    it("flags a ciphertext that cannot belong to the key instead of returning nonsense", async () => {
+        const p = 1000000007n, q = 1000000009n, n = p * q;
+        const out = await run({ modulus: n.toString(), ciphertext: (n + 1n).toString() });
+        expect(out.factored).toBe(true);
+        expect(out.plaintext).toBeUndefined();
+        expect(out.decryption_error).toMatch(/not smaller than the modulus/);
+    });
+
+    it("takes the trivial factor out of an even modulus instead of searching for it", async () => {
+        const out = await run({ modulus: (2n * 1000000007n).toString() });
+        expect(out.p).toBe("2");
+        expect(out.q).toBe("1000000007");
+    });
+
+    it("reads bare hex, which is how a modulus is usually pasted", async () => {
+        // No 0x prefix, and not readable as decimal. Decimal wins where both readings are possible,
+        // because guessing wrong there would change the answer without saying so.
+        const p = 1000000007n, q = 1000000009n;
+        const out = await run({ modulus: (p * q).toString(16) });
+        expect(out.factored).toBe(true);
+        expect([out.p, out.q]).toContain(p.toString());
+    });
+
+    it("renders a non-printable plaintext as hex rather than as mojibake", async () => {
+        const p = 1000000007n, q = 1000000009n, n = p * q, e = 65537n;
+        const plain = 999999999999n;                       // bytes well outside printable ASCII
+        let c = 1n, b = plain % n, ex = e;
+        while (ex > 0n) {
+            if (ex & 1n) c = c * b % n;
+            b = b * b % n;
+            ex >>= 1n;
+        }
+        const out = await run({ modulus: n.toString(), ciphertext: c.toString() });
+        expect(out.plaintext).toMatch(/^0x[0-9a-f]+$/);
+        expect(out.plaintext_int).toBe((plain % n).toString());
+    });
+
+    it("does not treat two identical moduli as a shared-factor break", async () => {
+        // gcd(n, n) is n, which factors nothing. Reporting it as a break would be the worst kind
+        // of false positive: confident, and about a key that may be perfectly sound.
+        const n = 1000003n * 32416190071n;
+        const out = await run({
+            modulus: n.toString(), "other_modulus": n.toString(),
+            attacks: ["common_factor"], "fermat_iterations": 1
+        });
+        expect(out.factored).toBe(false);
+        expect(out.attempted).toContain("common_factor");
+    });
+
+    it("does not suggest supplying a second modulus when one was already given", async () => {
+        const out = await run({
+            modulus: (1000003n * 32416190071n).toString(),
+            "other_modulus": (1000033n * 32416187567n).toString(),
+            "fermat_iterations": 200
+        });
+        expect(out.factored).toBe(false);
+        expect(out.next).toMatch(/fermat_iterations/);
+        expect(out.next).not.toMatch(/pass one as other_modulus/);
+    });
+
+    it("reports a small-e recovery alongside the factors when both succeed", async () => {
+        // Both paths can fire on one call: the key is weak AND the ciphertext was unpadded. The
+        // report has to carry both, because they are separate defects with separate fixes.
+        const p = 1000000007n, q = 1000000009n;
+        const m = 4241n;
+        const out = await run({
+            modulus: (p * q).toString(), "public_exponent": "3", ciphertext: (m ** 3n).toString()
+        });
+        expect(out.factored).toBe(true);
+        expect(out.small_e_recovery.message_int).toBe(m.toString());
+    });
+
+    it("refuses a modulus or exponent too small to be a key at all", async () => {
+        await expect(run({ modulus: "3" })).rejects.toThrow(/at least 4/);
+        await expect(run({ modulus: "15", "public_exponent": "1" }))
+            .rejects.toThrow(/at least 2/);
+    });
+
+    it("still returns correct factors when e and phi(n) are not coprime", async () => {
+        // p-1 and q-1 are both even, so e=2 shares a factor with phi and no private exponent
+        // exists. The factorisation is still right, and saying "factored, but no d" is the honest
+        // answer -- returning a bogus d, or throwing away the factors, would both be worse.
+        const p = 1000000007n, q = 1000000009n;
+        const out = await run({ modulus: (p * q).toString(), "public_exponent": "2" });
+        expect(out.factored).toBe(true);
+        expect(out.private_exponent).toBe(null);
+        expect(out.warning).toMatch(/not coprime/);
+    });
+});

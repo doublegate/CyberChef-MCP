@@ -18,6 +18,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   coincidence, then guesses the key and decrypts. Reports ranked candidates with scores and a
   confidence figure relative to random, because the method is least reliable on short inputs and on
   plaintext with its own strong period.
+- **`cyberchef_cyclic_pattern`** — generates a De Bruijn pattern and finds the offset of a fragment
+  in it, for locating the return-address bytes in a stack overflow. Byte-compatible with pwntools'
+  `cyclic`, so an offset found here matches one found there. Reads a recovered register value as hex
+  in either endianness and returns both offsets when both match, rather than picking one silently.
+  Refuses a pattern longer than the alphabet can keep unique — past that point every offset it could
+  report would be ambiguous.
+- **`cyberchef_hash_identify`** — identifies a password hash by structure and returns the hashcat
+  mode and John format name, so the output is a command you can run. Falls back to digest length for
+  bare hex, and says so: 32 hex characters is MD5, NTLM, MD4 and more, and naming one would be a
+  guess dressed as an answer. Fills a real gap — CyberChef computes around forty digests and cannot
+  tell you what one is, and `Magic` reports `Invalid hash` for bcrypt, sha512crypt and argon2.
+- **`cyberchef_rsa_attack`** — tests an RSA public key for the four generation flaws that make it
+  breakable (Fermat's close primes, a prime shared with a second modulus, Wiener's small private
+  exponent, unpadded small `e`) and recovers the private key when one applies, decrypting a supplied
+  ciphertext. None of these threatens a correctly generated key, so a negative result is reported as
+  four flaws ruled out — explicitly *not* as evidence the key is strong. CyberChef can encrypt,
+  decrypt, sign, verify and generate RSA keys, and had no way to assess one.
 
 ### Changed
 
@@ -28,6 +45,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   explicit import. "Sandboxed execution" is not achievable with `node:vm` — a host capability handed
   into a vm context reaches the real `process`, and every useful tool needs a capability. Recorded
   with the measurement in [ADR 0002](docs/adr/0002-tool-registry-is-not-a-plugin-loader.md).
+- **The third-party notices no longer claim work that has not happened.** The reference-tool
+  section said eight projects had been "incorporated in v2.0.0" with per-file provenance comments
+  naming a source file and commit. What the tools actually take is a wire format, an algorithm
+  choice or an identifier table, and four of the eight projects contributed nothing at all —
+  `Magic` already does what Ciphey, Ares and katana's core do, and cryptii's encodings have 26
+  equivalents among the 504 operations. Rewritten to say per tool what was taken from where, with
+  the four evaluated-and-dropped projects listed as such. The `cyberchef-recipes` note likewise
+  claimed a corpus that has not been built.
 - `src/node/tools/**` added to the coverage include list — a new directory is otherwise measured at
   nothing while appearing in no report, which is how `src/node/worker.mjs` went unmeasured for six
   releases.
