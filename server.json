@@ -7,17 +7,17 @@
     "url": "https://github.com/doublegate/CyberChef-MCP",
     "source": "github"
   },
-  "version": "2.2.0",
+  "version": "2.3.0",
   "packages": [
     {
       "registryType": "oci",
       "registryBaseUrl": "https://ghcr.io",
       "identifier": "doublegate/cyberchef-mcp_v2",
-      "version": "2.2.0",
+      "version": "2.3.0",
       "transport": {
         "type": "stdio"
       }
     }
   ],
-  "_comment": "The npm package record is deliberately absent: cyberchef-mcp is prepared for publication but NOT published, because npm 12 blocks dependency install scripts by default and this project needs one. Advertising it would send clients to an install that fails. See docs/releases/v2.2.0.md."
+  "_comment": "The npm package record is deliberately absent: cyberchef-mcp is publishable as of v2.3.0 -- the install script it used to need is gone, and a --ignore-scripts install of the packed tarball starts and serves -- but it has not been published yet. Advertising a package that is not on the registry would send clients to an install that 404s. Add the record in the same change that publishes it. See docs/releases/v2.3.0.md."
 }

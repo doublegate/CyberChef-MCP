@@ -102,7 +102,7 @@ documents all of them):
 | Variable | Default | Meaning |
 |---|---|---|
 | `CYBERCHEF_TOOL_SURFACE` | `index` | `index`, `curated` or `all` |
-| `CYBERCHEF_TRANSPORT` | `stdio` | `stdio` or `http` |
+| `CYBERCHEF_TRANSPORT` | `stdio` | `stdio`, `http`, or `socket` (Unix domain socket / loopback TCP) |
 | `CYBERCHEF_MAX_INPUT_SIZE` | `104857600` | Maximum input, in bytes |
 | `CYBERCHEF_OPERATION_TIMEOUT` | `30000` | Per-operation timeout, in ms |
 | `LOG_LEVEL` | `info` | Diagnostics verbosity (written to stderr) |

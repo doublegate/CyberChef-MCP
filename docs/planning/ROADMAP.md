@@ -61,7 +61,7 @@ gantt
     v2.0.0 Major Release                :2026-09-01, 4w
     section Phase 4 Expansion
     v2.2.0 Multi-Modal Support          :2026-10-01, 4w
-    v2.3.0 Advanced Transports          :2026-11-01, 4w
+    v2.3.0 Protocol Currency            :done, 2026-08-31, 1d
     v2.4.0 Plugin Architecture          :2026-12-01, 4w
     section Phase 5 Enterprise
     v2.5.0 Enterprise Features          :2027-01-01, 4w
@@ -130,7 +130,7 @@ gantt
 | Release | Theme | Key Features | Effort | Risk |
 |---------|-------|--------------|--------|------|
 | **v2.2.0** | Multi-Modal Support | **Shipped 2026-08-31.** Image and audio content blocks, MIME sniffing, binary base64 opt-in — plus tool annotations, prompts and resources | L | Medium |
-| **v2.3.0** | Protocol currency | **Protocol revision 2026-07-28 on both stdio and HTTP**, served alongside the 2025 era from one set of handlers (MCP SDK v2); npm distribution unblocked; 17 image operations fixed. **Re-scoped:** the original "WebSocket, Streamable HTTP, SSE" line no longer describes anything buildable — see the note below. | L | Medium |
+| **v2.3.0** | Protocol currency | **Released 2026-08-31.** Protocol revision 2026-07-28 on both stdio and HTTP, served alongside the 2025 era from one set of handlers (MCP SDK v2); npm distribution unblocked; 17 image operations fixed. **Re-scoped:** the original "WebSocket, Streamable HTTP, SSE" line no longer describes anything buildable — see the note below. | L | Medium |
 | **v2.4.0** | Plugin Architecture | Plugin system, sandboxed execution, plugin registry | XL | High |
 | **v2.5.0** | Enterprise Features | OAuth 2.1, RBAC, audit logging, multi-tenancy | XL | High |
 | **v2.6.0** | Distributed Architecture | Kubernetes scaling, service mesh, warm pools | XL | High |

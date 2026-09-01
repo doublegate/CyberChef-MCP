@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [2.3.0] - 2026-08-31
+
 ### Fixed
 
 - **17 image operations returned Node's shared buffer pool instead of the image.** Each ended
