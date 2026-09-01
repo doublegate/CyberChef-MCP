@@ -23,6 +23,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   registry tools with retries off, and a cooperative yield in the Fermat loop so that timeout can
   actually fire. Verified end to end: **72,125 ms → 2 ms**, with a genuine RSA-4096 modulus still
   accepted. Found by the Antigravity reviewer on PR #100.
+- **Wiener's convergent walk is bounded and interruptible too.** It was measured at 2 ms and
+  dismissed — with the default `e = 65537`, where `e/n` is tiny and the continued fraction
+  terminates almost at once. That is not the case Wiener exists for: the convergent count is the
+  Euclidean chain length, and against a Fibonacci pair at the same modulus size it is **1,522 ms**
+  of uninterruptible synchronous work. Now yields and honours a five-second backstop, like Fermat.
+- **The perfect-square pre-filter widened to mod 64 (81.3% rejection), with the residues computed
+  rather than listed.** A hand-written set is how this becomes a silent correctness bug: the set
+  proposed for it omitted 41 and 57, which would have made `isPerfectSquare` reject genuine squares
+  and Fermat quietly fail on a subset of moduli.
 - **The Fermat search at the size ceiling went from ~37 minutes to 3.5 seconds.** Two hot-loop
   changes on top of the deadline below: a quadratic-residue pre-filter (a perfect square is
   0, 1, 4 or 9 mod 16, verified exhaustively, rejecting 75% of candidates before the expensive

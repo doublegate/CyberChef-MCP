@@ -300,6 +300,23 @@ describe("input bounds: what stops a tool blocking the server", () => {
         expect(out.attempted.join(" ")).not.toMatch(/stopped at the/);
     }, 60000);
 
+    it("leaves the convergent walk interruptible too", async () => {
+        // Wiener was measured at 2 ms and dismissed as cheap -- with e = 65537, where e/n is tiny
+        // and the continued fraction terminates almost at once. That is not the case Wiener exists
+        // for. A Fibonacci pair is the worst case for Euclidean chain length, and at this size it
+        // is ~1.5 s of work that used to be one uninterruptible synchronous block.
+        let a = 1n, b = 1n;
+        while (b.toString(2).length < 16000) [a, b] = [b, a + b];
+        let ticked = false;
+        const timer = setTimeout(() => {
+            ticked = true;
+        }, 5);
+        await run("rsa_attack",
+            { modulus: b.toString(), "public_exponent": a.toString(), attacks: ["wiener"] });
+        clearTimeout(timer);
+        expect(ticked).toBe(true);
+    }, 60000);
+
     it("leaves the Fermat loop interruptible so a timeout can actually fire", async () => {
         // A synchronous loop cannot be timed out: Promise.race never gets a turn, so the bound
         // would only be checked after the work it was meant to bound had finished. The loop
@@ -382,6 +399,18 @@ describe("answers refused rather than guessed", () => {
         const out = await run("hash_identify", { input: "abcdef123456" });
         expect(out.identified).toBe(false);
         expect(out.note).toMatch(/matches no digest length this tool knows/);
+    });
+
+    it("recognises every perfect-square residue, not a hand-listed subset", async () => {
+        // The mod-64 pre-filter is derived at load rather than transcribed, because a review of it
+        // suggested a residue list omitting 41 and 57 -- which would make isPerfectSquare reject
+        // genuine squares and Fermat quietly fail on a subset of moduli. Squares of the form
+        // (8k+3)^2 land on 41 and (8k+5)^2 on 57, so this exercises both.
+        for (const root of [11n, 13n, 19n, 21n, 27n, 29n]) {
+            const n = root * root;
+            const out = await run("rsa_attack", { modulus: (n * 4n).toString() });
+            expect(out.factored, `failed for ${root}^2*4, residue ${n % 64n}`).toBe(true);
+        }
     });
 
     it("computes the totient correctly when the two factors are equal", async () => {

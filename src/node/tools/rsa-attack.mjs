@@ -103,16 +103,29 @@ function isqrt(n) {
     return x;
 }
 
+/**
+ * Which residues mod 64 a perfect square can have. Derived rather than transcribed: `i*i % 64`
+ * over a full period is the definition, and it cannot drift from it.
+ */
+const SQUARES_MOD_64 = (() => {
+    const table = new Uint8Array(64);
+    for (let i = 0; i < 64; i++) table[(i * i) % 64] = 1;
+    return table;
+})();
+
 /** @returns {boolean} Whether n is a perfect square. */
 const isPerfectSquare = (n) => {
     /* v8 ignore next -- same invariant as isqrt: callers test the discriminant's sign first. */
     if (n < 0n) return false;
-    // A perfect square is congruent to 0, 1, 4 or 9 mod 16 -- verified exhaustively, and it rejects
-    // 75% of candidates with one mask. Worth the line because the Fermat loop calls this on every
-    // iteration and the alternative is a full isqrt: a string allocation and a Newton descent over
-    // a number that may be 16,384 bits wide.
-    const low = Number(n & 15n);
-    if (low !== 0 && low !== 1 && low !== 4 && low !== 9) return false;
+    // A perfect square mod 64 is one of twelve residues, so one mask rejects 81.3% of candidates.
+    // Worth the line because the Fermat loop calls this every iteration and the alternative is a
+    // full isqrt: a string allocation and a Newton descent over a number that may be 16,384 bits.
+    //
+    // The set is computed exhaustively at load rather than written out, because a hand-listed one
+    // is how this becomes a silent correctness bug: a review of this line suggested
+    // [0,1,4,9,16,17,25,36,33,49], which omits 41 and 57 and would therefore reject genuine
+    // perfect squares -- Fermat would then quietly fail to factor a subset of moduli.
+    if (!SQUARES_MOD_64[Number(n & 63n)]) return false;
     const r = isqrt(n);
     return r * r === n;
 };
@@ -212,6 +225,9 @@ async function fermat(n, maxIterations, deadline) {
 /** How long the Fermat search may run before it gives up, in milliseconds. */
 const FERMAT_BUDGET_MS = 10000;
 
+/** The same, for the convergent walk. Measured worst case is ~1.5s, so this is a wide backstop. */
+const WIENER_BUDGET_MS = 5000;
+
 /**
  * Wiener's attack: recovers a private exponent that was chosen small.
  *
@@ -223,7 +239,7 @@ const FERMAT_BUDGET_MS = 10000;
  * @param {bigint} n - The modulus.
  * @returns {{d: bigint, p: bigint, q: bigint}|null} The private exponent and factors, or null.
  */
-function wiener(e, n) {
+async function wiener(e, n, deadline) {
     const terms = [];
     let a = e;
     let b = n;
@@ -232,7 +248,17 @@ function wiener(e, n) {
         [a, b] = [b, a % b];
     }
     let [num0, den0, num1, den1] = [0n, 1n, 1n, 0n];
+    let step = 0;
     for (const term of terms) {
+        // Same treatment as the Fermat loop, and for the same reason. This was measured at 2 ms
+        // and dismissed -- with e = 65537, where e/n is tiny and the continued fraction terminates
+        // almost at once. That is not the case Wiener exists for. Against a Fibonacci pair, which
+        // is the worst case for Euclidean chain length, the same modulus size costs 1,522 ms of
+        // uninterruptible synchronous work.
+        if ((step++ & 0x3f) === 0x3f) {
+            if (Date.now() > deadline) return null;
+            await new Promise(resolve => setImmediate(resolve));
+        }
         const num = term * num1 + num0;
         const den = term * den1 + den0;
         [num0, den0, num1, den1] = [num1, den1, num, den];
@@ -360,7 +386,7 @@ export default {
 
         if (!factors && requested.has("wiener")) {
             attempted.push("wiener");
-            const found = wiener(e, n);
+            const found = await wiener(e, n, Date.now() + WIENER_BUDGET_MS);
             if (found && found.p * found.q === n) {
                 factors = { p: found.p, q: found.q };
                 via = "wiener";

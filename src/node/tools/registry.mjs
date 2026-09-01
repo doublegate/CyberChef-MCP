@@ -133,7 +133,15 @@ export class ToolRegistry {
         // A Zod object specifically: `toInputSchema` converts it, and a bare shape or a
         // non-object schema produces a tool a client cannot call. That failure shipped once
         // already, as an empty `inputSchema` on all 524 tools.
-        if (!inputSchema || typeof inputSchema.safeParse !== "function" || !(inputSchema instanceof z.ZodObject)) {
+        // `instanceof` against a duplicated zod copy is false even for a genuine object schema, so
+        // it is backed by a structural check rather than replaced by one: `instanceof` is the
+        // precise test when there is a single zod, and `def.type` catches the duplicate-copy case.
+        //
+        // NOT `_def.typeName`, which a review suggested: that is the Zod 3 shape. On the zod 4 this
+        // project uses it is `undefined` for every schema, so the check would reject every tool and
+        // the server would not start.
+        const isObjectSchema = inputSchema instanceof z.ZodObject || inputSchema?.def?.type === "object";
+        if (!inputSchema || typeof inputSchema.safeParse !== "function" || !isObjectSchema) {
             throw createInputError(
                 `Registry tool "${name}" needs a Zod OBJECT schema as inputSchema`,
                 { name, received: inputSchema === undefined ? "undefined" : typeof inputSchema });
