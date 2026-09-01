@@ -23,6 +23,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   registry tools with retries off, and a cooperative yield in the Fermat loop so that timeout can
   actually fire. Verified end to end: **72,125 ms → 2 ms**, with a genuine RSA-4096 modulus still
   accepted. Found by the Antigravity reviewer on PR #100.
+- **`cyberchef_xor_key_length` no longer reports a divisor of the key length as the key length.**
+  It took the smallest candidate within 80% of the best score, which is right for multiples — every
+  multiple of the true length scores about as well — and wrong for divisors. The case is not
+  exotic: `secret` has `e` at positions 1 and 4, so at period 3 one column is a single key byte and
+  scores respectably, and the tool answered **3 for a six-byte key with "Clearly structured"
+  confidence**. A candidate is now rejected when a multiple of it scores materially higher, since a
+  divisor is beaten by the true length while a multiple is not. The margin was measured over 400
+  cases (5 plaintexts x 4 lengths x 20 keys): 82.5% against the previous rule's 79.5%. It remains a
+  heuristic that is wrong about one time in six, which is what `confidence` reports.
 - **Wiener's convergent walk is bounded and interruptible too.** It was measured at 2 ms and
   dismissed — with the default `e = 65537`, where `e/n` is tiny and the continued fraction
   terminates almost at once. That is not the case Wiener exists for: the convergent count is the

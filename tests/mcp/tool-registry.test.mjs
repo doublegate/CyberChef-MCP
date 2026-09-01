@@ -149,6 +149,34 @@ describe("xor_key_length", () => {
         return Buffer.from(p.map((b, i) => b ^ k[i % k.length])).toString("hex");
     };
 
+    it("does not report a divisor of the key length as the key length", async () => {
+        // "secret" has `e` at positions 1 and 4, so at period 3 one of the three columns is a
+        // single key byte and scores respectably. The tool reported 3 -- for a six-byte key, with
+        // "Clearly structured" confidence. Preferring the smallest candidate in the band is right
+        // for multiples and wrong for divisors, and the asymmetry that separates them is that a
+        // divisor is BEATEN by the true length while a multiple is not.
+        const out = await tool.run(
+            tool.inputSchema.parse({ input: encrypt("secret"), "input_format": "Hex",
+                "preview_bytes": 40 }),
+            { bake });
+        expect(out.key_length).toBe(6);
+
+        // The preview is rendered, not "[object Object]". A review reported `String(decrypted)` as
+        // a stringification bug on the grounds that `bake` returns a wrapper; it does, and the
+        // wrapper stringifies to its value. What looked like a stringification bug was mojibake
+        // from decrypting under a WRONG key length -- this same case, before the fix above.
+        //
+        // Asserted as "mostly readable" rather than as exact plaintext, because the key GUESS is a
+        // separate heuristic from the key length: it assumes the most common byte in each column is
+        // a space, which is weaker on a short corpus. Requiring exact plaintext here would couple
+        // this regression test to that heuristic's accuracy.
+        const preview = String(out.preview);
+        expect(preview).not.toContain("[object Object]");
+        const printable = [...preview].filter(c => c >= " " && c <= "~").length;
+        expect(printable / preview.length).toBeGreaterThan(0.8);
+    }, 30000);
+
+
     it.each([["K", 1], ["sec", 3], ["hunter", 6], ["correcthorse", 12], ["0123456789abcdef", 16]])(
         "recovers the length of key %s (%i bytes)", async (key, length) => {
             const out = await tool.run(
