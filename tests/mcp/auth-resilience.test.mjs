@@ -24,6 +24,24 @@ import {
     verifyToken, _discoveryBreakerState, _resetDiscoveryBreaker, _resetJwksCache
 } from "../../src/node/lib/auth.mjs";
 
+/**
+ * A fetch stand-in that serves discovery metadata and a JWKS.
+ *
+ * @param {Object[]} keys - What the JWKS should contain.
+ * @returns {Function} A `fetch` replacement.
+ */
+function issuerServing(keys) {
+    return async (url) => {
+        let body;
+        if (String(url).includes("jwks")) {
+            body = { keys };
+        } else {
+            body = { issuer: CONFIG.issuer, "jwks_uri": "https://auth.example.invalid/jwks" };
+        }
+        return { ok: true, arrayBuffer: async () => Buffer.from(JSON.stringify(body)) };
+    };
+}
+
 const CONFIG = {
     enabled: true,
     issuer: "https://auth.example.invalid",
@@ -83,13 +101,11 @@ describe("recovery", () => {
         // rather than waiting for a TTL on every key.
         let failing = true;
         let attempts = 0;
+        const serving = issuerServing([]);
         globalThis.fetch = async (url) => {
             attempts++;
             if (failing) throw new Error("ECONNREFUSED");
-            const body = String(url).includes("jwks")
-                ? { keys: [] }
-                : { issuer: CONFIG.issuer, "jwks_uri": "https://auth.example.invalid/jwks" };
-            return { ok: true, arrayBuffer: async () => Buffer.from(JSON.stringify(body)) };
+            return serving(url);
         };
 
         for (let i = 0; i < 10; i++) await verifyToken("a.b.c", CONFIG);
@@ -114,22 +130,17 @@ describe("recovery", () => {
     });
 
     it("closes fully once discovery succeeds", async () => {
-        globalThis.fetch = async (url) => {
-            const body = String(url).includes("jwks")
-                // One syntactically valid RSA JWK, so the JWKS parses and yields a usable key.
-                ? { keys: [{
-                    kty: "RSA", kid: "k1", use: "sig", alg: "RS256",
-                    n: "sXchDaQebHnPiGvyDOAT4saGEUetSyo9MKLOoWFsueri23bOdgWp4Dy1Wl" +
-                       "UzewbgBHod5pcM9H95GQRV3JDXboIRROSBigeC5yjU1hGzHHyXss8UDpre" +
-                       "cbAYxknTcQkhslANGRUZmdTOQ5qTRsLAt6BTYuyvVRdhS8exSZEy_c4gs_" +
-                       "7svlJJQ4H9_NxsiIoLwAEk7-Q3UXERGYw_75IDrGA84-lA_-Ct4eTlXHBI" +
-                       "Y2EaV7t7LjJaynVJCpkv4LKjTTAumiGUIuQhrNhZLuF_RJLqHpM2kgWFLU" +
-                       "7-VTdL1VbC2tejvcI2BlMkEpk1BzBZI0KQB0GaDWFLN-aEAw3vRw",
-                    e: "AQAB"
-                }] }
-                : { issuer: CONFIG.issuer, "jwks_uri": "https://auth.example.invalid/jwks" };
-            return { ok: true, arrayBuffer: async () => Buffer.from(JSON.stringify(body)) };
-        };
+        // One syntactically valid RSA JWK, so the JWKS parses and yields a usable key.
+        globalThis.fetch = issuerServing([{
+            kty: "RSA", kid: "k1", use: "sig", alg: "RS256",
+            n: "sXchDaQebHnPiGvyDOAT4saGEUetSyo9MKLOoWFsueri23bOdgWp4Dy1Wl" +
+               "UzewbgBHod5pcM9H95GQRV3JDXboIRROSBigeC5yjU1hGzHHyXss8UDpre" +
+               "cbAYxknTcQkhslANGRUZmdTOQ5qTRsLAt6BTYuyvVRdhS8exSZEy_c4gs_" +
+               "7svlJJQ4H9_NxsiIoLwAEk7-Q3UXERGYw_75IDrGA84-lA_-Ct4eTlXHBI" +
+               "Y2EaV7t7LjJaynVJCpkv4LKjTTAumiGUIuQhrNhZLuF_RJLqHpM2kgWFLU" +
+               "7-VTdL1VbC2tejvcI2BlMkEpk1BzBZI0KQB0GaDWFLN-aEAw3vRw",
+            e: "AQAB"
+        }]);
 
         // The token itself is nonsense, so verification fails -- but key discovery SUCCEEDS, and
         // that is what the breaker tracks.
@@ -163,12 +174,10 @@ describe("a healthy authorization server", () => {
         // A cache hit makes no outbound request. It must count as success, not as a silent
         // failure -- the server is serving, so the breaker belongs closed.
         let attempts = 0;
+        const serving = issuerServing([]);
         globalThis.fetch = async (url) => {
             attempts++;
-            const body = String(url).includes("jwks")
-                ? { keys: [] }
-                : { issuer: CONFIG.issuer, "jwks_uri": "https://auth.example.invalid/jwks" };
-            return { ok: true, arrayBuffer: async () => Buffer.from(JSON.stringify(body)) };
+            return serving(url);
         };
 
         await verifyToken("a.b.c", CONFIG);
