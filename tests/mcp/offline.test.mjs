@@ -18,7 +18,9 @@
  * @license GPL-3.0-or-later
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 
 import {
     offlineMode, networkOperationsIn, assertOfflineAllowed
@@ -180,17 +182,68 @@ describe("every engine entry is guarded", () => {
         }
     });
 
-    it("PATH 2: the direct-operation guard sits ABOVE the worker/streaming split", async () => {
-        // Position is the correctness argument, exactly as it was for the v2.5.0 scope check.
-        // Guarding inside each leg would be two checks that drift, and the worker leg is the one
-        // nobody would remember to update.
+    it("PATH 2: the direct-operation guard sits above the CACHE, not just the worker split", async () => {
+        // Position is the correctness argument, exactly as it was for the v2.5.0 scope check --
+        // and the first version of this test asserted the WRONG CEILING.
+        //
+        // It required the guard to precede the worker/streaming split, which it did, and that
+        // proved nothing: a cache hit returns from a branch ABOVE the split, so a cached
+        // `HTTP request` was served with offline mode on. The ceiling is not "before execution",
+        // it is "before anything that can answer the request" -- and a cache answers without
+        // executing.
         const { readFileSync } = await import("node:fs");
         const src = readFileSync(new URL("../../src/node/mcp-server.mjs", import.meta.url), "utf8");
-        const guard = src.indexOf("assertOfflineAllowed(recipe, { tool: name })");
+        const guard = src.indexOf("assertOfflineAllowed([{ op: opName }], { tool: name })");
+        const cacheRead = src.indexOf("cached = operationCache.get(cacheKey)");
         const workerSplit = src.indexOf("if (ENABLE_WORKERS && shouldUseWorker(");
         expect(guard).toBeGreaterThan(-1);
+        expect(cacheRead).toBeGreaterThan(-1);
         expect(workerSplit).toBeGreaterThan(-1);
-        expect(guard).toBeLessThan(workerSplit);
+        expect(guard, "guard must precede the cache read").toBeLessThan(cacheRead);
+        expect(guard, "guard must precede the worker split").toBeLessThan(workerSplit);
+    });
+
+    it("PATH 2: the cache is never consulted for a refused network operation", async () => {
+        // The RUNTIME regression for the cache bypass, and the SECOND attempt at it.
+        //
+        // The first version warmed the cache with a hand-built key and asserted the refusal. It
+        // passed with the bug deliberately reintroduced -- because the key it built did not match
+        // the one the handler computes (the real `recipeArgs` for `HTTP request` are its resolved
+        // defaults, not `[]`), so there was never a cache hit to bypass. It asserted a refusal
+        // that came from the guard on the ordinary miss path: a test for cache ordering that never
+        // involved the cache.
+        //
+        // Asserting the ORDERING directly removes the guesswork. If the guard precedes the cache
+        // read, `operationCache.get` cannot have been called -- true regardless of how the key is
+        // constructed, which is precisely the detail that made the first attempt useless.
+        const { createMcpServer, operationCache } =
+            await import("../../src/node/mcp-server.mjs");
+
+        const getSpy = vi.spyOn(operationCache, "get");
+        offline();
+
+        const server = createMcpServer();
+        const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+        const client = new Client({ name: "offline-test", version: "1.0.0" }, { capabilities: {} });
+        await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+        try {
+            const res = await client.callTool({
+                name: "cyberchef_http_request",
+                arguments: { input: "https://example.test/" }
+            });
+            expect(JSON.stringify(res)).toMatch(/offline mode is enabled/i);
+
+            // The decisive assertion. A cached `HTTP request` body is a REAL RESPONSE FROM THE
+            // NETWORK; serving one to a caller told this deployment cannot reach a network is
+            // worse than an ordinary bypass, because it is evidence that it can.
+            expect(getSpy, "the cache was read before the offline guard refused")
+                .not.toHaveBeenCalled();
+        } finally {
+            getSpy.mockRestore();
+            await client.close();
+            await server.close();
+            operationCache.clear();
+        }
     });
 });
 

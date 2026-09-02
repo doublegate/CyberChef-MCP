@@ -62,6 +62,23 @@ was actually missing was ARM support, image size, and an honest offline switch.
   recipes into a layer and would publish them by pushing it. Mode `0600` on disk stops mattering
   once the file is inside an image.
 
+### Fixed (from review)
+
+- **A cached network result bypassed offline mode.** The direct-operation guard sat above the
+  worker/streaming split but *below* the cache lookup, so with caching on (the default) a cached
+  `HTTP request` was served while `CYBERCHEF_OFFLINE=true`. Worse than an ordinary bypass: the value
+  returned is a real response from the network, handed to a caller told this deployment cannot reach
+  one. The guard now precedes the cache read, with both a source-order test and a runtime test that
+  asserts `operationCache.get` is never reached.
+- `package-lock.json` still reported `2.7.0` after the version bump. Cosmetic for `npm ci`, which
+  tolerates a root version mismatch, but the npm tarball ships the lockfile — so `cyberchef-mcp@2.8.0`
+  would have contained one claiming 2.7.0.
+- Documentation corrections: a stale `v2.4.0` heading and `v2.0.0` "latest" reference in `AGENTS.md`,
+  a `2.7.0` in a Compose comment, an image-size baseline stated as both 674 MB and 643 MB in the
+  findings log, and an edge-guide sentence that said the server makes no outbound calls immediately
+  before describing JWKS discovery — which could have led an operator to omit authentication egress
+  from an allowlist.
+
 ### Not done, deliberately
 
 - **`linux/arm/v7`.** `cgr.dev/chainguard/node` publishes amd64 and arm64 only; serving a 32-bit Pi

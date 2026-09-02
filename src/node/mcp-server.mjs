@@ -1322,6 +1322,24 @@ const handleCallToolInner = async (request, extra, ownerServer = server) => {
                     });
                 }
 
+                // Offline gate for the direct-operation path.
+                //
+                // ABOVE THE CACHE, which is the whole point and where the first version had it
+                // wrong. It sat below, just before the worker/streaming split -- correct for both
+                // execution legs and useless against a cache hit, because the hit returns from the
+                // branch below without ever reaching it. Reproduced before fixing: warm the cache
+                // with an `HTTP request` while online, set CYBERCHEF_OFFLINE=true, and the cached
+                // response is served as though nothing had changed.
+                //
+                // That is worse than an ordinary bypass. The value returned is a REAL RESPONSE
+                // FROM THE NETWORK, handed to a caller who has been told this deployment does not
+                // reach one -- so an air-gapped operator sees evidence that it does.
+                //
+                // The lesson generalises: "above the split" was the wrong ceiling. The guard
+                // belongs above EVERY path that can answer the request, and a cache is one of
+                // those paths even though it executes nothing.
+                assertOfflineAllowed([{ op: opName }], { tool: name });
+
                 // Check cache (only if caching is enabled)
                 const inputSize = Buffer.byteLength(args.input, "utf8");
                 let cacheKey, cached;
@@ -1384,11 +1402,6 @@ const handleCallToolInner = async (request, extra, ownerServer = server) => {
                     op: opName,
                     args: recipeArgs
                 }];
-
-                // Offline gate for the direct-operation path, placed BEFORE the worker/streaming
-                // split below so one check covers both legs. Guarding inside each leg would be two
-                // checks that can drift, and the worker leg is the one nobody would remember.
-                assertOfflineAllowed(recipe, { tool: name });
 
                 let result;
                 let streamed = false;

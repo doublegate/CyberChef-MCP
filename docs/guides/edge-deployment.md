@@ -80,9 +80,18 @@ never touched a network. Exactly two reach outside the process:
 - `HTTP request`
 - `DNS over HTTPS`
 
-The server also makes no other outbound calls: there is no plugin loader ([ADR 0002](../adr/0002-tool-registry-is-not-a-plugin-loader.md)),
-it exports no telemetry of its own (it depends on the OpenTelemetry *API* only — the operator
-supplies any SDK), and JWKS discovery is bounded by a 5 s deadline and a circuit breaker.
+**No other CyberChef operation makes an outbound call**, and the server itself adds none: there is
+no plugin loader ([ADR 0002](../adr/0002-tool-registry-is-not-a-plugin-loader.md)), and it exports
+no telemetry of its own (it depends on the OpenTelemetry *API* only — the operator supplies any SDK,
+and any collector traffic is that SDK's, not the server's).
+
+**Authentication is the exception, and it is worth putting in your egress plan.** If
+`CYBERCHEF_AUTH_ISSUER` is set, the server fetches JWKS from the issuer to validate bearer tokens —
+bounded since v2.6.0 by a 5 s deadline and a circuit breaker, but still outbound traffic that an
+allowlist has to permit. `CYBERCHEF_OFFLINE` does not disable it, because a deployment that
+validates tokens against a *local* issuer is a perfectly ordinary air-gapped configuration and
+refusing that would break it. If you are fully air-gapped and not using OAuth, leave
+`CYBERCHEF_AUTH_ISSUER` unset and the server makes no outbound call at all.
 
 ### The switch
 
@@ -151,8 +160,17 @@ docker pull --platform linux/arm64 ghcr.io/doublegate/cyberchef-mcp_v2:2.8.0
 docker save ghcr.io/doublegate/cyberchef-mcp_v2:2.8.0 | gzip > cyberchef-mcp-arm64.tar.gz
 ```
 
-npm works offline the same way — `npm pack cyberchef-mcp@2.8.0` on a connected machine, then
-`npm install ./cyberchef-mcp-2.8.0.tgz --ignore-scripts` on the target.
+npm works offline the same way, once the version is on the registry — the tarball and the npm
+publish happen in the same release workflow, so `npm pack` against a version whose release is still
+in flight returns `E404`:
+
+```bash
+npm pack cyberchef-mcp@2.8.0          # on a connected machine, after the release publishes
+npm install ./cyberchef-mcp-2.8.0.tgz --ignore-scripts   # on the target
+```
+
+To build a tarball from a source checkout before then, `npm pack` in the repository root produces
+the same artefact.
 
 ## Verifying what you got
 

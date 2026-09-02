@@ -37,6 +37,12 @@ jobs:
   # native binding. `piscina` pulls `@napi-rs/nice`, whose platform binaries are optional
   # dependencies -- so an install that silently skipped the arm64 one would still build a working
   # image and fail only under load, in the worker pool, on someone else's machine.
+  # ON RUNNER LABELS: `ubuntu-24.04-arm` is a GitHub-hosted label, and Actions has no syntax for
+  # "hosted only" -- a self-hosted runner registered with the same label could claim this job, which
+  # runs pull-request code. Verified for this repository: the one self-hosted runner
+  # (`AB-i9-cyberchef-mcp`, the Antigravity reviewer) carries `self-hosted, Linux, X64, agy` and is
+  # x64, so it cannot match. Keep it that way -- never register a self-hosted runner with a
+  # GitHub-hosted label, here or on any repository sharing a runner group.
   build-arm64:
     runs-on: ubuntu-24.04-arm
     permissions:

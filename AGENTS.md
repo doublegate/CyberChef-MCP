@@ -20,7 +20,7 @@
 <<< MC-PROJECT-START >>>
 ## Project: CyberChef
 
-**CyberChef MCP Server** (v2.4.0) - Fork of GCHQ CyberChef wrapping the Node.js API into an MCP
+**CyberChef MCP Server** (v2.8.0) - Fork of GCHQ CyberChef wrapping the Node.js API into an MCP
 server. Exposes 504 operations (encryption, encoding, compression, forensics) as AI assistant tools.
 
 | Metric | Value |
@@ -239,7 +239,7 @@ perfectly good tag and would be ignored within a release or two.
 | Guides | `docs/guides/commands.md` (MCP tools), `user_guide.md` (installation), `edge-deployment.md` (arm64, size, offline, air-gapped) |
 | Planning | `docs/planning/ROADMAP.md`, `docs/planning/phases/overview.md` |
 | Security | `docs/security/audit.md` |
-| Releases | `docs/releases/v2.0.0.md` (latest), `v1.9.0.md`, `v1.8.0.md` ... `v1.0.0.md` |
+| Releases | `docs/releases/v2.8.0.md` (latest), then `v2.7.0.md` ... `v2.0.0.md`, `v1.9.0.md` ... `v1.0.0.md` |
 | Internal | `docs/internal/tech-debt-analysis-v1.6.1.md` (project health: 8.9/10) |
 
 <<< MC-PROJECT-END >>>
