@@ -1488,7 +1488,7 @@ async function runServer() {
     // HTTP builds a Server per session inside createTransport (issue #36), so there is no
     // process-wide transport to connect and `transport` comes back null. Connecting the module
     // singleton here would recreate the shared-instance bug the factory exists to avoid.
-    const { transport, closeAll } = await createTransport({ createServer: createMcpServer });
+    const { transport, closeAll, drain } = await createTransport({ createServer: createMcpServer });
     if (transport) {
         await server.connect(transport);
     }
@@ -1532,8 +1532,13 @@ async function runServer() {
             const logger = getLogger();
             // Not "HTTP sessions": the socket transport has a `closeAll` too, and naming the wrong
             // transport in a shutdown line is how an operator ends up debugging the wrong thing.
-            logger.info(`${signal} received: closing connections and listener`);
-            closeAll()
+            // Drain when the transport offers one (HTTP), close immediately otherwise. The
+            // difference matters only behind a load balancer: draining fails readiness first and
+            // keeps serving briefly, so traffic routed during the endpoint-removal window is
+            // answered rather than dropped. stdio and the socket transport have no such window.
+            const stop = typeof drain === "function" ? drain : closeAll;
+            logger.info(`${signal} received: ${stop === drain ? "draining" : "closing"} connections and listener`);
+            stop()
                 .catch(err => logger.error(`shutdown failed: ${err.message}`))
                 .finally(() => process.exit(128 + (SIGNAL_NUMBERS[signal] ?? 0)));
         };

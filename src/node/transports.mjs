@@ -49,6 +49,9 @@ import {
 } from "./lib/auth.mjs";
 import { audit, OUTCOME } from "./lib/audit.mjs";
 import { loadTenancyConfig, assertTenancyConfig, tenantOf } from "./lib/tenancy.mjs";
+import {
+    isHealthPath, healthResponse, markServing, markDraining, HEALTH_PATHS
+} from "./lib/health.mjs";
 
 /**
  * Whether a path is the RFC 9728 discovery document.
@@ -96,6 +99,21 @@ export function isLoopbackAddress(host) {
     if (bare === "localhost" || bare === "::1" || bare === "0:0:0:0:0:0:0:1") return true;
     // The whole 127.0.0.0/8 block is loopback, not just 127.0.0.1.
     return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(bare);
+}
+
+/**
+ * A non-negative millisecond value from the environment, or a default.
+ *
+ * Zero is a MEANINGFUL setting here, not a missing one -- a test disabling the drain grace passes
+ * `0` -- so this cannot use `parseInt(...) || fallback`, which silently turns 0 into the default.
+ *
+ * @param {string|undefined} raw - The environment value.
+ * @param {number} fallback - Used when unset, unparseable, or negative.
+ * @returns {number} Milliseconds.
+ */
+function nonNegativeMs(raw, fallback) {
+    const n = parseInt(raw, 10);
+    return Number.isFinite(n) && n >= 0 ? n : fallback;
 }
 
 /** Header carrying the session id, per the Streamable HTTP spec. Node lowercases header names. */
@@ -566,7 +584,29 @@ export async function createTransport(options = {}) {
             return transport;
         }
 
+        // How long to keep serving after readiness starts failing, and how long to wait for
+        // in-flight work after that. The default total (5 s + 20 s) sits inside Kubernetes'
+        // default 30 s terminationGracePeriodSeconds, so the process finishes on its own terms
+        // rather than being SIGKILLed partway through.
+        const drainDelayMs = nonNegativeMs(process.env.CYBERCHEF_DRAIN_DELAY_MS, 5000);
+        const drainTimeoutMs = nonNegativeMs(process.env.CYBERCHEF_DRAIN_TIMEOUT_MS, 20000);
+
+        // Requests currently being handled, so a drain can wait for real work rather than guessing.
+        let inFlight = 0;
+
         const httpServer = http.createServer(async (req, res) => {
+            inFlight++;
+            // `finish` fires when the response is fully flushed; `close` covers a client that
+            // disconnected first. Both, and a guard, because either alone leaks the counter and a
+            // leaked counter makes every future drain wait the full timeout.
+            let settled = false;
+            const settle = () => {
+                if (settled) return;
+                settled = true;
+                inFlight--;
+            };
+            res.once("finish", settle);
+            res.once("close", settle);
             try {
                 const cors = corsHeaders(req);
                 for (const [k, v] of Object.entries(cors)) res.setHeader(k, v);
@@ -583,6 +623,28 @@ export async function createTransport(options = {}) {
                 // authentication: a client cannot learn how to authenticate if discovery itself
                 // requires a token. Answered only when an issuer is configured, so an unprotected
                 // deployment does not advertise an authorization server it does not have.
+                // Health probes, served before the endpoint check and WITHOUT authentication.
+                //
+                // A kubelet probe carries no bearer token, so gating these would make them useless
+                // to the only caller they exist for. They are correspondingly uninformative -- a
+                // status string, nothing else -- because an unauthenticated endpoint that reports
+                // internal state is a reconnaissance surface.
+                //
+                // Answered on every deployment, not only when authorization is configured: an
+                // orchestrator needs them regardless, unlike the RFC 9728 document below, which
+                // would otherwise advertise an authorization server that does not exist.
+                if (isHealthPath(path)) {
+                    const { status, body } = healthResponse(path);
+                    res.writeHead(status, {
+                        "Content-Type": "application/json; charset=utf-8",
+                        // Never cached: a stale "ready" is precisely what a drain is trying to
+                        // stop a load balancer from believing.
+                        "Cache-Control": "no-store"
+                    });
+                    res.end(JSON.stringify(body));
+                    return;
+                }
+
                 if (authConfig.enabled && isProtectedResourceMetadataPath(path)) {
                     const doc = JSON.stringify(protectedResourceMetadata(authConfig));
                     res.writeHead(200, {
@@ -837,7 +899,11 @@ export async function createTransport(options = {}) {
         sweeper.unref();
 
         httpServer.listen(port, host, () => {
+            // Readiness flips only once the listener is bound. A probe that passes earlier invites
+            // a load balancer to route traffic into a connection refusal.
+            markServing();
             logger.info(`Streamable HTTP transport listening on ${host}:${port}${mcpPath}`);
+            logger.info(`  health: ${HEALTH_PATHS.LIVE}, ${HEALTH_PATHS.READY}, ${HEALTH_PATHS.STARTUP} (unauthenticated)`);
             logger.info(`  session timeout: ${Math.round(sessionTimeoutMs / 1000)}s, max sessions: ${maxSessions}`);
             const hosts = effectiveAllowedHosts();
             if (hosts) {
@@ -876,9 +942,55 @@ export async function createTransport(options = {}) {
             });
         }
 
+        /**
+         * Shut down gracefully: stop attracting traffic, finish what is in flight, then close.
+         *
+         * Separate from `closeAll()` rather than folded into it, because they answer different
+         * needs: a test wants the listener gone now, and a rolling deploy wants the opposite.
+         *
+         * The sequence exists because of a race that is otherwise invisible. When a pod is
+         * deleted, Kubernetes sends SIGTERM and removes the pod from the Service endpoints **at
+         * the same time**, and endpoint removal has to propagate through kube-proxy and any
+         * ingress before traffic actually stops. Closing on SIGTERM therefore drops the requests
+         * that were routed during that window -- the deploy looks clean and a fraction of requests
+         * fail.
+         *
+         * So: fail readiness first, wait long enough for the propagation to happen, and only then
+         * stop. `preStop` in the Helm chart covers the same race from the other side; either alone
+         * narrows it, and both together close it.
+         *
+         * @param {Object} [options] - Overrides, used by tests.
+         * @param {number} [options.delayMs] - How long to keep serving after readiness fails.
+         * @param {number} [options.timeoutMs] - Cap on waiting for in-flight requests.
+         * @returns {Promise<void>} Resolves once the listener is closed.
+         */
+        async function drain({ delayMs = drainDelayMs, timeoutMs = drainTimeoutMs } = {}) {
+            // Readiness fails from here. Liveness deliberately does NOT: a liveness failure during
+            // a drain gets the process killed mid-drain, which is what the drain was avoiding.
+            markDraining();
+            logger.info(`draining: readiness now failing, ${Math.round(delayMs / 1000)}s grace`);
+
+            if (delayMs > 0) {
+                await new Promise(resolve => setTimeout(resolve, delayMs).unref?.());
+            }
+
+            // Then wait for work that is genuinely still running. Bounded: a hung request must not
+            // hold the process past the orchestrator's grace period, because being SIGKILLed is a
+            // worse outcome than abandoning one request.
+            const deadline = Date.now() + timeoutMs;
+            while (inFlight > 0 && Date.now() < deadline) {
+                await new Promise(resolve => setTimeout(resolve, 50).unref?.());
+            }
+            if (inFlight > 0) {
+                logger.warn(`drain timeout: ${inFlight} request(s) still in flight, closing anyway`);
+            }
+
+            await closeAll();
+        }
+
         // `transport` is null on purpose. There is no process-wide transport any more, and
         // returning one would invite exactly the `server.connect(transport)` that caused #36.
-        return { transport: null, httpServer, sessions, closeAll };
+        return { transport: null, httpServer, sessions, closeAll, drain };
     }
 
     if (type === TransportType.SOCKET) {

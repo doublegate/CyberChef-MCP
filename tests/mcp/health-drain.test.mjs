@@ -1,0 +1,184 @@
+/**
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * Health probes and graceful draining, asserted against a real listening server.
+ *
+ * The properties here are the ones a rolling deploy depends on, and two of them are the opposite
+ * of what a naive implementation does:
+ *
+ *   - liveness stays 200 **while draining**, because a liveness failure gets the pod killed
+ *     mid-drain;
+ *   - readiness flips to 503 the moment draining starts, which is what makes the load balancer
+ *     route around this process before it stops.
+ *
+ * @author DoubleGate
+ * @license GPL-3.0-or-later
+ */
+
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+
+import { createTransport } from "../../src/node/transports.mjs";
+import {
+    HEALTH_PATHS, LIFECYCLE, isHealthPath, healthResponse,
+    lifecycleState, markServing, markDraining, _resetHealthForTest
+} from "../../src/node/lib/health.mjs";
+
+/** A do-nothing MCP server factory: these tests exercise the transport, not the protocol. */
+function createServer() {
+    return { connect: async () => {}, close: async () => {} };
+}
+
+/**
+ * Start an HTTP transport and wait until it is actually listening.
+ *
+ * `createTransport` returns before `listen` completes, so `address()` is null until the
+ * `listening` event -- the same wait the existing HTTP session tests do.
+ *
+ * @returns {Promise<{handle: Object, base: string}>} The handle and its base URL.
+ */
+async function listening() {
+    const handle = await createTransport({
+        type: "http", port: 0, host: "127.0.0.1", createServer
+    });
+    await new Promise(resolve => {
+        if (handle.httpServer.listening) return resolve();
+        handle.httpServer.once("listening", resolve);
+    });
+    return { handle, base: `http://127.0.0.1:${handle.httpServer.address().port}` };
+}
+
+describe("health module", () => {
+    beforeEach(() => _resetHealthForTest());
+
+    it("recognises exactly the three probe paths", () => {
+        expect(isHealthPath(HEALTH_PATHS.LIVE)).toBe(true);
+        expect(isHealthPath(HEALTH_PATHS.READY)).toBe(true);
+        expect(isHealthPath(HEALTH_PATHS.STARTUP)).toBe(true);
+        expect(isHealthPath("/health")).toBe(false);
+        expect(isHealthPath("/mcp")).toBe(false);
+        expect(isHealthPath("/health/live/../mcp")).toBe(false);
+    });
+
+    it("keeps liveness at 200 in every state, including draining", () => {
+        // The assertion that protects a drain from the kubelet.
+        for (const enter of [() => {}, markServing, markDraining]) {
+            enter();
+            expect(healthResponse(HEALTH_PATHS.LIVE).status).toBe(200);
+        }
+        expect(lifecycleState()).toBe(LIFECYCLE.DRAINING);
+    });
+
+    it("fails readiness before serving, passes while serving, fails again while draining", () => {
+        expect(healthResponse(HEALTH_PATHS.READY).status).toBe(503);
+        markServing();
+        expect(healthResponse(HEALTH_PATHS.READY).status).toBe(200);
+        markDraining();
+        expect(healthResponse(HEALTH_PATHS.READY).status).toBe(503);
+    });
+
+    it("passes startup once started and does not fail again on drain", () => {
+        // startupProbe exists to stop the other probes firing during a slow boot. Once started,
+        // it must stay started -- an orchestrator that sees it fail later restarts the pod.
+        expect(healthResponse(HEALTH_PATHS.STARTUP).status).toBe(503);
+        markServing();
+        expect(healthResponse(HEALTH_PATHS.STARTUP).status).toBe(200);
+        markDraining();
+        expect(healthResponse(HEALTH_PATHS.STARTUP).status).toBe(200);
+    });
+
+    it("reports nothing but a status, so an unauthenticated probe leaks nothing", () => {
+        markServing();
+        for (const p of Object.values(HEALTH_PATHS)) {
+            expect(Object.keys(healthResponse(p).body)).toEqual(["status"]);
+        }
+    });
+});
+
+describe("health endpoints over the real HTTP transport", () => {
+    let handle, base;
+
+    beforeEach(async () => {
+        _resetHealthForTest();
+        ({ handle, base } = await listening());
+    });
+
+    afterEach(async () => {
+        await handle?.closeAll();
+    });
+
+    it("answers all three probes without a token", async () => {
+        // No Authorization header anywhere in this test: that is the point.
+        for (const [path, expected] of [
+            [HEALTH_PATHS.LIVE, 200], [HEALTH_PATHS.READY, 200], [HEALTH_PATHS.STARTUP, 200]
+        ]) {
+            const res = await fetch(base + path);
+            expect(res.status, path).toBe(expected);
+            expect(res.headers.get("content-type")).toContain("application/json");
+            // A cached "ready" is exactly what a drain must not leave behind in a proxy.
+            expect(res.headers.get("cache-control")).toBe("no-store");
+        }
+    });
+
+    it("is ready as soon as the listener is bound", async () => {
+        const res = await fetch(base + HEALTH_PATHS.READY);
+        expect(await res.json()).toEqual({ status: "ready" });
+    });
+
+    it("does not shadow the MCP endpoint or the 404 for anything else", async () => {
+        const res = await fetch(base + "/health", { method: "GET" });
+        expect(res.status).toBe(404);
+    });
+});
+
+describe("draining", () => {
+    let handle, base;
+
+    beforeEach(async () => {
+        _resetHealthForTest();
+        ({ handle, base } = await listening());
+    });
+
+    afterEach(async () => {
+        await handle?.closeAll();
+    });
+
+    it("fails readiness but keeps liveness up, and still serves during the grace window", async () => {
+        expect((await fetch(base + HEALTH_PATHS.READY)).status).toBe(200);
+
+        // A short grace so the test is fast; the shape is what matters, not the duration.
+        const draining = handle.drain({ delayMs: 300, timeoutMs: 2000 });
+
+        // Sampled DURING the window, before the listener closes.
+        await new Promise(r => setTimeout(r, 80));
+        const ready = await fetch(base + HEALTH_PATHS.READY);
+        const live = await fetch(base + HEALTH_PATHS.LIVE);
+
+        expect(ready.status).toBe(503);
+        expect(await ready.json()).toEqual({ status: "draining" });
+        // The one that stops the kubelet killing the pod mid-drain.
+        expect(live.status).toBe(200);
+
+        await draining;
+    }, 20_000);
+
+    it("closes the listener when the drain finishes", async () => {
+        await handle.drain({ delayMs: 0, timeoutMs: 1000 });
+        await expect(fetch(base + HEALTH_PATHS.LIVE)).rejects.toThrow();
+    }, 20_000);
+
+    it("does not wait the full timeout when nothing is in flight", async () => {
+        // Guards the in-flight counter against leaking. A leaked counter never reaches zero, so
+        // every drain would sit out its entire timeout -- slow, and invisible until a deploy.
+        const started = Date.now();
+        await handle.drain({ delayMs: 0, timeoutMs: 5000 });
+        expect(Date.now() - started).toBeLessThan(2000);
+    }, 20_000);
+
+    it("counts a completed request back down, so a later drain is still fast", async () => {
+        await fetch(base + HEALTH_PATHS.LIVE);
+        await fetch(base + "/nope").catch(() => {});
+        const started = Date.now();
+        await handle.drain({ delayMs: 0, timeoutMs: 5000 });
+        expect(Date.now() - started).toBeLessThan(2000);
+    }, 20_000);
+});
