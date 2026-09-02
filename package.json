@@ -1,7 +1,7 @@
 {
-  "name": "cyberchef",
-  "version": "10.19.4",
-  "mcpVersion": "1.9.1",
+  "name": "cyberchef-mcp",
+  "version": "1.9.2",
+  "mcpVersion": "1.9.2",
   "description": "The Cyber Swiss Army Knife for encryption, encoding, compression and data analysis.",
   "author": "n1474335 <n1474335@gmail.com>",
   "homepage": "https://gchq.github.io/CyberChef",
@@ -224,5 +224,11 @@
     "js-yaml": ">=4.1.1",
     "serialize-javascript": ">=6.0.2",
     "qs": ">=6.14.1"
-  }
+  },
+  "cyberchefUpstreamVersion": "10.19.4",
+  "files": [
+    "src/core/",
+    "src/node/",
+    "LICENSE"
+  ]
 }
