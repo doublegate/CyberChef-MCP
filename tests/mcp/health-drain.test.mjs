@@ -145,11 +145,12 @@ describe("draining", () => {
     it("fails readiness but keeps liveness up, and still serves during the grace window", async () => {
         expect((await fetch(base + HEALTH_PATHS.READY)).status).toBe(200);
 
-        // A short grace so the test is fast; the shape is what matters, not the duration.
+        // No sleep-and-hope here. `drain()` calls markDraining() synchronously before its first
+        // await, so the state has already flipped by the time it returns a promise -- and the
+        // grace window keeps the listener up while we sample. Sleeping a fixed 80ms into a 300ms
+        // window instead would be a race that passes on an idle machine and fails on a loaded one.
         const draining = handle.drain({ delayMs: 300, timeoutMs: 2000 });
 
-        // Sampled DURING the window, before the listener closes.
-        await new Promise(r => setTimeout(r, 80));
         const ready = await fetch(base + HEALTH_PATHS.READY);
         const live = await fetch(base + HEALTH_PATHS.LIVE);
 
@@ -169,16 +170,19 @@ describe("draining", () => {
     it("does not wait the full timeout when nothing is in flight", async () => {
         // Guards the in-flight counter against leaking. A leaked counter never reaches zero, so
         // every drain would sit out its entire timeout -- slow, and invisible until a deploy.
+        // A 30s cap against a 5s bound: a six-fold margin, so this measures "returned promptly"
+        // rather than measuring how loaded the CI runner is. A leaked counter never reaches zero
+        // and would sit out the whole 30s, which no amount of load can imitate.
         const started = Date.now();
-        await handle.drain({ delayMs: 0, timeoutMs: 5000 });
-        expect(Date.now() - started).toBeLessThan(2000);
-    }, 20_000);
+        await handle.drain({ delayMs: 0, timeoutMs: 30_000 });
+        expect(Date.now() - started).toBeLessThan(5000);
+    }, 60_000);
 
     it("counts a completed request back down, so a later drain is still fast", async () => {
         await fetch(base + HEALTH_PATHS.LIVE);
         await fetch(base + "/nope").catch(() => {});
         const started = Date.now();
-        await handle.drain({ delayMs: 0, timeoutMs: 5000 });
-        expect(Date.now() - started).toBeLessThan(2000);
-    }, 20_000);
+        await handle.drain({ delayMs: 0, timeoutMs: 30_000 });
+        expect(Date.now() - started).toBeLessThan(5000);
+    }, 60_000);
 });
