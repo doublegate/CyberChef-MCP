@@ -43,6 +43,27 @@
 
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { getLogger } from "./logger.mjs";
+import {
+    loadAuthConfig, protectedResourceMetadata, unauthorizedChallenge, insufficientScopeChallenge,
+    verifyToken, bearerFrom, subjectDigest, satisfies, withAuthContext
+} from "./lib/auth.mjs";
+import { audit, OUTCOME } from "./lib/audit.mjs";
+
+/**
+ * Whether a path is the RFC 9728 discovery document.
+ *
+ * Both forms are accepted. RFC 9728 inserts the well-known segment before the resource path, so a
+ * server at `/mcp` is discovered at `/.well-known/oauth-protected-resource/mcp` -- but clients in
+ * the wild also request the bare form, and answering only the spec-exact one makes the server look
+ * unprotected to a client that guessed. Both describe the same single resource here.
+ *
+ * @param {string} path - The normalised request path.
+ * @returns {boolean} Whether to serve the metadata document.
+ */
+function isProtectedResourceMetadataPath(path) {
+    return path === "/.well-known/oauth-protected-resource" ||
+        path.startsWith("/.well-known/oauth-protected-resource/");
+}
 
 /**
  * Supported transport types.
@@ -339,6 +360,11 @@ export async function createTransport(options = {}) {
         // method being supported, unlike a 405.
         const allowedOrigins = csv(options.allowedOrigins, "CYBERCHEF_ALLOWED_ORIGINS");
 
+        // Authorization is OPTIONAL per the MCP specification and OFF unless an issuer is set, so
+        // an existing deployment is unaffected by upgrading. `options.auth` exists for tests; the
+        // ordinary path reads the environment.
+        const authConfig = options.auth || loadAuthConfig();
+
         const createServer = options.createServer;
         if (typeof createServer !== "function") {
             throw new TypeError(
@@ -544,9 +570,76 @@ export async function createTransport(options = {}) {
                 // before this check made `OPTIONS /anything` return 204, advertising an endpoint
                 // that does not exist and contradicting the documented "every other path 404s".
                 const path = normalizeEndpointPath(req.url);
+
+                // RFC 9728 discovery, served BEFORE the endpoint check and deliberately without
+                // authentication: a client cannot learn how to authenticate if discovery itself
+                // requires a token. Answered only when an issuer is configured, so an unprotected
+                // deployment does not advertise an authorization server it does not have.
+                if (authConfig.enabled && isProtectedResourceMetadataPath(path)) {
+                    const doc = JSON.stringify(protectedResourceMetadata(authConfig));
+                    res.writeHead(200, {
+                        "Content-Type": "application/json; charset=utf-8",
+                        // Cacheable: the document changes only when the server is reconfigured, and
+                        // a client fetches it on every 401 until it holds a token.
+                        "Cache-Control": "public, max-age=3600"
+                    });
+                    res.end(doc);
+                    return;
+                }
+
                 if (path !== mcpPathNormalized) {
                     sendJsonRpcError(res, 404, -32601, `Not Found: the MCP endpoint is ${mcpPath}`);
                     return;
+                }
+
+                // Authorization gate. Placed after the path check so an unrelated URL still 404s
+                // rather than revealing that this host runs a protected MCP server, and before
+                // method routing so it covers POST, GET (SSE) and DELETE alike -- session teardown
+                // is as much an operation as a tool call.
+                //
+                // OPTIONS is exempt: a CORS preflight carries no Authorization header by
+                // definition, and challenging it makes the browser abandon the request before the
+                // real one is ever sent.
+                let auth = { claims: null, scopes: [], subject: "anonymous" };
+                if (authConfig.enabled && req.method !== "OPTIONS") {
+                    const token = bearerFrom(req.headers);
+                    const result = await verifyToken(token, authConfig);
+                    if (!result.ok) {
+                        // A key-discovery failure is the server's fault, not the caller's.
+                        // Answering 401 there would send a client to re-authenticate against an
+                        // authorization server that is working correctly.
+                        if (result.serverError) {
+                            sendJsonRpcError(res, 503, -32000,
+                                "Authorization temporarily unavailable: cannot reach the authorization server");
+                            return;
+                        }
+                        audit({
+                            outcome: OUTCOME.UNAUTHENTICATED, tool: `${req.method} ${path}`,
+                            reason: result.reason,
+                            sessionId: normalizeSessionId(req.headers[SESSION_HEADER]) || undefined
+                        });
+                        res.setHeader("WWW-Authenticate", unauthorizedChallenge(authConfig));
+                        sendJsonRpcError(res, 401, -32000, "Unauthorized: a valid access token is required");
+                        return;
+                    }
+                    auth = {
+                        claims: result.claims,
+                        scopes: result.scopes,
+                        subject: subjectDigest(result.claims)
+                    };
+                    // A deployment may demand a baseline scope on every request, independent of
+                    // the per-tool check that happens at dispatch.
+                    if (!satisfies(auth.scopes, authConfig.requiredScopes)) {
+                        audit({
+                            outcome: OUTCOME.DENIED, tool: `${req.method} ${path}`,
+                            subject: auth.subject, scopes: auth.scopes,
+                            required: authConfig.requiredScopes, reason: "baseline scope"
+                        });
+                        res.setHeader("WWW-Authenticate",
+                            insufficientScopeChallenge(authConfig, authConfig.requiredScopes));
+                        sendJsonRpcError(res, 403, -32000, "Forbidden: insufficient scope");
+                        return;
+                    }
                 }
 
                 // Preflight. Carries no body and no session, so it is answered before any of the
@@ -561,24 +654,35 @@ export async function createTransport(options = {}) {
 
                 // GET (server-initiated SSE) and DELETE (explicit teardown) are only meaningful
                 // for an established session, and both are routed purely by header.
-                if (req.method === "GET" || req.method === "DELETE") {
-                    const entry = sessionId ? sessions.get(sessionId) : undefined;
-                    if (!entry) {
-                        sendJsonRpcError(res, 404, -32001, "Session not found");
+                // From here on the request runs inside the authenticated caller's context, so
+                // per-tool authorisation at dispatch can see who is asking without every layer
+                // between here and there growing a parameter.
+                //
+                // `null` when authorization is disabled, and that is load-bearing rather than
+                // tidiness: the dispatch guard treats a PRESENT context as "this caller was
+                // authenticated, hold them to their scopes". Installing `{scopes: []}` for an
+                // unauthenticated deployment made every call fail closed against scopes nobody had
+                // configured -- caught by the two-client HTTP example, which no unit test covered
+                // because each module was individually correct.
+                return await withAuthContext(authConfig.enabled ? auth : null, async () => {
+                    if (req.method === "GET" || req.method === "DELETE") {
+                        const entry = sessionId ? sessions.get(sessionId) : undefined;
+                        if (!entry) {
+                            sendJsonRpcError(res, 404, -32001, "Session not found");
+                            return;
+                        }
+                        entry.lastSeen = Date.now();
+                        await entry.transport.handleRequest(req, res);
                         return;
                     }
-                    entry.lastSeen = Date.now();
-                    await entry.transport.handleRequest(req, res);
-                    return;
-                }
 
-                if (req.method !== "POST") {
-                    res.writeHead(405, { "Allow": "GET, POST, DELETE, OPTIONS" });
-                    res.end();
-                    return;
-                }
+                    if (req.method !== "POST") {
+                        res.writeHead(405, { "Allow": "GET, POST, DELETE, OPTIONS" });
+                        res.end();
+                        return;
+                    }
 
-                const body = await readJsonBody(req, maxBodyBytes);
+                    const body = await readJsonBody(req, maxBodyBytes);
 
                 // Era routing. `isLegacyRequest` is the entry's own classification step exported as
                 // a predicate -- the same code `createMcpHandler` runs -- so this branch cannot
@@ -588,28 +692,28 @@ export async function createTransport(options = {}) {
                 //
                 // Everything reaching here is a POST; body-less GET and DELETE session operations
                 // are answered above and always classify legacy anyway.
-                if (!(await isLegacyRequest(await toWebRequest(req, body), body))) {
-                    if (!hostAllowed(req)) {
-                        sendJsonRpcError(res, 403, -32000, "Forbidden: Host header not allowed",
-                            requestIdOf(body));
+                    if (!(await isLegacyRequest(await toWebRequest(req, body), body))) {
+                        if (!hostAllowed(req)) {
+                            sendJsonRpcError(res, 403, -32000, "Forbidden: Host header not allowed",
+                                requestIdOf(body));
+                            return;
+                        }
+                        await modernHandler(req, res, body);
                         return;
                     }
-                    await modernHandler(req, res, body);
-                    return;
-                }
 
-                if (sessionId) {
-                    const entry = sessions.get(sessionId);
-                    if (!entry) {
+                    if (sessionId) {
+                        const entry = sessions.get(sessionId);
+                        if (!entry) {
                         // A stale id from a client that outlived a server restart. 404 is what the
                         // spec prescribes and what makes a conforming client re-initialize.
-                        sendJsonRpcError(res, 404, -32001, "Session not found", requestIdOf(body));
+                            sendJsonRpcError(res, 404, -32001, "Session not found", requestIdOf(body));
+                            return;
+                        }
+                        entry.lastSeen = Date.now();
+                        await entry.transport.handleRequest(req, res, body);
                         return;
                     }
-                    entry.lastSeen = Date.now();
-                    await entry.transport.handleRequest(req, res, body);
-                    return;
-                }
 
                 // No session id. Only an initialize may open one; anything else is a client that
                 // lost its session id, and answering it on a fresh session would silently give it
@@ -618,45 +722,46 @@ export async function createTransport(options = {}) {
                 // session-header error below, which is true but not the useful truth: the caller
                 // sent nothing, and telling them they are missing a header sends them looking in
                 // the wrong place.
-                if (body === undefined) {
-                    sendJsonRpcError(res, 400, -32600, "Invalid Request: empty request body");
-                    return;
-                }
+                    if (body === undefined) {
+                        sendJsonRpcError(res, 400, -32600, "Invalid Request: empty request body");
+                        return;
+                    }
 
-                if (!isInitializeBody(body)) {
-                    sendJsonRpcError(
-                        res, 400, -32000,
-                        "Bad Request: Mcp-Session-Id header required for non-initialize requests",
-                        requestIdOf(body)
-                    );
-                    return;
-                }
+                    if (!isInitializeBody(body)) {
+                        sendJsonRpcError(
+                            res, 400, -32000,
+                            "Bad Request: Mcp-Session-Id header required for non-initialize requests",
+                            requestIdOf(body)
+                        );
+                        return;
+                    }
 
-                if (sessions.size + pendingSessions >= maxSessions) {
-                    logger.warn(
-                        `refusing new session: at capacity (${sessions.size} active, ` +
+                    if (sessions.size + pendingSessions >= maxSessions) {
+                        logger.warn(
+                            `refusing new session: at capacity (${sessions.size} active, ` +
                         `${pendingSessions} pending, limit ${maxSessions})`
-                    );
-                    sendJsonRpcError(
-                        res, 503, -32000,
-                        `Server at session capacity (${maxSessions}). Retry later, or close an idle session with DELETE.`,
-                        requestIdOf(body)
-                    );
-                    return;
-                }
+                        );
+                        sendJsonRpcError(
+                            res, 503, -32000,
+                            `Server at session capacity (${maxSessions}). Retry later, or close an idle session with DELETE.`,
+                            requestIdOf(body)
+                        );
+                        return;
+                    }
 
                 // Reserved before the await and released in `finally`, so every failure path gives
                 // the slot back -- including one where newSession() throws after constructing the
                 // Server. The count can briefly double-count a session that has already landed in
                 // the map, which errs toward refusing one session too early rather than admitting
                 // one too many.
-                pendingSessions++;
-                try {
-                    const transport = await newSession();
-                    await transport.handleRequest(req, res, body);
-                } finally {
-                    pendingSessions--;
-                }
+                    pendingSessions++;
+                    try {
+                        const transport = await newSession();
+                        await transport.handleRequest(req, res, body);
+                    } finally {
+                        pendingSessions--;
+                    }
+                });
             } catch (err) {
                 const status = err.statusCode || 500;
                 logger.error(`HTTP transport error (${status}): ${err.message}`);

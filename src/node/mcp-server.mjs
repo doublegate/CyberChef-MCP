@@ -19,6 +19,9 @@ import Utils from "../core/Utils.mjs";
 import OperationConfig from "../core/config/OperationConfig.json" with {type: "json"};
 import { toContentBlocks } from "./lib/content-blocks.mjs";
 import { annotationsForOperation, annotationsForMetaTool } from "./lib/tool-annotations.mjs";
+import { currentAuth, insufficientScopeChallenge, loadAuthConfig } from "./lib/auth.mjs";
+import { authorise } from "./lib/rbac.mjs";
+import { audit, OUTCOME } from "./lib/audit.mjs";
 import { listPrompts, getPrompt } from "./lib/prompts.mjs";
 import { listResources, readResource, listResourceTemplates } from "./lib/resources.mjs";
 import { bakeOnCore } from "./lib/core-recipe.mjs";
@@ -599,6 +602,30 @@ function metaToolNames() {
  * meta-tools. Passing it in means a registry tool that would shadow one fails HERE, at startup,
  * rather than silently winning or losing a race at call time depending on import order.
  */
+/**
+ * The MCP annotations for any tool name, whichever of the three kinds it is.
+ *
+ * Authorisation reads annotations, and annotations are produced in three different places --
+ * registry tools carry their own, meta-tools derive theirs from a name, operations derive theirs
+ * from `OperationConfig`. Resolving that in one function keeps the access-control decision from
+ * depending on which branch of `tools/list` happened to build the entry.
+ *
+ * **Fails closed.** An unknown name returns the most restrictive annotations rather than an empty
+ * object: `{}` would read as "not read-only, not open-world" and be authorised by `cyberchef:write`.
+ * A name nobody recognises should need the strongest scope, not a middling one.
+ *
+ * @param {string} name - The exposed tool name.
+ * @returns {Object} MCP annotations.
+ */
+function annotationsForToolName(name) {
+    const registryTool = toolRegistry.getByExposedName(name);
+    if (registryTool) return registryTool.annotations || { readOnlyHint: false, openWorldHint: true };
+    if (metaToolNames().includes(name)) return annotationsForMetaTool(name, metaToolTitle(name));
+    const opName = Object.keys(OperationConfig).find(k => sanitizeToolName(k) === name);
+    if (opName) return annotationsForOperation(opName);
+    return { readOnlyHint: false, openWorldHint: true };
+}
+
 const toolRegistry = buildRegistry({
     reservedNames: new Set([
         ...Object.keys(OperationConfig).map(sanitizeToolName).filter(Boolean),
@@ -683,6 +710,52 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
     try {
         // Check memory periodically
         memoryMonitor.check();
+
+        // Per-tool authorisation, BEFORE any dispatch.
+        //
+        // Position is the whole correctness argument here. This guard first sat further down,
+        // just above the quota acquire -- which put it AFTER the meta-tool branches, so
+        // `cyberchef_bake` and all ten recipe tools skipped it entirely. That is an
+        // authorisation bypass on the most powerful tool in the server: bake runs a
+        // caller-supplied recipe containing any operation, including `HTTP request`.
+        //
+        // Found by the end-to-end test in tests/mcp/auth.test.mjs, which called bake with a
+        // read-only token and watched it succeed. Every unit test passed throughout: the
+        // annotations were right, the scope maths was right, and the check was simply never
+        // reached. A guard in the wrong place is indistinguishable from no guard.
+        //
+        // `currentAuth()` is null on stdio and whenever authorization is disabled, so this costs
+        // nothing for the default deployment.
+        const caller = currentAuth();
+        if (caller) {
+            const annotations = annotationsForToolName(name);
+            const decision = authorise({ granted: caller.scopes, annotations });
+            if (!decision.allowed) {
+                audit({
+                    outcome: OUTCOME.DENIED, tool: name, subject: caller.subject,
+                    scopes: caller.scopes, required: decision.required, requestId,
+                    reason: "tool scope"
+                });
+                const error = createInputError(
+                    `Forbidden: ${name} requires scope ${decision.required.join(" ")}. ` +
+                    `This token carries ${caller.scopes.join(" ") || "no scopes"}.`,
+                    {
+                        required: decision.required,
+                        granted: caller.scopes,
+                        // The same value the HTTP layer puts in WWW-Authenticate, carried in the
+                        // error so a client on a transport without headers can still discover
+                        // what to ask for.
+                        challenge: insufficientScopeChallenge(loadAuthConfig(), decision.required)
+                    }
+                );
+                logRequestError(requestId, error, { tool: name });
+                return error.toMCPError();
+            }
+            audit({
+                outcome: OUTCOME.ALLOWED, tool: name, subject: caller.subject,
+                scopes: caller.scopes, requestId
+            });
+        }
 
         // Handle meta-tools
         if (name === "cyberchef_bake") {
