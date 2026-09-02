@@ -904,6 +904,12 @@ export async function createTransport(options = {}) {
             markServing();
             logger.info(`Streamable HTTP transport listening on ${host}:${port}${mcpPath}`);
             logger.info(`  health: ${HEALTH_PATHS.LIVE}, ${HEALTH_PATHS.READY}, ${HEALTH_PATHS.STARTUP} (unauthenticated)`);
+            // Said at startup, on the transport where replicas are possible, because the failure
+            // it warns about is otherwise discovered as missing data. v2.6.0 detects a clobber
+            // rather than preventing it: the storage is a file, and it is not being moved into a
+            // database to coordinate one JSON document.
+            logger.info("  recipe storage: node-local file -- with >1 replica, give each its own " +
+                "CYBERCHEF_RECIPE_STORAGE path, or run a single replica");
             logger.info(`  session timeout: ${Math.round(sessionTimeoutMs / 1000)}s, max sessions: ${maxSessions}`);
             const hosts = effectiveAllowedHosts();
             if (hosts) {
