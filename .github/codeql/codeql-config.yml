@@ -19,6 +19,26 @@ queries:
 paths-ignore:
   - src/vendor/**
 
+  # Archived measurement harnesses (docs/internal/measurements/**), salvaged out of a scratch
+  # directory so the numbers cited in the findings logs stay reproducible. They are already exempt
+  # from the linter (docs/ is outside the eslint targets), from coverage, and from the npm `files`
+  # allowlist -- they are evidence, not shipped code, and no gate runs them.
+  #
+  # Committing them immediately produced two alerts, which is how this entry came to exist:
+  #
+  #   js/incomplete-multi-character-sanitization  strip-test.mjs:10
+  #   js/unused-local-variable                    mkpatch.mjs:1
+  #
+  # The first is CORRECT and unfixable by design. `strip-test.mjs` exists to demonstrate the
+  # difference between the naive single-pass strip and the fixpoint-plus-escape version that
+  # replaced it, after CodeQL flagged the real one in docs-site/scripts/collect.mjs. It therefore
+  # CONTAINS the vulnerable form deliberately, as the control in a comparison. "Fixing" it would
+  # delete the thing it demonstrates, and the file has no callers.
+  #
+  # Revisit if anything under this path ever becomes executable by the server or enters a gate.
+  # Nothing here is imported by src/**; that is the property that makes this safe.
+  - docs/internal/measurements/**
+
 query-filters:
   # js/incomplete-sanitization -- excluded, with evidence.
   #
