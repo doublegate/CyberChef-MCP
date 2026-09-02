@@ -65,7 +65,7 @@ gantt
     v2.4.0 Tool Registry                :done, 2026-09-01, 1d
     section Phase 5 Enterprise
     v2.5.0 Enterprise Features          :done, 2026-09-02, 1d
-    v2.6.0 Distributed Architecture     :2027-02-01, 4w
+    v2.6.0 Distributed Architecture     :done, 2026-09-02, 1d
     v2.7.0 Observability                :2027-03-01, 4w
     section Phase 6 Evolution
     v2.8.0 Edge Deployment              :2027-04-01, 4w
@@ -133,7 +133,7 @@ gantt
 | **v2.3.0** | Protocol currency | **Released 2026-08-31.** Protocol revision 2026-07-28 on both stdio and HTTP, served alongside the 2025 era from one set of handlers (MCP SDK v2); npm distribution unblocked; 17 image operations fixed. **Re-scoped:** the original "WebSocket, Streamable HTTP, SSE" line no longer describes anything buildable — see the note below. | L | Medium |
 | **v2.4.0** | Tool registry | **Released 2026-09-01.** A registry for tools that are not CyberChef operations, and its first four: `xor_key_length`, `cyclic_pattern`, `hash_identify`, `rsa_attack`. **Re-scoped:** "plugin system, sandboxed execution, plugin registry" shipped as the registry without the loader — see the note below. | L | Low |
 | **v2.5.0** | Enterprise Features | **Released 2026-09-02.** Completes the Enterprise Features milestone — the first of Phase 5's three releases: OAuth 2.1 Resource Server on HTTP, scope-based RBAC, audit logging, and multi-tenancy (cache, recipes, concurrency and audit isolated per tenant). Also fixed a rate limiter that had never limited anything since v1.7.0. **Re-scoped:** authorization applies to HTTP only — the specification says stdio SHOULD NOT use OAuth and should take credentials from the environment, so the default transport is untouched. | XL | High |
-| **v2.6.0** | Distributed Architecture | Kubernetes scaling, service mesh, warm pools | XL | High |
+| **v2.6.0** | Distributed Architecture | **Released 2026-09-02.** Health probes, a drain that loses no requests on a rolling update, a Helm chart and Compose file, and a 5s deadline plus circuit breaker on calls to the authorization server. Cold start ~1300ms → ~185ms. **Re-scoped:** the plan's Redis session store solved a problem MCP 2026-07-28 deleted — the protocol has no sessions, so replicas need no affinity and no store. Warm pools withdrawn on measurement: the target was beaten fivefold by removing the startup cost instead of hiding it. | XL | High |
 | **v2.7.0** | Observability | OpenTelemetry traces/metrics/logs, dashboards, alerts | L | Medium |
 | **v2.8.0** | Edge Deployment | WebAssembly/WASI, edge runtime, offline support | L | High |
 | **v2.9.0** | AI-Native Features | NL-to-recipe, operation suggestions, smart recipes | M | Medium |

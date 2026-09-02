@@ -8,8 +8,8 @@ This document covers security for the **CyberChef MCP Server** fork. For the ori
 
 | Version | Supported          | Notes                                                                 |
 | ------- | ------------------ | --------------------------------------------------------------------- |
-| 2.5.x   | :white_check_mark: | Current release (2.5.0). Fixes land here.                                     |
-| 2.4.x   | :white_check_mark: | Security fixes only, until the next minor.                            |
+| 2.6.x   | :white_check_mark: | Current release (2.6.0). Fixes land here.                                     |
+| 2.5.x   | :white_check_mark: | Security fixes only, until the next minor.                            |
 | 1.9.x   | :white_check_mark: | Security fixes only, until ~March 2027. Published to `cyberchef-mcp_v1`, and it stays **Apache-2.0** — the GPL-3.0-or-later relicensing applies from v2.0.0 forward. |
 | < 1.9   | :x:                | Upgrade. Note that v2.0.0 has breaking changes; see [the migration guide](docs/v2.0.0-breaking-changes.md). |
 
