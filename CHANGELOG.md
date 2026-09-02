@@ -84,6 +84,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+- **A `SIGTERM` during startup could be undone by startup finishing.** `createTransport()` returns
+  before the listener's `listening` callback fires, so a drain beginning in that window was
+  overwritten when the callback landed — readiness went back to 200 mid-shutdown, telling the load
+  balancer to resume sending traffic to a process that was going away. `DRAINING` is now terminal.
 - **The README told people to pull a Docker image that does not exist.** `docker pull
   doublegate/cyberchef-mcp:latest` 404s — the Docker Hub repository is `parobek/cyberchef-mcp`,
   named from the account rather than the GitHub org. The offline path was wrong twice over: after
