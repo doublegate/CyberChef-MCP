@@ -185,8 +185,30 @@ Tool naming: operations are sanitized to snake_case with a `cyberchef_` prefix
 Release cut (module 70 has the ceremony; this is the repo-specific mechanic):
 
 ```bash
-git tag -a v1.x.x -F docs/releases/v1.x.x.md && git push origin v1.x.x
-# Workflow publishes to ghcr.io/doublegate/cyberchef-mcp_v1
+# --cleanup=verbatim is REQUIRED, not optional. Without it `git tag -F` treats every line
+# beginning with `#` as a comment and strips it, so a markdown release note loses ALL of its
+# headings and the tag message becomes an unstructured wall of text.
+#
+# This went unnoticed for the whole v2.x line: v2.2.0 lost 12 headings, v2.3.0 lost 12,
+# v2.4.0 lost 16, v2.4.1 lost 9. Published tags are immutable, so those stay as they are;
+# v2.5.0 is the first tag with its headings intact.
+#
+# The GitHub Release is unaffected either way -- mcp-release.yml passes the same file through
+# `gh release create --notes-file`, which does not strip anything. Only the git tag message
+# was ever degraded, which is why nobody saw it.
+git tag -a vX.Y.Z --cleanup=verbatim -F docs/releases/vX.Y.Z.md && git push origin vX.Y.Z
+# Tag from `master` AFTER the release PR merges: `docker/metadata-action` moves `latest` for any
+# non-prerelease semver tag, so tagging a release branch still moves it.
+# v2.x publishes to ghcr.io/doublegate/cyberchef-mcp_v2; the v1.9.x line to ..._v1.
+```
+
+Verify the tag kept its structure before pushing. Count headings rather than diffing the whole
+message: `%(contents)` appends a trailing newline, so a full diff reports a one-byte mismatch on a
+perfectly good tag and would be ignored within a release or two.
+
+```bash
+[ "$(git tag -l vX.Y.Z --format='%(contents)' | grep -c '^#')" \
+  = "$(grep -c '^#' docs/releases/vX.Y.Z.md)" ] && echo "tag kept its headings"
 ```
 
 ### Code Conventions
