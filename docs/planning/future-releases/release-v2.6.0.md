@@ -44,7 +44,12 @@
 > **Circuit breakers.** `retry.mjs` already exported a `CircuitBreaker` that **nothing
 > instantiated** — the only `new CircuitBreaker` in the repository was in its own test. The first
 > disposition here was "leave it: a breaker protects a failing dependency, and this server's work
-> is local CPU". That was right about the operations and forgot the authorization server.
+> is local CPU". That was too broad twice over. Two operations DO reach the network -- `HTTP
+> request` and `DNS over HTTPS`, the only two carrying `openWorldHint` -- though a breaker is
+> still wrong for them: each call is user-directed at a URL the caller chose, so tripping a
+> shared circuit across unrelated hosts would refuse one user's request because another's host
+> was down. What the claim actually missed is the authorization server, which every request
+> depends on and nobody chooses per call.
 >
 > `fetchJwks` cached successes and not failures, and `discoverJwksUri` tries two metadata URLs, so
 > an issuer outage turned every incoming request into two outbound ones — none with a deadline,

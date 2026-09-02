@@ -218,6 +218,8 @@ export class CircuitBreaker {
         this.failures = 0;
         this.lastFailureTime = null;
         this.state = "CLOSED"; // CLOSED, OPEN, HALF_OPEN
+        // Whether a HALF_OPEN trial call is currently running. See `isOpen()`.
+        this.probeInFlight = false;
     }
 
     /**
@@ -230,10 +232,22 @@ export class CircuitBreaker {
             // Check if we should try again
             if (Date.now() - this.lastFailureTime > this.resetTimeout) {
                 this.state = "HALF_OPEN";
+                this.probeInFlight = true;
                 return false;
             }
             return true;
         }
+        // HALF_OPEN admits exactly ONE trial call, and this is the line that makes that true.
+        //
+        // Without it, HALF_OPEN simply returned false, so every CONCURRENT caller passed -- and a
+        // recovery burst is precisely when callers are concurrent. Measured against a down issuer
+        // with 50 clients retrying at once after the reset window:
+        //
+        //     probes during recovery: 100     (should be 1)
+        //
+        // A breaker that bounds the outage and then stampedes the service at the moment it comes
+        // back has moved the outage rather than contained it.
+        if (this.state === "HALF_OPEN" && this.probeInFlight) return true;
         return false;
     }
 
@@ -243,6 +257,7 @@ export class CircuitBreaker {
     recordSuccess() {
         this.failures = 0;
         this.state = "CLOSED";
+        this.probeInFlight = false;
     }
 
     /**
@@ -251,6 +266,9 @@ export class CircuitBreaker {
     recordFailure() {
         this.failures++;
         this.lastFailureTime = Date.now();
+        // Whatever the outcome, the trial is over. A failed probe reopens the circuit below and
+        // the next one waits out another full reset window.
+        this.probeInFlight = false;
 
         if (this.failures >= this.failureThreshold) {
             this.state = "OPEN";
@@ -296,6 +314,7 @@ export class CircuitBreaker {
      */
     reset() {
         this.failures = 0;
+        this.probeInFlight = false;
         this.lastFailureTime = null;
         this.state = "CLOSED";
     }

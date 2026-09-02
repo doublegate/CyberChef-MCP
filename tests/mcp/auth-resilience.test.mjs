@@ -129,6 +129,35 @@ describe("recovery", () => {
         expect(_discoveryBreakerState()).toBe("OPEN");
     });
 
+    it("admits exactly ONE probe when many callers retry at once", async () => {
+        // The recovery burst is the dangerous moment: an outage ends, every client retries
+        // simultaneously, and the authorization server gets a stampede just as it comes back.
+        //
+        // HALF_OPEN previously admitted every CONCURRENT caller, because `isOpen()` simply
+        // returned false for that state. Measured with 50 clients retrying after the reset
+        // window: 100 outbound requests, where there should have been one probe's worth.
+        let attempts = 0;
+        globalThis.fetch = async () => {
+            attempts++;
+            // A slow failure, so the callers genuinely overlap inside the probe window. An
+            // instant failure would serialise them and hide the bug.
+            await new Promise(r => setTimeout(r, 20));
+            throw new Error("ECONNREFUSED");
+        };
+
+        for (let i = 0; i < 10; i++) await verifyToken("a.b.c", CONFIG);
+        expect(_discoveryBreakerState()).toBe("OPEN");
+
+        _resetDiscoveryBreaker(31000);
+        const before = attempts;
+        await Promise.all(Array.from({ length: 50 }, () => verifyToken("a.b.c", CONFIG)));
+
+        // One probe, which is up to two fetches: discovery tries two metadata URLs. The assertion
+        // is deliberately "one probe's worth", not "one request" -- the point is that 49 of the 50
+        // callers made none at all.
+        expect(attempts - before).toBeLessThanOrEqual(2);
+    }, 30_000);
+
     it("closes fully once discovery succeeds", async () => {
         // One syntactically valid RSA JWK, so the JWKS parses and yields a usable key.
         globalThis.fetch = issuerServing([{

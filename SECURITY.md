@@ -73,10 +73,12 @@ a decision to ignore you.
 
 ## Security Measures
 
-Describes the **current** posture (2.4.x), not a historical snapshot. It previously carried a
+Describes the **current** posture (2.6.x), not a historical snapshot. It previously carried a
 `(v1.3.0)` stamp that was never updated, so a reader could not tell whether it described the
-shipped image or a state six releases old. Verified against the published
-`ghcr.io/doublegate/cyberchef-mcp_v2:2.4.0` image rather than against the Dockerfile.
+shipped image or a state six releases old. Verified against a **published** image rather than
+against the Dockerfile — most recently `ghcr.io/doublegate/cyberchef-mcp_v2:2.5.0`, which reports
+`uid=65532 gid=65532` and exposes only `3000/tcp`. The container base and user are unchanged in
+2.6.0; re-verify against `:2.6.0` once it is published.
 
 ### Container Security
 

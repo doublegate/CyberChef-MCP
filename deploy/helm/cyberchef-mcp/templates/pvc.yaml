@@ -1,6 +1,16 @@
 {{- if and .Values.persistence.enabled (not .Values.persistence.perReplica) }}
-{{- if gt (int .Values.replicaCount) 1 }}
-{{- fail "persistence.perReplica=false shares ONE recipe volume between replicas, which makes them conflict: the server detects the stale write and refuses it, so saves fail. Set persistence.perReplica=true (a volume per replica) or replicaCount=1." }}
+{{/*
+Effective maximum replicas. `replicaCount` alone is NOT the answer: when autoscaling is enabled
+the Deployment omits `replicas` entirely and the HPA drives it up to `maxReplicas`, so checking
+replicaCount let `persistence.perReplica=false` render a shared volume scaling to 10 pods --
+exactly the configuration the check below exists to refuse.
+*/}}
+{{- $maxReplicas := int .Values.replicaCount -}}
+{{- if .Values.autoscaling.enabled -}}
+{{- $maxReplicas = int .Values.autoscaling.maxReplicas -}}
+{{- end -}}
+{{- if gt $maxReplicas 1 }}
+{{- fail "persistence.perReplica=false shares ONE recipe volume between replicas, which makes them conflict: the server detects the stale write and refuses it, so saves fail. Set persistence.perReplica=true (a volume per replica), or run a single replica with autoscaling disabled." }}
 {{- end }}
 apiVersion: v1
 kind: PersistentVolumeClaim

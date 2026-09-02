@@ -72,12 +72,16 @@ recipes.json.*.tmp
 /ref-proj/*
 !/ref-proj/CyberChef
 
-# Helm working files. The chart has no dependencies today, so neither of these exists yet --
-# listed now because `helm dependency update` creates both the moment one is added, and a
-# committed `charts/` is a vendored copy of somebody else's chart that nothing updates.
-# `*.tgz` above already covers `helm package` output.
+# Helm's vendored dependency downloads. The chart has no dependencies today; listed now because
+# `helm dependency update` creates this the moment one is added, and a committed `charts/` is a
+# vendored copy of somebody else's chart that nothing updates. `*.tgz` above already covers
+# `helm package` output.
+#
+# `Chart.lock` is deliberately NOT ignored: it is the resolved-version pin, the Helm equivalent of
+# package-lock.json, and `helm dependency build` reproduces `charts/` from it. Ignoring the lock
+# while ignoring the vendored output means dependency versions drift between builds -- which is
+# the opposite of what ignoring build output is for.
 deploy/helm/**/charts/
-deploy/helm/**/Chart.lock
 
 # Local Helm value overrides. A values file is where an issuer URL, a hostname or a pull secret
 # gets pasted "just to try it", so the convention is worth having before someone needs it.

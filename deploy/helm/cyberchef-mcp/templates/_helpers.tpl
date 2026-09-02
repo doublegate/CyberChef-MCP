@@ -53,7 +53,10 @@ Environment shared by the Deployment and StatefulSet paths, so the two cannot dr
   value: "0.0.0.0"
 - name: CYBERCHEF_HTTP_PORT
   value: {{ .Values.service.port | quote }}
-- name: CYBERCHEF_MCP_PATH
+# CYBERCHEF_HTTP_PATH, not CYBERCHEF_MCP_PATH. transports.mjs reads the former; the latter
+# is a name that does not exist, so setting mcpPath silently did nothing and an ingress
+# routed to the configured path returned 404 while the server listened on /mcp.
+- name: CYBERCHEF_HTTP_PATH
   value: {{ .Values.mcpPath | quote }}
 - name: CYBERCHEF_DRAIN_DELAY_MS
   value: {{ mul .Values.drain.delaySeconds 1000 | quote }}
