@@ -29,7 +29,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '24'
+          node-version: '26'
           cache: 'npm'
 
       - name: Configure git
@@ -115,7 +115,7 @@ jobs:
         run: |
           npm install
 
-      - name: Apply Node 22 compatibility patches
+      - name: Apply SlowBuffer compatibility patches
         run: |
           if [ -f "node_modules/avsc/lib/types.js" ]; then
             sed -i 's/new SlowBuffer/Buffer.alloc/g' node_modules/avsc/lib/types.js
@@ -202,7 +202,7 @@ jobs:
           Rolled back to commit ${SHORT_SHA}
           * Regenerated OperationConfig.json
           * Updated baseline.json
-          * Applied Node 22 compatibility patches
+          * Applied SlowBuffer compatibility patches
 
           Generated with rollback workflow"
           git commit -m "$COMMIT_MSG" || echo "No changes to commit"
@@ -298,7 +298,7 @@ jobs:
           * Rolled back codebase to commit \`$SHORT_SHA\`
           * Regenerated \`OperationConfig.json\`
           * Updated \`baseline.json\`
-          * Applied Node 22 compatibility patches
+          * Applied SlowBuffer compatibility patches
           * ref-proj/CyberChef/ state: $ROLLBACK_REF_TAG
 
           ### Verification Required

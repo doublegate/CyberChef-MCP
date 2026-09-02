@@ -400,7 +400,7 @@ jobs:
         if: startsWith(github.ref_name, 'v2.')
         uses: actions/setup-node@v5
         with:
-          node-version: '24'
+          node-version: '26'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies for packaging

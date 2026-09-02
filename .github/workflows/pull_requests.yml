@@ -8,20 +8,29 @@ on:
 jobs:
   core-test:
     runs-on: ubuntu-latest
+
+    # 24 is the declared floor in `engines`; 26 is what the published image runs. Testing
+    # only one of them leaves the other a claim rather than a fact -- see core-ci.yml.
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ['24', '26']
+
+    name: core-test (node ${{ matrix.node-version }})
     steps:
     - uses: actions/checkout@v7
 
     - name: Set node version
       uses: actions/setup-node@v7
       with:
-        node-version: '24'
+        node-version: ${{ matrix.node-version }}
 
     - name: Install
       run: |
         npm install
         npm run setheapsize
 
-    - name: Patch Dependencies for Node 22
+    - name: Patch Dependencies (SlowBuffer)
       run: |
         sed -i 's/new SlowBuffer/Buffer.alloc/g' node_modules/avsc/lib/types.js
         sed -i 's/SlowBuffer/Buffer/g' node_modules/buffer-equal-constant-time/index.js
@@ -48,13 +57,22 @@ jobs:
   # red afterwards, on the push to master.
   mcp-test:
     runs-on: ubuntu-latest
+
+    # 24 is the declared floor in `engines`; 26 is what the published image runs. Testing
+    # only one of them leaves the other a claim rather than a fact -- see core-ci.yml.
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ['24', '26']
+
+    name: mcp-test (node ${{ matrix.node-version }})
     steps:
     - uses: actions/checkout@v7
 
     - name: Set node version
       uses: actions/setup-node@v7
       with:
-        node-version: '24'
+        node-version: ${{ matrix.node-version }}
 
     - name: Install
       run: |

@@ -25,6 +25,26 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+
+    # BOTH ENDS OF THE SUPPORTED RANGE.
+    #
+    # `package.json` declares `engines: >=24 <27`, and until now every workflow tested 24 while the
+    # published image ran **26.8.1**. So the runtime that actually ships was never tested, and the
+    # floor was the only thing that was -- a gap that a green pipeline hid completely.
+    #
+    # Bumping everything to 26 would have inverted the bug rather than fixed it: 24 is a supported
+    # version for anyone installing from npm, and an untested floor is exactly what this was.
+    # Testing both boundaries is the only claim the manifest can honestly make.
+    #
+    # `fail-fast: false` so a failure on one version still reports the other -- when a Node version
+    # is the variable under test, "which ones broke" is the entire result.
+    strategy:
+      fail-fast: false
+      matrix:
+        # 24 = the declared floor. 26 = what Dockerfile.mcp actually runs.
+        node-version: ['24', '26']
+
+    name: test (node ${{ matrix.node-version }})
     steps:
     - name: Configure git
       run: git config --global init.defaultBranch master
@@ -34,7 +54,7 @@ jobs:
     - name: Set node version
       uses: actions/setup-node@v7
       with:
-        node-version: '24'
+        node-version: ${{ matrix.node-version }}
 
     - name: Install
       run: |
@@ -44,9 +64,14 @@ jobs:
     - name: Update browserslist database
       run: npx update-browserslist-db@latest
 
-    # We need to patch the node_modules for Node 22 compatibility here as well
+    # Patch node_modules for the removed `SlowBuffer`, as the other suites do.
+    #
+    # NOT "Node 22 compatibility", which is what this said and what it never was: SlowBuffer was
+    # REMOVED from Node, so the patch is needed on every version this project supports and will
+    # be needed on later ones too. Naming a version here implied the opposite -- that moving off
+    # 22 would retire it -- which is exactly the wrong thing to believe while debugging.
     # because npm install might overwrite them or they might not be patched in the repo
-    - name: Patch Dependencies for Node 22
+    - name: Patch Dependencies (SlowBuffer)
       run: |
         sed -i 's/new SlowBuffer/Buffer.alloc/g' node_modules/avsc/lib/types.js
         sed -i 's/SlowBuffer/Buffer/g' node_modules/buffer-equal-constant-time/index.js

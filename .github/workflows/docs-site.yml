@@ -47,7 +47,7 @@ jobs:
 
       - uses: actions/setup-node@v5
         with:
-          node-version: "24"
+          node-version: "26"
           cache: npm
           cache-dependency-path: |
             package-lock.json
@@ -83,8 +83,18 @@ jobs:
           test -f docs-site/dist/index.html || { echo "::error::No landing page"; exit 1; }
           test -d docs-site/dist/reference || { echo "::error::No generated tool reference"; exit 1; }
 
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v4
+      # These three are on their Node-24 majors. The previous versions
+      # (configure-pages@v5, upload-pages-artifact@v4, deploy-pages@v4) all target Node 20, which
+      # GitHub now force-runs on Node 24 and warns about on every deploy:
+      #
+      #   Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced
+      #   to run on Node.js 24: actions/configure-pages@v5, actions/upload-artifact@ea165f8d...
+      #
+      # The third name in that warning is not used directly here -- upload-pages-artifact@v4 pins
+      # it internally. v5 pins upload-artifact@v7 instead, so bumping this one clears that warning
+      # too, which is why it is not listed separately anywhere in this repository.
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: docs-site/dist
 
@@ -100,4 +110,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

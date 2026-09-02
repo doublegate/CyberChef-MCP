@@ -133,7 +133,7 @@ spec:
 # Docker: no network at all. stdio only -- there is no port to reach.
 docker run -i --rm --network none \
   -e CYBERCHEF_OFFLINE=true \
-  ghcr.io/doublegate/cyberchef-mcp_v2:2.8.0
+  ghcr.io/doublegate/cyberchef-mcp_v2:2.8.1
 ```
 
 Use the switch *and* the namespace control. The switch gives a clear error to the caller; the
@@ -145,10 +145,10 @@ Every release attaches a Docker image tarball:
 
 ```bash
 # On a connected machine
-wget https://github.com/doublegate/CyberChef-MCP/releases/download/v2.8.0/cyberchef-mcp-v2.8.0-docker-image.tar.gz
+wget https://github.com/doublegate/CyberChef-MCP/releases/download/v2.8.1/cyberchef-mcp-v2.8.1-docker-image.tar.gz
 
 # On the air-gapped machine
-docker load < cyberchef-mcp-v2.8.0-docker-image.tar.gz
+docker load < cyberchef-mcp-v2.8.1-docker-image.tar.gz
 ```
 
 **The tarball is amd64.** It exists for air-gapped installs, where you know which machine you are
@@ -156,8 +156,8 @@ feeding, and shipping both architectures would double a 200 MB asset for no one'
 pull from the registry on a connected machine and `docker save` it yourself:
 
 ```bash
-docker pull --platform linux/arm64 ghcr.io/doublegate/cyberchef-mcp_v2:2.8.0
-docker save ghcr.io/doublegate/cyberchef-mcp_v2:2.8.0 | gzip > cyberchef-mcp-arm64.tar.gz
+docker pull --platform linux/arm64 ghcr.io/doublegate/cyberchef-mcp_v2:2.8.1
+docker save ghcr.io/doublegate/cyberchef-mcp_v2:2.8.1 | gzip > cyberchef-mcp-arm64.tar.gz
 ```
 
 npm works offline the same way, once the version is on the registry — the tarball and the npm
@@ -165,8 +165,8 @@ publish happen in the same release workflow, so `npm pack` against a version who
 in flight returns `E404`:
 
 ```bash
-npm pack cyberchef-mcp@2.8.0          # on a connected machine, after the release publishes
-npm install ./cyberchef-mcp-2.8.0.tgz --ignore-scripts   # on the target
+npm pack cyberchef-mcp@2.8.1          # on a connected machine, after the release publishes
+npm install ./cyberchef-mcp-2.8.1.tgz --ignore-scripts   # on the target
 ```
 
 To build a tarball from a source checkout before then, `npm pack` in the repository root produces
@@ -176,12 +176,12 @@ the same artefact.
 
 ```bash
 # Which architectures the tag carries
-docker buildx imagetools inspect ghcr.io/doublegate/cyberchef-mcp_v2:2.8.0
+docker buildx imagetools inspect ghcr.io/doublegate/cyberchef-mcp_v2:2.8.1
 
 # That the running image is the architecture you expect
-docker image inspect ghcr.io/doublegate/cyberchef-mcp_v2:2.8.0 --format '{{.Architecture}}'
+docker image inspect ghcr.io/doublegate/cyberchef-mcp_v2:2.8.1 --format '{{.Architecture}}'
 
 # That it serves
 echo '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' \
-  | docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v2:2.8.0
+  | docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v2:2.8.1
 ```
