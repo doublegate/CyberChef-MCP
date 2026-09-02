@@ -159,13 +159,13 @@ For environments without direct GHCR access, download the pre-built Docker image
 1.  **Download the tarball** (approximately 196 MB compressed; measured, not estimated):
     ```bash
     # Download from GitHub Releases
-    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v2.8.0/cyberchef-mcp-v2.8.0-docker-image.tar.gz
+    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v2.8.1/cyberchef-mcp-v2.8.1-docker-image.tar.gz
     ```
 
 2.  **Load the image into Docker:**
 
     ```bash
-    docker load < cyberchef-mcp-v2.8.0-docker-image.tar.gz
+    docker load < cyberchef-mcp-v2.8.1-docker-image.tar.gz
     ```
 
 3.  **Tag for easier usage:**

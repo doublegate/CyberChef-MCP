@@ -91,6 +91,21 @@ values.*.local.yaml
 # Antigravity PR reviewer: large-diff on-disk handoff (transient, removed by the script).
 /.agy-review-work/
 
+# Security-scan output.
+#
+# Every one of these is written INTO THE WORKING DIRECTORY by security-scan.yml and
+# mcp-release.yml, so anyone reproducing a CI scan locally -- which v2.8.0's IaC work now makes a
+# normal thing to do -- ends up with them untracked. Committing a SARIF report would be worse than
+# untidy: it is a point-in-time snapshot of findings that goes stale immediately and invites
+# someone to read it as current.
+#
+# The trivy CONFIG (security/trivy/) is deliberately tracked -- it is how the scan is configured,
+# not what the scan produced.
+*.sarif
+sbom.cyclonedx.json
+npm-audit-results.json
+benchmark-output.txt
+
 # NOT ignored, and deliberately so:
 #
 #   ref-proj/          A declared submodule in .gitmodules, tracked as a gitlink. Ignoring a

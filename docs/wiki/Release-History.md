@@ -5,6 +5,33 @@ Full notes for every version live in
 [releases page](https://github.com/doublegate/CyberChef-MCP/releases). This is the shape of the 2.x
 line, and what each release was actually *about*.
 
+## v2.8.1 — testing what we actually ship
+
+No runtime code changed. What changed is what CI measures, and two of those were wrong in ways a
+green pipeline hid completely.
+
+**CI tested Node 24 while the image shipped Node 26.8.1.** The runtime users actually get was never
+exercised by a test — and nothing reported it, because 24 is a perfectly valid version to test on.
+It just is not the one that ships.
+
+Bumping everything to 26 would have inverted the bug rather than fixed it: `engines` declares
+`>=24 <27`, so 24 is supported for anyone installing from npm, and an untested floor is precisely
+what was wrong. The test gates now run **both boundaries** — 24 (the floor) and 26 (what ships) —
+with `fail-fast: false`, because when the Node version is the variable under test, "which ones
+broke" is the whole result.
+
+**And the performance benchmarks were measured on Node 22**, which `engines` does not permit at all.
+The numbers posted to every pull request came from a runtime this project does not support, on a V8
+two majors behind the one it ships. Missed by the v2.0.0 plan's "all 7 workflows" bump and hidden
+for eight releases, because a warning is not a failure and nobody reads a green job's log.
+
+Also three GitHub Pages actions force-run on deprecated Node 20, now on their Node-24 majors.
+
+What was left alone is documented with evidence rather than silently skipped: `@astronautlabs/amf`
+declares `engines: ^14` but 0.0.6 **is** the latest published version and the operations were
+verified to work on 26.8.1; and a category of log lines that match the word "warning" without being
+warnings — echoed inputs, runner noise, and the audit trail firing on purpose in tests.
+
 ## v2.8.0 — ARM, and 30% smaller
 
 Images for `linux/arm64` as well as `linux/amd64`, and the image itself down from 643 MB to

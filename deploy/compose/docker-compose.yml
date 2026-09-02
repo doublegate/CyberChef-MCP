@@ -14,7 +14,7 @@ services:
     # Pinned, not `latest`: a compose file that floats its tag cannot be rolled back to a known
     # state, and `latest` moves on every release.
     #
-    # A VERSION TAG IS NOT A DIGEST. GHCR tags are mutable, so `2.8.0` is a promise about which
+    # A VERSION TAG IS NOT A DIGEST. GHCR tags are mutable, so `2.8.1` is a promise about which
     # bytes were pushed rather than a guarantee about which bytes you get. For a deployment that
     # needs integrity, resolve the tag once and pin what it resolved to:
     #

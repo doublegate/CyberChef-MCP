@@ -20,7 +20,7 @@
 <<< MC-PROJECT-START >>>
 ## Project: CyberChef
 
-**CyberChef MCP Server** (v2.8.0) - Fork of GCHQ CyberChef wrapping the Node.js API into an MCP
+**CyberChef MCP Server** (v2.8.1) - Fork of GCHQ CyberChef wrapping the Node.js API into an MCP
 server. Exposes 504 operations (encryption, encoding, compression, forensics) as AI assistant tools.
 
 | Metric | Value |
