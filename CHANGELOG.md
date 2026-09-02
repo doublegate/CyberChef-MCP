@@ -79,6 +79,28 @@ was actually missing was ARM support, image size, and an honest offline switch.
   before describing JWKS discovery — which could have led an operator to omit authentication egress
   from an allowlist.
 
+### Security
+
+- **Infrastructure-as-code is now scanned deliberately** (`trivy-iac-scan` in `security-scan.yml`,
+  configured by `security/trivy/`). Until now the Helm chart was scanned only *by accident* —
+  `deploy/` was being copied into the runtime image, so the container scan reached it at
+  `/app/deploy/...`. Removing non-runtime trees from the image (above) would have closed both open
+  code-scanning alerts by moving the file and silently ended the chart's scanning. A finding that
+  disappears because the file moved is not a finding that was addressed.
+- **KSV-0125 ("untrusted registry") resolved by naming the trusted registries**
+  (`security/trivy/data/ksv0125.yaml`) rather than suppressing the check, so it stays live —
+  verified by pointing the chart at an untrusted registry, which still fails the scan.
+- **KSV-0110 ("workloads in the default namespace") suppressed with its reasoning recorded.** It is
+  a false positive for a distributable chart: the namespace comes from `helm install --namespace`,
+  and hardcoding `metadata.namespace` would override it.
+- **Snyk PR #107 (`@xmldom/xmldom` 0.8.15 → 0.9.12) closed, not merged.** `0.8.15` is already the
+  patched release on the 0.8 line for every advisory, and 0.9 removed the `errorHandler` option that
+  `XPathExpression.mjs` passes — the upgrade would have made `XPath expression` report
+  "Invalid input XML." for every input, including valid XML.
+- Full reasoning, including the four low-severity `elliptic` advisories that have **no patched
+  version anywhere** and for which `npm audit fix --force` would be a downgrade:
+  `docs/security/2026-09-02-v2.8.0-advisory-disposition.md`.
+
 ### Not done, deliberately
 
 - **`linux/arm/v7`.** `cgr.dev/chainguard/node` publishes amd64 and arm64 only; serving a 32-bit Pi

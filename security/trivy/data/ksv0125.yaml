@@ -1,0 +1,17 @@
+# Trusted container registries, for Trivy check KSV-0125.
+#
+# KSV-0125 fails any workload whose image comes from a registry outside a built-in allowlist, and
+# that allowlist does not include GHCR. The chart pins
+# `ghcr.io/doublegate/cyberchef-mcp_v2:<version>`, which is where this project's own release
+# workflow publishes -- so the finding is "you use your own registry", not a misconfiguration.
+#
+# Configured rather than ignored, deliberately. Suppressing the check would also stop it firing if
+# someone later pointed the chart at a genuinely unknown registry, which is exactly what it is for.
+# Naming the registries keeps the check live and makes the trust decision explicit and reviewable.
+ksv0125:
+  trusted_registries:
+    # Where this project publishes. Both are written to by .github/workflows/mcp-release.yml.
+    - ghcr.io
+    - docker.io
+    # The base image the runtime is built from, digest-pinned in Dockerfile.mcp.
+    - cgr.dev

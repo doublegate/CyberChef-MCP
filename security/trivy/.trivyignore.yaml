@@ -1,0 +1,29 @@
+# Dispositioned Trivy misconfiguration findings, with reasons.
+#
+# A YAML ignore file rather than a bare `.trivyignore` line, because a suppression without a
+# recorded reason is indistinguishable from an oversight -- and this project has been bitten by
+# exactly that (a ReDoS mitigation stayed "fixed" in three documents for four releases while the
+# code had reverted).
+misconfigurations:
+  - id: KSV-0110
+    # Path RELATIVE TO THE SCAN ROOT, which for a chart scan is the chart directory -- Trivy
+    # reports the target as `templates/workload.yaml`, not the repository-relative path. A glob
+    # written against the repo path matches nothing and the suppression silently does not apply,
+    # which is how an ignore file ends up looking correct while achieving nothing.
+    paths:
+      # BOTH forms, because the target path Trivy reports is relative to the SCAN ROOT and the two
+      # ways this chart gets scanned have different roots: CI scans the repository (`.`), giving
+      # `deploy/helm/.../templates/workload.yaml`, while scanning the chart directly gives
+      # `templates/workload.yaml`. A glob written for one silently matches nothing under the other,
+      # so the suppression looks correct and achieves nothing -- which is exactly what happened on
+      # the first attempt here.
+      - "deploy/helm/cyberchef-mcp/templates/*.yaml"
+      - "templates/*.yaml"
+    statement: >-
+      "Workloads in the default namespace". This is a false positive for a DISTRIBUTABLE chart. A
+      Helm chart cannot know its namespace: the operator supplies it with `helm install
+      --namespace`, and `helm template` without one renders `default`, which is what Trivy sees.
+      Hardcoding `metadata.namespace` would be actively wrong -- it would override `--namespace`
+      and force every installation into one namespace. The chart therefore omits it, which is
+      standard chart practice, and the deployment guide instructs installing into a dedicated
+      namespace. Re-evaluate if this chart ever stops being distributable.

@@ -188,6 +188,40 @@ jobs:
           sarif_file: 'trivy-fs-results.sarif'
           category: 'trivy-dependency-scan'
 
+      # =============================================================================
+      # Infrastructure-as-code: the Helm chart, Compose file and Dockerfile
+      # =============================================================================
+      # Added in v2.8.0, and the reason is worth recording.
+      #
+      # Until v2.8.0 the Helm chart was scanned BY ACCIDENT: `deploy/` was being copied into the
+      # runtime image, so the container scan reached it at `/app/deploy/...` and reported against
+      # it. v2.8.0 stopped shipping non-runtime trees in the image -- a real size fix that would
+      # have silently ENDED the chart's scanning as a side effect, and closed two open alerts by
+      # moving the file rather than by addressing them.
+      #
+      # A finding that disappears because the file moved is not a finding that was addressed. So
+      # the IaC is now scanned where it lives, on purpose, with its standing findings configured in
+      # security/trivy/ rather than left to vanish.
+      - name: Run Trivy IaC scan (Helm, Compose, Dockerfile)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: 'config'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-iac-results.sarif'
+          severity: ${{ steps.severity.outputs.level }}
+          # Check parameters -- notably the KSV-0125 trusted-registry list, which names the
+          # registries this project publishes to rather than suppressing the check.
+          trivy-config: 'security/trivy/trivy.yaml'
+          trivyignores: 'security/trivy/.trivyignore.yaml'
+
+      - name: Upload IaC scan results
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: 'trivy-iac-results.sarif'
+          category: 'trivy-iac-scan'
+
       - name: Upload npm audit results
         uses: actions/upload-artifact@v7
         if: always()
