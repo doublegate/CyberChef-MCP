@@ -10,7 +10,7 @@
 
 services:
   cyberchef-mcp:
-    image: ghcr.io/doublegate/cyberchef-mcp_v2:2.8.0
+    image: ghcr.io/doublegate/cyberchef-mcp_v2:2.8.1
     # Pinned, not `latest`: a compose file that floats its tag cannot be rolled back to a known
     # state, and `latest` moves on every release.
     #
@@ -18,9 +18,9 @@ services:
     # bytes were pushed rather than a guarantee about which bytes you get. For a deployment that
     # needs integrity, resolve the tag once and pin what it resolved to:
     #
-    #     docker buildx imagetools inspect ghcr.io/doublegate/cyberchef-mcp_v2:2.8.0 \
+    #     docker buildx imagetools inspect ghcr.io/doublegate/cyberchef-mcp_v2:2.8.1 \
     #       --format '{{.Manifest.Digest}}'
-    #     # then: image: ghcr.io/doublegate/cyberchef-mcp_v2:2.8.0@sha256:<digest>
+    #     # then: image: ghcr.io/doublegate/cyberchef-mcp_v2:2.8.1@sha256:<digest>
     #
     # The digest is deliberately not baked in here. It cannot be: this file ships in the commit
     # that CREATES the release, so at authoring time the image it names does not exist yet, and a

@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.8.1] - 2026-09-02
+
+A CI correctness release. **No runtime code changed** — the server, the image contents and every
+operation are byte-for-byte what v2.8.0 shipped. What changed is what CI measures.
+
+### Fixed
+
+- **CI tested Node 24 while the image shipped Node 26.8.1.** The runtime that actually ships was
+  never exercised by a test, and nothing reported it — the pipeline was green throughout, because
+  24 is a valid version to test on; it just is not the one users get. The test gates now run a
+  matrix of **both boundaries** of the declared range: 24 (the floor in `engines`) and 26 (what
+  `Dockerfile.mcp` runs), with `fail-fast: false`. Bumping everything to 26 would have inverted the
+  bug rather than fixed it, since 24 is supported for npm consumers and an untested floor is
+  precisely what was wrong.
+- **The performance benchmarks were measured on an unsupported Node.**
+  `performance-benchmarks.yml` still pinned `node-version: '22'` against `engines: >=24 <27`, so
+  the numbers posted to every pull request came from a runtime this project does not support, on a
+  V8 two majors behind the one it ships. The v2.0.0 plan called for moving "all 7 workflows" to
+  Node 24; this was the one missed, and it stayed missed for eight releases because a warning is
+  not a failure.
+- **Three GitHub Pages actions were force-run on deprecated Node 20**: `configure-pages@v5` → `v6`,
+  `upload-pages-artifact@v4` → `v5`, `deploy-pages@v4` → `v5`, each verified to declare
+  `using: node24`. One name in that warning — `actions/upload-artifact@ea165f8d...` — appears
+  nowhere in this repository; `upload-pages-artifact@v4` pins it internally and `v5` pins
+  `upload-artifact@v7` instead.
+
+### Changed
+
+- Every workflow that is not a test gate — benchmarks, release, docs, security scan, upstream sync,
+  upstream monitor, rollback — now runs Node 26, matching the artefact it builds, publishes,
+  measures or audits.
+- `engines` is unchanged at `>=24 <27`: it matches upstream, and narrowing it would drop Node 24
+  consumers, which is a breaking change and does not belong in a patch release.
+- Chart version 0.3.0 → 0.3.1.
+
+### Not changed, deliberately
+
+- **`EBADENGINE` for `@astronautlabs/amf@0.0.6`** (production; `AMF Encode`/`AMF Decode`). Declares
+  `engines: ^14` — stale author metadata. `0.0.6` is the latest published version, so there is
+  nothing to upgrade to, and upstream declares it too. The operations were verified to work on
+  26.8.1 rather than assumed.
+- **Four deprecated production packages.** `crypto-js` and `jsrsasign` are genuine upstream
+  operation dependencies with no drop-in replacement; `bootstrap-colorpicker` and `popper.js` are
+  web-app leftovers already measured in v2.8.0.
+- **Log lines that match the word "warning" but are not warnings**: echoed `if-no-files-found`
+  inputs, `git hint:` runner noise, the non-root check's own `WARNING:` message text, and the
+  `level:"warn"` audit-trail and capacity-limiter lines that tests fire on purpose.
+
 ## [2.8.0] - 2026-09-02
 
 Opens Phase 6. Half of what the release plan asked for had already been delivered by v2.6.0; what

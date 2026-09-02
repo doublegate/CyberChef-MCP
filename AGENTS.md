@@ -25,11 +25,11 @@ server. Exposes 504 operations (encryption, encoding, compression, forensics) as
 
 | Metric | Value |
 |--------|-------|
-| MCP Version | 2.8.0 (single source: `package.json` `version`, read by `src/node/lib/config.mjs`). `mcpVersion` was removed in v2.2.0 -- npm requires `version` to be the published version, so the upstream base moved to `cyberchefUpstreamVersion`. |
+| MCP Version | 2.8.1 (single source: `package.json` `version`, read by `src/node/lib/config.mjs`). `mcpVersion` was removed in v2.2.0 -- npm requires `version` to be the published version, so the upstream base moved to `cyberchefUpstreamVersion`. |
 | Upstream base | CyberChef **v11.4.0** |
 | Operations / tools | 504 operations **plus 4 registry tools** that are not operations. `tools/list` is an **index** by default (28 tools, ~4.9k tokens); `CYBERCHEF_TOOL_SURFACE=curated\|all` for 106 (~20.7k) or all 531 (~100k). All 504 reachable via `cyberchef_bake` + the three navigation tools. Every tool carries annotations + a title. |
 | Licence | **GPL-3.0-or-later** (from v2.0.0; v1.9.x and earlier are Apache-2.0) |
-| Node | `>=24 <27`; image runs Node 26.8.1, digest-pinned |
+| Node | `>=24 <27`; image runs Node 26.8.1, digest-pinned. **CI tests BOTH ends of that range** (24 = the declared floor, 26 = what ships) since v2.8.1 -- before that every workflow tested 24 while the image shipped 26, so the runtime users get was never exercised. Non-test workflows all run 26. |
 | Image | **453 MB, 432 packages** (was 643 MB / 1,190 in v2.7.0). `Dockerfile.mcp` runs `npm prune --omit=dev` -- NOT a hardcoded `rm -rf` list, which is what it was through v2.7.0 and could not keep pace with a 1,310-path tree. Any change here must be re-verified by running the FULL operation suite against production-only deps, not a smoke test. **<50 MB is unreachable**: `@jimp` 89 MB + `tesseract.js-core` 44 MB are production deps of real operations. |
 | Platforms | `linux/amd64` + `linux/arm64` (v2.8.0). **Not arm/v7** -- the Chainguard base does not exist for it. arm64 builds under QEMU in 4m46s (vs ~4m30s native amd64) because the pruned tree is pure JS/wasm; that number is why there is no native-runner matrix. `@napi-rs/nice` platform binaries are OPTIONAL deps, so CI asserts the arm64 one resolved -- a wrong resolution still builds a working image and fails later in the worker pool. |
 | Offline | `CYBERCHEF_OFFLINE=true` refuses the only 2 networked operations (`HTTP request`, `DNS over HTTPS`) of 504. Guard is on the **recipe**, not the tool name (`cyberchef_bake` carrying `HTTP request` is a network call), applied at all 4 engine entries -- `bakeOnCore`, the direct-operation branch above the worker split, and recipe-manager execute + test. A posture, not a sandbox. |
@@ -239,7 +239,7 @@ perfectly good tag and would be ignored within a release or two.
 | Guides | `docs/guides/commands.md` (MCP tools), `user_guide.md` (installation), `edge-deployment.md` (arm64, size, offline, air-gapped) |
 | Planning | `docs/planning/ROADMAP.md`, `docs/planning/phases/overview.md` |
 | Security | `docs/security/audit.md` |
-| Releases | `docs/releases/v2.8.0.md` (latest), then `v2.7.0.md` ... `v2.0.0.md`, `v1.9.0.md` ... `v1.0.0.md` |
+| Releases | `docs/releases/v2.8.1.md` (latest), then `v2.8.0.md`, `v2.7.0.md` ... `v2.0.0.md`, `v1.9.0.md` ... `v1.0.0.md` |
 | Internal | `docs/internal/tech-debt-analysis-v1.6.1.md` (project health: 8.9/10) |
 
 <<< MC-PROJECT-END >>>
