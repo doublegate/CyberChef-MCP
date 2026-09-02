@@ -36,6 +36,8 @@ class RateLimiter {
         this.maxRequests = maxRequests;
         this.windowMs = windowMs;
         this.requests = new Map(); // connectionId -> [timestamps]
+        // When `sweep` last ran. Starts at 0 so the first sweep is never delayed.
+        this.lastSweep = 0;
     }
 
     /**
@@ -84,13 +86,21 @@ class RateLimiter {
      * what was actually happening: one entry per request, forever.
      *
      * Amortised rather than scheduled: no timer to leak, nothing to unref, and no behaviour on an
-     * idle server. The scan is over callers, not requests, and only runs once the Map is larger
-     * than any plausible live caller set.
+     * idle server.
+     *
+     * **Rate-limited to once per window, which is what makes "amortised" true.** The first version
+     * gated only on size, so once the Map stayed above the threshold -- exactly the case a
+     * high-cardinality key like subject-within-tenant produces -- it rescanned every caller on
+     * every single request, turning a leak fix into an O(callers) cost per call. Nothing can have
+     * expired since the last sweep sooner than one window, so sweeping more often than that cannot
+     * reclaim anything and only burns CPU.
      *
      * @param {number} now - Current timestamp.
      */
     sweep(now) {
         if (this.requests.size <= SWEEP_THRESHOLD) return;
+        if (now - this.lastSweep < this.windowMs) return;
+        this.lastSweep = now;
         for (const [key, timestamps] of this.requests) {
             if (!timestamps.length || now - timestamps[timestamps.length - 1] >= this.windowMs) {
                 this.requests.delete(key);

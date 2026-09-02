@@ -387,18 +387,29 @@ export class RecipeStorage {
             );
         }
 
-        // Generate recipe
+        // Generate recipe.
+        //
+        // The caller's own `tenant` is DISCARDED before anything else happens. Stamping the
+        // server's value afterwards is not enough on its own: in single-tenant mode there is no
+        // value to stamp -- the record deliberately carries no `tenant` field so the on-disk shape
+        // is unchanged from before v2.5.0 -- so a spread of `recipeData` would let the caller's
+        // field through unopposed.
+        //
+        // Measured, on the first version of this code: creating a recipe with
+        // `{tenant: "attacker"}` in single-tenant mode stored that value and made the recipe
+        // INVISIBLE TO ITS OWN CREATOR, because `ownedBy` then compared "attacker" against
+        // "default". It would also have belonged to "attacker" if tenancy were later enabled.
+        const safeData = { ...recipeData };
+        delete safeData.tenant;
         const now = new Date().toISOString();
         const recipe = {
             id: randomUUID(),
-            ...recipeData,
-            version: recipeData.version || "1.0.0",
+            ...safeData,
+            version: safeData.version || "1.0.0",
             created: now,
             updated: now,
-            // Stamped AFTER the caller's fields so `recipeData` cannot choose its own owner.
-            // Written only when tenancy is active: a single-tenant store keeps the exact record
-            // shape it had before this release, so enabling and disabling tenancy does not
-            // rewrite anyone's file.
+            // Written only when tenancy is active, so a single-tenant store keeps the exact record
+            // shape it had before this release and enabling tenancy does not rewrite anyone's file.
             ...(tenant === DEFAULT_TENANT ? {} : { tenant })
         };
 
@@ -441,17 +452,24 @@ export class RecipeStorage {
 
         const recipe = storage.recipes[index];
 
-        // Apply updates
+        // Apply updates.
+        //
+        // The caller's `tenant` is DISCARDED, rather than overridden afterwards. Overriding only
+        // works when the stored recipe has a tenant to restore: a LEGACY recipe (written before
+        // v2.5.0) has no `tenant` field, so there was nothing to write back and the caller's value
+        // survived.
+        //
+        // Measured, on the first version of this code: updating a legacy recipe with
+        // `{tenant: "attacker"}` reassigned it and the recipe then DISAPPEARED from its owner's
+        // view -- any caller could make any legacy recipe vanish by "updating" it. Discarding the
+        // field instead means `...recipe` supplies the stored ownership, present or absent, and
+        // there is no path by which a payload can set it.
+        const safeUpdates = { ...updates };
+        delete safeUpdates.tenant;
         const updatedRecipe = {
             ...recipe,
-            ...updates,
+            ...safeUpdates,
             id: recipe.id, // Preserve ID
-            // Preserve ownership. `...updates` is caller-supplied, so without this a caller could
-            // pass `{tenant: "someone-else"}` and hand their recipe to another tenant -- or, with
-            // a guessed name, plant a recipe inside one. Ownership is assigned by the server from
-            // a verified token at `create` and is not editable afterwards, the same rule `id` and
-            // `created` already follow.
-            ...(recipe.tenant === undefined ? {} : { tenant: recipe.tenant }),
             created: recipe.created, // Preserve creation time
             updated: new Date().toISOString(),
             // Increment patch version

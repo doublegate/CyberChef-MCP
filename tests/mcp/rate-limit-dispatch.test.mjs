@@ -163,6 +163,30 @@ describe("the tracking map does not grow without bound", () => {
         expect(limiter.requests.size).toBeLessThan(2000);
     });
 
+    it("does not rescan every caller on every request once it is over the threshold", async () => {
+        // The first version gated the sweep on size alone, so a Map that STAYS above the
+        // threshold -- exactly what a high-cardinality key produces -- was rescanned in full on
+        // every single call, making the leak fix an O(callers) cost per request.
+        //
+        // Asserted by counting iterations rather than by timing, which would be flaky: the Map is
+        // instrumented so each full scan is visible.
+        const { RateLimiter } = await import("../../src/node/lib/rate-limit.mjs");
+        const limiter = new RateLimiter(10_000, 60_000);
+        for (let i = 0; i < 2000; i++) limiter.checkLimit(`caller-${i}`);
+
+        let scanned = 0;
+        const realEntries = limiter.requests[Symbol.iterator].bind(limiter.requests);
+        limiter.requests[Symbol.iterator] = function() {
+            scanned++;
+            return realEntries();
+        };
+
+        for (let i = 0; i < 50; i++) limiter.checkLimit(`caller-${i}`);
+
+        // A 60s window means no sweep is due, so none of those 50 calls may scan the Map.
+        expect(scanned).toBe(0);
+    });
+
     it("keeps a currently-active caller while sweeping idle ones", async () => {
         const { RateLimiter } = await import("../../src/node/lib/rate-limit.mjs");
         const limiter = new RateLimiter(10_000, 60_000);

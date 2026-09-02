@@ -323,4 +323,35 @@ describe("recipe isolation", () => {
         expect(planted.tenant).toBe("alpha");
         expect(await asTenant("beta", () => storage.getById(planted.id))).toBeNull();
     });
+
+    it("ignores a caller-supplied tenant in SINGLE-TENANT mode too", async () => {
+        // The case the test above missed, and the bug it hid. In single-tenant mode there is no
+        // server value to stamp -- the record deliberately carries no `tenant` field -- so an
+        // override applied "after the caller's fields" had nothing to override with, and the
+        // payload's value survived.
+        //
+        // Measured before the fix: the recipe was stored with tenant "attacker" and was then
+        // INVISIBLE TO ITS OWN CREATOR, because `ownedBy` compared "attacker" against "default".
+        const planted = await storage.create({
+            ...recipeNamed("planted-single-tenant"), tenant: "attacker"
+        });
+        expect(planted.tenant).toBeUndefined();
+        expect(await storage.getAll()).toHaveLength(1);
+        expect(await storage.getById(planted.id)).not.toBeNull();
+    });
+
+    it("ignores a caller-supplied tenant when updating a LEGACY recipe", async () => {
+        // A legacy recipe has no `tenant` field, so "preserve the stored tenant" preserved
+        // nothing and the caller's value went straight through.
+        //
+        // Measured before the fix: the recipe was reassigned to "attacker" and DISAPPEARED from
+        // its owner's view -- any caller could make any legacy recipe vanish by updating it.
+        const legacy = await storage.create(recipeNamed("legacy-no-tenant"));
+        expect(legacy.tenant).toBeUndefined();
+
+        const after = await storage.update(legacy.id, { tenant: "attacker", name: "renamed" });
+        expect(after.tenant).toBeUndefined();
+        expect(after.name).toBe("renamed");          // the legitimate part of the update applied
+        expect(await storage.getById(legacy.id)).not.toBeNull();
+    });
 });
