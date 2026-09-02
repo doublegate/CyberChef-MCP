@@ -102,6 +102,27 @@ describe("the Node API stays off the startup path", () => {
 });
 
 describe("loadNodeApi", () => {
+    // These run IN PROCESS deliberately. The subprocess tests above are the honest way to assert
+    // "was this module loaded", but v8 attributes nothing a child process does to the parent, so
+    // they contribute no coverage -- and `src/node/lib/**` carries a 100% function threshold.
+    // Asserting the same seams here is what makes that threshold meaningful rather than a
+    // number satisfied by a `/* v8 ignore */`.
+    it("reports whether the API has been requested, and forgets on reset", async () => {
+        const mod = await import("../../src/node/lib/node-api.mjs");
+        mod._resetNodeApiForTest();
+        expect(mod._nodeApiRequested()).toBe(false);
+
+        const loading = mod.loadNodeApi();
+        // True as soon as the import STARTS, not when it finishes: the flag exists so a test can
+        // tell "nothing asked for it" from "it is on its way".
+        expect(mod._nodeApiRequested()).toBe(true);
+        await loading;
+        expect(mod._nodeApiRequested()).toBe(true);
+
+        mod._resetNodeApiForTest();
+        expect(mod._nodeApiRequested()).toBe(false);
+    }, 60_000);
+
     it("memoises, so concurrent callers share one import", async () => {
         const { loadNodeApi } = await import("../../src/node/lib/node-api.mjs");
         const [a, b] = await Promise.all([loadNodeApi(), loadNodeApi()]);

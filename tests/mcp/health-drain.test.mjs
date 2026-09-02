@@ -86,6 +86,15 @@ describe("health module", () => {
         expect(healthResponse(HEALTH_PATHS.STARTUP).status).toBe(200);
     });
 
+    it("answers an unrecognised path with 404 rather than throwing", () => {
+        // The `default` arm is unreachable through `isHealthPath`, and exists so a future caller
+        // that forgets the guard degrades into an ordinary not-found instead of a 500. Asserted
+        // rather than ignored: a defensive branch nobody exercises is a branch nobody knows works.
+        expect(healthResponse("/health/nonsense")).toEqual({
+            status: 404, body: { status: "not found" }
+        });
+    });
+
     it("reports nothing but a status, so an unauthenticated probe leaks nothing", () => {
         markServing();
         for (const p of Object.values(HEALTH_PATHS)) {
