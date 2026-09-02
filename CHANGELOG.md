@@ -7,7 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-09-02
+
 ### Added
+
+- **Health probes and a drain that survives a rolling update** (HTTP transport). Three
+  unauthenticated endpoints — `/health/live`, `/health/ready`, `/health/startup` — because a
+  kubelet probe carries no bearer token, and correspondingly uninformative: a status string and
+  nothing else.
+
+  **Liveness deliberately stays healthy while draining.** That is the mistake the design is shaped
+  to avoid: a liveness failure means *restart me*, and during a drain the server is refusing new
+  traffic while finishing in-flight work, so a failing liveness probe gets the pod killed
+  mid-drain. Only readiness flips.
+
+  Draining exists because Kubernetes sends `SIGTERM` and removes the pod from Service endpoints
+  **at the same time**, and endpoint removal takes time to propagate. Closing on `SIGTERM`
+  therefore drops requests routed during that window — the deploy looks clean and a fraction of
+  requests fail. New: `CYBERCHEF_DRAIN_DELAY_MS` (5000), `CYBERCHEF_DRAIN_TIMEOUT_MS` (20000).
+
+- **Deployment manifests**: a Helm chart and a Compose file under [`deploy/`](deploy/). The chart
+  *refuses to render* three configurations the server would reject at run time — a shared recipe
+  volume across replicas, `auth.enabled` without `auth.resource`, and tenancy without
+  authorization — so they fail at `helm template` with an explanation rather than as a crashloop.
+
 
 - **`cyberchef-mcp` is on npm.** `npx cyberchef-mcp` now runs the server with no clone, no build
   and no Docker daemon — the way essentially every MCP server is installed, and a gap open since
@@ -19,8 +42,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   refuses to publish when the tag and `package.json` disagree, and it skips silently when the
   version already exists so a re-run cannot fail a completed release.
 
+### Changed
+
+- **Cold start: ~1300 ms → ~185 ms.** `src/node/index.mjs` imports all 505 operation
+  implementations and cost ~1150 ms — 88% of startup — and three modules imported it eagerly, so
+  every launch paid it before answering anything. Nothing on the hot path needs it: `tools/list` is
+  built from `OperationConfig.json`, and operations run through `bakeOnCore` → `Chef.mjs` (20 ms).
+
+  Now loaded on demand. The first `cyberchef_search` or recipe execution pays 1119 ms once;
+  everything else never pays it at all.
+
+  A background warm-up — the plan's "warm pool" idea, in-process — was implemented, measured at
+  1300 ms, and **removed**: module loading blocks the event loop, so it only moved the cost in
+  front of the request already queued behind it.
+
 ### Fixed
 
+- **Two replicas sharing one recipe file silently destroyed each other's work.** Both load, both
+  modify, both save, and the second commit discarded the first with nothing reporting it:
+
+  ```text
+  A saved. A sees: [ 'saved-by-A' ]
+  B saved WITHOUT complaint
+  on disk now:     [ 'saved-by-B' ]      <- A's recipe is gone
+  ```
+
+  The storage file now carries a generation, checked immediately before the commit, so a stale
+  writer is refused with an error saying what to change. It is a conflict detector, **not** a lock
+  — there is no portable advisory locking in Node, and adding a database to coordinate one JSON
+  document is the wrong trade.
+
+- **Calls to the authorization server had no deadline and no memory of failing.** Node's `fetch`
+  has no default timeout, and JWKS discovery cached successes but not failures while trying two
+  metadata URLs — so an issuer outage turned every request into two outbound ones that could hang
+  until the OS gave up. Measured, 20 verifications against a down issuer: **40 outbound attempts →
+  10**, then the circuit opens. Every request now has a 5 s deadline.
+
+  This also wires up `CircuitBreaker`, which had existed in `retry.mjs` since v1.5.0 with a full
+  test suite and **no caller anywhere in `src/`**.
+
+
+
+
+- **A `SIGTERM` during startup could be undone by startup finishing.** `createTransport()` returns
+  before the listener's `listening` callback fires, so a drain beginning in that window was
+  overwritten when the callback landed — readiness went back to 200 mid-shutdown, telling the load
+  balancer to resume sending traffic to a process that was going away. `DRAINING` is now terminal.
+- **The README told people to pull a Docker image that does not exist.** `docker pull
+  doublegate/cyberchef-mcp:latest` 404s — the Docker Hub repository is `parobek/cyberchef-mcp`,
+  named from the account rather than the GitHub org. The offline path was wrong twice over: after
+  `docker load` the image is `parobek/cyberchef-mcp:latest`, not the `ghcr.io/...:v2.6.0` the
+  README named, and no `v`-prefixed GHCR tag is ever published. Every docker reference in the
+  README is now verified to resolve.
 - `git tag -F` strips every markdown heading, because git treats `#` lines as comments. Every tag
   in the v2.x line lost its structure this way (v2.4.0 lost 16 headings); v2.5.0 is the first with
   them intact. The documented command now passes `--cleanup=verbatim`. Published tags are

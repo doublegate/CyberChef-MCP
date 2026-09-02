@@ -131,6 +131,60 @@ placed in the default tenant — putting an unidentifiable caller in with everyo
 failure this feature exists to prevent. Identifiers are validated against an allowlist
 (`A-Za-z0-9._:@-`, at most 128 characters); `.`, `..` and `default` are reserved.
 
+## Health and shutdown (v2.6.0)
+
+**HTTP transport only.** On stdio there is no listener to probe and no load balancer to inform.
+
+Three endpoints, served **without authentication** because a kubelet probe carries no bearer
+token, and deliberately uninformative — a status string and nothing else:
+
+| path | 200 when | 503 when |
+|---|---|---|
+| `/health/startup` | the listener is bound | still starting |
+| `/health/ready` | serving | starting **or draining** |
+| `/health/live` | **always**, until the process exits | never |
+
+**Liveness stays healthy during a drain, and that is deliberate.** A failing liveness probe means
+*restart me*; during a drain the server is refusing new traffic while finishing in-flight work, so
+a liveness failure there gets the pod killed mid-drain — the opposite of what the drain is for.
+Only readiness flips. If you wire liveness to `/health/ready`, you have recreated that bug.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `CYBERCHEF_DRAIN_DELAY_MS` | `5000` | After `SIGTERM`: how long to keep serving while readiness reports failure |
+| `CYBERCHEF_DRAIN_TIMEOUT_MS` | `20000` | Then how long to wait for in-flight requests before closing anyway |
+
+The delay exists because Kubernetes sends `SIGTERM` and removes the pod from Service endpoints
+**at the same time**, and endpoint removal has to propagate through kube-proxy and any ingress
+first. A server that exits on `SIGTERM` therefore drops the requests routed during that window:
+the deploy looks clean and a fraction of requests fail.
+
+Keep `terminationGracePeriodSeconds` **larger** than `preStop + delay + timeout`, or the kubelet
+`SIGKILL`s the process partway through its own shutdown and the drain achieves nothing. The
+[Helm chart](https://github.com/doublegate/CyberChef-MCP/tree/master/deploy/helm/cyberchef-mcp)
+sets all four consistently.
+
+Both default to 0 being meaningful, not missing: `CYBERCHEF_DRAIN_DELAY_MS=0` disables the grace
+window, which is what you want under Docker Compose or anywhere without a load balancer.
+
+## Scaling and replicas (v2.6.0)
+
+The server is **stateless per request**. MCP revision `2026-07-28` removed protocol-level sessions
+entirely, so replicas need no session store, no sticky routing and no affinity.
+
+One thing is not shared: **saved recipes are a JSON file**, local to each process. There is
+deliberately no database — see [Deploying](https://github.com/doublegate/CyberChef-MCP/tree/master/deploy)
+for the reasoning. Two supported configurations:
+
+1. **A volume per replica** — recipes are per-pod, and replicas cannot conflict.
+2. **A single replica** with one volume.
+
+Pointing several replicas at one shared file is not supported. The server detects it: each save
+carries a generation checked immediately before the commit, so a stale writer is **refused** rather
+than silently discarding another replica's recipes. It is a conflict detector, not a lock.
+
+If you do not use saved recipes, none of this applies — scale freely.
+
 ## Limits and safety
 
 | Variable | Default | Meaning |

@@ -12,7 +12,10 @@
  * @license GPL-3.0-or-later
  */
 
-import { help } from "./index.mjs";
+// `help` is NOT imported eagerly. src/node/index.mjs pulls all 505 operation implementations
+// and costs ~1150 ms -- 88% of this server's startup -- for a function used by exactly one
+// tool. See lib/node-api.mjs for the measurement.
+import { loadNodeApi } from "./lib/node-api.mjs";
 import { Server } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import Utils from "../core/Utils.mjs";
@@ -790,6 +793,7 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
             // Emit deprecation warning for v2.0.0 (meta-tool rename)
             emitMetaToolDeprecation(name);
 
+            const { help } = await loadNodeApi();
             const results = help(args.query);
             const output = JSON.stringify(results, null, 2);
             logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
@@ -1484,10 +1488,24 @@ async function runServer() {
     // HTTP builds a Server per session inside createTransport (issue #36), so there is no
     // process-wide transport to connect and `transport` comes back null. Connecting the module
     // singleton here would recreate the shared-instance bug the factory exists to avoid.
-    const { transport, closeAll } = await createTransport({ createServer: createMcpServer });
+    const { transport, closeAll, drain } = await createTransport({ createServer: createMcpServer });
     if (transport) {
         await server.connect(transport);
     }
+
+    // NO warm-up here, and that is a measured decision rather than an omission.
+    //
+    // Pre-importing the Node API in the background looked obviously right -- it is the v2.6.0
+    // plan's "warm pool" idea, in-process. It made cold start WORSE, because the work is the same
+    // either way and doing it eagerly puts it in front of the request already queued behind it:
+    //
+    //     lazy, no warm-up      186 ms   <- launch to first tools/list response
+    //     lazy + background warm  1300 ms
+    //     eager (before v2.6.0)   1300 ms
+    //
+    // The import blocks the event loop for ~1.1 s whenever it runs, so "in the background" is not
+    // a thing module loading can be. Left lazy: the operations load when something actually needs
+    // them, and the caller that needs them is the one waiting.
 
     // Shut down cleanly on a signal. Without this, SIGTERM (which is what `docker stop` sends)
     // killed the process with sessions still open and the listener still bound: clients saw a
@@ -1514,8 +1532,13 @@ async function runServer() {
             const logger = getLogger();
             // Not "HTTP sessions": the socket transport has a `closeAll` too, and naming the wrong
             // transport in a shutdown line is how an operator ends up debugging the wrong thing.
-            logger.info(`${signal} received: closing connections and listener`);
-            closeAll()
+            // Drain when the transport offers one (HTTP), close immediately otherwise. The
+            // difference matters only behind a load balancer: draining fails readiness first and
+            // keeps serving briefly, so traffic routed during the endpoint-removal window is
+            // answered rather than dropped. stdio and the socket transport have no such window.
+            const stop = typeof drain === "function" ? drain : closeAll;
+            logger.info(`${signal} received: ${stop === drain ? "draining" : "closing"} connections and listener`);
+            stop()
                 .catch(err => logger.error(`shutdown failed: ${err.message}`))
                 .finally(() => process.exit(128 + (SIGNAL_NUMBERS[signal] ?? 0)));
         };

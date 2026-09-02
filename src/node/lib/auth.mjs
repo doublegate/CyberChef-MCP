@@ -36,12 +36,64 @@ import { createPublicKey, createHash } from "crypto";
 import jwt from "jsonwebtoken";
 import { createInputError } from "../errors.mjs";
 import { getLogger } from "../logger.mjs";
+import { CircuitBreaker } from "../retry.mjs";
 
 /** How long a fetched JWKS is reused before being refetched, in milliseconds. */
 const JWKS_TTL_MS = 300000;
 
 /** Cap on a fetched metadata or JWKS document, so a hostile issuer cannot exhaust memory. */
 const MAX_METADATA_BYTES = 1024 * 1024;
+
+/**
+ * Deadline for any single request to the authorization server.
+ *
+ * Node's `fetch` has NO default timeout, so without this a black-holed issuer -- a host that
+ * accepts the connection and never answers, which is what a firewall drop looks like -- holds each
+ * verification open until the OS TCP timeout, minutes away. Every incoming request would hold a
+ * socket and a pending verification for that long.
+ */
+const DISCOVERY_TIMEOUT_MS = 5000;
+
+/**
+ * Stops a failing authorization server from being retried on every single request.
+ *
+ * `fetchJwks` caches successes for five minutes and failures not at all, and `discoverJwksUri`
+ * tries TWO metadata URLs, so an issuer outage amplified one incoming request into two outbound
+ * ones. Measured against a down issuer, before this:
+ *
+ *     10 verifications -> 20 outbound fetch attempts   (2 per request)
+ *
+ * With no timeout on any of them. Under load that is a stampede against a service that is already
+ * unhealthy, and it slows this server to the issuer's failure mode.
+ *
+ * Deliberately generous: five consecutive failures before opening, and a 30 s reset after which
+ * ONE request is allowed through to test recovery (HALF_OPEN). An authorization server that
+ * flickers must not lock this server out, and one that is genuinely down must not be hammered.
+ */
+const discoveryBreaker = new CircuitBreaker({ failureThreshold: 5, resetTimeout: 30000 });
+
+/** Test seam: the breaker's current state. */
+export function _discoveryBreakerState() {
+    return discoveryBreaker.state;
+}
+
+/**
+ * Test seam: reset the breaker, optionally back-dating its last failure.
+ *
+ * The back-date is what lets a test exercise recovery without waiting out the real 30 s reset --
+ * faking the clock would also fake the timers the fetch path uses.
+ *
+ * @param {number} [ageMs] - Pretend the last failure was this long ago.
+ */
+export function _resetDiscoveryBreaker(ageMs) {
+    if (ageMs === undefined) {
+        discoveryBreaker.failures = 0;
+        discoveryBreaker.state = "CLOSED";
+        discoveryBreaker.lastFailureTime = null;
+        return;
+    }
+    discoveryBreaker.lastFailureTime = Date.now() - ageMs;
+}
 
 /** Algorithms accepted for token signatures. */
 const ALLOWED_ALGORITHMS = ["RS256", "RS384", "RS512", "ES256", "ES384", "PS256", "PS384", "PS512"];
@@ -210,7 +262,10 @@ async function fetchJwks(uri) {
     const cached = jwksCache.get(uri);
     if (cached && Date.now() - cached.at < JWKS_TTL_MS) return cached.keys;
 
-    const res = await fetch(uri, { headers: { accept: "application/json" } });
+    const res = await fetch(uri, {
+        headers: { accept: "application/json" },
+        signal: AbortSignal.timeout(DISCOVERY_TIMEOUT_MS)
+    });
     if (!res.ok) throw new Error(`JWKS fetch failed: HTTP ${res.status}`);
     const text = await readCapped(res, MAX_METADATA_BYTES);
     const doc = JSON.parse(text);
@@ -257,7 +312,10 @@ export async function discoverJwksUri(config) {
     const failures = [];
     for (const url of candidates) {
         try {
-            const res = await fetch(url, { headers: { accept: "application/json" } });
+            const res = await fetch(url, {
+                headers: { accept: "application/json" },
+                signal: AbortSignal.timeout(DISCOVERY_TIMEOUT_MS)
+            });
             if (!res.ok) {
                 failures.push(`${url} -> HTTP ${res.status}`);
                 continue;
@@ -293,7 +351,14 @@ export async function verifyToken(token, config) {
     if (!token) return { ok: false, reason: "no token" };
     let keys;
     try {
-        keys = await fetchJwks(await discoverJwksUri(config));
+        // Behind the breaker, and the WHOLE thing rather than each fetch: discovery and the JWKS
+        // fetch fail together when the issuer is down, and one failure of the pair is one failure
+        // of "can we reach the authorization server".
+        //
+        // A cache hit inside `fetchJwks` makes no outbound request and counts as a success, which
+        // is correct -- the server is serving, so the breaker should be closed.
+        keys = await discoveryBreaker.execute(
+            async () => fetchJwks(await discoverJwksUri(config)));
     } catch (err) {
         // A discovery or JWKS failure is the SERVER's problem, not the caller's, and must not be
         // reported as a bad token -- that would send a client to re-authenticate against an

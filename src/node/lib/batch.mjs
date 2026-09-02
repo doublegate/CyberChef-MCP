@@ -10,7 +10,9 @@
  * @license GPL-3.0-or-later
  */
 
-import { help } from "../index.mjs";
+// Lazy: importing the Node API eagerly costs ~1150 ms of startup for a function this module
+// uses on one branch of one batch operation. See lib/node-api.mjs.
+import { loadNodeApi } from "./node-api.mjs";
 import OperationConfig from "../../core/config/OperationConfig.json" with {type: "json"};
 import { BATCH_ENABLED, BATCH_MAX_SIZE, OPERATION_TIMEOUT } from "./config.mjs";
 import { executeWithTimeoutAndRetry, RetryConfig } from "../retry.mjs";
@@ -142,6 +144,7 @@ class BatchProcessor {
 
         // Handle search operation
         if (toolName === "cyberchef_search") {
+            const { help } = await loadNodeApi();
             const results = help(op.arguments.query);
             return JSON.stringify(results, null, 2);
         }

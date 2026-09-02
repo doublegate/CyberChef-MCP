@@ -8,7 +8,9 @@
  * @license GPL-3.0-or-later
  */
 
-import { bake } from "./index.mjs";
+// Lazy for the same reason as `help` in mcp-server.mjs: importing the Node API eagerly costs
+// ~1150 ms of startup, and recipe execution is not on the path a freshly-launched server takes.
+import { loadNodeApi } from "./lib/node-api.mjs";
 import { recipeStorage } from "./recipe-storage.mjs";
 import {
     validateRecipe,
@@ -200,6 +202,7 @@ export class RecipeManager {
         }, "Executing recipe");
 
         // Execute with CyberChef bake
+        const { bake } = await loadNodeApi();
         const result = await bake(input, bakeRecipe);
 
         return {
@@ -361,6 +364,7 @@ export class RecipeManager {
                 }));
 
                 // Execute
+                const { bake } = await loadNodeApi();
                 const result = await bake(testInput, bakeRecipe);
 
                 results.push({

@@ -58,7 +58,10 @@ function createEmptyStorage() {
     return {
         version: STORAGE_VERSION,
         recipes: [],
-        lastModified: new Date().toISOString()
+        lastModified: new Date().toISOString(),
+        // Bumped on every save, and checked against the on-disk value before the rename. See
+        // `save()` for what this detects and why it is not a lock.
+        generation: 0
     };
 }
 
@@ -117,6 +120,9 @@ export class RecipeStorage {
             // Update cache
             this.cache = storage;
             this.lastLoadTime = Date.now();
+            // A file written before v2.6.0 has no generation; treat it as 0 so an upgrade does
+            // not read as a conflict on the first save.
+            this.loadedGeneration = storage.generation ?? 0;
 
             this.logger.debug({
                 recipeCount: storage.recipes.length,
@@ -139,6 +145,30 @@ export class RecipeStorage {
                 `Failed to load recipe storage: ${error.message}`,
                 { filePath: this.filePath }
             );
+        }
+    }
+
+    /**
+     * The generation currently recorded in the storage file, read fresh from disk.
+     *
+     * Deliberately bypasses `this.cache`: the entire question is whether the file has moved on
+     * without this process noticing, and a cached answer cannot tell you that.
+     *
+     * Returns `null` rather than throwing when the file is absent or unreadable. An absent file is
+     * the ordinary first-save case, and a corrupt one is a problem for `load()` to report -- the
+     * caller treats `null` as "no basis for a conflict", so a read failure here can never block a
+     * save that would otherwise succeed.
+     *
+     * @returns {Promise<number|null>} The on-disk generation, or null if it cannot be determined.
+     */
+    async readGeneration() {
+        try {
+            const raw = await fs.readFile(this.filePath, "utf8");
+            const parsed = JSON.parse(raw);
+            // A file written before v2.6.0 has no generation. Treated as 0, matching `load()`.
+            return typeof parsed.generation === "number" ? parsed.generation : 0;
+        } catch {
+            return null;
         }
     }
 
@@ -247,6 +277,23 @@ export class RecipeStorage {
             // Update timestamp
             storage.lastModified = new Date().toISOString();
 
+            // Optimistic concurrency, for the multi-replica case.
+            //
+            // Recipe storage is a FILE, so it is local to one process unless deliberately placed
+            // on a shared volume. Two replicas sharing one file both load, both modify, and both
+            // save -- and without this the second rename silently discards the first one's work.
+            // A user saves a recipe, it is accepted, and it is gone: the worst shape of bug,
+            // because nothing reports it.
+            //
+            // This is NOT a lock, and is not sold as one. There is a window between the check
+            // below and the rename, so a sufficiently unlucky interleaving still slips through.
+            // Node has no portable advisory locking, and adding a lock daemon to a security
+            // toolkit to coordinate a JSON file is the wrong trade. What this does buy is that
+            // the ordinary case -- two replicas minutes apart, one stale -- is caught and
+            // reported instead of losing data.
+            const expectedGeneration = this.loadedGeneration ?? 0;
+            storage.generation = expectedGeneration + 1;
+
             // Write to temp file
             await fs.writeFile(tempFile, JSON.stringify(storage, null, 2), {
                 encoding: "utf8",
@@ -256,6 +303,18 @@ export class RecipeStorage {
                 // world-readable, and a recipe can carry keys and IVs.
                 mode: 0o600
             });
+
+            // Re-read the on-disk generation as late as possible before committing.
+            const onDisk = await this.readGeneration();
+            if (onDisk !== null && onDisk !== expectedGeneration) {
+                await fs.unlink(tempFile).catch(() => {});
+                throw createInputError(
+                    "Recipe storage changed underneath this process: expected generation " +
+                    `${expectedGeneration} but found ${onDisk}. Another process is writing the ` +
+                    "same file. Recipe storage is node-local; with multiple replicas either give " +
+                    "each one its own CYBERCHEF_RECIPE_STORAGE path or run a single replica.",
+                    { expectedGeneration, onDiskGeneration: onDisk, filePath: this.filePath });
+            }
 
             // Atomic rename
             await fs.rename(tempFile, this.filePath);
@@ -267,9 +326,13 @@ export class RecipeStorage {
             // Update cache
             this.cache = storage;
             this.lastLoadTime = Date.now();
+            // What we just wrote is now what we believe is on disk, so the next save compares
+            // against this rather than against whatever `load()` last saw.
+            this.loadedGeneration = storage.generation ?? 0;
 
             this.logger.debug({
-                recipeCount: storage.recipes.length
+                recipeCount: storage.recipes.length,
+                generation: storage.generation
             }, "Saved recipes to storage");
 
         } catch (error) {
