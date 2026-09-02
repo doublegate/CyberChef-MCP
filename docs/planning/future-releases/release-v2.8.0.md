@@ -1,469 +1,384 @@
-# Release Plan: v2.8.0 - AI-Native Features
+# Release Plan: v2.8.0 - Edge Deployment Optimization
 
-**Release Date:** May 2027
-**Theme:** LLM-Powered Operation Discovery and Recipe Generation
+**Release Date:** April 2027
+**Theme:** Minimal Footprint for Edge and IoT
 **Phase:** Phase 6 - Evolution
-**Effort:** XL (6 weeks)
-**Risk Level:** High
+**Effort:** L (4 weeks)
+**Risk Level:** Low
 
 ## Overview
 
-v2.8.0 introduces AI-native features that leverage LLM capabilities to enhance the CyberChef MCP experience. Since AI assistants are the primary consumers of MCP servers, this release adds features specifically designed to work with LLM function calling patterns.
+v2.7.0 optimizes CyberChef MCP Server for edge computing and resource-constrained environments. Edge deployments require minimal container sizes, fast startup times, ARM64 support, and offline operation capabilities.
 
 ## Goals
 
-1. **Primary Goal**: Natural language to recipe translation
-2. **Secondary Goal**: Context-aware operation suggestions
-3. **Tertiary Goal**: Intelligent error correction
+1. **Primary Goal**: Reduce container size to <50MB (from ~200MB)
+2. **Secondary Goal**: Achieve <1s cold start time
+3. **Tertiary Goal**: Enable offline operation mode
 
 ## Success Criteria
 
-- [ ] Recipe generation accuracy: >80% correct
-- [ ] Operation suggestion relevance: >90%
-- [ ] Error suggestion helpfulness: >70% user acceptance
-- [ ] Feature adoption: 30% of users within 3 months
-- [ ] Performance: <500ms for suggestions
+- [ ] Container size: <50MB (currently ~200MB)
+- [ ] Cold start: <1s (currently ~3s)
+- [ ] ARM64 performance: 95% of AMD64
+- [ ] Offline mode: 100% core operations functional
+- [ ] Memory usage: <100MB baseline
 
 ## Features
 
-### 1. Natural Language to Recipe Translation
-**Priority:** P0 | **Effort:** XL
-
-Convert natural language descriptions to executable recipes.
-
-**Tasks:**
-- [ ] Design NL-to-recipe prompt templates
-- [ ] Create operation knowledge base
-- [ ] Implement recipe validation
-- [ ] Add confidence scoring
-- [ ] Create fallback mechanisms
-- [ ] Build example library
-
-**Example:**
-```
-User: "Decode this base64, then decompress it, and extract any URLs"
-
-Generated Recipe:
-[
-  { "op": "From Base64" },
-  { "op": "Gunzip" },
-  { "op": "Extract URLs" }
-]
-```
-
-**Implementation Approach:**
-```javascript
-const nlToRecipe = {
-  // Tool exposed via MCP
-  name: "cyberchef_create_recipe_from_description",
-  description: "Convert a natural language description to a CyberChef recipe",
-  arguments: {
-    description: "string",
-    inputSample: "string (optional)",
-    expectedOutput: "string (optional)"
-  },
-  execute: async (args) => {
-    // Use operation knowledge base
-    // Match intent to operations
-    // Build and validate recipe
-    // Return with confidence score
-  }
-};
-```
-
-### 2. Context-Aware Operation Suggestions
-**Priority:** P0 | **Effort:** L
-
-Suggest relevant operations based on input context.
-
-**Tasks:**
-- [ ] Implement input analysis
-- [ ] Create operation similarity matching
-- [ ] Add context from previous operations
-- [ ] Build suggestion ranking
-- [ ] Add personalization (optional)
-- [ ] Measure suggestion quality
-
-**Suggestion Triggers:**
-| Input Pattern | Suggested Operations |
-|---------------|---------------------|
-| Base64-like string | From Base64, To Base64 |
-| Hex string | From Hex, To Hex |
-| JSON-like | JSON Beautify, Parse JSON |
-| URL-encoded | URL Decode, URL Encode |
-| Binary header (magic bytes) | Detect File Type, Extract Files |
-
-**Tool:**
-```javascript
-{
-  name: "cyberchef_suggest_operations",
-  description: "Get suggested operations based on input data",
-  arguments: {
-    input: "string or binary",
-    context: "string (optional) - previous operations"
-  },
-  returns: [{
-    operation: "string",
-    confidence: "number 0-1",
-    reason: "string"
-  }]
-}
-```
-
-### 3. Auto-Recipe Generation from Examples
-**Priority:** P1 | **Effort:** L
-
-Infer recipes from input/output pairs.
-
-**Tasks:**
-- [ ] Implement input/output comparison
-- [ ] Create transformation detection
-- [ ] Build operation chain inference
-- [ ] Add multi-step detection
-- [ ] Validate generated recipes
-- [ ] Handle ambiguous cases
-
-**Example:**
-```
-Input:  "Hello World"
-Output: "SGVsbG8gV29ybGQ="
-
-Inferred Recipe: [{ "op": "To Base64" }]
-```
-
-### 4. Operation Chaining Optimization
-**Priority:** P1 | **Effort:** M
-
-Optimize operation sequences for efficiency.
-
-**Tasks:**
-- [ ] Identify redundant operations
-- [ ] Suggest operation reordering
-- [ ] Detect common patterns
-- [ ] Add performance estimates
-- [ ] Create optimization rules
-
-**Optimizations:**
-| Pattern | Optimization |
-|---------|--------------|
-| Encode then decode (same) | Remove both |
-| Multiple text replacements | Combine into one |
-| Sequential compressions | Suggest single efficient |
-| Redundant conversions | Simplify chain |
-
-### 5. Intelligent Error Correction
+### 1. Multi-Platform Docker Builds
 **Priority:** P0 | **Effort:** M
 
-Suggest fixes for operation errors.
+Native builds for multiple architectures.
 
 **Tasks:**
-- [ ] Categorize common errors
-- [ ] Build error-to-fix mapping
-- [ ] Add context-aware suggestions
-- [ ] Implement fix validation
-- [ ] Create explanation generation
-- [ ] Measure fix success rate
+- [ ] Configure Docker BuildKit multi-platform
+- [ ] Build for AMD64, ARM64, ARM/v7
+- [ ] Create platform-specific optimizations
+- [ ] Test on each platform
+- [ ] Automate multi-arch CI/CD
+- [ ] Create manifest lists for multi-arch images
 
-**Error Categories:**
-| Error Type | Suggested Fixes |
-|------------|-----------------|
-| Invalid Base64 | Check padding, remove non-b64 chars |
-| JSON parse error | Validate JSON, escape characters |
-| Decryption failed | Verify key/IV, check mode |
-| Encoding mismatch | Suggest alternative encodings |
-| Truncated data | Suggest complete input |
+**Target Platforms:**
+| Platform | Use Case |
+|----------|----------|
+| linux/amd64 | Servers, cloud |
+| linux/arm64 | AWS Graviton, Apple Silicon, RPi4 |
+| linux/arm/v7 | Raspberry Pi 3, older ARM |
 
-**Response Format:**
-```json
-{
-  "error": "Invalid Base64 input at position 23",
-  "suggestions": [
-    {
-      "fix": "Add padding (=)",
-      "confidence": 0.9,
-      "example": "SGVsbG8gV29ybGQ="
-    },
-    {
-      "fix": "Remove non-Base64 character",
-      "confidence": 0.7,
-      "example": "Remove '%' at position 23"
-    }
-  ]
-}
+**Dockerfile.multi-arch:**
+```dockerfile
+FROM --platform=$BUILDPLATFORM node:22-alpine AS builder
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
+
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --omit=dev --ignore-scripts
+
+COPY src ./src
+RUN npm run build
+
+FROM --platform=$TARGETPLATFORM node:22-alpine
+WORKDIR /app
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules ./node_modules
+
+CMD ["node", "dist/mcp-server.mjs"]
 ```
 
-### 6. LLM-Powered Documentation
-**Priority:** P2 | **Effort:** M
+### 2. Minimal Container Images
+**Priority:** P0 | **Effort:** L
 
-Enhanced operation documentation.
+Aggressive size reduction strategies.
 
 **Tasks:**
-- [ ] Generate operation explanations
-- [ ] Create usage examples
-- [ ] Add related operations
-- [ ] Build FAQ responses
-- [ ] Create tutorial generation
+- [ ] Use Alpine-based base image
+- [ ] Implement multi-stage builds
+- [ ] Tree-shake unused dependencies
+- [ ] Remove development dependencies
+- [ ] Use npm ci --omit=dev
+- [ ] Prune node_modules
+- [ ] Create distroless variant (optional)
 
-**Enhanced Documentation:**
+**Size Reduction Strategies:**
+| Strategy | Size Reduction |
+|----------|----------------|
+| Alpine base | ~50MB |
+| Multi-stage build | ~30MB |
+| Dev dep removal | ~40MB |
+| Tree shaking | ~20MB |
+| npm prune | ~10MB |
+| Compression | ~10MB |
+
+**Target Breakdown:**
+```
+Base image (node:22-alpine): ~50MB
+Application code: ~5MB
+Production dependencies: ~40MB
+Total: ~95MB -> Target: <50MB
+```
+
+### 3. Lazy Loading
+**Priority:** P0 | **Effort:** M
+
+Load operations on demand.
+
+**Tasks:**
+- [ ] Implement operation module lazy loading
+- [ ] Create operation registry without loading
+- [ ] Load operation on first use
+- [ ] Cache loaded operations
+- [ ] Unload unused operations (optional)
+- [ ] Measure loading overhead
+
+**Implementation:**
 ```javascript
-{
-  name: "cyberchef_explain_operation",
-  description: "Get detailed explanation of an operation",
-  arguments: {
-    operation: "string",
-    context: "string (optional) - use case"
-  },
-  returns: {
-    explanation: "string",
-    examples: ["..."],
-    relatedOperations: ["..."],
-    commonUseCases: ["..."]
+class OperationLoader {
+  constructor() {
+    this.loaded = new Map();
+    this.metadata = require('./operation-metadata.json');
+  }
+
+  async getOperation(name) {
+    if (!this.loaded.has(name)) {
+      const path = this.metadata[name].path;
+      const module = await import(path);
+      this.loaded.set(name, module.default);
+    }
+    return this.loaded.get(name);
   }
 }
 ```
 
-### 7. Recipe Explanation & Annotation
+### 4. Startup Optimization
+**Priority:** P0 | **Effort:** M
+
+Sub-second cold start.
+
+**Tasks:**
+- [ ] Profile startup bottlenecks
+- [ ] Defer non-critical initialization
+- [ ] Pre-compile critical paths
+- [ ] Use V8 code cache
+- [ ] Optimize import order
+- [ ] Create startup benchmark
+
+**Optimization Techniques:**
+- Lazy import for non-essential modules
+- Pre-computed operation metadata
+- V8 snapshot for faster parsing
+- Connection pooling warm-up
+- Parallel initialization where possible
+
+### 5. Offline Operation Mode
+**Priority:** P1 | **Effort:** M
+
+Function without network connectivity.
+
+**Tasks:**
+- [ ] Identify network dependencies
+- [ ] Bundle all required assets
+- [ ] Handle network failures gracefully
+- [ ] Disable network-requiring features
+- [ ] Add offline mode configuration
+- [ ] Test in air-gapped environment
+
+**Network Dependencies:**
+| Component | Online | Offline Mode |
+|-----------|--------|--------------|
+| Core operations | No network | Fully functional |
+| Plugin loading | NPM registry | Disabled/cached |
+| Telemetry | OTLP export | Buffer/disable |
+| Health checks | Optional | Local only |
+| Auth validation | IdP | Token cache |
+
+### 6. Resource-Constrained Profiles
 **Priority:** P1 | **Effort:** S
 
-Explain what recipes do in natural language.
+Preset configurations for limited resources.
 
 **Tasks:**
-- [ ] Implement recipe analysis
-- [ ] Generate step-by-step explanations
-- [ ] Add data flow descriptions
-- [ ] Create visual representation hints
-- [ ] Handle complex nested recipes
+- [ ] Create "minimal" profile
+- [ ] Create "balanced" profile
+- [ ] Create "performance" profile
+- [ ] Add memory limit configurations
+- [ ] Add CPU limit handling
+- [ ] Document profile selection
 
-**Tool:**
-```javascript
+**Profiles:**
+```json
 {
-  name: "cyberchef_explain_recipe",
-  arguments: {
-    recipe: "Recipe[]"
-  },
-  returns: {
-    summary: "This recipe decodes base64, decompresses, and finds URLs",
-    steps: [
-      "1. From Base64: Decodes base64 encoded text to binary",
-      "2. Gunzip: Decompresses gzip compressed data",
-      "3. Extract URLs: Finds all URL patterns in the text"
-    ],
-    dataFlow: "text -> binary -> text -> url list"
+  "profiles": {
+    "minimal": {
+      "lazyLoading": true,
+      "cacheSize": 10,
+      "maxOperations": 100,
+      "telemetry": false,
+      "memoryLimit": "128Mi"
+    },
+    "balanced": {
+      "lazyLoading": true,
+      "cacheSize": 100,
+      "maxOperations": 300,
+      "telemetry": true,
+      "memoryLimit": "512Mi"
+    },
+    "performance": {
+      "lazyLoading": false,
+      "cacheSize": 500,
+      "maxOperations": "all",
+      "telemetry": true,
+      "memoryLimit": "2Gi"
+    }
   }
 }
 ```
 
+### 7. Memory Footprint Optimization
+**Priority:** P1 | **Effort:** M
+
+Reduce baseline memory usage.
+
+**Tasks:**
+- [ ] Profile memory usage
+- [ ] Identify memory leaks
+- [ ] Optimize large data handling
+- [ ] Implement buffer pooling
+- [ ] Add memory monitoring
+- [ ] Create memory pressure handling
+
+**Memory Optimization Strategies:**
+- Streaming for large inputs
+- Buffer reuse pools
+- Weak references for caches
+- Aggressive garbage collection hints
+- Memory-mapped files for large operations
+
+### 8. Edge Caching
+**Priority:** P2 | **Effort:** S
+
+Caching strategies for edge deployments.
+
+**Tasks:**
+- [ ] Implement local file cache
+- [ ] Add cache warming
+- [ ] Create cache invalidation
+- [ ] Handle cache size limits
+- [ ] Add cache statistics
+
 ## Technical Design
+
+### Container Optimization
+
+```dockerfile
+# Stage 1: Build
+FROM node:22-alpine AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --omit=dev --ignore-scripts
+COPY src ./src
+RUN npm run build && npm prune --production
+
+# Stage 2: Runtime (minimal)
+FROM gcr.io/distroless/nodejs22-debian12
+WORKDIR /app
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules ./node_modules
+CMD ["dist/mcp-server.mjs"]
+```
 
 ### Architecture
 
 ```
-+-------------------+
-| MCP Request       |
-+-------------------+
-        |
-+-------------------+
-| AI Feature Layer  |
-| - NL Parser       |
-| - Suggestion Eng  |
-| - Error Analyzer  |
-+-------------------+
-        |
-+-------------------+
-| Operation KB      |
-| - Descriptions    |
-| - Patterns        |
-| - Examples        |
-+-------------------+
-        |
-+-------------------+
-| CyberChef Core    |
-+-------------------+
-```
-
-### Knowledge Base Schema
-
-```json
-{
-  "operations": {
-    "to_base64": {
-      "name": "To Base64",
-      "description": "Converts data to Base64 encoding",
-      "category": "Encoding",
-      "inputPatterns": ["text", "binary"],
-      "outputPattern": "base64",
-      "keywords": ["encode", "base64", "convert"],
-      "commonUseCases": [
-        "Encode binary for text transmission",
-        "Create data URLs"
-      ],
-      "relatedOps": ["from_base64", "to_hex"],
-      "examples": [
-        { "input": "Hello", "output": "SGVsbG8=" }
-      ]
-    }
-  }
-}
-```
-
-### NL Processing Pipeline
-
-```
-Natural Language Input
-        |
-        v
-+------------------+
-| Intent Detection |
-| - Encode/Decode  |
-| - Compress       |
-| - Encrypt        |
-+------------------+
-        |
-        v
-+------------------+
-| Entity Extract   |
-| - Data types     |
-| - Algorithms     |
-| - Parameters     |
-+------------------+
-        |
-        v
-+------------------+
-| Operation Match  |
-| - Fuzzy match    |
-| - Semantic sim   |
-+------------------+
-        |
-        v
-+------------------+
-| Recipe Build     |
-| - Order ops      |
-| - Fill params    |
-+------------------+
-        |
-        v
-+------------------+
-| Validation       |
-| - Test run       |
-| - Confidence     |
-+------------------+
++--------------------+
+| Edge Deployment    |
++--------------------+
+         |
++--------------------+
+| CyberChef MCP      |
+| - Lazy loading     |
+| - Minimal deps     |
+| - Local cache      |
++--------------------+
+         |
++--------------------+
+| Local Storage      |
+| - Operations cache |
+| - Recipe cache     |
++--------------------+
 ```
 
 ## Implementation Plan
 
-### Week 1-2: NL to Recipe
-- [ ] Intent detection
-- [ ] Operation matching
-- [ ] Recipe building
-- [ ] Validation
+### Week 1: Multi-Platform & Size
+- [ ] BuildKit configuration
+- [ ] Multi-arch builds
+- [ ] Size reduction
+- [ ] Alpine optimization
 
-### Week 3: Suggestions & Examples
-- [ ] Input analysis
-- [ ] Suggestion engine
-- [ ] Example inference
+### Week 2: Startup & Loading
+- [ ] Lazy loading implementation
+- [ ] Startup profiling
+- [ ] V8 optimization
+- [ ] Benchmark creation
+
+### Week 3: Offline & Memory
+- [ ] Offline mode
+- [ ] Resource profiles
+- [ ] Memory optimization
 - [ ] Testing
 
-### Week 4: Error Correction
-- [ ] Error categorization
-- [ ] Fix suggestions
-- [ ] Validation
+### Week 4: Integration & Testing
+- [ ] Platform testing
+- [ ] Edge caching
 - [ ] Documentation
-
-### Week 5-6: Documentation & Polish
-- [ ] Enhanced docs
-- [ ] Recipe explanation
-- [ ] Integration testing
-- [ ] Performance tuning
+- [ ] Performance validation
 
 ## Dependencies
 
 ### Required
-- Operation knowledge base (new)
-- Pattern matching library
-- Fuzzy string matching
+- Docker BuildKit
+- QEMU (for cross-platform builds)
+- Node.js 22 (Alpine)
 
 ### Optional
-- External LLM API (for complex cases)
-- Vector embedding database (for semantic search)
-
-## Configuration
-
-```json
-{
-  "aiFeatures": {
-    "enabled": true,
-    "naturalLanguage": {
-      "enabled": true,
-      "minConfidence": 0.7
-    },
-    "suggestions": {
-      "enabled": true,
-      "maxSuggestions": 5
-    },
-    "errorCorrection": {
-      "enabled": true
-    },
-    "externalLLM": {
-      "enabled": false,
-      "provider": "openai",
-      "model": "gpt-4o-mini"
-    }
-  }
-}
-```
+- Distroless base images
+- V8 snapshot tools
 
 ## Testing Requirements
 
-### Quality Tests
-- [ ] Recipe generation accuracy
-- [ ] Suggestion relevance
-- [ ] Error fix success rate
+### Platform Tests
+- [ ] AMD64 functionality
+- [ ] ARM64 functionality
+- [ ] ARM/v7 functionality
 
 ### Performance Tests
-- [ ] Response time (<500ms)
-- [ ] Memory impact
-- [ ] Scaling behavior
+- [ ] Container size measurement
+- [ ] Startup time benchmark
+- [ ] Memory usage profiling
+- [ ] Latency comparison
 
-### Edge Cases
-- [ ] Ambiguous inputs
-- [ ] Multi-language support
-- [ ] Complex recipes
+### Offline Tests
+- [ ] Air-gapped operation
+- [ ] Network failure handling
+- [ ] Cache functionality
 
-## Risk Mitigation
+## Performance Targets
 
-| Risk | Mitigation |
-|------|------------|
-| Low accuracy | Confidence thresholds, fallbacks |
-| Hallucinations | Validation, known operation sets |
-| Performance | Caching, local processing priority |
-| User expectations | Clear confidence communication |
+| Metric | Current | Target |
+|--------|---------|--------|
+| Image size | ~200MB | <50MB |
+| Cold start | ~3s | <1s |
+| Memory (idle) | ~150MB | <100MB |
+| ARM64 perf | N/A | 95% of AMD64 |
 
 ## Documentation Updates
 
-- [ ] AI features guide
-- [ ] NL recipe examples
-- [ ] Suggestion system reference
-- [ ] Error correction patterns
-- [ ] Best practices
+- [ ] Edge deployment guide
+- [ ] Platform compatibility matrix
+- [ ] Resource profile reference
+- [ ] Offline mode documentation
+- [ ] Performance tuning guide
 
 ## GitHub Milestone
 
-Create milestone: `v2.8.0 - AI-Native Features`
+Create milestone: `v2.8.0 - Edge Deployment`
 
 **Issues:**
-1. Implement NL to Recipe Translation (P0, XL)
-2. Add Context-Aware Suggestions (P0, L)
-3. Create Auto-Recipe from Examples (P1, L)
-4. Add Operation Chaining Optimization (P1, M)
-5. Implement Intelligent Error Correction (P0, M)
-6. Add LLM-Powered Documentation (P2, M)
-7. Implement Recipe Explanation (P1, S)
-8. Build Operation Knowledge Base (P0, L)
-9. Quality Testing & Validation (P0, L)
-10. Documentation & Examples (P0, M)
+1. Implement Multi-Platform Docker Builds (P0, M)
+2. Create Minimal Container Images (P0, L)
+3. Add Lazy Loading System (P0, M)
+4. Implement Startup Optimization (P0, M)
+5. Add Offline Operation Mode (P1, M)
+6. Create Resource-Constrained Profiles (P1, S)
+7. Optimize Memory Footprint (P1, M)
+8. Implement Edge Caching (P2, S)
+9. Platform Testing & Validation (P0, L)
+10. Documentation (P0, M)
 
 ---
 
 **Last Updated:** December 2025
 **Status:** Planning
-**Next Review:** April 2027
+**Next Review:** March 2027

@@ -240,10 +240,10 @@ OpenTelemetry has become the industry standard for observability in 2025. This r
 - [OAuth for MCP Patterns](https://blog.gitguardian.com/oauth-for-mcp-emerging-enterprise-patterns-for-agent-authorization/)
 - [OpenTelemetry Node.js](https://opentelemetry.io/docs/languages/js/)
 - [Kubernetes Best Practices](https://kubernetes.io/docs/concepts/cluster-administration/)
-- [Release v2.4.0 Plan](./release-v2.4.0.md)
-- [Release v2.5.0 Plan](./release-v2.5.0.md)
-- [Release v2.6.0 Plan](./release-v2.6.0.md)
-- [Enterprise Features Plan](./ENTERPRISE-FEATURES-PLAN.md)
+- [Release v2.5.0 Plan](../future-releases/release-v2.4.0.md) (planned as v2.4.0; shipped as v2.5.0)
+- [Release v2.6.0 Plan](../future-releases/release-v2.6.0.md)
+- [Release v2.7.0 Plan](../future-releases/release-v2.7.0.md)
+- [Enterprise Features Plan](../strategies/ENTERPRISE-FEATURES-PLAN.md)
 
 ---
 

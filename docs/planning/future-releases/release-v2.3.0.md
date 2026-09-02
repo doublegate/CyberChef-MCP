@@ -1,3 +1,14 @@
+> **Superseded — this plan shipped as v2.4.0, not as the version in its title.**
+>
+> Releases from v2.1.0 onward ran one version ahead of this plan set, so "Plugin Architecture"
+> was delivered as **v2.4.0**. The authoritative record of what shipped is
+> [`docs/releases/v2.4.0.md`](../../releases/v2.4.0.md); `ROADMAP.md` carries the
+> current numbering. This file is kept unrenamed as the historical plan — renaming a
+> spent plan to match the release would rewrite the record rather than explain it.
+>
+> Unshipped plans in this directory HAVE been renumbered to match ROADMAP.md; see
+> [`README.md`](README.md).
+
 # Release Plan: v2.3.0 - Plugin Architecture
 
 **Release Date:** December 2026
