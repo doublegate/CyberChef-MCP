@@ -189,13 +189,43 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ github.ref_name }}
         run: |
-          # Check if release exists, create if not
+          # Check if release exists, create if not.
+          #
+          # The notes come from docs/releases/<tag>.md when that file exists. They used to be the
+          # single line "See [CHANGELOG.md](CHANGELOG.md) for details." -- a RELATIVE link, which
+          # GitHub does not resolve on a release page, and which threw away notes the repository
+          # had already written. v1.9.1 shipped a 45-character body while a 4,273-character
+          # release document sat in the tree at docs/releases/v1.9.1.md; it had to be repaired by
+          # hand afterwards. Backported from the v2 line so the v1.9.x maintenance branch cannot
+          # repeat it on the next security patch.
+          #
+          # Falling back rather than failing: a hotfix tag cut without a release document should
+          # still publish, and the fallback now points at a URL that actually resolves.
+          NOTES_FILE="docs/releases/${TAG_NAME}.md"
           if ! gh release view "$TAG_NAME" &>/dev/null; then
             echo "Creating release for $TAG_NAME"
-            gh release create "$TAG_NAME" \
-              --title "Release $TAG_NAME" \
-              --notes "See [CHANGELOG.md](CHANGELOG.md) for details." \
-              --verify-tag
+            if [ -f "$NOTES_FILE" ]; then
+              echo "Using release notes from $NOTES_FILE"
+
+              # Rewrite RELATIVE links to absolute, pinned to this tag. A release body renders on
+              # the Releases page, not inside the tree, so `[text](../security/foo.md)` 404s for
+              # every reader of the release -- the audience the file exists for. Pinned to the TAG
+              # so the link keeps pointing at the code the release describes.
+              RENDERED_NOTES="$(mktemp)"
+              python3 scripts/absolutise-release-links.py \
+                "$NOTES_FILE" "$GITHUB_REPOSITORY" "$TAG_NAME" "$RENDERED_NOTES"
+
+              gh release create "$TAG_NAME" \
+                --title "Release $TAG_NAME" \
+                --notes-file "$RENDERED_NOTES" \
+                --verify-tag
+            else
+              echo "::warning::$NOTES_FILE not found; publishing with a link to the changelog"
+              gh release create "$TAG_NAME" \
+                --title "Release $TAG_NAME" \
+                --notes "Release notes: [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/${TAG_NAME}/CHANGELOG.md)" \
+                --verify-tag
+            fi
           else
             echo "Release $TAG_NAME already exists"
           fi
