@@ -8,7 +8,7 @@
 
 ## Overview
 
-v2.8.0 introduces AI-native features that leverage LLM capabilities to enhance the CyberChef MCP experience. Since AI assistants are the primary consumers of MCP servers, this release adds features specifically designed to work with LLM function calling patterns.
+v2.9.0 introduces AI-native features that leverage LLM capabilities to enhance the CyberChef MCP experience. Since AI assistants are the primary consumers of MCP servers, this release adds features specifically designed to work with LLM function calling patterns.
 
 ## Goals
 

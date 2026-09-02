@@ -1,3 +1,5 @@
+# Release Plan: v2.2.0 - Advanced Transports
+
 > **Superseded — this plan shipped as v2.3.0, not as the version in its title.**
 >
 > Releases from v2.1.0 onward ran one version ahead of this plan set, so "Advanced Transports"
@@ -8,8 +10,6 @@
 >
 > Unshipped plans in this directory HAVE been renumbered to match ROADMAP.md; see
 > [`README.md`](README.md).
-
-# Release Plan: v2.2.0 - Advanced Transports
 
 **Release Date:** November 2026
 **Theme:** Modern MCP Transport Protocols

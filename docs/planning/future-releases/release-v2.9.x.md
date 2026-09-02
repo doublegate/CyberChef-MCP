@@ -8,7 +8,7 @@
 
 ## Overview
 
-v2.9.0 is the final v2.x release before v3.0.0. This release focuses on stabilization, comprehensive deprecation warnings, and migration tooling to prepare users for the major version upgrade.
+v2.9.x is the final v2.x release before v3.0.0. This release focuses on stabilization, comprehensive deprecation warnings, and migration tooling to prepare users for the major version upgrade.
 
 ## Goals
 
@@ -21,7 +21,7 @@ v2.9.0 is the final v2.x release before v3.0.0. This release focuses on stabiliz
 - [ ] 100% deprecated APIs have warnings
 - [ ] Migration tool handles 95% of cases automatically
 - [ ] Documentation coverage: 100%
-- [ ] Performance: 10% improvement over v2.8.0
+- [ ] Performance: 10% improvement over v2.9.0
 - [ ] Security: Zero critical vulnerabilities
 
 ## Features
@@ -149,10 +149,10 @@ Final performance improvements.
 - [ ] Reduce memory allocations
 - [ ] Improve startup time
 - [ ] Create performance benchmarks
-- [ ] Compare with v2.8.0
+- [ ] Compare with v2.9.0
 
 **Target Improvements:**
-| Metric | v2.8.0 | v2.9.0 Target |
+| Metric | v2.9.0 | v2.9.x Target |
 |--------|--------|---------------|
 | Startup | ~800ms | <700ms |
 | Memory (idle) | ~90MB | <80MB |
@@ -316,7 +316,7 @@ function deprecate(message, replacement, version = '3.0.0') {
 ## Documentation Updates
 
 - [ ] Complete migration guide
-- [ ] v2.9.0 release notes
+- [ ] v2.9.x release notes
 - [ ] v3.0.0 preview documentation
 - [ ] Deprecation reference
 - [ ] Security documentation

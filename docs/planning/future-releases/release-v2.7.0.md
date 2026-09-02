@@ -8,7 +8,7 @@
 
 ## Overview
 
-v2.6.0 provides comprehensive monitoring capabilities using OpenTelemetry, the industry standard for observability in 2025. This release enables production deployments to have full visibility into server behavior, performance, and health.
+v2.7.0 provides comprehensive monitoring capabilities using OpenTelemetry, the industry standard for observability in 2025. This release enables production deployments to have full visibility into server behavior, performance, and health.
 
 ## Goals
 
@@ -249,7 +249,7 @@ Jaeger  Prom   Loki   Backend
   "observability": {
     "enabled": true,
     "serviceName": "cyberchef-mcp",
-    "serviceVersion": "2.6.0",
+    "serviceVersion": "2.7.0",
 
     "traces": {
       "enabled": true,

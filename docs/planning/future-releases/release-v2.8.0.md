@@ -8,7 +8,7 @@
 
 ## Overview
 
-v2.7.0 optimizes CyberChef MCP Server for edge computing and resource-constrained environments. Edge deployments require minimal container sizes, fast startup times, ARM64 support, and offline operation capabilities.
+v2.8.0 optimizes CyberChef MCP Server for edge computing and resource-constrained environments. Edge deployments require minimal container sizes, fast startup times, ARM64 support, and offline operation capabilities.
 
 ## Goals
 

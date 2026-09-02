@@ -8,7 +8,7 @@
 
 ## Overview
 
-v2.5.0 enables CyberChef MCP Server to run as a distributed service with horizontal scaling and high availability. Production deployments require the ability to handle variable loads and meet uptime SLAs.
+v2.6.0 enables CyberChef MCP Server to run as a distributed service with horizontal scaling and high availability. Production deployments require the ability to handle variable loads and meet uptime SLAs.
 
 ## Goals
 
