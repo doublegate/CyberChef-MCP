@@ -13,10 +13,13 @@
  * @license GPL-3.0-or-later
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from "vitest";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
+
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 
 import {
     loadTenancyConfig, assertTenancyConfig, tenantOf, currentTenant, callerKey, DEFAULT_TENANT
@@ -212,6 +215,28 @@ describe("quota isolation", () => {
         expect(quota.acquire("alpha")).toBe(true);
     });
 
+    it("shows why an extra release is corrupting, so the call sites must not make one", () => {
+        // Not a guarantee the tracker can make on its own -- it cannot tell an extra release from
+        // a legitimate one without handing out tokens -- so this pins the CONSEQUENCE, which is
+        // what makes the call-site rule load-bearing rather than stylistic.
+        //
+        // The cache-hit path used to release and then fall through to a `finally` that released
+        // again. Harmless while the counter was global (it clamped at zero); not harmless per
+        // tenant, where the second release deletes the entry belonging to whatever else that
+        // tenant is running. Fixed in mcp-server.mjs by removing the early release.
+        const quota = new ResourceQuotaTracker();
+
+        quota.acquire("acme");          // operation A, still running
+        quota.acquire("acme");          // operation B
+        quota.release("acme");          // B finishes
+        quota.release("acme");          // an extra release
+
+        // A's slot is gone, even though A never finished. This is the damage the call-site fix
+        // prevents, recorded so a future refactor cannot reintroduce the extra release believing
+        // it to be harmless.
+        expect(quota.perTenant.get("acme")).toBeUndefined();
+    });
+
     it("forgets tenants once they are idle", () => {
         const quota = new ResourceQuotaTracker();
         quota.acquire("transient");
@@ -219,6 +244,53 @@ describe("quota isolation", () => {
         quota.release("transient");
         expect(quota.getInfo().activeTenants).toBe(0);
     });
+});
+
+describe("quota accounting through the real dispatch path", () => {
+    // The double-release lived in `handleCallTool`'s cache-hit branch, not in the tracker, so only
+    // a test that goes through dispatch can see it. Same reasoning as the rate-limiter regression:
+    // the module was fine and the call site was not.
+    let createMcpServer, quotaTracker, storageDir;
+
+    beforeAll(async () => {
+        storageDir = await mkdtemp(join(tmpdir(), "cyberchef-quota-"));
+        process.env.CYBERCHEF_RECIPE_STORAGE = join(storageDir, "recipes.json");
+        process.env.CYBERCHEF_RECIPE_BACKUP = "false";
+        ({ createMcpServer, quotaTracker } = await import("../../src/node/mcp-server.mjs"));
+    });
+
+    afterAll(async () => {
+        if (storageDir) await rm(storageDir, { recursive: true, force: true });
+    });
+
+    it("leaves no slot charged after a cache HIT", async () => {
+        const server = createMcpServer();
+        const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+        const client = new Client({ name: "quota-test", version: "1.0.0" }, { capabilities: {} });
+        await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+
+        try {
+            const args = { input: "cache-me" };
+            await client.callTool({ name: "cyberchef_to_base64", arguments: args });
+            // Identical input, so this second call is served from the cache -- the branch that
+            // used to release the quota slot a second time.
+            await client.callTool({ name: "cyberchef_to_base64", arguments: args });
+
+            // Nothing is in flight, so no tenant may still be charged. Before the fix the entry
+            // was deleted rather than left at zero, which looks the same here -- so the assertion
+            // that matters is the capacity one below.
+            expect(quotaTracker.perTenant.size).toBe(0);
+
+            // The real symptom: an over-release lets a tenant exceed its limit afterwards.
+            let granted = 0;
+            while (quotaTracker.acquire(DEFAULT_TENANT)) granted++;
+            expect(granted).toBe(quotaTracker.maxConcurrentOps);
+            for (let i = 0; i < granted; i++) quotaTracker.release(DEFAULT_TENANT);
+        } finally {
+            await client.close();
+            await server.close();
+        }
+    }, 30_000);
 });
 
 describe("recipe isolation", () => {

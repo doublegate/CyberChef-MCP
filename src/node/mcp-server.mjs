@@ -1232,9 +1232,23 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
                         const content = toContentBlocks({ value: cached }, opConfig.outputType);
                         const outputSize = contentSize(content);
 
-                        // Track quota
+                        // Track quota.
+                        //
+                        // NO release here. The `finally` below already releases on every exit
+                        // from this block, including this one, so releasing again returns a slot
+                        // that was never held twice.
+                        //
+                        // This was latent before the quota became per-tenant: the old global
+                        // counter clamped at zero (`Math.max(0, ...)`), so a double release
+                        // under-counted and could not go negative. A per-tenant count has no such
+                        // floor -- the second release decrements, and at one in-flight DELETES,
+                        // the entry belonging to whatever else that tenant is running. Measured:
+                        //
+                        //   acquire A, acquire B      -> in flight 2
+                        //   B releases twice          -> entry GONE, while A is still running
+                        //   A releases, then acquire  -> 10 further slots granted against a
+                        //                                limit of 10, so 11 concurrent
                         quotaTracker.trackData(inputSize, outputSize);
-                        quotaTracker.release(quotaTenant);
 
                         // Record telemetry
                         const duration = Date.now() - startTime;
