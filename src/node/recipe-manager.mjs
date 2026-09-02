@@ -20,6 +20,7 @@ import {
 } from "./recipe-validator.mjs";
 import { getLogger } from "./logger.mjs";
 import { createInputError } from "./errors.mjs";
+import { assertOfflineAllowed } from "./lib/offline.mjs";
 // js-yaml 5 dropped the default export; upstream v11.4.0 migrated to named imports and
 // src/core arrives that way with the mirror. This file is fork-owned, so it is migrated
 // by hand -- a default import here would be `undefined` at runtime, not a load error.
@@ -202,6 +203,10 @@ export class RecipeManager {
         }, "Executing recipe");
 
         // Execute with CyberChef bake
+        // Offline gate: a SAVED recipe can carry a network operation just as a caller-supplied
+        // one can, and this path does not go through bakeOnCore. Checked against the same set.
+        assertOfflineAllowed(bakeRecipe, { recipe: recipe.name });
+
         const { bake } = await loadNodeApi();
         const result = await bake(input, bakeRecipe);
 
@@ -362,6 +367,11 @@ export class RecipeManager {
                     op: op.op,
                     args: this.convertArgsToArray(op.op, op.args || {})
                 }));
+
+                // Offline gate. `recipe_test` EXECUTES the recipe -- it is a dry run of the
+                // inputs, not of the operations -- so it reaches the network exactly as
+                // `recipe_execute` would.
+                assertOfflineAllowed(bakeRecipe, { recipe: tempRecipe.name });
 
                 // Execute
                 const { bake } = await loadNodeApi();

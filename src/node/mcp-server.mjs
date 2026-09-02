@@ -29,6 +29,7 @@ import { currentTenant, callerKey } from "./lib/tenancy.mjs";
 import { listPrompts, getPrompt } from "./lib/prompts.mjs";
 import { listResources, readResource, listResourceTemplates } from "./lib/resources.mjs";
 import { bakeOnCore } from "./lib/core-recipe.mjs";
+import { assertOfflineAllowed } from "./lib/offline.mjs";
 import { isExposed, describeSurface } from "./lib/tool-surface.mjs";
 import { categoryIndex, listOperations, describeOperations } from "./lib/tool-catalog.mjs";
 import { installWasmFetch } from "./lib/wasm-fetch.mjs";
@@ -1320,6 +1321,24 @@ const handleCallToolInner = async (request, extra, ownerServer = server) => {
                         recipeArgs.push(resolveArgValue(argDef, userVal));
                     });
                 }
+
+                // Offline gate for the direct-operation path.
+                //
+                // ABOVE THE CACHE, which is the whole point and where the first version had it
+                // wrong. It sat below, just before the worker/streaming split -- correct for both
+                // execution legs and useless against a cache hit, because the hit returns from the
+                // branch below without ever reaching it. Reproduced before fixing: warm the cache
+                // with an `HTTP request` while online, set CYBERCHEF_OFFLINE=true, and the cached
+                // response is served as though nothing had changed.
+                //
+                // That is worse than an ordinary bypass. The value returned is a REAL RESPONSE
+                // FROM THE NETWORK, handed to a caller who has been told this deployment does not
+                // reach one -- so an air-gapped operator sees evidence that it does.
+                //
+                // The lesson generalises: "above the split" was the wrong ceiling. The guard
+                // belongs above EVERY path that can answer the request, and a cache is one of
+                // those paths even though it executes nothing.
+                assertOfflineAllowed([{ op: opName }], { tool: name });
 
                 // Check cache (only if caching is enabled)
                 const inputSize = Buffer.byteLength(args.input, "utf8");

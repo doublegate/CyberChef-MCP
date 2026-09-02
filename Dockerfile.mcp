@@ -71,7 +71,11 @@ RUN npm run postinstall
 # Generate CyberChef configuration and Node index
 RUN npx grunt configTests
 
-# Remove unnecessary files to reduce final image size and eliminate dev-time vulnerabilities
+# Drop everything the server does not need at run time.
+#
+# TWO STEPS, and the order matters: build artefacts first, then a real dependency prune. Both must
+# come AFTER `npm run postinstall` and `npx grunt configTests` above, which need the dev toolchain
+# and whose OUTPUT (the generated config and operation index) survives the prune.
 RUN rm -rf \
     .git \
     .github \
@@ -84,15 +88,29 @@ RUN rm -rf \
     nightwatch.conf.cjs \
     webpack.config.js \
     .eslintrc.json \
-    .babelrc \
-    node_modules/@esbuild \
-    node_modules/esbuild \
-    node_modules/webpack \
-    node_modules/babel-loader \
-    node_modules/grunt* \
-    node_modules/nightwatch \
-    node_modules/selenium-webdriver \
-    node_modules/eslint* 2>/dev/null || true
+    .babelrc 2>/dev/null || true
+
+# THE dependency prune. This replaces a hardcoded list of nine package globs that tried to remove
+# dev packages from a tree of 1190 -- and could not possibly keep pace with it.
+#
+# Measured on the v2.7.0 image before changing anything:
+#
+#     installed tree            1310 paths
+#     production-only            425 paths      -> 885 dev-only paths in the RUNTIME image
+#
+# including typescript (24 MB), @rolldown (19 MB), @octokit (18 MB),
+# @codecov/bundler-plugin-core (14 MB), @babel (14 MB) and lightningcss (10 MB). None of it is
+# reachable from the server; all of it was attack surface and a standing Trivy finding.
+#
+#     before   node_modules 589 MB, 1190 packages
+#     after    node_modules 345 MB,  432 packages        -244 MB, -41%
+#
+# `--ignore-scripts` for the same reason the install above uses it: a prune runs lifecycle scripts
+# for the packages it keeps, and nothing in a build stage should execute package code.
+#
+# This was called for in the v2.0.0 plan ("replace that list with npm prune --omit=dev") and never
+# landed; the list stayed, and the tree grew around it.
+RUN npm prune --omit=dev --ignore-scripts
 
 # -----------------------------------------------------------------------------
 # Stage 2: Runtime Stage (distroless, minimal attack surface)

@@ -37,6 +37,27 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
+      # QEMU, for the arm64 leg of the multi-platform build below.
+      #
+      # Measured before choosing this over a native-runner matrix: the arm64 image builds in
+      # **4m46s** under emulation, against ~4m30s native for amd64. That was a surprise -- the
+      # expectation was 30-60 minutes -- and the reason is the dependency prune in Dockerfile.mcp:
+      # the production tree is pure JavaScript and WebAssembly, so almost nothing is COMPILED under
+      # emulation. Nearly all the time is npm's I/O, which QEMU barely taxes.
+      #
+      # At that cost the matrix is not worth its complexity. A matrix would mean building each
+      # architecture on its own runner, pushing by digest, and merging a manifest list -- three
+      # jobs and a digest hand-off, in place of one job that already builds, scans, releases and
+      # publishes to npm in sequence. Rewriting a working release path to save ~5 minutes on a
+      # tag-triggered workflow is a poor trade.
+      #
+      # Revisit if the build slows materially: the matrix is the right answer at 30 minutes, and
+      # the deciding number is in this comment so a future reader can re-measure rather than guess.
+      - name: Set up QEMU for multi-platform builds
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
@@ -133,7 +154,14 @@ jobs:
             ${{ steps.meta-ghcr.outputs.tags }}
             ${{ steps.meta-dockerhub.outputs.tags }}
           labels: ${{ steps.meta-ghcr.outputs.labels }}
-          platforms: linux/amd64
+          # amd64 and arm64. arm64 covers Apple Silicon, AWS Graviton and Raspberry Pi 4/5, and
+          # was the single most-requested platform this image did not have.
+          #
+          # NOT linux/arm/v7, which the v2.8.0 plan asked for: the base image does not exist for it.
+          # `cgr.dev/chainguard/node` publishes linux/amd64 and linux/arm64 and nothing else, so a
+          # Raspberry Pi 3 cannot be served without changing base image entirely. Reported here
+          # rather than dropped silently.
+          platforms: linux/amd64,linux/arm64
           # Supply chain attestations (CRITICAL for Docker Hub health score)
           provenance: mode=max  # Max-level provenance for SLSA Build Level 3 compliance
           sbom: true            # Generate and attach SBOM attestation (in-toto SPDX format)
@@ -142,10 +170,20 @@ jobs:
       # =============================================================================
       # Export: Create tarball for offline distribution
       # =============================================================================
-      # Note: We pull from Docker Hub since that's the primary distribution channel
+      # Note: We pull from Docker Hub since that's the primary distribution channel.
+      #
+      # `--platform` is EXPLICIT now that the tag is a multi-platform manifest. Without it `docker
+      # pull` silently resolves to the runner's own architecture, and the release asset would be
+      # amd64 because the runner happens to be amd64 -- correct today, and a silent surprise the
+      # first time this workflow runs anywhere else. Saying it out loud makes the asset's contents
+      # a decision rather than an accident of scheduling.
+      #
+      # One tarball, amd64, deliberately: it exists for air-gapped installs, and a two-architecture
+      # archive would double a 200 MB asset for an audience that knows which machine it is feeding.
+      # arm64 users pull from the registry, where the manifest resolves for them automatically.
       - name: Pull Docker image from Docker Hub for export
         run: |
-          docker pull "$DOCKERHUB_REGISTRY/$DOCKERHUB_IMAGE_NAME:latest"
+          docker pull --platform linux/amd64 "$DOCKERHUB_REGISTRY/$DOCKERHUB_IMAGE_NAME:latest"
 
       - name: Export Docker image as tarball
         env:
@@ -153,6 +191,25 @@ jobs:
         run: |
           docker save "$DOCKERHUB_REGISTRY/$DOCKERHUB_IMAGE_NAME:latest" | gzip > "cyberchef-mcp-${TAG_NAME}-docker-image.tar.gz"
           ls -lh cyberchef-mcp-*.tar.gz
+
+      # Prove the manifest carries BOTH architectures before the release is published.
+      #
+      # A multi-platform build that silently degrades to one platform still produces a working
+      # image, a green workflow and a published release -- the failure is invisible until an arm64
+      # user pulls it and gets "no matching manifest". This fails the release instead.
+      - name: Verify the published manifest is multi-platform
+        run: |
+          set -euo pipefail
+          PLATFORMS=$(docker buildx imagetools inspect \
+            "$DOCKERHUB_REGISTRY/$DOCKERHUB_IMAGE_NAME:latest" \
+            --format '{{range .Manifest.Manifests}}{{if ne .Platform.Architecture "unknown"}}{{.Platform.OS}}/{{.Platform.Architecture}} {{end}}{{end}}')
+          echo "manifest platforms: $PLATFORMS"
+          for want in linux/amd64 linux/arm64; do
+            case "$PLATFORMS" in
+              *"$want"*) echo "  ok   $want" ;;
+              *) echo "  MISSING $want"; exit 1 ;;
+            esac
+          done
 
       # =============================================================================
       # Security: Generate SBOM and Vulnerability Scans

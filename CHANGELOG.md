@@ -7,6 +7,114 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.8.0] - 2026-09-02
+
+Opens Phase 6. Half of what the release plan asked for had already been delivered by v2.6.0; what
+was actually missing was ARM support, image size, and an honest offline switch.
+
+### Added
+
+- **`linux/arm64` images**, alongside `linux/amd64` — Apple Silicon, AWS Graviton, Raspberry Pi
+  4/5. `docker pull` resolves the right one. Built under QEMU in **4m46s** against ~4m30s native for
+  amd64, which is why the release workflow keeps its single job rather than being restructured into
+  a three-job native matrix; the deciding measurement is recorded in the workflow. The verification
+  asserts that npm resolved `@napi-rs/nice-linux-arm64-gnu`, because those platform binaries are
+  *optional* dependencies — a wrong resolution still builds a working image and fails later in the
+  worker pool.
+- **A native-arm job on every pull request**, so the release workflow is never the first place arm64
+  is attempted. Published tags are immutable; a tag-time failure is the expensive one.
+- **The release now fails if the published manifest is not multi-platform.** A build that silently
+  degrades to one platform still produces a green workflow and a published release, and breaks only
+  when an arm64 user pulls it.
+- **`CYBERCHEF_OFFLINE=true`**, a fail-closed switch for air-gapped deployments. 502 of the 504
+  operations never touched a network; exactly two do (`HTTP request`, `DNS over HTTPS`), and without
+  this they hang until the OS gives up rather than failing cleanly, holding a concurrency slot
+  throughout. The guard is applied to the **recipe**, not the tool name — `cyberchef_bake` is not a
+  network tool, but a bake carrying `HTTP request` is a network call — and is enforced at all four
+  engine entry points, since `bakeOnCore`, `executeInWorker` and the Node API's `bake` are separate
+  paths. Documented as a posture, not a sandbox.
+- **An edge deployment guide** (`docs/guides/edge-deployment.md`): architectures, a recommended
+  settings table by deployment size, air-gapped install, and what offline mode does not claim.
+
+### Changed
+
+- **Image 643 MB → 453 MB; 1,190 packages → 432.** `Dockerfile.mcp` now runs a real
+  `npm prune --omit=dev` in place of a hardcoded list of nine package globs that tried to remove dev
+  packages from a tree of 1,310 paths — 885 of them dev-only, including `typescript` (24 MB),
+  `@rolldown` (19 MB), `@octokit` (18 MB) and `@babel` (14 MB). Attack surface as much as weight.
+  Verified by re-running the full 241 Node-API and 2,289 operation tests against production-only
+  dependencies, not by a smoke test. This was called for in the v2.0.0 plan and never landed.
+- `.dockerignore` also excludes `docs-site`, `deploy`, `examples`, `patches`, `images` and
+  `.agy-review-work` — none is read by the server, and excluding from the *context* is stricter than
+  removing in the builder, because what is never copied cannot be forgotten in a later edit.
+- The release tarball export now names `--platform linux/amd64` explicitly rather than resolving to
+  whatever the runner happens to be.
+- Chart version 0.2.0 → 0.3.0; `appVersion` and the pinned image tag → 2.8.0.
+
+### Fixed
+
+- **A local build shipped 240 MB of Docusaurus dependencies.** `.dockerignore` had `node_modules`,
+  which Docker matches only against the context root, so `docs-site/node_modules` was copied in
+  whole. CI never saw it because CI checks out clean — meaning a local build and a CI build produced
+  materially different images and nothing reported the difference. Added `**/node_modules`.
+- **A developer's saved recipes shipped in the image.** `recipes.json` and `recipes.json.backup` —
+  the saved-recipe store — were being copied into `/app`, so anyone building locally baked their own
+  recipes into a layer and would publish them by pushing it. Mode `0600` on disk stops mattering
+  once the file is inside an image.
+
+### Fixed (from review)
+
+- **A cached network result bypassed offline mode.** The direct-operation guard sat above the
+  worker/streaming split but *below* the cache lookup, so with caching on (the default) a cached
+  `HTTP request` was served while `CYBERCHEF_OFFLINE=true`. Worse than an ordinary bypass: the value
+  returned is a real response from the network, handed to a caller told this deployment cannot reach
+  one. The guard now precedes the cache read, with both a source-order test and a runtime test that
+  asserts `operationCache.get` is never reached.
+- `package-lock.json` still reported `2.7.0` after the version bump. Cosmetic for `npm ci`, which
+  tolerates a root version mismatch, but the npm tarball ships the lockfile — so `cyberchef-mcp@2.8.0`
+  would have contained one claiming 2.7.0.
+- Documentation corrections: a stale `v2.4.0` heading and `v2.0.0` "latest" reference in `AGENTS.md`,
+  a `2.7.0` in a Compose comment, an image-size baseline stated as both 674 MB and 643 MB in the
+  findings log, and an edge-guide sentence that said the server makes no outbound calls immediately
+  before describing JWKS discovery — which could have led an operator to omit authentication egress
+  from an allowlist.
+
+### Security
+
+- **Infrastructure-as-code is now scanned deliberately** (`trivy-iac-scan` in `security-scan.yml`,
+  configured by `security/trivy/`). Until now the Helm chart was scanned only *by accident* —
+  `deploy/` was being copied into the runtime image, so the container scan reached it at
+  `/app/deploy/...`. Removing non-runtime trees from the image (above) would have closed both open
+  code-scanning alerts by moving the file and silently ended the chart's scanning. A finding that
+  disappears because the file moved is not a finding that was addressed.
+- **KSV-0125 ("untrusted registry") resolved by naming the trusted registries**
+  (`security/trivy/data/ksv0125.yaml`) rather than suppressing the check, so it stays live —
+  verified by pointing the chart at an untrusted registry, which still fails the scan.
+- **KSV-0110 ("workloads in the default namespace") suppressed with its reasoning recorded.** It is
+  a false positive for a distributable chart: the namespace comes from `helm install --namespace`,
+  and hardcoding `metadata.namespace` would override it.
+- **Snyk PR #107 (`@xmldom/xmldom` 0.8.15 → 0.9.12) closed, not merged.** `0.8.15` is already the
+  patched release on the 0.8 line for every advisory, and 0.9 removed the `errorHandler` option that
+  `XPathExpression.mjs` passes — the upgrade would have made `XPath expression` report
+  "Invalid input XML." for every input, including valid XML.
+- Full reasoning, including the four low-severity `elliptic` advisories that have **no patched
+  version anywhere** and for which `npm audit fix --force` would be a downgrade:
+  `docs/security/2026-09-02-v2.8.0-advisory-disposition.md`.
+
+### Not done, deliberately
+
+- **`linux/arm/v7`.** `cgr.dev/chainguard/node` publishes amd64 and arm64 only; serving a 32-bit Pi
+  would mean abandoning the distroless runtime, digest pinning and non-root default.
+- **The <50 MB image target.** `@jimp` (89 MB) and `tesseract.js-core` (44 MB) are production
+  dependencies of real operations. A server exposing 504 operations including OCR cannot be a 50 MB
+  image; the target was set against a baseline that was itself wrong by 3.4x.
+- **Removing 19 MB of upstream web-app dependencies** (`bootstrap`, `jquery`, and three others with
+  zero imports in `src/`). Measured at 4.2% of the image, against a change touching
+  `patch-dependencies.mjs`, `Gruntfile.js` and the dependency manifest of a fork whose upstream
+  declares them. Checked for advisories first, which would have changed the answer: none.
+- **Resource profiles.** Two of the five fields in the plan's schema describe settings that do not
+  exist. The real question is answered as a table in the edge deployment guide.
+
 ## [2.7.0] - 2026-09-02
 
 ### Added

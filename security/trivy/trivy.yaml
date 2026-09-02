@@ -1,0 +1,55 @@
+# Trivy configuration for scanning this repository's infrastructure-as-code.
+#
+# WHY THIS EXISTS
+# ---------------
+# Until v2.8.0 the Helm chart was scanned BY ACCIDENT: `deploy/` was being copied into the runtime
+# image, so the container scan reached it at `/app/deploy/...` and reported against it. v2.8.0
+# stopped shipping non-runtime trees in the image -- a real size fix that would have silently ENDED
+# the chart's scanning as a side effect, and closed two open alerts by moving the file rather than
+# by addressing them.
+#
+# A finding that disappears because the file moved is not a finding that was addressed. So the IaC
+# is scanned where it lives, on purpose, with its standing findings configured here.
+#
+# ON THE KEY NAMES BELOW
+# ----------------------
+# They are not where the CLI flag names suggest, and getting them wrong FAILS SILENTLY -- Trivy
+# ignores unknown keys, so a misplaced setting produces a config file that looks right and does
+# nothing. The first version of this file used `misconfiguration.data` and a top-level `skip-dirs`;
+# both were ignored, and the scan came back with 43 findings instead of 0. Caught only by running
+# the config file on its own rather than trusting that the CLI flags and the file agreed.
+#
+#   --config-data  ->  rego.data          (NOT misconfiguration.data)
+#   --skip-dirs    ->  scan.skip-dirs     (NOT a top-level key)
+#
+# Verified against Trivy 0.74.0's own config-file reference.
+
+rego:
+  # Check parameters, notably the KSV-0125 trusted-registry list. See data/ksv0125.yaml.
+  data:
+    - security/trivy/data
+
+scan:
+  # Trees that are not this project's infrastructure.
+  #
+  # `ref-proj/` is the single largest reason this needs saying: it is a full checkout of upstream
+  # GCHQ CyberChef, kept only so the sync can three-way diff against it. Scanning it produced
+  # **42 of 43 findings** in the first full run -- including four CRITICALs -- none about anything
+  # this repository ships or controls. Reporting upstream's Dockerfiles as this project's security
+  # posture would bury the one finding that IS ours in noise, which is the failure mode that makes
+  # people stop reading a Security tab.
+  #
+  # (It is usually absent in CI, since actions/checkout does not fetch submodules by default. Named
+  # anyway: a scan whose output depends on whether a submodule happened to be checked out is not a
+  # scan anyone can reason about.)
+  skip-dirs:
+    - ref-proj
+    - node_modules
+    - "**/node_modules"
+    - docs-site
+
+severity:
+  - LOW
+  - MEDIUM
+  - HIGH
+  - CRITICAL

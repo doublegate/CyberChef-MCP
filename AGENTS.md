@@ -20,17 +20,20 @@
 <<< MC-PROJECT-START >>>
 ## Project: CyberChef
 
-**CyberChef MCP Server** (v2.4.0) - Fork of GCHQ CyberChef wrapping the Node.js API into an MCP
+**CyberChef MCP Server** (v2.8.0) - Fork of GCHQ CyberChef wrapping the Node.js API into an MCP
 server. Exposes 504 operations (encryption, encoding, compression, forensics) as AI assistant tools.
 
 | Metric | Value |
 |--------|-------|
-| MCP Version | 2.7.0 (single source: `package.json` `version`, read by `src/node/lib/config.mjs`). `mcpVersion` was removed in v2.2.0 -- npm requires `version` to be the published version, so the upstream base moved to `cyberchefUpstreamVersion`. |
+| MCP Version | 2.8.0 (single source: `package.json` `version`, read by `src/node/lib/config.mjs`). `mcpVersion` was removed in v2.2.0 -- npm requires `version` to be the published version, so the upstream base moved to `cyberchefUpstreamVersion`. |
 | Upstream base | CyberChef **v11.4.0** |
 | Operations / tools | 504 operations **plus 4 registry tools** that are not operations. `tools/list` is an **index** by default (28 tools, ~4.9k tokens); `CYBERCHEF_TOOL_SURFACE=curated\|all` for 106 (~20.7k) or all 531 (~100k). All 504 reachable via `cyberchef_bake` + the three navigation tools. Every tool carries annotations + a title. |
 | Licence | **GPL-3.0-or-later** (from v2.0.0; v1.9.x and earlier are Apache-2.0) |
 | Node | `>=24 <27`; image runs Node 26.8.1, digest-pinned |
-| Tests | 1,321 MCP (50 files) + 241 Node-API + 2,289 operations + 9 CI-executed examples |
+| Image | **453 MB, 432 packages** (was 643 MB / 1,190 in v2.7.0). `Dockerfile.mcp` runs `npm prune --omit=dev` -- NOT a hardcoded `rm -rf` list, which is what it was through v2.7.0 and could not keep pace with a 1,310-path tree. Any change here must be re-verified by running the FULL operation suite against production-only deps, not a smoke test. **<50 MB is unreachable**: `@jimp` 89 MB + `tesseract.js-core` 44 MB are production deps of real operations. |
+| Platforms | `linux/amd64` + `linux/arm64` (v2.8.0). **Not arm/v7** -- the Chainguard base does not exist for it. arm64 builds under QEMU in 4m46s (vs ~4m30s native amd64) because the pruned tree is pure JS/wasm; that number is why there is no native-runner matrix. `@napi-rs/nice` platform binaries are OPTIONAL deps, so CI asserts the arm64 one resolved -- a wrong resolution still builds a working image and fails later in the worker pool. |
+| Offline | `CYBERCHEF_OFFLINE=true` refuses the only 2 networked operations (`HTTP request`, `DNS over HTTPS`) of 504. Guard is on the **recipe**, not the tool name (`cyberchef_bake` carrying `HTTP request` is a network call), applied at all 4 engine entries -- `bakeOnCore`, the direct-operation branch above the worker split, and recipe-manager execute + test. A posture, not a sandbox. |
+| Tests | 1,338 MCP (51 files) + 241 Node-API + 2,289 operations + 9 CI-executed examples |
 | Coverage | 96.7% lines / 90.1% branches / 96.6% functions / 95.8% statements. Thresholds raised in v2.3.0 from 75/70/90/75 to **95/89/96/96** (branches raised again in v2.7.0), with `src/node/lib/**` held separately at 99/94/100/99 -- the old numbers were twenty points below actual, so the gate could not fail. `perFile` is off deliberately; see `vitest.config.mjs` for why. Gated on **pull requests** since v2.2.0. |
 | Open security alerts | **0** Dependabot, **0** code-scanning (55 dispositioned in v2.1.1) |
 | MCP surfaces | tools + **prompts** (5) + **resources** (`recipe://<id>`), all three declared from one `SERVER_CAPABILITIES` -- there are two server construction sites and two capability lists drift. |
@@ -233,10 +236,10 @@ perfectly good tag and would be ignored within a release or two.
 | Category | Key Files |
 |----------|-----------|
 | Architecture | `docs/architecture/architecture.md`, `technical_implementation.md`, `performance-tuning.md` |
-| Guides | `docs/guides/commands.md` (MCP tools), `user_guide.md` (installation) |
+| Guides | `docs/guides/commands.md` (MCP tools), `user_guide.md` (installation), `edge-deployment.md` (arm64, size, offline, air-gapped) |
 | Planning | `docs/planning/ROADMAP.md`, `docs/planning/phases/overview.md` |
 | Security | `docs/security/audit.md` |
-| Releases | `docs/releases/v2.0.0.md` (latest), `v1.9.0.md`, `v1.8.0.md` ... `v1.0.0.md` |
+| Releases | `docs/releases/v2.8.0.md` (latest), then `v2.7.0.md` ... `v2.0.0.md`, `v1.9.0.md` ... `v1.0.0.md` |
 | Internal | `docs/internal/tech-debt-analysis-v1.6.1.md` (project health: 8.9/10) |
 
 <<< MC-PROJECT-END >>>

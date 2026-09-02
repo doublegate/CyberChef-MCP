@@ -1,6 +1,29 @@
-# Dependencies and build artifacts
+# Dependencies and build artifacts.
+#
+# BOTH patterns are required, and the second is the one that was missing. Docker matches
+# .dockerignore against the path from the CONTEXT ROOT, so a bare `node_modules` excludes
+# `./node_modules` and nothing else. `docs-site/node_modules` was therefore copied in whole:
+#
+#     local build:  /app/docs-site  249 MB  (240 MB of it node_modules)
+#     CI build:     absent
+#
+# CI never saw it because CI checks out clean -- so a local build and a CI build produced
+# materially different images and nothing reported the difference. `**/node_modules` catches any
+# depth, including any future workspace.
 node_modules
+**/node_modules
 build
+
+# Local runtime state.
+#
+# `recipes.json` is the saved-recipe STORE. A developer who builds this image locally bakes their
+# own saved recipes into a layer -- and would publish them by pushing it. Mode 0600 on disk stops
+# mattering the moment the file is inside an image.
+#
+# Found by listing /app in a locally-built image, where both files were sitting beside the source.
+recipes.json
+recipes.json.backup
+*.recipes.json
 
 # Generated files (regenerated during build by grunt configTests)
 src/core/config/OperationConfig.json
@@ -47,6 +70,20 @@ test-results
 # in a build context. Spotted by listing /app in the built image, where it had survived because
 # the builder stage's `rm -rf` list never named it.
 ref-proj
+
+# Trees with no runtime use. The builder stage removes some of these, but excluding them from the
+# CONTEXT is strictly better: what is never copied cannot be forgotten in a later edit of that
+# rm -rf list, and it makes every build faster.
+#
+# `deploy/`, `examples/`, `patches/` and `docs-site/` are read by humans and CI, never by the
+# server. `images/` is 8 MB of banner JPEGs and the Helm chart icon.
+docs-site
+deploy
+examples
+patches
+images
+security
+.agy-review-work
 
 # IDE and OS files
 *.log

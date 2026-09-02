@@ -167,6 +167,39 @@ sets all four consistently.
 Both default to 0 being meaningful, not missing: `CYBERCHEF_DRAIN_DELAY_MS=0` disables the grace
 window, which is what you want under Docker Compose or anywhere without a load balancer.
 
+## Offline and air-gapped operation (v2.8.0)
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `CYBERCHEF_OFFLINE` | `false` | Refuse the two operations that leave this process |
+
+**Most of this already worked.** 502 of the 504 operations are pure functions over bytes. Exactly
+two reach outside: `HTTP request` and `DNS over HTTPS`. The server makes no other outbound calls —
+there is no plugin loader, it exports no telemetry of its own, and JWKS discovery has been bounded
+by a deadline and a circuit breaker since v2.6.0.
+
+What the switch adds is **failing closed**. Without it those two do not fail cleanly on an
+air-gapped host; they hang until the OS gives up on an unroutable connection, holding a concurrency
+slot the whole time. With it they are refused immediately, with an error naming the operation.
+
+The check is applied to the **recipe**, not the tool name — `cyberchef_bake` is not a network tool,
+but a bake carrying `HTTP request` is a network call — and it is enforced on every path that reaches
+the engine, including `cyberchef_batch`, the registry tools, streaming, and saved-recipe execute and
+test.
+
+**It is a posture, not a sandbox.** It refuses operations the server knows to be networked; it
+cannot stop a process opening a socket. For enforcement use a `NetworkPolicy` or
+`docker run --network none`. Use both: the switch gives the caller a clear error, the namespace
+makes it true. See the [edge deployment guide](https://github.com/doublegate/CyberChef-MCP/blob/master/docs/guides/edge-deployment.md).
+
+## Architectures (v2.8.0)
+
+Images are published for `linux/amd64` and `linux/arm64` — the latter covering Apple Silicon, AWS
+Graviton and Raspberry Pi 4/5. `docker pull` resolves the right one; there is nothing to set.
+
+`linux/arm/v7` is **not** published: the Chainguard base image does not exist for it, and changing
+base image would mean giving up the distroless runtime, digest pinning and non-root default.
+
 ## Observability (v2.7.0)
 
 | Variable | Default | Meaning |
