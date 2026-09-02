@@ -167,27 +167,34 @@ describe("counter semantics", () => {
         // stays empty -- and the old `expect(length).toBeLessThanOrEqual(5)` passed against 0,
         // asserting that a rollover which never happened did not break anything. The flag is read
         // at module load, so the module graph is reset and re-imported with it set.
+        //
+        // Restored in `finally`. A failing assertion below would otherwise skip the cleanup and
+        // leak BOTH an enabled telemetry flag and a reset module graph into every later test in
+        // this file -- turning one honest failure into a run whose results depend on test order,
+        // which is far harder to diagnose than the failure that caused it.
         vi.stubEnv("CYBERCHEF_TELEMETRY_ENABLED", "true");
         vi.resetModules();
-        const { TelemetryCollector: Fresh } = await import("../../src/node/lib/telemetry.mjs");
+        try {
+            const { TelemetryCollector: Fresh } = await import("../../src/node/lib/telemetry.mjs");
 
-        const t = new Fresh();
-        t.maxMetrics = 5;
-        const reads = [];
-        for (let i = 0; i < 50; i++) {
-            t.record({ tool: "cyberchef_to_base64", success: true });
-            reads.push(t.exportTotals()[0].calls);
+            const t = new Fresh();
+            t.maxMetrics = 5;
+            const reads = [];
+            for (let i = 0; i < 50; i++) {
+                t.record({ tool: "cyberchef_to_base64", success: true });
+                reads.push(t.exportTotals()[0].calls);
+            }
+
+            // The ring genuinely filled and genuinely dropped entries -- 50 recorded, 5 held.
+            expect(t.exportMetrics().length).toBe(5);
+            for (let i = 1; i < reads.length; i++) {
+                expect(reads[i]).toBeGreaterThanOrEqual(reads[i - 1]);
+            }
+            expect(reads.at(-1)).toBe(50);
+        } finally {
+            vi.unstubAllEnvs();
+            vi.resetModules();
         }
-
-        // The ring genuinely filled and genuinely dropped entries -- 50 recorded, at most 5 held.
-        expect(t.exportMetrics().length).toBe(5);
-        for (let i = 1; i < reads.length; i++) {
-            expect(reads[i]).toBeGreaterThanOrEqual(reads[i - 1]);
-        }
-        expect(reads.at(-1)).toBe(50);
-
-        vi.unstubAllEnvs();
-        vi.resetModules();
     });
 
     it("counts tool calls even when telemetry buffering is disabled", () => {

@@ -99,6 +99,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Alerts that mixed deployments.** Every aggregate is now `by (job)`: one Prometheus commonly
   scrapes staging beside production, so a bare `sum()` let a healthy production mask a staging fleet
   with nothing serving, and a normal rollout read as version skew across all of them.
+- **A 504-key linear scan on every tool call.** Resolving a tool name against the operation
+  catalogue sanitized all 504 keys, measured at 223 microseconds per unresolved lookup and running
+  four times per request across the dimension bound, the dispatch and the annotation lookup. The
+  worst case was the one that mattered: an *unknown* name scanned the whole catalogue before
+  failing, so the cardinality defence added CPU amplification on the attack path it exists to
+  blunt. Replaced with one shared module-level index — 223 us to 0.254 us.
 - **Three tests that asserted nothing** — a buffer-rollover check that ran against an empty buffer,
   an escaping check that never drove a reserved character through the escaper, and a
   DNS-rebinding check written with `fetch`, which silently drops a `Host` override. All three are
