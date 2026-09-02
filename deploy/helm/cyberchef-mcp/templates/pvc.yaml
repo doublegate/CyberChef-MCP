@@ -1,0 +1,19 @@
+{{- if and .Values.persistence.enabled (not .Values.persistence.perReplica) }}
+{{- if gt (int .Values.replicaCount) 1 }}
+{{- fail "persistence.perReplica=false shares ONE recipe volume between replicas, which makes them conflict: the server detects the stale write and refuses it, so saves fail. Set persistence.perReplica=true (a volume per replica) or replicaCount=1." }}
+{{- end }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "cyberchef-mcp.fullname" . }}-recipes
+  labels:
+    {{- include "cyberchef-mcp.labels" . | nindent 4 }}
+spec:
+  accessModes: [{{ .Values.persistence.accessMode | quote }}]
+  {{- if .Values.persistence.storageClass }}
+  storageClassName: {{ .Values.persistence.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.size | quote }}
+{{- end }}

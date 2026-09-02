@@ -1,0 +1,197 @@
+# Default values for cyberchef-mcp.
+#
+# The defaults are chosen to be CORRECT rather than impressive: one replica, authorization off,
+# no ingress. Each of those is a deliberate decision explained where it appears, and every one of
+# them has a documented way to change it.
+
+replicaCount: 1
+# WHY ONE, and what to do before raising it.
+#
+# The server itself is stateless per request -- MCP protocol revision 2026-07-28 removed
+# protocol-level sessions entirely, so there is nothing to make sticky and no session store to
+# run. Two things are still per-process:
+#
+#   - RECIPE STORAGE is a JSON file. Two replicas sharing one file will conflict; the server
+#     detects a stale write and refuses it rather than silently discarding the other replica's
+#     recipes, but a refused save is still a failed save. Give each replica its own volume
+#     (persistence.perReplica below), or accept that saved recipes are per-pod.
+#   - THE OPERATION CACHE is per-process, which is fine: it is a cache, and each replica warms
+#     its own.
+#
+# So: raise replicaCount freely if you do not use saved recipes, and read persistence first if
+# you do.
+
+image:
+  repository: ghcr.io/doublegate/cyberchef-mcp_v2
+  pullPolicy: IfNotPresent
+  # Pinned rather than "latest". A chart that floats its tag cannot be rolled back to a known
+  # state, and `latest` moves on every release.
+  tag: "2.6.0"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+service:
+  type: ClusterIP
+  port: 3000
+
+# The MCP endpoint path. Must match CYBERCHEF_MCP_PATH if you override that.
+mcpPath: /mcp
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+    # SSE responses must not be buffered by the proxy, or streamed progress arrives all at once
+    # when the request finishes. For ingress-nginx:
+    # nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    # nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+  hosts:
+    - host: cyberchef-mcp.example.com
+      paths:
+        - path: /mcp
+          pathType: Prefix
+  tls: []
+
+resources:
+  requests:
+    # The server loads 505 operation implementations on first use of the Node API. Measured
+    # resident set after that load is well under 512Mi, but a limit below it will OOM on the
+    # first cyberchef_search rather than at startup, which is a confusing place to find out.
+    memory: 256Mi
+    cpu: 100m
+  limits:
+    memory: 1Gi
+    cpu: "1"
+
+autoscaling:
+  # Off by default, and read replicaCount's note before turning it on: autoscaling multiplies
+  # replicas, so it inherits the recipe-storage constraint.
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+podDisruptionBudget:
+  # Only meaningful with more than one replica; a PDB with minAvailable 1 over a single replica
+  # blocks node drains entirely.
+  enabled: false
+  minAvailable: 1
+
+# Probe configuration.
+#
+# The three probes are NOT interchangeable, and the server treats them differently on purpose:
+#
+#   startup   - passes once the listener is bound. Holds the other two off during boot.
+#   readiness - fails while draining, which is what makes a rolling update lose no requests.
+#   liveness  - stays healthy while draining. A liveness failure during a drain gets the pod
+#               KILLED mid-drain, which is the opposite of what the drain is for.
+probes:
+  startup:
+    # failureThreshold x periodSeconds is the boot budget. Cold start is ~185 ms, so this is
+    # generous by two orders of magnitude and costs nothing when boot is fast.
+    failureThreshold: 30
+    periodSeconds: 2
+  readiness:
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 2
+  liveness:
+    periodSeconds: 10
+    timeoutSeconds: 5
+    # Deliberately tolerant. Liveness restarts the pod, so a twitchy threshold turns a slow
+    # moment into a restart loop.
+    failureThreshold: 6
+
+# Graceful shutdown.
+#
+# Kubernetes sends SIGTERM and removes the pod from Service endpoints AT THE SAME TIME, and
+# endpoint removal takes time to propagate through kube-proxy and any ingress. Both halves below
+# address that race from opposite ends:
+#
+#   preStopSleepSeconds - delays SIGTERM so endpoint removal can propagate first
+#   drain.delaySeconds  - after SIGTERM, keeps serving while readiness reports failure
+#
+# Either alone narrows the window; both together close it.
+#
+# terminationGracePeriodSeconds MUST exceed preStop + drain delay + drain timeout, or the kubelet
+# SIGKILLs the process partway through its own shutdown.
+preStopSleepSeconds: 5
+drain:
+  delaySeconds: 5
+  timeoutSeconds: 20
+terminationGracePeriodSeconds: 45
+
+persistence:
+  # Saved recipes. Off by default: with no volume, recipes live in the container filesystem and
+  # are lost on restart, which is the right default for a stateless deployment that does not use
+  # them.
+  enabled: false
+  # perReplica uses a StatefulSet-style volumeClaimTemplate so each replica gets its OWN volume.
+  # That is the supported way to run multiple replicas with saved recipes: they do not share, so
+  # they cannot conflict -- at the cost of recipes being visible only on the pod that saved them.
+  #
+  # Setting this false with replicaCount > 1 shares one ReadWriteMany volume between replicas,
+  # which the server will detect and refuse writes on. Do not do it.
+  perReplica: true
+  storageClass: ""
+  accessMode: ReadWriteOnce
+  size: 1Gi
+  mountPath: /data
+
+# Authorization (v2.5.0). Off unless issuer is set.
+#
+# Secrets are referenced, never inlined: putting an issuer's client secret in values.yaml puts it
+# in `helm get values` output and in whatever repository the values file lives in.
+auth:
+  enabled: false
+  issuer: ""
+  resource: ""
+  audience: ""
+  requiredScopes: ""
+  # Name of an existing Secret whose keys are added as environment variables.
+  existingSecret: ""
+
+# Multi-tenancy (v2.5.0). Requires auth.enabled; the server refuses to start otherwise.
+tenancy:
+  enabled: false
+  claim: tid
+
+# Tool surface. "index" exposes the navigation tools only and is the smallest context cost;
+# "curated" and "all" expose progressively more. Nothing becomes unreachable in any mode --
+# cyberchef_bake runs any operation by name.
+toolSurface: ""
+
+logLevel: info
+
+# Extra environment variables, for anything not modelled above.
+extraEnv: []
+
+podAnnotations: {}
+podLabels: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Pod-level security context. The image already runs as UID 65532 (Chainguard nonroot); these
+# are stated explicitly so a cluster policy engine can see them rather than infer them.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL

@@ -1,0 +1,120 @@
+{{/*
+Deployment or StatefulSet, chosen by whether each replica needs its own recipe volume.
+
+A StatefulSet is used ONLY for `persistence.perReplica`, because a volumeClaimTemplate is the
+only way to give each replica its own PVC. It is not used for identity or ordering -- this server
+has neither. Everything else is a Deployment, which rolls faster and has no ordinal semantics to
+reason about.
+*/}}
+{{- $sts := and .Values.persistence.enabled .Values.persistence.perReplica -}}
+apiVersion: apps/v1
+kind: {{ if $sts }}StatefulSet{{ else }}Deployment{{ end }}
+metadata:
+  name: {{ include "cyberchef-mcp.fullname" . }}
+  labels:
+    {{- include "cyberchef-mcp.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  {{- if $sts }}
+  serviceName: {{ include "cyberchef-mcp.fullname" . }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "cyberchef-mcp.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "cyberchef-mcp.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "cyberchef-mcp.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      # Must exceed preStop + drain delay + drain timeout, or the kubelet SIGKILLs the process
+      # partway through its own shutdown and the drain achieves nothing.
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+          env:
+            {{- include "cyberchef-mcp.env" . | nindent 12 }}
+          {{- if .Values.auth.existingSecret }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.auth.existingSecret }}
+          {{- end }}
+          {{- include "cyberchef-mcp.probes" . | nindent 10 }}
+          lifecycle:
+            preStop:
+              exec:
+                # Delays SIGTERM so endpoint removal can propagate before the process is told to
+                # stop. Kubernetes removes the pod from Service endpoints and sends SIGTERM at the
+                # same moment, so without this the pod stops while traffic is still being routed
+                # to it. `sleep` from the image; the native `sleep` lifecycle action would be
+                # cleaner but needs Kubernetes >= 1.30 with the feature gate on.
+                command: ["/bin/sleep", "{{ .Values.preStopSleepSeconds }}"]
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            # readOnlyRootFilesystem is on, so anything the process writes needs a volume.
+            - name: tmp
+              mountPath: /tmp
+            {{- if .Values.persistence.enabled }}
+            - name: recipes
+              mountPath: {{ .Values.persistence.mountPath }}
+            {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- if and .Values.persistence.enabled (not .Values.persistence.perReplica) }}
+        # A single shared claim. Only correct with ONE replica: sharing recipe storage between
+        # replicas makes them conflict, and the server refuses the stale write rather than losing
+        # the other replica's recipes.
+        - name: recipes
+          persistentVolumeClaim:
+            claimName: {{ include "cyberchef-mcp.fullname" . }}-recipes
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  {{- if $sts }}
+  volumeClaimTemplates:
+    - metadata:
+        name: recipes
+      spec:
+        accessModes: [{{ .Values.persistence.accessMode | quote }}]
+        {{- if .Values.persistence.storageClass }}
+        storageClassName: {{ .Values.persistence.storageClass | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.persistence.size | quote }}
+  {{- end }}
