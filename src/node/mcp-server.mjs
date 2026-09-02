@@ -22,7 +22,7 @@ import { annotationsForOperation, annotationsForMetaTool } from "./lib/tool-anno
 import { currentAuth, insufficientScopeChallenge, loadAuthConfig } from "./lib/auth.mjs";
 import { authorise } from "./lib/rbac.mjs";
 import { audit, OUTCOME } from "./lib/audit.mjs";
-import { currentTenant } from "./lib/tenancy.mjs";
+import { currentTenant, callerKey } from "./lib/tenancy.mjs";
 import { listPrompts, getPrompt } from "./lib/prompts.mjs";
 import { listResources, readResource, listResourceTemplates } from "./lib/resources.mjs";
 import { bakeOnCore } from "./lib/core-recipe.mjs";
@@ -932,7 +932,10 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
         // Handle v1.7.0 tools
         if (name === "cyberchef_batch") {
             // Check rate limit
-            const limitCheck = rateLimiter.checkLimit(requestId);
+            // Keyed by the CALLER, not the request. `requestId` is a fresh randomUUID per
+            // request, so every call looked like a first-time caller and nothing was ever
+            // limited -- measured at 0 denials in 1000 requests against a limit of 5.
+            const limitCheck = rateLimiter.checkLimit(callerKey());
             if (!limitCheck.allowed) {
                 const error = createInputError(
                     `Rate limit exceeded. Retry after ${limitCheck.retryAfter} seconds.`,
@@ -1093,7 +1096,10 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
         // Handle operation tools
         if (name.startsWith("cyberchef_")) {
             // Check rate limit
-            const limitCheck = rateLimiter.checkLimit(requestId);
+            // Keyed by the CALLER, not the request. `requestId` is a fresh randomUUID per
+            // request, so every call looked like a first-time caller and nothing was ever
+            // limited -- measured at 0 denials in 1000 requests against a limit of 5.
+            const limitCheck = rateLimiter.checkLimit(callerKey());
             if (!limitCheck.allowed) {
                 const error = createInputError(
                     `Rate limit exceeded. Retry after ${limitCheck.retryAfter} seconds.`,

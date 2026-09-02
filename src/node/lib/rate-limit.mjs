@@ -10,7 +10,17 @@
  * @license GPL-3.0-or-later
  */
 
-import { RATE_LIMIT_ENABLED, RATE_LIMIT_REQUESTS, RATE_LIMIT_WINDOW } from "./config.mjs";
+import {
+    RATE_LIMIT_ENABLED, RATE_LIMIT_REQUESTS, RATE_LIMIT_WINDOW, DEFAULT_TENANT
+} from "./config.mjs";
+
+/**
+ * Caller count above which `sweep` starts reclaiming expired entries.
+ *
+ * Above any realistic set of simultaneously-active callers, so an ordinary deployment never pays
+ * for the scan, and far below the point where retained entries matter.
+ */
+const SWEEP_THRESHOLD = 1024;
 
 /**
  * Rate limiter using sliding window algorithm (v1.7.0).
@@ -34,7 +44,7 @@ class RateLimiter {
      * @param {string} connectionId - Connection identifier.
      * @returns {Object} Result with allowed flag and retry-after time.
      */
-    checkLimit(connectionId = "default") {
+    checkLimit(connectionId = DEFAULT_TENANT) {
         if (!RATE_LIMIT_ENABLED) {
             return { allowed: true, retryAfter: 0 };
         }
@@ -48,14 +58,44 @@ class RateLimiter {
         if (validTimestamps.length >= this.maxRequests) {
             const oldestTimestamp = validTimestamps[0];
             const retryAfter = Math.ceil((oldestTimestamp + this.windowMs - now) / 1000);
+            // Write the pruned array back even on the reject path. Without this, a caller who
+            // keeps hitting the limit never has their expired timestamps dropped, so the entry
+            // only ever grows.
+            this.requests.set(connectionId, validTimestamps);
+            this.sweep(now);
             return { allowed: false, retryAfter };
         }
 
         // Add current timestamp
         validTimestamps.push(now);
         this.requests.set(connectionId, validTimestamps);
+        this.sweep(now);
 
         return { allowed: true, retryAfter: 0 };
+    }
+
+    /**
+     * Drop callers with no activity left inside the window.
+     *
+     * The tracking Map had nothing that removed entries: `checkLimit` pruned timestamps *within*
+     * a caller's array but never removed the caller, so the Map grew by one entry per distinct
+     * key and stayed that way for the life of the process. Harmless while keys were few and
+     * unbounded once they were not -- which, given the keying bug this release also fixes, is
+     * what was actually happening: one entry per request, forever.
+     *
+     * Amortised rather than scheduled: no timer to leak, nothing to unref, and no behaviour on an
+     * idle server. The scan is over callers, not requests, and only runs once the Map is larger
+     * than any plausible live caller set.
+     *
+     * @param {number} now - Current timestamp.
+     */
+    sweep(now) {
+        if (this.requests.size <= SWEEP_THRESHOLD) return;
+        for (const [key, timestamps] of this.requests) {
+            if (!timestamps.length || now - timestamps[timestamps.length - 1] >= this.windowMs) {
+                this.requests.delete(key);
+            }
+        }
     }
 
     /**
