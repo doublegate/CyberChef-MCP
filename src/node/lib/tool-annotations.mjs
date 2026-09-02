@@ -44,8 +44,12 @@
  * Operations that talk to a host outside this process.
  *
  * Found by grepping `src/core/operations/` for `fetch(`, `XMLHttpRequest` and `axios`.
+ *
+ * EXPORTED, and read by `lib/offline.mjs` as well as by the annotations below. One set, two
+ * consumers: an offline switch that refused a different list from the one `openWorldHint`
+ * advertises would be telling clients one thing and doing another.
  */
-const NETWORK_OPERATIONS = new Set([
+export const NETWORK_OPERATIONS = new Set([
     "HTTP request",
     "DNS over HTTPS"
 ]);

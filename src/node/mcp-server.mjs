@@ -29,6 +29,7 @@ import { currentTenant, callerKey } from "./lib/tenancy.mjs";
 import { listPrompts, getPrompt } from "./lib/prompts.mjs";
 import { listResources, readResource, listResourceTemplates } from "./lib/resources.mjs";
 import { bakeOnCore } from "./lib/core-recipe.mjs";
+import { assertOfflineAllowed } from "./lib/offline.mjs";
 import { isExposed, describeSurface } from "./lib/tool-surface.mjs";
 import { categoryIndex, listOperations, describeOperations } from "./lib/tool-catalog.mjs";
 import { installWasmFetch } from "./lib/wasm-fetch.mjs";
@@ -1383,6 +1384,11 @@ const handleCallToolInner = async (request, extra, ownerServer = server) => {
                     op: opName,
                     args: recipeArgs
                 }];
+
+                // Offline gate for the direct-operation path, placed BEFORE the worker/streaming
+                // split below so one check covers both legs. Guarding inside each leg would be two
+                // checks that can drift, and the worker leg is the one nobody would remember.
+                assertOfflineAllowed(recipe, { tool: name });
 
                 let result;
                 let streamed = false;

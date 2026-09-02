@@ -42,6 +42,7 @@
  */
 
 import Chef from "../../core/Chef.mjs";
+import { assertOfflineAllowed } from "./offline.mjs";
 import Utils from "../../core/Utils.mjs";
 import OperationConfig from "../../core/config/OperationConfig.json" with {type: "json"};
 import { resolveArgValue, toolArgName, assertKnownArgs } from "./tool-schema.mjs";
@@ -151,6 +152,18 @@ export function toCoreRecipe(recipeConfig) {
  */
 export async function bakeOnCore(input, recipeConfig) {
     const recipe = toCoreRecipe(recipeConfig);
+
+    // Offline gate, on the NORMALISED recipe.
+    //
+    // Placed here rather than on the tool name, because the tool name does not tell you whether a
+    // call leaves the process: `cyberchef_bake` is not a network tool, and
+    // `bake({recipe: [{op: "HTTP request"}]})` is a network call. Normalising first also means the
+    // check sees canonical operation names, so an alias or a raw label cannot slip past it.
+    //
+    // This covers cyberchef_bake, cyberchef_batch, the registry tools and the streaming path --
+    // every caller of this function. The other two engine entries guard themselves; see
+    // lib/offline.mjs for why there is no single choke point.
+    assertOfflineAllowed(recipe);
 
     // `returnType: "string"` asks the engine for the presented form -- the same conversion the web
     // UI applies before rendering the output pane -- rather than the raw internal value.

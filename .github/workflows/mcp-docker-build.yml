@@ -21,6 +21,69 @@ on:
       - '.github/workflows/mcp-docker-build.yml'
 
 jobs:
+  # arm64, on a NATIVE arm runner.
+  #
+  # This exists so the release workflow is never the first place arm64 is attempted. A
+  # multi-platform build that fails does so at tag time, after the merge, when the cheapest fix is
+  # a new tag -- and published tags are immutable. Proving it on every pull request costs one job
+  # and removes that entirely.
+  #
+  # Native (`ubuntu-24.04-arm`, free for public repositories) rather than QEMU, for two reasons:
+  # it is faster, and it runs the smoke tests on real hardware. The release build uses QEMU because
+  # its single job has to produce one manifest; here there is nothing to merge, so the better
+  # option is available.
+  #
+  # The verification that matters is not "it built": it is that npm resolved the ARM-specific
+  # native binding. `piscina` pulls `@napi-rs/nice`, whose platform binaries are optional
+  # dependencies -- so an install that silently skipped the arm64 one would still build a working
+  # image and fail only under load, in the worker pool, on someone else's machine.
+  build-arm64:
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build Docker image (arm64, native)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.mcp
+          push: false
+          tags: cyberchef-mcp:arm64
+          load: true
+
+      - name: Test MCP Server on arm64 (List Tools)
+        run: |
+          set -euo pipefail
+          RESPONSE=$(echo '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' \
+            | docker run -i --rm cyberchef-mcp:arm64 2>/dev/null)
+          COUNT=$(echo "$RESPONSE" | node -e \
+            'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>console.log(JSON.parse(d).result.tools.length))')
+          echo "tools: $COUNT"
+          [ "$COUNT" -gt 0 ] || { echo "arm64 image returned no tools"; exit 1; }
+
+      - name: Execute an operation on arm64
+        run: |
+          set -euo pipefail
+          RESPONSE=$(echo '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"cyberchef_bake","arguments":{"input":"Hello","recipe":[{"op":"To Base64"}]}}}' \
+            | docker run -i --rm cyberchef-mcp:arm64 2>/dev/null)
+          echo "$RESPONSE"
+          echo "$RESPONSE" | grep -q "SGVsbG8=" || { echo "arm64 bake produced the wrong result"; exit 1; }
+
+      - name: Verify npm resolved the arm64 native binding
+        run: |
+          set -euo pipefail
+          FOUND=$(docker run --rm --entrypoint /bin/sh cyberchef-mcp:arm64 -c \
+            'ls -d /app/node_modules/@napi-rs/nice-linux-arm64-gnu 2>/dev/null || true')
+          echo "binding: ${FOUND:-<none>}"
+          [ -n "$FOUND" ] || { echo "arm64 native binding missing -- npm resolved the wrong platform"; exit 1; }
+
   build-and-test:
     runs-on: ubuntu-latest
     permissions:
