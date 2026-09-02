@@ -35,6 +35,59 @@ See **[Transports](Transports)** for the full picture.
 header, which a direct client simply sets correctly. It stops a *browser* on the victim's machine
 being used to reach a loopback server; it stops nothing else.
 
+## Authorization (v2.5.0)
+
+**Off unless `CYBERCHEF_AUTH_ISSUER` is set**, and applies to the **HTTP transport only** — the MCP
+specification says stdio `SHOULD NOT` use OAuth and should take credentials from the environment,
+because a bearer token protects nothing when the client already owns the process.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `CYBERCHEF_AUTH_ISSUER` | *unset* | The authorization server's issuer URL. **Setting this turns authorization on.** |
+| `CYBERCHEF_AUTH_RESOURCE` | *unset* | This server's canonical URI, e.g. `https://mcp.example.com/mcp`. Must be absolute and carry no fragment |
+| `CYBERCHEF_AUTH_AUDIENCE` | the resource URI | Override only if your authorization server issues a fixed audience string that is not a URI |
+| `CYBERCHEF_AUTH_JWKS_URI` | discovered | Skips RFC 8414 / OpenID discovery |
+| `CYBERCHEF_AUTH_REQUIRED_SCOPES` | *none* | A baseline scope demanded on every request, in addition to the per-tool check |
+| `CYBERCHEF_AUDIT_ENABLED` | follows auth | Force audit logging on or off independently |
+
+**`CYBERCHEF_AUTH_RESOURCE` is not optional in practice.** It is what the token's `aud` claim is
+checked against (RFC 8707), so a mismatch — a stray trailing slash, a different host — rejects
+every otherwise-valid token. Getting this wrong looks like "authentication is broken" and is
+actually "the audience does not match".
+
+### Scopes
+
+| Scope | Grants |
+|---|---|
+| `cyberchef:read` | Pure operations — encode, decode, hash, parse |
+| `cyberchef:write` | Anything that changes state: recipe create/update/delete, cache clear. Implies `read` |
+| `cyberchef:network` | The two operations that reach the internet (`HTTP request`, `DNS over HTTPS`) and `cyberchef_bake`, which can run either. Implies `read` |
+
+`network` is deliberately **not** implied by `write`: an operation that reaches the internet is not
+adequately described as "write", and conflating them would let a token granted for local mutation
+drive outbound requests.
+
+Which scope a tool needs is derived from its MCP annotations rather than a hand-maintained table,
+so a tool added upstream is classified the moment it is annotated. See
+**[Security](Security)** for the reasoning.
+
+### A minimal setup
+
+```bash
+docker run -i --rm -p 127.0.0.1:3000:3000 \
+  -e CYBERCHEF_TRANSPORT=http \
+  -e CYBERCHEF_AUTH_ISSUER=https://auth.example.com \
+  -e CYBERCHEF_AUTH_RESOURCE=https://mcp.example.com/mcp \
+  ghcr.io/doublegate/cyberchef-mcp_v2:latest
+```
+
+Verify discovery works before pointing a client at it — the metadata document is served without a
+token, by design:
+
+```bash
+curl -s http://127.0.0.1:3000/.well-known/oauth-protected-resource/mcp | jq
+```
+
 ## Limits and safety
 
 | Variable | Default | Meaning |

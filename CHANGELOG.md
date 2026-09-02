@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **OAuth 2.1 Resource Server support on the HTTP transport** (v2.5.0, Phase 5). The server has
+  never had authentication on any transport. The MCP authorization specification says stdio
+  **SHOULD NOT** use OAuth — it takes credentials from the environment, and a bearer token protects
+  nothing when the client already owns the process — so this applies to HTTP, where the previous
+  advice was "put a reverse proxy in front of it".
+  - RFC 9728 Protected Resource Metadata at `/.well-known/oauth-protected-resource`, served
+    **unauthenticated**: a client cannot discover how to authenticate if discovery requires it.
+  - Bearer validation against the authorization server's JWKS, discovered through RFC 8414 or
+    OpenID Connect Discovery, with **RFC 8707 audience binding** — the check that stops a token
+    minted for another service being replayed here.
+  - Spec-exact `401` (`WWW-Authenticate: Bearer resource_metadata="…"`) and `403`
+    (`error="insufficient_scope", scope="…"`), which are different answers: 401 means
+    authenticate, 403 means you did and it was not enough.
+  - **No new dependency.** `jsonwebtoken` is already direct and Node's `crypto` imports a JWK
+    natively. An authentication path is the last place to add a package nobody is auditing.
+  - **Off unless `CYBERCHEF_AUTH_ISSUER` is set.** Every existing deployment is unaffected.
+- **Scope-based RBAC**, with three scopes — `cyberchef:read`, `cyberchef:write`,
+  `cyberchef:network` — and a hierarchy where a broader scope implies a narrower one, as the spec
+  requires. The scope a tool needs is **derived from the annotations the server already computes**
+  rather than a table: a 531-row table would be wrong the day upstream adds an operation, and
+  wrong silently. A test asserts all 504 operations classify. `network` is checked before `write`,
+  so a token granted for local mutation cannot drive outbound requests.
+- **Audit logging**, on automatically whenever authorization is. Distinct from telemetry, which is
+  aggregate and may drop records; an audit trail with gaps cannot show that something did *not*
+  happen. Denials are logged at `warn` so a level filter still surfaces them, subjects are recorded
+  as a salted digest rather than an email address, and error **messages** are deliberately excluded
+  — they can quote the very key or document being analysed.
+
+### Fixed
+
+- **sharp** in `docs-site` raised to `^0.35.3` (resolving 0.35.4), clearing GHSA-f88m-g3jw-g9cj and
+  four inherited libvips CVEs. The caret is deliberate: 0.35.4 ships libvips 8.18.6 and further
+  bounds-checking, so pinning 0.35.3 exactly would decline a strictly better patch.
+- **postcss-selector-parser** raised to 7.1.5, clearing GHSA-w9m9-85wc-3x92 (ReDoS). Transitive and
+  dev-only here, through `css-loader`, which this fork does not ship.
+- **CodeQL no longer scans `docs/internal/measurements/`.** Committing the salvaged measurement
+  harnesses put them in front of analysis for the first time and produced two alerts. One is
+  correct and unfixable by design: `strip-test.mjs` exists to demonstrate the difference between a
+  naive single-pass sanitiser and the fixpoint version that replaced it, so it *contains* the
+  vulnerable form as the control in a comparison, and has no callers.
+
+
 ## [2.4.0] - 2026-09-01
 
 ### Security

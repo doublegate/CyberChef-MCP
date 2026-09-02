@@ -43,9 +43,40 @@ what a plugin may read and reach. Not a worker thread: a worker bounds CPU, not 
 shares the process's filesystem, network and environment. Full reasoning:
 [ADR 0002](https://github.com/doublegate/CyberChef-MCP/blob/master/docs/adr/0002-tool-registry-is-not-a-plugin-loader.md).
 
+## Authentication (v2.5.0)
+
+The HTTP transport can now act as an **OAuth 2.1 Resource Server**. It validates tokens issued
+elsewhere and advertises where they come from; it never issues one, and login and consent are out
+of scope by design.
+
+| | |
+|---|---|
+| Discovery | RFC 9728 Protected Resource Metadata at `/.well-known/oauth-protected-resource`, served **without** a token — a client cannot discover how to authenticate if discovery requires it |
+| Validation | JWT signature against the issuer's JWKS, plus issuer, expiry, and **RFC 8707 audience binding** |
+| Refusals | `401` with `WWW-Authenticate: Bearer resource_metadata="…"`; `403` with `error="insufficient_scope"` |
+| Authorisation | Three scopes, checked per tool — see [Configuration](Configuration) |
+| Audit | Who called what, denials at `warn`, subjects as digests not addresses |
+
+**Audience binding is the check that matters most.** Without it, a token minted for any other
+service by the same authorization server can be replayed here. The specification makes it a MUST,
+and it is tested against a real signed token issued for a foreign audience.
+
+### stdio is deliberately excluded
+
+The specification is explicit: *"Implementations using an STDIO transport **SHOULD NOT** follow this
+specification, and instead retrieve credentials from the environment."* A bearer token protects
+nothing when the client already launched the process and owns its stdin — it would be
+authenticating to itself. stdio behaviour is unchanged.
+
+### Off by default
+
+With no `CYBERCHEF_AUTH_ISSUER` the HTTP transport behaves exactly as before. Enabling
+authentication is a deliberate act, not an upgrade side effect.
+
 ## The threat model, briefly
 
-**The server trusts its client.** There is no authentication on any transport. Anything that can
+**Without authorization configured, the server trusts its client.** There is no authentication on
+any transport by default. Anything that can
 reach the server can run any of the 504 operations. That is appropriate for the default deployment
 — a subprocess launched by your own editor — and is why:
 
@@ -54,7 +85,8 @@ reach the server can run any of the 504 operations. That is appropriate for the 
 - a Unix socket is created `0600`, with the umask tightened around `listen()` so there is no
   window at a laxer mode.
 
-If you expose it beyond localhost, put authentication in front of it. See **[Transports](Transports)**.
+If you expose it beyond localhost, either configure OAuth (above) or put authentication in front of
+it. See **[Transports](Transports)** and **[Configuration](Configuration)**.
 
 **Two operations reach the network:** `HTTP request` and `DNS over HTTPS`. Every other operation is
 pure computation. That was determined by audit, not assumption, and it is why nearly every tool
