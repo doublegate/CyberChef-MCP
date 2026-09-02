@@ -13,6 +13,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { request as httpRequest } from "node:http";
 
 import { createTransport } from "../../src/node/transports.mjs";
 import { _resetHealthForTest } from "../../src/node/lib/health.mjs";
@@ -51,6 +52,38 @@ async function listening(opts = {}) {
     });
     open_.push(handle);
     return { handle, base: `http://127.0.0.1:${handle.httpServer.address().port}`, sources };
+}
+
+/**
+ * GET a path with an explicit `Host` header.
+ *
+ * `fetch` cannot do this: `Host` is a forbidden header name, so undici silently drops the override
+ * and sends the real authority. A DNS-rebinding test written with `fetch` therefore never presents
+ * the attacker's Host at all -- the first draft of these tests "passed" because 127.0.0.1:PORT was
+ * not in the allowlist either, which proves nothing about the check under test.
+ *
+ * @param {string} base - Base URL.
+ * @param {string} path - Request path.
+ * @param {string} host - The Host header to send.
+ * @returns {Promise<{status: number, body: string}>} The response.
+ */
+function getWithHost(base, path, host) {
+    const url = new URL(path, base);
+    return new Promise((resolve, reject) => {
+        const req = httpRequest({
+            hostname: url.hostname, port: url.port, path: url.pathname,
+            method: "GET", headers: { Host: host }
+        }, (res) => {
+            let body = "";
+            res.setEncoding("utf8");
+            res.on("data", (c) => {
+                body += c;
+            });
+            res.on("end", () => resolve({ status: res.statusCode, body }));
+        });
+        req.on("error", reject);
+        req.end();
+    });
 }
 
 beforeEach(() => {
@@ -138,6 +171,41 @@ describe("what the route reports", () => {
         expect(body).toContain('cyberchef_mcp_lifecycle_state{state="draining"} 1');
         expect(body).toContain('cyberchef_mcp_lifecycle_state{state="serving"} 0');
         await draining;
+    });
+});
+
+describe("DNS-rebinding protection", () => {
+    beforeEach(() => {
+        process.env.CYBERCHEF_METRICS_ENABLED = "true";
+    });
+
+    it("refuses a scrape carrying an unlisted Host header", async () => {
+        // The health probes deliberately skip this check -- a kubelet addresses the pod by an IP
+        // the allowlist does not name, and the probes disclose nothing but a status string.
+        //
+        // A scrape is equally unauthenticated and genuinely informative, so skipping it there let
+        // a DNS-rebound browser request read an internal server's traffic profile through an
+        // attacker-controlled Host header: the exact attack the allowlist exists for, reached
+        // through the one route that was not behind it.
+        const { base } = await listening({ allowedHosts: ["metrics.internal"] });
+        const res = await getWithHost(base, "/metrics", "evil.example.com");
+        expect(res.status).toBe(403);
+        expect(res.body).not.toContain("cyberchef_mcp_");
+    });
+
+    it("serves a scrape from an allowed Host", async () => {
+        const { base } = await listening({ allowedHosts: ["metrics.internal"] });
+        const res = await getWithHost(base, "/metrics", "metrics.internal");
+        expect(res.status).toBe(200);
+        expect(res.body).toContain("cyberchef_mcp_build_info");
+    });
+
+    it("still answers the health probes on a disallowed Host", async () => {
+        // The asymmetry, asserted rather than left implicit: tightening the probes to match would
+        // break every kubelet, which is why they are uninformative instead.
+        const { base } = await listening({ allowedHosts: ["metrics.internal"] });
+        const res = await getWithHost(base, "/health/ready", "evil.example.com");
+        expect(res.status).toBe(200);
     });
 });
 

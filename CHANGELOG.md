@@ -78,6 +78,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A duplicated `# HELP` declaration.** The lifecycle states were emitted as three families
   sharing one name; Prometheus rejects that and fails the *entire* scrape, so every other metric
   would have disappeared with it.
+- **`/metrics` served before DNS-rebinding validation.** It was routed beside the health probes,
+  which deliberately skip the `Host` allowlist because a kubelet addresses the pod by an IP the
+  allowlist does not name and the probes disclose nothing. A scrape is equally unauthenticated but
+  genuinely informative, so a DNS-rebound request could read an internal server's traffic profile
+  through an attacker-controlled `Host` header. A scraper on another host must now be named in
+  `CYBERCHEF_ALLOWED_HOSTS`; the probes are unchanged.
+- **An exhaustible cardinality cap, and an unbounded span dimension.** Capping distinct tool labels
+  bounds the count but not who gets the slots: an attacker filling all of them before real traffic
+  makes *legitimate* tools collapse into the overflow bucket. And the cap applied to the Prometheus
+  labels only — the OpenTelemetry span name and histogram attributes took the caller-supplied name
+  verbatim. Tool names are now resolved against the real dispatch catalogue at the single boundary
+  both consume, so an unknown name never occupies a slot; the cap remains as defence in depth.
+- **`undefined` rendered into the exposition body.** The renderer read collector fields directly, so
+  a partial or substituted collector emitted `cyberchef_mcp_operations_total undefined` — and
+  Prometheus rejects the whole scrape on one bad line, taking every other metric with it. Values are
+  now coerced to `NaN`/`±Inf`.
+- **A leaked span per `isRecording()` call.** The probe span was never ended, so against a real SDK
+  it grew without bound and put a synthetic span in the trace data that no request produced.
+- **Alerts that mixed deployments.** Every aggregate is now `by (job)`: one Prometheus commonly
+  scrapes staging beside production, so a bare `sum()` let a healthy production mask a staging fleet
+  with nothing serving, and a normal rollout read as version skew across all of them.
+- **Three tests that asserted nothing** — a buffer-rollover check that ran against an empty buffer,
+  an escaping check that never drove a reserved character through the escaper, and a
+  DNS-rebinding check written with `fetch`, which silently drops a `Host` override. All three are
+  now mutation-verified.
 
 ## [2.6.0] - 2026-09-02
 

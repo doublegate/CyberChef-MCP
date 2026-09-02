@@ -62,6 +62,24 @@ function dashboardExpressions() {
     return out;
 }
 
+/**
+ * Every `cyberchef_mcp_*` family name referenced in the given texts.
+ *
+ * One definition, because this regex IS the contract between the renderer and the shipped assets.
+ * It previously existed in three copies with the surrounding Set accumulation duplicated verbatim
+ * -- which is the same drift this file exists to catch in the alert rules.
+ *
+ * @param {...string} texts - Expressions or file contents.
+ * @returns {Set<string>} Referenced metric family names.
+ */
+function referencedMetrics(...texts) {
+    const out = new Set();
+    for (const text of texts) {
+        for (const name of text.match(/\bcyberchef_mcp_[a-z_]+\b/g) || []) out.add(name);
+    }
+    return out;
+}
+
 /** Non-row panels. */
 const vizPanels = dashboard.panels.filter(p => p.type !== "row");
 
@@ -71,10 +89,7 @@ describe("the dashboard queries what the server emits", () => {
         // keeps loading, keeps looking right, and shows an empty panel. Nothing errors, so nothing
         // is noticed until the panel is needed -- during an incident.
         const emitted = emittedFamilies();
-        const referenced = new Set();
-        for (const expr of dashboardExpressions()) {
-            for (const name of expr.match(/\bcyberchef_mcp_[a-z_]+\b/g) || []) referenced.add(name);
-        }
+        const referenced = referencedMetrics(...dashboardExpressions());
         expect(referenced.size).toBeGreaterThan(15);
         expect([...referenced].filter(n => !emitted.has(n))).toEqual([]);
     });
@@ -82,10 +97,7 @@ describe("the dashboard queries what the server emits", () => {
     it("charts every metric the server emits", () => {
         // The other direction, and the one that catches a metric added and then forgotten. A series
         // nobody charts is a series nobody looks at, which is indistinguishable from not having it.
-        const referenced = new Set();
-        for (const expr of dashboardExpressions()) {
-            for (const name of expr.match(/\bcyberchef_mcp_[a-z_]+\b/g) || []) referenced.add(name);
-        }
+        const referenced = referencedMetrics(...dashboardExpressions());
         expect([...emittedFamilies()].filter(n => !referenced.has(n))).toEqual([]);
     });
 
@@ -214,6 +226,10 @@ describe("alert rules", () => {
         const chart = new Map(chartRules().map(r => [r.alert, r]));
         for (const rule of standaloneRules()) {
             const other = chart.get(rule.alert);
+            // Asserted before dereferencing. Without it a rule dropped from the Helm template
+            // throws a TypeError on `other.expr`, and the failure reads as a broken harness rather
+            // than as the rule drift this test exists to report.
+            expect(other, `${rule.alert} is missing from the Helm template`).toBeTruthy();
             // CyberChefMCPDown alone differs on purpose: the chart scopes its job matcher to the
             // release name, which the standalone file cannot know.
             if (rule.alert !== "CyberChefMCPDown") {
@@ -227,7 +243,7 @@ describe("alert rules", () => {
 
     it("queries only metrics the server emits", () => {
         const emitted = emittedFamilies();
-        const referenced = new Set(alertsText.match(/\bcyberchef_mcp_[a-z_]+\b/g) || []);
+        const referenced = referencedMetrics(alertsText);
         expect(referenced.size).toBeGreaterThan(5);
         expect([...referenced].filter(n => !emitted.has(n))).toEqual([]);
     });
@@ -238,6 +254,22 @@ describe("alert rules", () => {
         // operation"; any single latency threshold is useless for one or a permanent page for the
         // other. Latency belongs on the dashboard, where a human reads the distribution.
         expect(alertsText).not.toMatch(/duration_seconds.*>/);
+    });
+
+    it("aggregates every rule by job", () => {
+        // One Prometheus commonly scrapes several deployments -- staging beside production, or a
+        // canary beside a stable release. A bare `sum()` mixes them, so a healthy production masks
+        // a staging fleet with nothing serving, and a normal rollout in one reads as version skew
+        // across all of them.
+        for (const rule of standaloneRules()) {
+            const expr = rule.expr;
+            const aggregates = [...expr.matchAll(/\b(sum|count|avg|min|max)\b\s*(by\s*\(([^)]*)\))?/g)];
+            for (const [, fn, byClause, labels] of aggregates) {
+                expect(byClause, `${rule.alert}: bare ${fn}() mixes deployments`).toBeTruthy();
+                expect(labels.split(",").map(x => x.trim()),
+                    `${rule.alert}: ${fn}() does not group by job`).toContain("job");
+            }
+        }
     });
 
     it("names no tenant, deliberately", () => {

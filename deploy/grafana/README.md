@@ -14,11 +14,10 @@ a panel is empty.
 
 **The `/metrics` endpoint** is built into the server, has no dependencies, and needs nothing but
 `CYBERCHEF_METRICS_ENABLED=true`. 20 metric families: traffic, per-tool counters, quota, cache,
-rate limiter, lifecycle, process. **24 of the 25 panels run on this alone.**
+rate limiter, lifecycle, process. **21 of the 25 panels run on this alone.**
 
 **OpenTelemetry traces and the duration histogram** need an SDK, which this server deliberately
-does not bundle — see below. Without one, the four panels in the Latency row read *No data* and
-everything else works.
+does not bundle — see below. Without one, the four panels in the Latency row read *No data* and the other 21 work.
 
 ## Enabling the metrics endpoint
 
@@ -138,7 +137,7 @@ monitoring:
     enabled: true      # ships alerts.yaml as a PrometheusRule
 ```
 
-Without the Operator, set `metrics.podAnnotations: true` for the classic
+Without the Operator, set `monitoring.podAnnotations: true` for the classic
 `prometheus.io/scrape` annotations instead.
 
 ### Importing the dashboard by hand

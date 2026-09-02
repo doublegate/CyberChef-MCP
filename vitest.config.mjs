@@ -77,8 +77,12 @@ export default defineConfig({
             // Two tiers, because one global number is exactly how a 50%-covered file hid behind
             // ten healthy ones before v2.0.0:
             thresholds: {
-                // The whole measured surface. Each sits just under its own actual figure
-                // (95.78 / 89.97 / 96.62 / 96.63 as of v2.7.0) so a real regression trips it.
+                // The whole measured surface. Each sits just under its own actual figure, so a
+                // real regression trips it. NAMED rather than written as a bare tuple, because
+                // the paragraph below quotes a different order and an unlabelled tuple beside it
+                // reads as a misconfigured gate:
+                //
+                //   statements 95.78   branches 89.97   functions 96.62   lines 96.63  (v2.7.0)
                 //
                 // NOTE the order. Vitest takes these as named keys; the docs quote them in the
                 // conventional statements/branches/functions/lines order, so the gate written here

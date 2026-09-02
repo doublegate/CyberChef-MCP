@@ -270,7 +270,7 @@ import {
 } from "./lib/config.mjs";
 import { LRUCache } from "./lib/cache.mjs";
 import { MemoryMonitor } from "./lib/memory.mjs";
-import { TelemetryCollector } from "./lib/telemetry.mjs";
+import { TelemetryCollector, OVERFLOW_TOOL } from "./lib/telemetry.mjs";
 import { RateLimiter } from "./lib/rate-limit.mjs";
 import { ResourceQuotaTracker } from "./lib/quota.mjs";
 import { BatchProcessor } from "./lib/batch.mjs";
@@ -642,6 +642,49 @@ const toolRegistry = buildRegistry({
     ])
 });
 
+/**
+ * A tool name safe to use as a telemetry dimension.
+ *
+ * Returns the name when it resolves to something this server actually dispatches, and
+ * `__other__` when it does not.
+ *
+ * WHY THIS EXISTS
+ * ---------------
+ * `request.params.name` is caller-controlled and reaches instrumentation BEFORE the unknown-tool
+ * check: any `cyberchef_*` name enters the operation branch, acquires quota, fails to resolve, and
+ * is recorded as a failure. So an unresolved name would otherwise become a Prometheus label and an
+ * OpenTelemetry span attribute.
+ *
+ * Unbounded, that is a cardinality denial of service against the MONITORING system rather than
+ * against this process: each distinct label set is a new time series that persists for the whole
+ * retention period, taking out dashboards for every other service sharing that Prometheus. Found
+ * in the very first scrape of a running server:
+ *
+ *     cyberchef_mcp_tool_calls_total{tool="cyberchef_definitely_not_a_tool"} 1
+ *
+ * A cap alone is not enough, and that is the subtle part. Capping distinct names still lets an
+ * attacker fill every slot before real traffic arrives, after which LEGITIMATE tools collapse into
+ * the overflow bucket -- the attack degrades exactly the metrics the cap was meant to protect.
+ * Resolving against the catalogue removes that, because an unknown name never occupies a slot.
+ *
+ * Resolution covers all three kinds this server dispatches -- registry tools, meta-tools and
+ * operations -- deliberately mirroring `annotationsForToolName`, because a dimension that
+ * disagreed with the authorisation decision about what a name IS would be its own bug.
+ *
+ * The raw name is untouched everywhere the caller can see it: the error response still says which
+ * tool was not found, and the audit trail still records what was asked for.
+ *
+ * @param {string} name - The caller-supplied tool name.
+ * @returns {string} The name, or `__other__`.
+ */
+function toolDimension(name) {
+    if (typeof name !== "string" || !name) return OVERFLOW_TOOL;
+    if (toolRegistry.getByExposedName(name)) return name;
+    if (metaToolNames().includes(name)) return name;
+    if (Object.keys(OperationConfig).some(k => sanitizeToolName(k) === name)) return name;
+    return OVERFLOW_TOOL;
+}
+
 const handleListTools = async () => {
     // A fresh copy each call: annotations are attached below, and mutating the module-level
     // constant would accumulate them across calls.
@@ -724,7 +767,9 @@ const handleListTools = async () => {
  * @returns {Promise<Object>} The MCP result.
  */
 const handleCallTool = async (request, extra, ownerServer = server) => {
-    const toolName = request?.params?.name;
+    // The DIMENSION, not the raw name: `request.params.name` is caller-controlled and reaches
+    // here before the unknown-tool check. See toolDimension() for why a cap alone is not enough.
+    const toolName = toolDimension(request?.params?.name);
     return withServerSpan({
         method: "tools/call",
         tool: toolName,
@@ -995,7 +1040,7 @@ const handleCallToolInner = async (request, extra, ownerServer = server) => {
 
                 // Record telemetry
                 telemetryCollector.record({
-                    tool: name,
+                    tool: toolDimension(name),
                     duration,
                     inputSize: batchInputSize(args.operations),
                     outputSize: JSON.stringify(result).length,
@@ -1017,7 +1062,7 @@ const handleCallToolInner = async (request, extra, ownerServer = server) => {
             } catch (error) {
                 const duration = Date.now() - startTime;
                 telemetryCollector.record({
-                    tool: name,
+                    tool: toolDimension(name),
                     duration,
                     inputSize: batchInputSize(args.operations),
                     outputSize: 0,
@@ -1292,7 +1337,7 @@ const handleCallToolInner = async (request, extra, ownerServer = server) => {
                         // Record telemetry
                         const duration = Date.now() - startTime;
                         telemetryCollector.record({
-                            tool: name,
+                            tool: toolDimension(name),
                             duration,
                             inputSize,
                             outputSize,
@@ -1383,7 +1428,7 @@ const handleCallToolInner = async (request, extra, ownerServer = server) => {
 
                 // Record telemetry
                 telemetryCollector.record({
-                    tool: name,
+                    tool: toolDimension(name),
                     duration,
                     inputSize,
                     outputSize,
@@ -1404,7 +1449,7 @@ const handleCallToolInner = async (request, extra, ownerServer = server) => {
                 const duration = Date.now() - startTime;
                 const inputSize = args.input ? Buffer.byteLength(args.input, "utf8") : 0;
                 telemetryCollector.record({
-                    tool: name,
+                    tool: toolDimension(name),
                     duration,
                     inputSize,
                     outputSize: 0,
@@ -1664,6 +1709,9 @@ export {
     ResourceQuotaTracker,
     BatchProcessor,
     sanitizeToolName,
+    // Exported for the cardinality tests: the bound has to be asserted against the REAL catalogue,
+    // and a test that rebuilt its own copy would be asserting against a fixture instead.
+    toolDimension,
     mapArgsToZod,
     resolveArgValue,
     validateInputSize,

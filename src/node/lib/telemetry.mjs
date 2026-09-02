@@ -12,8 +12,14 @@
 
 import { TELEMETRY_ENABLED } from "./config.mjs";
 
-/** Label the per-tool counters collapse to once the distinct-name cap is reached. */
-const OVERFLOW_TOOL = "__other__";
+/**
+ * Label that unrecognised or overflowing tool names collapse to.
+ *
+ * Exported because the primary cardinality bound lives at the dispatch boundary in
+ * `mcp-server.mjs`, and two different spellings of "the unknown bucket" would produce two series
+ * that mean the same thing.
+ */
+export const OVERFLOW_TOOL = "__other__";
 
 /**
  * Telemetry collector for usage analytics (v1.7.0).
@@ -36,21 +42,23 @@ class TelemetryCollector {
         //
         // Map<tool, {calls, failures, cached}>.
         this.totals = new Map();
-        // Hard cap on DISTINCT tool names, with the overflow bucketed under a single label.
+        // Cap on INDIVIDUALLY-TRACKED tool names. Names arriving past it are folded into a single
+        // `__other__` series, so the distinct label count is at most `maxTools + 1`, not `maxTools`.
         //
-        // This is a security bound, not tidiness. The tool name reaching record() is the name the
-        // CALLER asked for, and an unknown one still reaches here -- it is dispatched, fails to
-        // resolve, and is recorded as a failure. Verified against a running server: calling
-        // `cyberchef_definitely_not_a_tool` created its own series.
+        // This is the SECOND of two bounds, and the weaker one. The primary bound is at the call
+        // site: `mcp-server.mjs` resolves every name against the real dispatch catalogue --
+        // operations, meta-tools and registry tools -- and passes `__other__` for anything else,
+        // so an unknown name never consumes a slot here at all.
         //
-        // Left unbounded, anyone who can call this server can mint arbitrary Prometheus labels by
-        // invoking `cyberchef_<random>` in a loop -- growing this Map without limit in the server
-        // and, far worse, exploding cardinality in the monitoring system, where each new label set
-        // is a new time series that persists for the retention period. That takes out the
-        // monitoring for every other service sharing it.
+        // That ordering matters and the naive version got it wrong. A cap alone is exhaustible:
+        // an attacker who calls `cyberchef_<random>` 1024 times before real traffic arrives fills
+        // every slot, and then LEGITIMATE tools collapse into `__other__` -- the attack degrades
+        // the metrics it was supposed to be contained by. Resolving against the catalogue first
+        // removes that, because unknown names never occupy a slot.
         //
-        // The real catalogue is ~500 tools, so 1024 admits every legitimate name with room to
-        // spare while making the attack a single flat series.
+        // Kept anyway as defence in depth: this collector is constructible on its own, and a
+        // caller that skips the resolution should still not be able to grow this Map without
+        // limit. The real catalogue is ~500 tools, so 1024 admits every legitimate name.
         this.maxTools = 1024;
     }
 

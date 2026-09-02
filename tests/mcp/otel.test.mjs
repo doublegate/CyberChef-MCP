@@ -225,6 +225,25 @@ describe("span shape, against a registered provider", () => {
     });
 });
 
+describe("the isRecording probe", () => {
+    beforeEach(install);
+
+    it("ends its probe span", async () => {
+        // It did not. Against a real provider that leaked an unfinished span on every call --
+        // unbounded growth, and a synthetic span in the trace data that no request produced.
+        isRecording();
+        isRecording();
+        isRecording();
+        expect(recorded.spans).toHaveLength(3);
+        expect(recorded.spans.every(sp => sp.ended)).toBe(true);
+    });
+
+    it("still answers correctly while doing so", () => {
+        // The span must be closed WITHOUT losing the answer: isRecording() is read before end().
+        expect(isRecording()).toBe(true);
+    });
+});
+
 describe("errors", () => {
     beforeEach(install);
 

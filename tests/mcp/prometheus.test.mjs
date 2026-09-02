@@ -17,7 +17,7 @@
  * @license GPL-3.0-or-later
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 
 import {
     renderMetrics, metricsEnabled, isMetricsPath, METRICS_CONTENT_TYPE
@@ -58,7 +58,10 @@ function parse(body) {
             families.set(m[1], { ...(families.get(m[1]) || { samples: [] }), type: m[2] });
             continue;
         }
-        m = /^([a-zA-Z_:][a-zA-Z0-9_:]*)(\{[^}]*\})? (.+)$/.exec(line);
+        // The value pattern is Prometheus's numeric grammar, NOT `.+`. With `.+` the parser
+        // accepted `cyberchef_mcp_operations_total undefined` as a valid line, so it could not
+        // catch a collector field going missing -- which fails the entire scrape in production.
+        m = /^([a-zA-Z_:][a-zA-Z0-9_:]*)(\{[^}]*\})? (NaN|[+-]Inf|[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)$/.exec(line);
         expect(m, `unparseable exposition line: ${line}`).toBeTruthy();
         const fam = families.get(m[1]);
         expect(fam, `sample for undeclared family: ${m[1]}`).toBeTruthy();
@@ -98,10 +101,23 @@ describe("exposition format", () => {
     });
 
     it("escapes the three characters the format reserves in a label value", () => {
-        // Reachable through the version label, which is the only label whose value is not drawn
-        // from a fixed set. Asserted on the escaping function's effect rather than contrived
-        // input, so the property holds for any label added later.
-        const body = renderMetrics(allSources());
+        // Reserved characters DRIVEN THROUGH the escaper, via the tool label -- the one label
+        // whose value is not from a fixed set.
+        //
+        // The previous version of this test only read a body whose labels were all clean, so it
+        // asserted nothing about escaping at all: swapping the backslash and quote replacements in
+        // prometheus.mjs -- which produces genuinely different output -- left it green. Verified
+        // by making that swap.
+        const dirty = new TelemetryCollector();
+        dirty.record({ tool: "cyberchef_a\\b\"c\nd", success: true });
+        const body = renderMetrics(allSources({ telemetryCollector: dirty }));
+
+        // Backslash escaped FIRST, so the backslash introduced by escaping the quote is not itself
+        // escaped a second time. Ordering is the whole content of this assertion.
+        expect(body).toContain('cyberchef_a\\\\b\\"c\\nd');
+        expect(body).not.toContain("\ncyberchef_a\\b");   // no raw newline survived into a label
+        expect(() => parse(body)).not.toThrow();
+
         for (const line of body.split("\n")) {
             if (line.startsWith("#") || !line.includes("{")) continue;
             const labels = line.slice(line.indexOf("{") + 1, line.lastIndexOf("}"));
@@ -117,24 +133,61 @@ describe("exposition format", () => {
     });
 });
 
+describe("sample values are always valid", () => {
+    it("renders a missing collector field as NaN rather than \"undefined\"", () => {
+        // A collector that gains a field, loses one, or is replaced by a stand-in used to render
+        // the literal string `undefined` into the body -- and Prometheus rejects the WHOLE scrape
+        // on one unparseable line, so a single missing field took every other metric with it.
+        // NaN is a legal value and is the honest rendering of "this collector reported no number".
+        const partial = { getInfo: () => ({ concurrentOperations: 1 }) };
+        const body = renderMetrics({ quotaTracker: partial });
+        expect(body).not.toContain("undefined");
+        expect(body).toContain("cyberchef_mcp_operations_total NaN");
+        expect(() => parse(body)).not.toThrow();
+    });
+
+    it("keeps the sign of an infinity", () => {
+        const inf = { getStats: () => ({ items: Infinity, size: -Infinity, maxSize: 1 }) };
+        const body = renderMetrics({ operationCache: inf });
+        expect(body).toContain("cyberchef_mcp_cache_items +Inf");
+        expect(body).toContain("cyberchef_mcp_cache_bytes -Inf");
+        expect(() => parse(body)).not.toThrow();
+    });
+});
+
 describe("counter semantics", () => {
-    it("keeps per-tool totals monotonic across a full buffer rollover", () => {
+    it("keeps per-tool totals monotonic across a full buffer rollover", async () => {
         // THE decisive test. The telemetry buffer is a ring that drops its oldest entries, so a
         // count derived from it FALLS on rollover -- and Prometheus reads a falling counter as a
         // restart, bridging the gap with traffic that never happened. The totals are separate
         // counters precisely so this cannot occur.
-        const t = new TelemetryCollector();
+        //
+        // Telemetry must be ENABLED for this to test anything. With the default environment
+        // `record()` updates the totals and returns before touching the buffer, so the buffer
+        // stays empty -- and the old `expect(length).toBeLessThanOrEqual(5)` passed against 0,
+        // asserting that a rollover which never happened did not break anything. The flag is read
+        // at module load, so the module graph is reset and re-imported with it set.
+        vi.stubEnv("CYBERCHEF_TELEMETRY_ENABLED", "true");
+        vi.resetModules();
+        const { TelemetryCollector: Fresh } = await import("../../src/node/lib/telemetry.mjs");
+
+        const t = new Fresh();
         t.maxMetrics = 5;
         const reads = [];
         for (let i = 0; i < 50; i++) {
             t.record({ tool: "cyberchef_to_base64", success: true });
             reads.push(t.exportTotals()[0].calls);
         }
-        expect(t.exportMetrics().length).toBeLessThanOrEqual(5);   // the ring did roll over
+
+        // The ring genuinely filled and genuinely dropped entries -- 50 recorded, at most 5 held.
+        expect(t.exportMetrics().length).toBe(5);
         for (let i = 1; i < reads.length; i++) {
             expect(reads[i]).toBeGreaterThanOrEqual(reads[i - 1]);
         }
         expect(reads.at(-1)).toBe(50);
+
+        vi.unstubAllEnvs();
+        vi.resetModules();
     });
 
     it("counts tool calls even when telemetry buffering is disabled", () => {
@@ -198,6 +251,50 @@ describe("label cardinality is bounded", () => {
         for (let i = 0; i < 100; i++) t.record({ tool: `junk_${i}`, success: false });
         t.record({ tool: "real", success: true });
         expect(t.exportTotals().find(x => x.tool === "real").calls).toBe(2);
+    });
+});
+
+describe("the dispatch-boundary bound on tool labels", () => {
+    it("passes through every kind of tool this server actually dispatches", async () => {
+        // Operations, meta-tools and registry tools alike. Bounding by resolution would be a
+        // regression if it collapsed real tools, so the pass-through is asserted first.
+        const { toolDimension } = await import("../../src/node/mcp-server.mjs");
+        for (const real of ["cyberchef_to_base64", "cyberchef_bake", "cyberchef_search",
+                            "cyberchef_hash_identify", "cyberchef_recipe_list"]) {
+            expect(toolDimension(real), real).toBe(real);
+        }
+    });
+
+    it("folds an unresolvable name into the overflow bucket", async () => {
+        const { toolDimension } = await import("../../src/node/mcp-server.mjs");
+        for (const bogus of ["cyberchef_definitely_not_a_tool", "cyberchef_", "", null, undefined,
+                             {}, "../../etc/passwd"]) {
+            expect(toolDimension(bogus)).toBe("__other__");
+        }
+    });
+
+    it("cannot have its slots exhausted before real tools arrive", async () => {
+        // The failure a bare cap does NOT prevent, and the reason the resolution exists.
+        //
+        // With only a cap, an attacker calling `cyberchef_<random>` maxTools times before real
+        // traffic fills every slot -- and legitimate tools then collapse into `__other__`. The
+        // attack degrades exactly the metrics the cap was supposed to contain. Resolving against
+        // the catalogue first means an unknown name never occupies a slot at all.
+        const { toolDimension } = await import("../../src/node/mcp-server.mjs");
+        const t = new TelemetryCollector();
+        t.maxTools = 8;
+
+        for (let i = 0; i < 5000; i++) {
+            t.record({ tool: toolDimension(`cyberchef_attack_${i}`), success: false });
+        }
+        t.record({ tool: toolDimension("cyberchef_to_base64"), success: true });
+
+        const totals = t.exportTotals();
+        // Two series: the overflow bucket, and the real tool -- which arrived LAST and still got
+        // its own. Without the resolution the 5000 would have consumed all 8 slots first.
+        expect(totals.map(x => x.tool).sort()).toEqual(["__other__", "cyberchef_to_base64"]);
+        expect(totals.find(x => x.tool === "cyberchef_to_base64").calls).toBe(1);
+        expect(totals.find(x => x.tool === "__other__").calls).toBe(5000);
     });
 });
 

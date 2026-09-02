@@ -88,9 +88,35 @@ function family(name, type, help, samples) {
         const pairs = Object.entries(labels || {})
             .map(([k, v]) => `${k}="${escapeLabel(v)}"`)
             .join(",");
-        lines.push(pairs ? `${full}{${pairs}} ${value}` : `${full} ${value}`);
+        const v = sampleValue(value);
+        lines.push(pairs ? `${full}{${pairs}} ${v}` : `${full} ${v}`);
     }
     return lines.join("\n");
+}
+
+/**
+ * Coerce a sample to a token the exposition grammar accepts.
+ *
+ * The renderer reads fields straight off the live collectors, so a collector that gains a field,
+ * loses one, or is replaced by a stand-in renders `undefined` into the body -- and Prometheus
+ * rejects the WHOLE scrape on one unparseable line, so a single missing field takes every other
+ * metric down with it. Reproduced with a collector returning a partial `getInfo()`:
+ *
+ *     cyberchef_mcp_operations_total undefined
+ *
+ * `NaN` is a legal sample value and is the honest rendering of "this collector did not report a
+ * number". It shows as a gap in a graph rather than as a silent scrape failure.
+ *
+ * @param {*} value - Whatever the collector returned.
+ * @returns {string} A valid Prometheus sample value.
+ */
+function sampleValue(value) {
+    const n = typeof value === "number" ? value : Number(value);
+    if (Number.isFinite(n)) return String(n);
+    // Infinities are legal and must keep their sign; everything else is NaN.
+    if (n === Infinity) return "+Inf";
+    if (n === -Infinity) return "-Inf";
+    return "NaN";
 }
 
 /**

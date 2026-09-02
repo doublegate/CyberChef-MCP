@@ -37,7 +37,7 @@ spec:
             description: "{{`{{ $labels.instance }}`}} has failed scraping for 2 minutes."
 
         - alert: CyberChefMCPNoneServing
-          expr: sum(cyberchef_mcp_lifecycle_state{state="serving"}) == 0
+          expr: sum by (job) (cyberchef_mcp_lifecycle_state{state="serving"}) == 0
           for: 3m
           labels:
             severity: critical
@@ -55,7 +55,7 @@ spec:
             description: "{{`{{ $labels.instance }}`}} received SIGTERM but has not exited. It will be SIGKILLed at terminationGracePeriodSeconds ({{ .Values.terminationGracePeriodSeconds }}s)."
 
         - alert: CyberChefMCPRestartLoop
-          expr: sum by (instance) (resets(cyberchef_mcp_process_uptime_seconds[15m])) >= 3
+          expr: sum by (job, instance) (resets(cyberchef_mcp_process_uptime_seconds[15m])) >= 3
           labels:
             severity: warning
           annotations:
@@ -63,7 +63,7 @@ spec:
             description: "{{`{{ $labels.instance }}`}} restarted 3 or more times in 15 minutes. If it coincides with first use of cyberchef_search or a saved recipe, suspect the memory limit ({{ .Values.resources.limits.memory }}): that is when the Node API loads all 505 operations."
 
         - alert: CyberChefMCPHighFailureRate
-          expr: sum(rate(cyberchef_mcp_tool_failures_total[5m])) / clamp_min(sum(rate(cyberchef_mcp_tool_calls_total[5m])), 1e-9) > 0.05
+          expr: sum by (job) (rate(cyberchef_mcp_tool_failures_total[5m])) / clamp_min(sum by (job) (rate(cyberchef_mcp_tool_calls_total[5m])), 1e-9) > 0.05
           for: 10m
           labels:
             severity: warning
@@ -72,7 +72,7 @@ spec:
             description: "Check the Tool leaderboard: one tool red inside healthy traffic is usually a caller sending bad input; a broad rise is usually a limit being hit."
 
         - alert: CyberChefMCPToolFailing
-          expr: (sum by (tool) (rate(cyberchef_mcp_tool_failures_total[10m])) / clamp_min(sum by (tool) (rate(cyberchef_mcp_tool_calls_total[10m])), 1e-9) > 0.5) and (sum by (tool) (rate(cyberchef_mcp_tool_calls_total[10m])) > 0.05)
+          expr: (sum by (job, tool) (rate(cyberchef_mcp_tool_failures_total[10m])) / clamp_min(sum by (job, tool) (rate(cyberchef_mcp_tool_calls_total[10m])), 1e-9) > 0.5) and (sum by (job, tool) (rate(cyberchef_mcp_tool_calls_total[10m])) > 0.05)
           for: 15m
           labels:
             severity: warning
@@ -90,7 +90,7 @@ spec:
             description: "In-flight operations have sat at the per-tenant limit for 5 minutes with a single active tenant, so callers are being refused. Raise CYBERCHEF_MAX_CONCURRENT_OPS or add replicas."
 
         - alert: CyberChefMCPCacheThrashing
-          expr: (cyberchef_mcp_cache_bytes / clamp_min(cyberchef_mcp_cache_max_bytes, 1) > 0.98) and on (instance) (sum by (instance) (rate(cyberchef_mcp_tool_cache_hits_total[15m])) / clamp_min(sum by (instance) (rate(cyberchef_mcp_tool_calls_total[15m])), 1e-9) < 0.05)
+          expr: (cyberchef_mcp_cache_bytes / clamp_min(cyberchef_mcp_cache_max_bytes, 1) > 0.98) and on (job, instance) (sum by (job, instance) (rate(cyberchef_mcp_tool_cache_hits_total[15m])) / clamp_min(sum by (job, instance) (rate(cyberchef_mcp_tool_calls_total[15m])), 1e-9) < 0.05)
           for: 30m
           labels:
             severity: info
@@ -99,7 +99,7 @@ spec:
             description: "The working set no longer fits, so entries are evicted before reuse. A cost signal, not a fault."
 
         - alert: CyberChefMCPVersionSkew
-          expr: count(count by (version) (cyberchef_mcp_build_info)) > 1
+          expr: count by (job) (count by (job, version) (cyberchef_mcp_build_info)) > 1
           for: 30m
           labels:
             severity: info

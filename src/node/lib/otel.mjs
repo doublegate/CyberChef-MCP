@@ -237,9 +237,22 @@ export function traceFields() {
     return { "trace_id": ctx.traceId, "span_id": ctx.spanId };
 }
 
-/** @returns {boolean} Whether an SDK is actually recording. Test seam and diagnostics. */
+/**
+ * Whether an SDK is actually recording. Test seam and diagnostics.
+ *
+ * The probe span is ENDED before returning. It was not, and against a real provider that leaked an
+ * unfinished span on every call -- growing without bound and, worse, polluting the trace data with
+ * a synthetic span that no request produced.
+ *
+ * @returns {boolean} True when a registered SDK is sampling.
+ */
 export function isRecording() {
-    return getTracer().startSpan("probe").isRecording();
+    const span = getTracer().startSpan("probe");
+    try {
+        return span.isRecording();
+    } finally {
+        span.end();
+    }
 }
 
 /** Test seam: drop the memoised tracer/meter so a test can register an SDK first. */

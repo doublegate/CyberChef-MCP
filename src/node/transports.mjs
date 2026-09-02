@@ -669,6 +669,27 @@ export async function createTransport(options = {}) {
                 // to the ordinary 404, so a probe cannot distinguish "metrics off" from "not this
                 // server".
                 if (metricsSources && metricsEnabled() && isMetricsPath(path)) {
+                    // Host validation, which the health probes above deliberately skip.
+                    //
+                    // The probes skip it because they must answer a kubelet, which addresses the
+                    // pod by an IP the allowlist does not name -- and because they disclose
+                    // nothing: a status string, chosen so an unauthenticated endpoint reports no
+                    // internal state.
+                    //
+                    // A scrape is the opposite. It is equally unauthenticated but genuinely
+                    // informative, so without this check a DNS-rebound browser request could read
+                    // the traffic profile of an internal server through an attacker-controlled
+                    // Host header -- the exact attack the allowlist exists for, reached through
+                    // the one route that was not behind it.
+                    //
+                    // A scraper on another host therefore needs to be named in
+                    // CYBERCHEF_ALLOWED_HOSTS. That is the same requirement the MCP endpoint
+                    // already imposes, and the check is a no-op when the allowlist is disabled.
+                    if (!hostAllowed(req)) {
+                        res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
+                        res.end("Forbidden\n");
+                        return;
+                    }
                     const body = renderMetrics({ ...metricsSources, lifecycleState: lifecycleState() });
                     res.writeHead(200, {
                         "Content-Type": METRICS_CONTENT_TYPE,

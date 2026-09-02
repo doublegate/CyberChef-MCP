@@ -13,6 +13,13 @@
 #
 # There is likewise no per-tenant alert. Tenant identity is not in the metrics, on purpose --
 # see the note in src/node/lib/prometheus.mjs.
+#
+# EVERY AGGREGATE IS BY `job`, and that is not cosmetic. One Prometheus commonly scrapes several
+# CyberChef MCP deployments -- staging and production, or a canary beside a stable release. A bare
+# `sum()` mixes them, so a healthy production masks a staging fleet with nothing serving, and a
+# normal rollout in one deployment reads as version skew across all of them. Aggregating by `job`
+# makes each deployment alert on its own state and puts the job in the alert labels, so the page
+# says which one.
 
 groups:
   - name: cyberchef-mcp
@@ -34,7 +41,7 @@ groups:
             target address.
 
       - alert: CyberChefMCPNoneServing
-        expr: sum(cyberchef_mcp_lifecycle_state{state="serving"}) == 0
+        expr: sum by (job) (cyberchef_mcp_lifecycle_state{state="serving"}) == 0
         for: 3m
         labels:
           severity: critical
@@ -61,7 +68,7 @@ groups:
 
       - alert: CyberChefMCPRestartLoop
         expr: >-
-          sum by (instance) (resets(cyberchef_mcp_process_uptime_seconds[15m])) >= 3
+          sum by (job, instance) (resets(cyberchef_mcp_process_uptime_seconds[15m])) >= 3
         labels:
           severity: warning
         annotations:
@@ -75,8 +82,8 @@ groups:
       # ---- correctness --------------------------------------------------------------------
       - alert: CyberChefMCPHighFailureRate
         expr: >-
-          sum(rate(cyberchef_mcp_tool_failures_total[5m]))
-            / clamp_min(sum(rate(cyberchef_mcp_tool_calls_total[5m])), 1e-9) > 0.05
+          sum by (job) (rate(cyberchef_mcp_tool_failures_total[5m]))
+            / clamp_min(sum by (job) (rate(cyberchef_mcp_tool_calls_total[5m])), 1e-9) > 0.05
         for: 10m
         labels:
           severity: warning
@@ -91,9 +98,9 @@ groups:
         # Per-tool, so a single broken operation is visible even when it is a rounding error in the
         # aggregate above. Gated on a real call rate so one failure on an idle tool cannot page.
         expr: >-
-          (sum by (tool) (rate(cyberchef_mcp_tool_failures_total[10m]))
-            / clamp_min(sum by (tool) (rate(cyberchef_mcp_tool_calls_total[10m])), 1e-9) > 0.5)
-          and (sum by (tool) (rate(cyberchef_mcp_tool_calls_total[10m])) > 0.05)
+          (sum by (job, tool) (rate(cyberchef_mcp_tool_failures_total[10m]))
+            / clamp_min(sum by (job, tool) (rate(cyberchef_mcp_tool_calls_total[10m])), 1e-9) > 0.5)
+          and (sum by (job, tool) (rate(cyberchef_mcp_tool_calls_total[10m])) > 0.05)
         for: 15m
         labels:
           severity: warning
@@ -126,9 +133,9 @@ groups:
         # a cache working, and a poor hit rate on a cold cache is a cache warming.
         expr: >-
           (cyberchef_mcp_cache_bytes / clamp_min(cyberchef_mcp_cache_max_bytes, 1) > 0.98)
-          and on (instance) (
-            sum by (instance) (rate(cyberchef_mcp_tool_cache_hits_total[15m]))
-              / clamp_min(sum by (instance) (rate(cyberchef_mcp_tool_calls_total[15m])), 1e-9) < 0.05
+          and on (job, instance) (
+            sum by (job, instance) (rate(cyberchef_mcp_tool_cache_hits_total[15m]))
+              / clamp_min(sum by (job, instance) (rate(cyberchef_mcp_tool_calls_total[15m])), 1e-9) < 0.05
           )
         for: 30m
         labels:
@@ -141,7 +148,7 @@ groups:
 
       # ---- configuration ------------------------------------------------------------------
       - alert: CyberChefMCPVersionSkew
-        expr: count(count by (version) (cyberchef_mcp_build_info)) > 1
+        expr: count by (job) (count by (job, version) (cyberchef_mcp_build_info)) > 1
         for: 30m
         labels:
           severity: info
