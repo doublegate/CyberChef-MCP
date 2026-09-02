@@ -43,5 +43,12 @@ export const RATE_LIMIT_ENABLED = process.env.CYBERCHEF_RATE_LIMIT_ENABLED === "
 export const RATE_LIMIT_REQUESTS = parseInt(process.env.CYBERCHEF_RATE_LIMIT_REQUESTS, 10) || 100;
 export const RATE_LIMIT_WINDOW = parseInt(process.env.CYBERCHEF_RATE_LIMIT_WINDOW, 10) || 60000; // 60 seconds
 export const CACHE_ENABLED = process.env.CYBERCHEF_CACHE_ENABLED !== "false"; // Enabled by default
+// The tenant every entry belongs to when tenancy is disabled.
+//
+// Lives here rather than in tenancy.mjs so the leaf modules that need it -- cache, quota,
+// rate-limit -- can key on it without importing the tenancy module, which pulls in auth.mjs and
+// jsonwebtoken behind it. tenancy.mjs re-exports it, so there is still one definition and one
+// obvious place to import it from.
+export const DEFAULT_TENANT = "default";
 export const V2_COMPATIBILITY_MODE = process.env.V2_COMPATIBILITY_MODE === "true"; // Disabled by default
 export const SUPPRESS_DEPRECATIONS = process.env.CYBERCHEF_SUPPRESS_DEPRECATIONS === "true"; // Disabled by default

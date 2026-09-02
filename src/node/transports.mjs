@@ -48,6 +48,7 @@ import {
     verifyToken, bearerFrom, subjectDigest, satisfies, withAuthContext
 } from "./lib/auth.mjs";
 import { audit, OUTCOME } from "./lib/audit.mjs";
+import { loadTenancyConfig, assertTenancyConfig, tenantOf } from "./lib/tenancy.mjs";
 
 /**
  * Whether a path is the RFC 9728 discovery document.
@@ -365,6 +366,13 @@ export async function createTransport(options = {}) {
         // ordinary path reads the environment.
         const authConfig = options.auth || loadAuthConfig();
 
+        // Tenancy is off unless a claim is named, and cannot be on without authorization -- the
+        // identity it isolates on comes from a verified token. Asserted here, at startup, rather
+        // than at the first request: a deployment that believes it is separating tenants and is
+        // not should fail to start, loudly, instead of serving everyone from one bucket.
+        const tenancyConfig = options.tenancy || loadTenancyConfig();
+        assertTenancyConfig(tenancyConfig, authConfig);
+
         const createServer = options.createServer;
         if (typeof createServer !== "function") {
             throw new TypeError(
@@ -622,10 +630,32 @@ export async function createTransport(options = {}) {
                         sendJsonRpcError(res, 401, -32000, "Unauthorized: a valid access token is required");
                         return;
                     }
+                    // The tenant comes from a claim on the token just verified -- signature,
+                    // issuer and audience all checked -- and never from a header or query
+                    // parameter, which the caller controls and could therefore choose.
+                    //
+                    // A token the tenancy configuration cannot place is refused rather than
+                    // defaulted. Putting it in the default tenant would hand it whatever lives
+                    // there, which is the cross-tenant access this is meant to prevent.
+                    const placed = tenantOf(result.claims, tenancyConfig);
+                    if (!placed.ok) {
+                        audit({
+                            outcome: OUTCOME.DENIED, tool: `${req.method} ${path}`,
+                            subject: subjectDigest(result.claims), reason: placed.reason
+                        });
+                        // Deliberately no `WWW-Authenticate: insufficient_scope` here. The token
+                        // authenticated and its scopes are beside the point -- no amount of extra
+                        // scope adds a claim the authorization server did not issue. Challenging
+                        // for scope would send the client round a token upgrade that cannot
+                        // succeed; the reason says what actually needs to change.
+                        sendJsonRpcError(res, 403, -32000, `Forbidden: ${placed.reason}`);
+                        return;
+                    }
                     auth = {
                         claims: result.claims,
                         scopes: result.scopes,
-                        subject: subjectDigest(result.claims)
+                        subject: subjectDigest(result.claims),
+                        tenant: placed.tenant
                     };
                     // A deployment may demand a baseline scope on every request, independent of
                     // the per-tool check that happens at dispatch.

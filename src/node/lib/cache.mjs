@@ -11,7 +11,7 @@
  */
 
 import { createHash } from "crypto";
-import { CACHE_MAX_SIZE, CACHE_MAX_ITEMS } from "./config.mjs";
+import { CACHE_MAX_SIZE, CACHE_MAX_ITEMS, DEFAULT_TENANT } from "./config.mjs";
 
 /**
  * Simple LRU Cache for operation results.
@@ -36,10 +36,24 @@ class LRUCache {
      * @param {string} operation - Operation name.
      * @param {string} input - Input data.
      * @param {Array} args - Operation arguments.
+     * @param {string} [tenant] - Tenant the entry belongs to.
      * @returns {string} SHA256 hash of the parameters.
      */
-    getCacheKey(operation, input, args) {
+    getCacheKey(operation, input, args, tenant = DEFAULT_TENANT) {
         const hash = createHash("sha256");
+        // The tenant, first, so entries from different tenants can never collide.
+        //
+        // Operation results are deterministic, so a shared cache does not hand one tenant
+        // another's OUTPUT -- the same input yields the same answer either way. What it does leak
+        // is timing: a hit returns immediately and a miss does the work, so a caller can learn
+        // whether some other tenant has already run a given input. Against a security toolkit
+        // that is a real question to be able to ask -- "has anyone here already decoded this
+        // sample" -- and it is the same shape of cross-caller leak as GHSA-rmg9-8936-vx66.
+        //
+        // Length-prefixed for the same reason the input is below: without it, tenant "ab" with
+        // operation "cd" and tenant "abc" with operation "d" hash identically.
+        hash.update(String(tenant.length));
+        hash.update(tenant);
         hash.update(operation);
         // The WHOLE input, not a prefix.
         //

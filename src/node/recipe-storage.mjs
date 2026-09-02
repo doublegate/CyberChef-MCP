@@ -14,6 +14,7 @@ import { randomUUID, randomBytes } from "crypto";
 import { getLogger } from "./logger.mjs";
 import { createInputError } from "./errors.mjs";
 import { RecipeSchema } from "./recipe-validator.mjs";
+import { currentTenant, DEFAULT_TENANT } from "./lib/tenancy.mjs";
 
 // Configuration
 const STORAGE_FILE = process.env.CYBERCHEF_RECIPE_STORAGE || "./recipes.json";
@@ -32,6 +33,22 @@ const STALE_TEMP_AFTER_MS = 60 * 60 * 1000; // 1 hour
  * Storage schema version.
  */
 const STORAGE_VERSION = "1.0.0";
+
+/**
+ * Whether a stored recipe belongs to a tenant.
+ *
+ * A recipe with no `tenant` field belongs to the default tenant. Every recipe written before
+ * v2.5.0 is in that state, and treating the absent field as "owned by nobody" would hide a
+ * user's entire existing library the moment they upgraded -- the file would still be on disk,
+ * intact, and every list would come back empty.
+ *
+ * @param {Object} recipe - A stored recipe.
+ * @param {string} tenant - The tenant to test against.
+ * @returns {boolean} Whether the recipe belongs to that tenant.
+ */
+function ownedBy(recipe, tenant) {
+    return (recipe.tenant || DEFAULT_TENANT) === tenant;
+}
 
 /**
  * Create a fresh storage schema object.
@@ -288,7 +305,12 @@ export class RecipeStorage {
      */
     async getAll(options = {}) {
         const storage = this.cache || await this.load();
-        let recipes = storage.recipes;
+        // Tenant scoping comes FIRST, before every other filter and before pagination.
+        //
+        // Order matters here in a way it does not for the filters below: paginating a
+        // cross-tenant list and then scoping it would return short or empty pages whose length
+        // reveals how many recipes other tenants hold. Scope, then filter, then paginate.
+        let recipes = storage.recipes.filter(r => ownedBy(r, currentTenant()));
 
         // Apply filters
         if (options.tag) {
@@ -328,7 +350,13 @@ export class RecipeStorage {
      */
     async getById(id) {
         const storage = this.cache || await this.load();
-        return storage.recipes.find(r => r.id === id) || null;
+        // A recipe belonging to another tenant is reported as ABSENT, not as forbidden.
+        //
+        // The distinction is the whole point: "forbidden" confirms the id exists, which turns
+        // this method into an oracle for enumerating other tenants' recipe ids. Recipe ids are
+        // UUIDs and hard to guess, but "hard to guess" is not a reason to answer the question.
+        const recipe = storage.recipes.find(r => r.id === id) || null;
+        return recipe && ownedBy(recipe, currentTenant()) ? recipe : null;
     }
 
     /**
@@ -339,14 +367,22 @@ export class RecipeStorage {
      */
     async create(recipeData) {
         const storage = this.cache || await this.load();
+        const tenant = currentTenant();
 
-        // Check recipe count limit
-        if (storage.recipes.length >= MAX_RECIPES) {
+        // Check recipe count limit, PER TENANT.
+        //
+        // The cap used to count every recipe in the store, which on a shared deployment means the
+        // first tenant to reach it stops every other tenant from saving anything -- a denial of
+        // service reachable by ordinary use, and the same noisy-neighbour problem the concurrency
+        // quota has. In a single-tenant deployment every recipe is in the default tenant, so the
+        // effective limit is unchanged.
+        const owned = storage.recipes.reduce((n, r) => n + (ownedBy(r, tenant) ? 1 : 0), 0);
+        if (owned >= MAX_RECIPES) {
             throw createInputError(
                 `Recipe storage is full (maximum ${MAX_RECIPES} recipes)`,
                 {
                     maxRecipes: MAX_RECIPES,
-                    currentCount: storage.recipes.length
+                    currentCount: owned
                 }
             );
         }
@@ -358,7 +394,12 @@ export class RecipeStorage {
             ...recipeData,
             version: recipeData.version || "1.0.0",
             created: now,
-            updated: now
+            updated: now,
+            // Stamped AFTER the caller's fields so `recipeData` cannot choose its own owner.
+            // Written only when tenancy is active: a single-tenant store keeps the exact record
+            // shape it had before this release, so enabling and disabling tenancy does not
+            // rewrite anyone's file.
+            ...(tenant === DEFAULT_TENANT ? {} : { tenant })
         };
 
         // Validate schema
@@ -385,7 +426,11 @@ export class RecipeStorage {
      */
     async update(id, updates) {
         const storage = this.cache || await this.load();
-        const index = storage.recipes.findIndex(r => r.id === id);
+        // Scoped to the caller's tenant, so another tenant's recipe is "not found" rather than
+        // silently modified. Without this the id alone is authority to overwrite any recipe in
+        // the store.
+        const tenant = currentTenant();
+        const index = storage.recipes.findIndex(r => r.id === id && ownedBy(r, tenant));
 
         if (index === -1) {
             throw createInputError(
@@ -401,6 +446,12 @@ export class RecipeStorage {
             ...recipe,
             ...updates,
             id: recipe.id, // Preserve ID
+            // Preserve ownership. `...updates` is caller-supplied, so without this a caller could
+            // pass `{tenant: "someone-else"}` and hand their recipe to another tenant -- or, with
+            // a guessed name, plant a recipe inside one. Ownership is assigned by the server from
+            // a verified token at `create` and is not editable afterwards, the same rule `id` and
+            // `created` already follow.
+            ...(recipe.tenant === undefined ? {} : { tenant: recipe.tenant }),
             created: recipe.created, // Preserve creation time
             updated: new Date().toISOString(),
             // Increment patch version
@@ -433,8 +484,11 @@ export class RecipeStorage {
     async delete(id) {
         const storage = this.cache || await this.load();
         const initialLength = storage.recipes.length;
+        const tenant = currentTenant();
 
-        storage.recipes = storage.recipes.filter(r => r.id !== id);
+        // Removes the recipe only when it belongs to the caller's tenant. The previous predicate
+        // matched on id alone, so any caller holding an id could delete any recipe in the store.
+        storage.recipes = storage.recipes.filter(r => !(r.id === id && ownedBy(r, tenant)));
 
         if (storage.recipes.length === initialLength) {
             return false;
@@ -467,18 +521,23 @@ export class RecipeStorage {
      */
     async getStats() {
         const storage = this.cache || await this.load();
+        // Scoped like every other read. `categories` and `tags` are the reason this matters more
+        // than the count does: they are free text the user wrote, so an unscoped list hands one
+        // tenant a summary of what every other tenant works on -- client names, case numbers,
+        // whatever they tag with. The count alone would be a weak signal; the labels are content.
+        const recipes = storage.recipes.filter(r => ownedBy(r, currentTenant()));
 
         return {
-            totalRecipes: storage.recipes.length,
+            totalRecipes: recipes.length,
             maxRecipes: MAX_RECIPES,
             storageVersion: storage.version,
             lastModified: storage.lastModified,
             filePath: this.filePath,
-            categories: [...new Set(storage.recipes
+            categories: [...new Set(recipes
                 .map(r => r.metadata?.category)
                 .filter(Boolean)
             )],
-            tags: [...new Set(storage.recipes
+            tags: [...new Set(recipes
                 .flatMap(r => r.tags || [])
             )]
         };
@@ -490,8 +549,25 @@ export class RecipeStorage {
      * @returns {Promise<void>}
      */
     async clear() {
-        this.logger.warn("Clearing all recipes from storage");
-        await this.save(createEmptyStorage());
+        const tenant = currentTenant();
+        // Clears only the caller's OWN recipes.
+        //
+        // This used to replace the entire store with an empty one, which on a shared deployment
+        // means any caller can destroy every tenant's saved work in one call. It is the most
+        // destructive method here, so it is the one that least tolerates being tenant-blind.
+        //
+        // In a single-tenant deployment every recipe is in the default tenant, so this still
+        // empties the store -- the existing behaviour and what the tests assert.
+        const storage = this.cache || await this.load();
+        const kept = storage.recipes.filter(r => !ownedBy(r, tenant));
+        this.logger.warn({ tenant, removed: storage.recipes.length - kept.length },
+            "Clearing recipes from storage");
+
+        if (!kept.length) {
+            await this.save(createEmptyStorage());
+            return;
+        }
+        await this.save({ ...storage, recipes: kept });
     }
 
     /**

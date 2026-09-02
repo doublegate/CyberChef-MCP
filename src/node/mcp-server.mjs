@@ -22,6 +22,7 @@ import { annotationsForOperation, annotationsForMetaTool } from "./lib/tool-anno
 import { currentAuth, insufficientScopeChallenge, loadAuthConfig } from "./lib/auth.mjs";
 import { authorise } from "./lib/rbac.mjs";
 import { audit, OUTCOME } from "./lib/audit.mjs";
+import { currentTenant } from "./lib/tenancy.mjs";
 import { listPrompts, getPrompt } from "./lib/prompts.mjs";
 import { listResources, readResource, listResourceTemplates } from "./lib/resources.mjs";
 import { bakeOnCore } from "./lib/core-recipe.mjs";
@@ -1102,8 +1103,14 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
                 return error.toMCPError();
             }
 
-            // Check quota
-            if (!quotaTracker.acquire()) {
+            // Check quota.
+            //
+            // Resolved ONCE and reused for the matching release below. `currentTenant()` is stable
+            // within a request, so calling it twice would agree today -- but a slot acquired for
+            // one tenant and released against another would corrupt both counts permanently, and
+            // that is not a failure mode worth leaving open to a later refactor.
+            const quotaTenant = currentTenant();
+            if (!quotaTracker.acquire(quotaTenant)) {
                 const error = createInputError(
                     `Resource quota exceeded. Maximum concurrent operations: ${quotaTracker.maxConcurrentOps}`,
                     { maxConcurrentOps: quotaTracker.maxConcurrentOps }
@@ -1206,7 +1213,8 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
                 const inputSize = Buffer.byteLength(args.input, "utf8");
                 let cacheKey, cached;
                 if (CACHE_ENABLED) {
-                    cacheKey = operationCache.getCacheKey(opName, args.input, recipeArgs);
+                    cacheKey = operationCache.getCacheKey(
+                        opName, args.input, recipeArgs, currentTenant());
                     cached = operationCache.get(cacheKey);
                     if (cached) {
                         logCache("hit", { operation: opName, requestId });
@@ -1220,7 +1228,7 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
 
                         // Track quota
                         quotaTracker.trackData(inputSize, outputSize);
-                        quotaTracker.release();
+                        quotaTracker.release(quotaTenant);
 
                         // Record telemetry
                         const duration = Date.now() - startTime;
@@ -1347,7 +1355,7 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
                 throw opError;
             } finally {
                 // Always release quota
-                quotaTracker.release();
+                quotaTracker.release(quotaTenant);
             }
         }
 
