@@ -7,6 +7,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.8.0] - 2026-09-02
+
+Opens Phase 6. Half of what the release plan asked for had already been delivered by v2.6.0; what
+was actually missing was ARM support, image size, and an honest offline switch.
+
+### Added
+
+- **`linux/arm64` images**, alongside `linux/amd64` — Apple Silicon, AWS Graviton, Raspberry Pi
+  4/5. `docker pull` resolves the right one. Built under QEMU in **4m46s** against ~4m30s native for
+  amd64, which is why the release workflow keeps its single job rather than being restructured into
+  a three-job native matrix; the deciding measurement is recorded in the workflow. The verification
+  asserts that npm resolved `@napi-rs/nice-linux-arm64-gnu`, because those platform binaries are
+  *optional* dependencies — a wrong resolution still builds a working image and fails later in the
+  worker pool.
+- **A native-arm job on every pull request**, so the release workflow is never the first place arm64
+  is attempted. Published tags are immutable; a tag-time failure is the expensive one.
+- **The release now fails if the published manifest is not multi-platform.** A build that silently
+  degrades to one platform still produces a green workflow and a published release, and breaks only
+  when an arm64 user pulls it.
+- **`CYBERCHEF_OFFLINE=true`**, a fail-closed switch for air-gapped deployments. 502 of the 504
+  operations never touched a network; exactly two do (`HTTP request`, `DNS over HTTPS`), and without
+  this they hang until the OS gives up rather than failing cleanly, holding a concurrency slot
+  throughout. The guard is applied to the **recipe**, not the tool name — `cyberchef_bake` is not a
+  network tool, but a bake carrying `HTTP request` is a network call — and is enforced at all four
+  engine entry points, since `bakeOnCore`, `executeInWorker` and the Node API's `bake` are separate
+  paths. Documented as a posture, not a sandbox.
+- **An edge deployment guide** (`docs/guides/edge-deployment.md`): architectures, a recommended
+  settings table by deployment size, air-gapped install, and what offline mode does not claim.
+
+### Changed
+
+- **Image 643 MB → 453 MB; 1,190 packages → 432.** `Dockerfile.mcp` now runs a real
+  `npm prune --omit=dev` in place of a hardcoded list of nine package globs that tried to remove dev
+  packages from a tree of 1,310 paths — 885 of them dev-only, including `typescript` (24 MB),
+  `@rolldown` (19 MB), `@octokit` (18 MB) and `@babel` (14 MB). Attack surface as much as weight.
+  Verified by re-running the full 241 Node-API and 2,289 operation tests against production-only
+  dependencies, not by a smoke test. This was called for in the v2.0.0 plan and never landed.
+- `.dockerignore` also excludes `docs-site`, `deploy`, `examples`, `patches`, `images` and
+  `.agy-review-work` — none is read by the server, and excluding from the *context* is stricter than
+  removing in the builder, because what is never copied cannot be forgotten in a later edit.
+- The release tarball export now names `--platform linux/amd64` explicitly rather than resolving to
+  whatever the runner happens to be.
+- Chart version 0.2.0 → 0.3.0; `appVersion` and the pinned image tag → 2.8.0.
+
+### Fixed
+
+- **A local build shipped 240 MB of Docusaurus dependencies.** `.dockerignore` had `node_modules`,
+  which Docker matches only against the context root, so `docs-site/node_modules` was copied in
+  whole. CI never saw it because CI checks out clean — meaning a local build and a CI build produced
+  materially different images and nothing reported the difference. Added `**/node_modules`.
+- **A developer's saved recipes shipped in the image.** `recipes.json` and `recipes.json.backup` —
+  the saved-recipe store — were being copied into `/app`, so anyone building locally baked their own
+  recipes into a layer and would publish them by pushing it. Mode `0600` on disk stops mattering
+  once the file is inside an image.
+
+### Not done, deliberately
+
+- **`linux/arm/v7`.** `cgr.dev/chainguard/node` publishes amd64 and arm64 only; serving a 32-bit Pi
+  would mean abandoning the distroless runtime, digest pinning and non-root default.
+- **The <50 MB image target.** `@jimp` (89 MB) and `tesseract.js-core` (44 MB) are production
+  dependencies of real operations. A server exposing 504 operations including OCR cannot be a 50 MB
+  image; the target was set against a baseline that was itself wrong by 3.4x.
+- **Removing 19 MB of upstream web-app dependencies** (`bootstrap`, `jquery`, and three others with
+  zero imports in `src/`). Measured at 4.2% of the image, against a change touching
+  `patch-dependencies.mjs`, `Gruntfile.js` and the dependency manifest of a fork whose upstream
+  declares them. Checked for advisories first, which would have changed the answer: none.
+- **Resource profiles.** Two of the five fields in the plan's schema describe settings that do not
+  exist. The real question is answered as a table in the edge deployment guide.
+
 ## [2.7.0] - 2026-09-02
 
 ### Added

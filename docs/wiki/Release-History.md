@@ -5,6 +5,32 @@ Full notes for every version live in
 [releases page](https://github.com/doublegate/CyberChef-MCP/releases). This is the shape of the 2.x
 line, and what each release was actually *about*.
 
+## v2.8.0 — ARM, and 30% smaller
+
+Images for `linux/arm64` as well as `linux/amd64`, and the image itself down from 643 MB to
+**453 MB** — 1,190 packages to **432**.
+
+The build ran `npm ci` and then `rm -rf` on a hardcoded list of nine package globs, against a tree
+of 1,310 paths of which 885 were dev-only: `typescript`, `@rolldown`, `@octokit`, `@babel`,
+`lightningcss`. Attack surface as much as weight. Replaced with a real `npm prune --omit=dev`,
+verified by re-running all 2,289 operation tests against production-only dependencies.
+
+The prune is also what made arm64 possible: it removes every x64-locked binary in the tree, leaving
+a production tree that is pure JavaScript and WebAssembly. That is why the emulated arm64 build
+takes 4m46s rather than the 30–60 minutes it was expected to.
+
+Two defects found on the way: a **local** build shipped 240 MB of Docusaurus that CI never saw
+(`.dockerignore` matches only the context root), and the developer's own **saved recipes** were
+being baked into the image.
+
+Also `CYBERCHEF_OFFLINE=true`. 502 of the 504 operations never touched a network anyway; this makes
+the other two fail closed instead of hanging until the OS gives up. Checked against the *recipe*
+rather than the tool name — `cyberchef_bake` carrying `HTTP request` is a network call. See
+**[Configuration](Configuration#offline-and-air-gapped-operation-v280)**.
+
+Three of the plan's eight features turned out to be already shipped in v2.6.0. The <50 MB image
+target is unreachable and is reported as such rather than quietly missed.
+
 ## v2.7.0 — observability
 
 A dependency-free Prometheus endpoint at `/metrics` (**off by default** — see

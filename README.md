@@ -4,7 +4,7 @@ This project provides a **Model Context Protocol (MCP)** server interface for **
 
 By running this server, you enable AI assistants (like Claude, Cursor AI, and others) to natively utilize CyberChef's extensive library of **504 data manipulation operations**—including encryption, encoding, compression, and forensic analysis—as executable tools.
 
-**Latest Release:** v2.7.0 | [Release Notes](docs/releases/v2.7.0.md) | [Tutorial](docs/guides/tutorial.md) | [Examples](examples/) | [Breaking Changes](docs/v2.0.0-breaking-changes.md) | [Security Policy](SECURITY.md)
+**Latest Release:** v2.8.0 | [Release Notes](docs/releases/v2.8.0.md) | [Tutorial](docs/guides/tutorial.md) | [Examples](examples/) | [Breaking Changes](docs/v2.0.0-breaking-changes.md) | [Security Policy](SECURITY.md)
 
 **Upstream base:** GCHQ CyberChef **v11.4.0** | **Licence:** GPL-3.0-or-later (from v2.0.0; v1.9.x and earlier remain Apache-2.0)
 
@@ -48,6 +48,7 @@ See [Upstream Sync Guide](docs/guides/upstream-sync-guide.md) for details on the
 ### MCP Tools
 The server exposes CyberChef operations as MCP tools:
 
+*   **Runs on ARM, and 30% smaller** (v2.8.0): images are published for `linux/arm64` as well as `linux/amd64` — Apple Silicon, Graviton, Raspberry Pi 4/5 — and the image dropped from 643 MB to **453 MB**, from 1,190 packages to **432**. The old build ran `npm ci` and then `rm -rf` on a hardcoded list of nine package globs; 885 of the packages in the runtime image were dev-only (`typescript`, `@rolldown`, `@octokit`, `@babel`), which was attack surface as much as weight. Verified by running the full 2,289-operation suite against production-only dependencies. Also **`CYBERCHEF_OFFLINE=true`** for air-gapped hosts: 502 of 504 operations never touched a network anyway, so this is a fail-closed switch for the two that do — checked against the *recipe*, not the tool name, because `cyberchef_bake` carrying `HTTP request` is a network call. See the [edge deployment guide](docs/guides/edge-deployment.md).
 *   **Observable** (v2.7.0): a dependency-free Prometheus endpoint at `/metrics` (20 metric families, **off by default** — unlike the health probes it reports which tools are used, how often and how large the inputs are, which is a reconnaissance surface), OpenTelemetry spans following the MCP semantic conventions, and `trace_id`/`span_id` on every log line. It adds **one** package: the OTel *API*, not the SDK — measured at 1 package / 2.6 MB / +9 ms against the SDK's 71 packages / 50 MB / +100 ms, which would have handed back more than half of v2.6.0's startup work on every stdio launch. You supply the SDK, so every OTLP backend works rather than a chosen few. Ships a [Grafana dashboard, alert rules and a runnable Prometheus stack](deploy/grafana/) — all executed against a live server rather than reviewed. Tool arguments are **never** recorded: the conventions mark them Opt-In, and for this server the arguments *are* the sensitive material.
 *   **OAuth 2.1 authentication on HTTP** (v2.5.0): the server acts as an OAuth 2.1 **Resource Server** — RFC 9728 Protected Resource Metadata, JWKS-based bearer validation, and RFC 8707 audience binding, which is the check that stops a token minted for another service being replayed here. Scope-based RBAC with three scopes (`cyberchef:read`, `cyberchef:write`, `cyberchef:network`), where the scope a tool needs is *derived from its annotations* rather than a table that goes stale. Audit logging for who called what. **Off unless `CYBERCHEF_AUTH_ISSUER` is set**, and deliberately not applied to stdio — the MCP specification says stdio SHOULD NOT use OAuth, because a bearer token protects nothing when the client already owns the process.
 *   **Multi-tenancy** (v2.5.0): the operation cache, recipe store, concurrency pool and audit trail are isolated per tenant, with the tenant read from a claim on an already-verified token (`CYBERCHEF_TENANT_CLAIM`) — never from a header the caller controls. Without it, any caller on a shared HTTP deployment could list, modify and delete any other caller's saved recipes, and `clear()` destroyed every tenant's at once. **Off unless configured**, and configuring it without `CYBERCHEF_AUTH_ISSUER` is a startup error rather than a silent downgrade.
@@ -158,13 +159,13 @@ For environments without direct GHCR access, download the pre-built Docker image
 1.  **Download the tarball** (approximately 196 MB compressed; measured, not estimated):
     ```bash
     # Download from GitHub Releases
-    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v2.7.0/cyberchef-mcp-v2.7.0-docker-image.tar.gz
+    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v2.8.0/cyberchef-mcp-v2.8.0-docker-image.tar.gz
     ```
 
 2.  **Load the image into Docker:**
 
     ```bash
-    docker load < cyberchef-mcp-v2.7.0-docker-image.tar.gz
+    docker load < cyberchef-mcp-v2.8.0-docker-image.tar.gz
     ```
 
 3.  **Tag for easier usage:**
