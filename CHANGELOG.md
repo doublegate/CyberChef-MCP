@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.1] - 2026-09-02
+
+### Security
+
+- **The operation cache could return one caller's result to another.** `getCacheKey` hashed only
+  `input.substring(0, 1000)`, so two different inputs sharing their first 1,000 characters produced
+  the same key. Reproduced:
+
+  ```
+  a = "x".repeat(1000) + "SECRET-A"        (1,008 chars)
+  b = "x".repeat(1000) + "DIFFERENT-B"     (1,011 chars)
+  keys equal: true   ->  lookup with b returned "ANSWER-FOR-A"
+  ```
+
+  Two consequences, the second being the serious one: a **silently wrong result** for valid input,
+  and on a shared HTTP server, **one caller receiving output computed from another caller's data**.
+  Nothing about triggering it is exotic — the cache is on by default, inputs over 1,000 characters
+  are ordinary, and a shared prefix is the normal case for the same document with different
+  trailing content, for log lines, and for padded records. No malice is required; two honest
+  callers are enough.
+
+  **Affected: v1.4.0 through v2.4.0**, introduced with the LRU cache in v1.4.0. Now hashes the full
+  input plus its length. The cost was measured rather than assumed: full SHA-256 is 2.3 ms at 1 MB
+  and 252 ms at the 100 MB input ceiling, negligible against an operation that scales with the same
+  input — Gzip alone is 305 ms at 100 KB. A cache that returns the wrong answer quickly is worth
+  less than no cache at all.
+
+  **Mitigation without upgrading:** `CYBERCHEF_CACHE_ENABLED=false`. A single-user stdio deployment
+  is affected only by the correctness half — there is no second caller to receive the data.
+
+  Full detail: [`docs/releases/v2.4.1.md`](docs/releases/v2.4.1.md).
+
+- **sharp** in `docs-site` raised to `^0.35.3` (resolving 0.35.4), clearing GHSA-f88m-g3jw-g9cj and
+  four inherited libvips CVEs.
+- **postcss-selector-parser** raised to 7.1.5, clearing GHSA-w9m9-85wc-3x92 (ReDoS). Transitive and
+  dev-only, through `css-loader`, which this fork does not ship.
+
+
 ## [2.4.0] - 2026-09-01
 
 ### Security

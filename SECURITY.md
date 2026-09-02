@@ -146,6 +146,12 @@ patterns.
   needs at least one capability. So the server still executes only code that is in the image.
   Reasoning and the conditions for revisiting it:
   [ADR 0002](docs/adr/0002-tool-registry-is-not-a-plugin-loader.md).
+- **v2.4.1 (2026-09-02)**: Fixed a cache-key collision that could return one caller's result to
+  another. `getCacheKey` hashed only the first 1,000 characters of the input, so two different
+  inputs sharing that prefix produced the same key — a silently wrong result, and on a shared HTTP
+  server, cross-caller data exposure. Present since v1.4.0. Mitigation without upgrading:
+  `CYBERCHEF_CACHE_ENABLED=false`. Also cleared GHSA-f88m-g3jw-g9cj (sharp/libvips) and
+  GHSA-w9m9-85wc-3x92 (postcss-selector-parser).
 - **v2.3.0 (2026-08-31)**: Fixed a pooled-buffer defect in 17 image operations — the surplus bytes
   were adjacent heap, which on a multi-caller server can be another caller's data — and reported it
   and two related findings privately to upstream (GHSA-hj7h-fgw7-x6w8). Closed a `umask` window

@@ -727,3 +727,54 @@ describe("core-recipe: what the caller receives when the engine refuses", () => 
         expect(String(passthrough)).toBe("plain");
     });
 });
+
+describe("LRUCache: the key must identify the input, not resemble it", () => {
+    it("does not collide two inputs that share a long prefix", async () => {
+        // This is a regression test for a real defect, not a hypothetical. The key hashed only
+        // `input.substring(0, 1000)`, so two different inputs sharing their first 1,000 characters
+        // produced the same key -- and the second caller received the FIRST caller's answer.
+        //
+        // Two consequences, the second being the serious one: a silently wrong result for valid
+        // input, and on a shared HTTP server, one caller receiving output computed from another
+        // caller's data. Long inputs sharing a prefix are ordinary.
+        const { LRUCache } = await import("../../src/node/lib/cache.mjs");
+        const cache = new LRUCache();
+        const a = "x".repeat(1000) + "SECRET-A";
+        const b = "x".repeat(1000) + "DIFFERENT-B";
+
+        const keyA = cache.getCacheKey("To Base64", a, []);
+        const keyB = cache.getCacheKey("To Base64", b, []);
+        expect(keyA).not.toBe(keyB);
+
+        cache.set(keyA, "ANSWER-FOR-A");
+        expect(cache.get(keyB)).toBeFalsy();
+        expect(cache.get(keyA)).toBe("ANSWER-FOR-A");
+    });
+
+    it("still gives identical calls the same key, or the cache is pointless", async () => {
+        const { LRUCache } = await import("../../src/node/lib/cache.mjs");
+        const cache = new LRUCache();
+        const input = "y".repeat(5000);
+        expect(cache.getCacheKey("SHA2", input, ["256"]))
+            .toBe(cache.getCacheKey("SHA2", input, ["256"]));
+    });
+
+    it("separates calls that differ only in their arguments or operation", async () => {
+        const { LRUCache } = await import("../../src/node/lib/cache.mjs");
+        const cache = new LRUCache();
+        const input = "z".repeat(2000);
+        const base = cache.getCacheKey("SHA2", input, ["256"]);
+        expect(cache.getCacheKey("SHA2", input, ["512"])).not.toBe(base);
+        expect(cache.getCacheKey("SHA3", input, ["256"])).not.toBe(base);
+    });
+
+    it("separates two inputs of different length that share every character", async () => {
+        // The length is mixed into the key as well as the content. Redundant given a full hash,
+        // and it is what makes a prefix collision impossible to reintroduce by "optimising" the
+        // content hash back to a substring.
+        const { LRUCache } = await import("../../src/node/lib/cache.mjs");
+        const cache = new LRUCache();
+        expect(cache.getCacheKey("To Hex", "a".repeat(1500), []))
+            .not.toBe(cache.getCacheKey("To Hex", "a".repeat(1501), []));
+    });
+});
