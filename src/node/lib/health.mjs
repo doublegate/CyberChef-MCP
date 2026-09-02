@@ -65,9 +65,21 @@ export function lifecycleState() {
  * Called once the transport is listening, not when the process begins: a readiness probe that
  * passes before the listener is bound invites traffic into a connection refusal.
  *
+ * **Never overrides `DRAINING`, and that guard is load-bearing.** `createTransport()` returns
+ * before the `listening` callback fires, so a `SIGTERM` arriving in that window drains a server
+ * whose listener is still binding -- and the callback then lands *afterwards* and would flip
+ * readiness back to 200 in the middle of a shutdown, telling the load balancer to resume sending
+ * traffic to a process that is going away. Reproduced before fixing:
+ *
+ *     after markDraining      : draining  ready=503
+ *     after late markServing  : serving   ready=200      <- traffic resumes mid-drain
+ *
+ * `DRAINING` is terminal: the only exit from it is process exit. Nothing legitimately moves back.
+ *
  * @returns {void}
  */
 export function markServing() {
+    if (state === LIFECYCLE.DRAINING) return;
     state = LIFECYCLE.SERVING;
 }
 

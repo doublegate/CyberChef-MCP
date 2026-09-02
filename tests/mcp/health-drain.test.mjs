@@ -76,6 +76,22 @@ describe("health module", () => {
         expect(healthResponse(HEALTH_PATHS.READY).status).toBe(503);
     });
 
+    it("does not let a late listening callback undo a drain", () => {
+        // `createTransport()` returns BEFORE the `listening` callback fires, so a SIGTERM in that
+        // window drains a server whose listener is still binding -- and the callback then lands
+        // afterwards. Without the guard it flips readiness back to 200 in the middle of a
+        // shutdown, telling the load balancer to resume sending traffic to a process that is going
+        // away. Measured before the fix: `draining ready=503` then `serving ready=200`.
+        //
+        // DRAINING is terminal. The only exit is process exit.
+        markDraining();
+        markServing();
+        expect(lifecycleState()).toBe(LIFECYCLE.DRAINING);
+        expect(healthResponse(HEALTH_PATHS.READY).status).toBe(503);
+        // Liveness is unaffected either way -- it must stay up through the whole drain.
+        expect(healthResponse(HEALTH_PATHS.LIVE).status).toBe(200);
+    });
+
     it("passes startup once started and does not fail again on drain", () => {
         // startupProbe exists to stop the other probes firing during a slow boot. Once started,
         // it must stay started -- an orchestrator that sees it fail later restarts the pod.
