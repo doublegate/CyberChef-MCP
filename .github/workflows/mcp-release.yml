@@ -223,7 +223,7 @@ jobs:
               echo "::warning::$NOTES_FILE not found; publishing with a link to the changelog"
               gh release create "$TAG_NAME" \
                 --title "Release $TAG_NAME" \
-                --notes "Release notes: [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/master/CHANGELOG.md)" \
+                --notes "Release notes: [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/${TAG_NAME}/CHANGELOG.md)" \
                 --verify-tag
             fi
           else

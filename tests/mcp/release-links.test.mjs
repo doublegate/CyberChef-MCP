@@ -1,5 +1,5 @@
 /**
- * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-License-Identifier: Apache-2.0
  *
  * The release-note link rewriter, `scripts/absolutise-release-links.py`.
  *
@@ -25,7 +25,7 @@
  *     of an absolute path embeds the checkout directory in every URL.
  *
  * @author DoubleGate
- * @license GPL-3.0-or-later
+ * @license Apache-2.0
  */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";

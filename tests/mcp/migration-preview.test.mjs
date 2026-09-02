@@ -31,7 +31,7 @@ describe("v1.8.0 Features - Migration Preview", () => {
     });
 
     describe("VERSION", () => {
-        it("should be 1.9.0", () => {
+        it("should be 1.9.2", () => {
             expect(VERSION).toBe("1.9.2");
         });
     });
