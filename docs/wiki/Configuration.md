@@ -167,6 +167,77 @@ sets all four consistently.
 Both default to 0 being meaningful, not missing: `CYBERCHEF_DRAIN_DELAY_MS=0` disables the grace
 window, which is what you want under Docker Compose or anywhere without a load balancer.
 
+## Observability (v2.7.0)
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `CYBERCHEF_METRICS_ENABLED` | `false` | Serve Prometheus metrics at `/metrics`. **Unauthenticated when on.** |
+
+### Why this one is opt-in when the health probes are not
+
+Both are unauthenticated, and for the same reason: neither a kubelet probe nor a Prometheus
+scraper carries a bearer token, so gating them would make them useless to the only callers they
+exist for.
+
+The difference is what they say. A probe answers "should I get traffic" in one word. A scrape
+reports which tools are being used, how often, how large the inputs are, and how many tenants are
+active — a useful reconnaissance surface. So the probes are always on and deliberately
+uninformative, while `/metrics` is off unless you ask for it, and belongs on an internal network or
+behind a `NetworkPolicy`.
+
+When disabled, `/metrics` is not special-cased at all: it falls through to the ordinary 404, so a
+prober cannot distinguish "metrics off" from "not this server".
+
+### What it never exposes
+
+Tenant identifiers, tool arguments, subject digests, recipe names, error messages. Tenant **count**
+is exposed; tenant **names** are not — a tenant identifier in a metric label is how tenant identity
+leaks into a surface nobody access-controlled for it, and cardinality makes it permanent. Per-tenant
+attribution comes from the audit log, which *is* access-controlled.
+
+Tool names carry a hard cap of 1024 distinct labels, overflowing into `__other__`. The name reaching
+the counter is the name the *caller* asked for, so without the cap anyone able to call the server
+could mint arbitrary labels in a loop and explode cardinality in a shared Prometheus.
+
+### Metrics are counted even with telemetry off
+
+`CYBERCHEF_TELEMETRY_ENABLED` gates the per-call *records* — duration, sizes, timestamp, one row per
+execution — which remain opt-in and privacy-first. It does **not** gate the per-tool counters
+`/metrics` reports. With the counters behind that flag, a default deployment would report zero tool
+calls forever no matter how much traffic it served, which an operator reads as an idle server or a
+broken endpoint.
+
+### Tracing
+
+The server emits OpenTelemetry spans following the MCP semantic conventions, and depends on
+`@opentelemetry/api` **only** — not the SDK. Measured: the SDK plus exporters is 71 packages, 50 MB
+and +100 ms of startup, against the API's 1 package, 2.6 MB and +9 ms. With no SDK registered the
+instrumentation is a genuine no-op (100,000 span+metric cycles in 8 ms).
+
+You supply the SDK, which means every OTLP backend works rather than a chosen few:
+
+```bash
+node --import ./otel-bootstrap.mjs src/node/mcp-server.mjs
+```
+
+Tool arguments and results are **never** recorded. The conventions define
+`gen_ai.tool.call.arguments` and `.result` as Opt-In; this server does not opt in, because the
+arguments to a CyberChef tool are the sensitive material — a key, a password hash, the document
+being decoded. `error.type` comes from the structured error code or the exception class, never the
+message, because messages quote their input.
+
+Every log line carries `trace_id` and `span_id` when a trace is active, and no extra fields at all
+when one is not.
+
+### Dashboards and alerts
+
+A Grafana dashboard, 9 Prometheus alerting rules, a metric reference, and a runnable
+Prometheus + Grafana stack live in
+[`deploy/grafana/`](https://github.com/doublegate/CyberChef-MCP/tree/master/deploy/grafana).
+The Helm chart wires the scrape with `metrics.enabled=true` plus either
+`monitoring.serviceMonitor.enabled=true` (Prometheus Operator) or
+`monitoring.podAnnotations=true` (classic `prometheus.io/scrape` annotations).
+
 ## Scaling and replicas (v2.6.0)
 
 The server is **stateless per request**. MCP revision `2026-07-28` removed protocol-level sessions

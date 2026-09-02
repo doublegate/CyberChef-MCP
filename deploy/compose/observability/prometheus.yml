@@ -1,0 +1,24 @@
+# Prometheus configuration for the local observability stack.
+#
+# Deliberately minimal: this exists so the dashboard and the alert rules can be VERIFIED against a
+# real server rather than reviewed by eye. It is not a production Prometheus configuration -- there
+# is no remote write, no federation, no retention tuning and no service discovery.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/rules/alerts.yaml
+
+scrape_configs:
+  - job_name: cyberchef-mcp
+    # The server serves /metrics on the same listener as /mcp, behind the same routing, CORS and
+    # DNS-rebinding protection. There is no second port to scrape.
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["cyberchef-mcp:3000"]
+        labels:
+          # The dashboard's Instance variable reads this label. Left as the default
+          # host:port here; a real deployment usually relabels it to the pod name.
+          deployment: local

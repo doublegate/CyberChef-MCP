@@ -134,7 +134,7 @@ gantt
 | **v2.4.0** | Tool registry | **Released 2026-09-01.** A registry for tools that are not CyberChef operations, and its first four: `xor_key_length`, `cyclic_pattern`, `hash_identify`, `rsa_attack`. **Re-scoped:** "plugin system, sandboxed execution, plugin registry" shipped as the registry without the loader — see the note below. | L | Low |
 | **v2.5.0** | Enterprise Features | **Released 2026-09-02.** Completes the Enterprise Features milestone — the first of Phase 5's three releases: OAuth 2.1 Resource Server on HTTP, scope-based RBAC, audit logging, and multi-tenancy (cache, recipes, concurrency and audit isolated per tenant). Also fixed a rate limiter that had never limited anything since v1.7.0. **Re-scoped:** authorization applies to HTTP only — the specification says stdio SHOULD NOT use OAuth and should take credentials from the environment, so the default transport is untouched. | XL | High |
 | **v2.6.0** | Distributed Architecture | **Released 2026-09-02.** Health probes, a drain that loses no requests on a rolling update, a Helm chart and Compose file, and a 5s deadline plus circuit breaker on calls to the authorization server. Cold start ~1300ms → ~185ms. **Re-scoped:** the plan's Redis session store solved a problem MCP 2026-07-28 deleted — the protocol has no sessions, so replicas need no affinity and no store. Warm pools withdrawn on measurement: the target was beaten fivefold by removing the startup cost instead of hiding it. | XL | High |
-| **v2.7.0** | Observability | OpenTelemetry traces/metrics/logs, dashboards, alerts | L | Medium |
+| **v2.7.0** | Observability | **Released 2026-09-02.** Closes Phase 5. A dependency-free Prometheus endpoint (20 families, off by default), OpenTelemetry spans following the MCP semantic conventions, trace correlation on every log line, a 25-panel Grafana dashboard, 9 alert rules, Helm ServiceMonitor/PrometheusRule, and a runnable Prometheus+Grafana stack. **Re-scoped:** the plan's "integrate the OTel SDK + exporters for 3+ backends" was rejected on measurement — the SDK costs 71 packages / 50 MB / +100 ms against the API's 1 / 2.6 MB / +9 ms, which would have returned half of v2.6.0's startup work on every stdio launch. Depending on the API alone and letting the operator supply the SDK makes *every* OTLP backend work rather than three. Structured logging was already shipped (Pino, since v1.5.0). | L | Medium |
 | **v2.8.0** | Edge Deployment | WebAssembly/WASI, edge runtime, offline support | L | High |
 | **v2.9.0** | AI-Native Features | NL-to-recipe, operation suggestions, smart recipes | M | Medium |
 | **v2.9.x** | Pre-v3.0.0 Polish | Migration tooling, deprecation warnings, compatibility mode | M | Medium |
@@ -220,14 +220,17 @@ the honest successor to this line, and it is not yet built.
 - Plugin registry and discovery
 - Third-party operation support
 
-### Phase 5: Enterprise
-- OAuth 2.1 authentication (MCP as Resource Server)
-- Role-Based Access Control (RBAC)
-- Comprehensive audit logging
-- Multi-tenancy with namespace isolation
-- Kubernetes horizontal pod autoscaling
-- Service mesh integration (Istio/Linkerd)
-- OpenTelemetry traces, metrics, and logs
+### Phase 5: Enterprise — complete
+- OAuth 2.1 authentication (MCP as Resource Server) — v2.5.0
+- Role-Based Access Control (RBAC) — v2.5.0, scopes derived from tool annotations
+- Comprehensive audit logging — v2.5.0
+- Multi-tenancy with namespace isolation — v2.5.0
+- Kubernetes horizontal pod autoscaling — v2.6.0, with a PDB and a drain that loses no requests
+- OpenTelemetry traces, metrics, and logs — v2.7.0, API-only; the operator supplies the SDK
+- Service mesh integration (Istio/Linkerd) — **not done, and not planned.** Nothing in the server
+  needs to know about a mesh: a sidecar terminates mTLS and routes without the application
+  participating, and the Helm chart already emits the labels and probes a mesh reads. There was no
+  code to write, so writing some to close a checklist item would have been the wrong outcome.
 
 ### Phase 6: Evolution
 - Edge/WASM deployment support

@@ -1,0 +1,152 @@
+# Prometheus alerting rules for the CyberChef MCP server.
+#
+# Load with `rule_files:` in prometheus.yml, or as a PrometheusRule via the Helm chart
+# (monitoring.prometheusRule.enabled=true), which wraps these same expressions.
+#
+# WHAT IS DELIBERATELY NOT HERE
+# -----------------------------
+# There is no alert on latency, because this server has no meaningful latency SLO to write one
+# against. A base64 decode and a bcrypt comparison are both "one operation"; any single threshold
+# is either useless for the fast operations or a permanent page for the slow ones. Latency belongs
+# on the dashboard, where a human reads the distribution -- not in a rule that fires on an average
+# of two unrelated populations.
+#
+# There is likewise no per-tenant alert. Tenant identity is not in the metrics, on purpose --
+# see the note in src/node/lib/prometheus.mjs.
+
+groups:
+  - name: cyberchef-mcp
+    interval: 30s
+    rules:
+
+      # ---- availability -------------------------------------------------------------------
+      - alert: CyberChefMCPDown
+        expr: up{job=~".*cyberchef.*"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "CyberChef MCP instance is not being scraped"
+          description: >-
+            {{ $labels.instance }} has failed scraping for 2 minutes. Check whether the pod is
+            running, and whether CYBERCHEF_METRICS_ENABLED is still true -- the /metrics path
+            returns an ordinary 404 when metrics are disabled, which looks identical to a wrong
+            target address.
+
+      - alert: CyberChefMCPNoneServing
+        expr: sum(cyberchef_mcp_lifecycle_state{state="serving"}) == 0
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No CyberChef MCP replica is in the serving state"
+          description: >-
+            Every replica is starting or draining. During a rolling update this is a deploy with no
+            surge capacity; outside one it means the fleet is down. Check the Lifecycle state
+            timeline on the dashboard.
+
+      - alert: CyberChefMCPDrainStuck
+        # Longer than any sane terminationGracePeriodSeconds (the chart default is 45s), so this
+        # cannot fire on a healthy roll.
+        expr: cyberchef_mcp_lifecycle_state{state="draining"} > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Replica has been draining for 5 minutes"
+          description: >-
+            {{ $labels.instance }} received SIGTERM but has not exited. It will be SIGKILLed at
+            terminationGracePeriodSeconds, cutting off whatever it was still executing. Usually a
+            long-running operation outlasting CYBERCHEF_DRAIN_TIMEOUT_MS.
+
+      - alert: CyberChefMCPRestartLoop
+        expr: >-
+          sum by (instance) (resets(cyberchef_mcp_process_uptime_seconds[15m])) >= 3
+        labels:
+          severity: warning
+        annotations:
+          summary: "Replica restarting repeatedly"
+          description: >-
+            {{ $labels.instance }} restarted 3 or more times in 15 minutes. If it coincides with
+            first use of cyberchef_search, batch search or a saved recipe, suspect the container
+            memory limit: that is when the Node API loads all 505 operation implementations, and a
+            limit sized for the idle process OOMs exactly there rather than at startup.
+
+      # ---- correctness --------------------------------------------------------------------
+      - alert: CyberChefMCPHighFailureRate
+        expr: >-
+          sum(rate(cyberchef_mcp_tool_failures_total[5m]))
+            / clamp_min(sum(rate(cyberchef_mcp_tool_calls_total[5m])), 1e-9) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "More than 5% of tool executions are failing"
+          description: >-
+            Check the Tool leaderboard on the dashboard: a single tool coloured red inside
+            otherwise-healthy traffic is usually one caller sending bad input, while a broad rise
+            is usually a limit being hit.
+
+      - alert: CyberChefMCPToolFailing
+        # Per-tool, so a single broken operation is visible even when it is a rounding error in the
+        # aggregate above. Gated on a real call rate so one failure on an idle tool cannot page.
+        expr: >-
+          (sum by (tool) (rate(cyberchef_mcp_tool_failures_total[10m]))
+            / clamp_min(sum by (tool) (rate(cyberchef_mcp_tool_calls_total[10m])), 1e-9) > 0.5)
+          and (sum by (tool) (rate(cyberchef_mcp_tool_calls_total[10m])) > 0.05)
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Tool {{ $labels.tool }} is failing more than half the time"
+          description: >-
+            {{ $labels.tool }} has a majority-failure rate at a non-trivial call rate. Either the
+            operation is broken or a client is calling it wrongly and retrying.
+
+      # ---- saturation ---------------------------------------------------------------------
+      - alert: CyberChefMCPQuotaSaturated
+        # The limit is PER TENANT, so comparing the process-wide in-flight count against it is only
+        # meaningful when ONE tenant is active. Guarded accordingly rather than left to misfire on
+        # every multi-tenant deployment.
+        expr: >-
+          (cyberchef_mcp_operations_in_flight >= cyberchef_mcp_max_concurrent_operations)
+          and (cyberchef_mcp_active_tenants <= 1)
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Concurrency quota saturated on {{ $labels.instance }}"
+          description: >-
+            In-flight operations have sat at the per-tenant limit for 5 minutes with a single
+            active tenant, so callers are being refused. Raise CYBERCHEF_MAX_CONCURRENT_OPS or add
+            replicas.
+
+      - alert: CyberChefMCPCacheThrashing
+        # Full cache AND a poor hit rate. Either alone is fine: a full cache with a good hit rate is
+        # a cache working, and a poor hit rate on a cold cache is a cache warming.
+        expr: >-
+          (cyberchef_mcp_cache_bytes / clamp_min(cyberchef_mcp_cache_max_bytes, 1) > 0.98)
+          and on (instance) (
+            sum by (instance) (rate(cyberchef_mcp_tool_cache_hits_total[15m]))
+              / clamp_min(sum by (instance) (rate(cyberchef_mcp_tool_calls_total[15m])), 1e-9) < 0.05
+          )
+        for: 30m
+        labels:
+          severity: info
+        annotations:
+          summary: "Operation cache is full and rarely hitting on {{ $labels.instance }}"
+          description: >-
+            The working set no longer fits, so entries are evicted before they are reused. Raise
+            CYBERCHEF_CACHE_MAX_SIZE, or accept the miss rate -- this is a cost signal, not a fault.
+
+      # ---- configuration ------------------------------------------------------------------
+      - alert: CyberChefMCPVersionSkew
+        expr: count(count by (version) (cyberchef_mcp_build_info)) > 1
+        for: 30m
+        labels:
+          severity: info
+        annotations:
+          summary: "More than one CyberChef MCP version is serving"
+          description: >-
+            Expected during a rollout. Firing after 30 minutes usually means a rollout stalled
+            part-way -- check the deployment rather than the server.

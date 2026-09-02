@@ -50,8 +50,11 @@ import {
 import { audit, OUTCOME } from "./lib/audit.mjs";
 import { loadTenancyConfig, assertTenancyConfig, tenantOf } from "./lib/tenancy.mjs";
 import {
-    isHealthPath, healthResponse, markServing, markDraining, HEALTH_PATHS
+    isHealthPath, healthResponse, markServing, markDraining, HEALTH_PATHS, lifecycleState
 } from "./lib/health.mjs";
+import {
+    metricsEnabled, isMetricsPath, renderMetrics, METRICS_CONTENT_TYPE
+} from "./lib/prometheus.mjs";
 
 /**
  * Whether a path is the RFC 9728 discovery document.
@@ -280,6 +283,10 @@ function sendJsonRpcError(res, status, code, message, id = null) {
  * @param {number} options.maxBodyBytes - Maximum accepted request body (default 4 MiB).
  * @param {number} options.sessionTimeoutMs - Idle-session reap threshold.
  * @param {string[]} options.allowedHosts - Host header allowlist for DNS-rebinding protection.
+ * @param {Object} [options.metricsSources] - Live collectors for the Prometheus endpoint
+ *   (`{quotaTracker, rateLimiter, operationCache, telemetryCollector}`). Passed in rather than
+ *   imported so the transport reads the SAME instances the server is using; a second set of
+ *   counters constructed here would report zero forever and look like an idle server.
  * @returns {Promise<Object>} `{ transport, httpServer, sessions?, closeAll? }`.
  */
 export async function createTransport(options = {}) {
@@ -297,6 +304,9 @@ export async function createTransport(options = {}) {
             return Number.isNaN(parsed) ? fallback : parsed;
         };
         const port = numeric(options.port, "CYBERCHEF_HTTP_PORT", 3000);
+        // Live collectors for /metrics, or null. Passed in, never constructed here: the whole
+        // point is to report the instances the server is actually using.
+        const metricsSources = options.metricsSources || null;
         // The MCP endpoint path. Configurable rather than hardcoded so the server can be mounted
         // elsewhere, but checked, so an unrelated request (a browser's GET /favicon.ico) gets a
         // plain 404 instead of being routed into the transport and answered with the confusing
@@ -647,6 +657,27 @@ export async function createTransport(options = {}) {
                     return;
                 }
 
+                // Prometheus scrape, served before the auth gate for the same reason the probes
+                // are: a scraper carries no bearer token.
+                //
+                // But unlike the probes this is OFF unless CYBERCHEF_METRICS_ENABLED=true, and
+                // that asymmetry is deliberate. A probe answers "should I get traffic" in one
+                // word; a scrape reports which tools are used, how often, how large the inputs
+                // are and how many tenants are active. That is worth having and it is also
+                // reconnaissance, so it is opt-in and documented as belonging on an internal
+                // network. When disabled the path is not special-cased at all -- it falls through
+                // to the ordinary 404, so a probe cannot distinguish "metrics off" from "not this
+                // server".
+                if (metricsSources && metricsEnabled() && isMetricsPath(path)) {
+                    const body = renderMetrics({ ...metricsSources, lifecycleState: lifecycleState() });
+                    res.writeHead(200, {
+                        "Content-Type": METRICS_CONTENT_TYPE,
+                        "Cache-Control": "no-store"
+                    });
+                    res.end(body);
+                    return;
+                }
+
                 if (authConfig.enabled && isProtectedResourceMetadataPath(path)) {
                     const doc = JSON.stringify(protectedResourceMetadata(authConfig));
                     res.writeHead(200, {
@@ -908,6 +939,11 @@ export async function createTransport(options = {}) {
             markServing();
             logger.info(`Streamable HTTP transport listening on ${host}:${port}${mcpPath}`);
             logger.info(`  health: ${HEALTH_PATHS.LIVE}, ${HEALTH_PATHS.READY}, ${HEALTH_PATHS.STARTUP} (unauthenticated)`);
+            if (metricsSources && metricsEnabled()) {
+                // Logged loudly, and it says "unauthenticated" out loud, because an operator who
+                // enables this and exposes the port has published their traffic profile.
+                logger.info("  metrics: /metrics (unauthenticated -- keep on an internal network)");
+            }
             // Said at startup, on the transport where replicas are possible, because the failure
             // it warns about is otherwise discovered as missing data. v2.6.0 detects a clobber
             // rather than preventing it: the storage is a file, and it is not being moved into a

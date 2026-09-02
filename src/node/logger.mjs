@@ -8,6 +8,7 @@
  */
 
 import pino from "pino";
+import { traceFields } from "./lib/otel.mjs";
 import { randomUUID } from "crypto";
 
 /**
@@ -33,6 +34,17 @@ function createLogger(options = {}) {
             service: "cyberchef-mcp",
             version: options.version || "unknown"
         },
+        // Trace correlation, applied to EVERY log line rather than to the three request helpers.
+        //
+        // A mixin runs per log call, so a line emitted deep inside an operation carries the same
+        // trace id as the request that caused it -- which is the entire value of correlation. The
+        // alternative, threading the ids through each call site, correlates only the lines someone
+        // remembered to change, and the useful line during an incident is invariably one of the
+        // others.
+        //
+        // Returns {} when no OpenTelemetry SDK is recording, so an uninstrumented deployment gains
+        // no fields at all rather than a pair of nulls every query then has to filter out.
+        mixin: traceFields,
         ...options
     // STDERR, via an explicit destination.
     //

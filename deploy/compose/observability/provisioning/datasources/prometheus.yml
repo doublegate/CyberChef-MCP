@@ -1,0 +1,26 @@
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: cyberchef-prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    jsonData:
+      httpMethod: POST
+      # Should match Prometheus's scrape_interval, or Grafana's $__rate_interval computes a window
+      # narrower than the data, and every rate() silently returns nothing.
+      timeInterval: 15s
+
+      # EXEMPLARS: the link from a latency bucket to the trace that produced it.
+      #
+      # Commented out because it needs a tracing backend that this stack does not run -- the server
+      # depends on @opentelemetry/api only and never registers an SDK, so there are no traces
+      # unless an operator supplies one. Uncomment both this block and a Tempo datasource once you
+      # have one, and the magenta dots on the latency heatmap become clickable.
+      #
+      # exemplarTraceIdDestinations:
+      #   - name: trace_id
+      #     datasourceUid: tempo
+      #     urlDisplayLabel: "View trace"

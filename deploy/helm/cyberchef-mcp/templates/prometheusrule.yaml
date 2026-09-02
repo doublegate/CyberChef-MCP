@@ -1,0 +1,109 @@
+{{/*
+PrometheusRule carrying the alerting rules from deploy/grafana/alerts.yaml.
+
+The expressions are duplicated here rather than loaded from that file, because Helm cannot read
+outside the chart directory -- so the two must be kept in step by hand, and the alert names are
+identical so a diff is obvious. What is NOT duplicated is the reasoning: deploy/grafana/README.md
+explains why there is no latency alert and no per-tenant alert, and why two of these rules are
+guarded the way they are.
+
+Every expression here is validated by `promtool check rules` against deploy/grafana/alerts.yaml.
+*/}}
+{{- if and .Values.metrics.enabled .Values.monitoring.prometheusRule.enabled }}
+{{- if not (.Capabilities.APIVersions.Has "monitoring.coreos.com/v1") }}
+{{- fail "monitoring.prometheusRule.enabled=true but the monitoring.coreos.com/v1 API is not available in this cluster. Install the Prometheus Operator CRDs, or load deploy/grafana/alerts.yaml into Prometheus directly." }}
+{{- end }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "cyberchef-mcp.fullname" . }}
+  labels:
+    {{- include "cyberchef-mcp.labels" . | nindent 4 }}
+    {{- with .Values.monitoring.prometheusRule.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: cyberchef-mcp
+      interval: 30s
+      rules:
+        - alert: CyberChefMCPDown
+          expr: up{job=~".*{{ include "cyberchef-mcp.fullname" . }}.*"} == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "CyberChef MCP instance is not being scraped"
+            description: "{{`{{ $labels.instance }}`}} has failed scraping for 2 minutes."
+
+        - alert: CyberChefMCPNoneServing
+          expr: sum(cyberchef_mcp_lifecycle_state{state="serving"}) == 0
+          for: 3m
+          labels:
+            severity: critical
+          annotations:
+            summary: "No CyberChef MCP replica is in the serving state"
+            description: "Every replica is starting or draining. During a rolling update this is a deploy with no surge capacity; outside one the fleet is down."
+
+        - alert: CyberChefMCPDrainStuck
+          expr: cyberchef_mcp_lifecycle_state{state="draining"} > 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Replica has been draining for 5 minutes"
+            description: "{{`{{ $labels.instance }}`}} received SIGTERM but has not exited. It will be SIGKILLed at terminationGracePeriodSeconds ({{ .Values.terminationGracePeriodSeconds }}s)."
+
+        - alert: CyberChefMCPRestartLoop
+          expr: sum by (instance) (resets(cyberchef_mcp_process_uptime_seconds[15m])) >= 3
+          labels:
+            severity: warning
+          annotations:
+            summary: "Replica restarting repeatedly"
+            description: "{{`{{ $labels.instance }}`}} restarted 3 or more times in 15 minutes. If it coincides with first use of cyberchef_search or a saved recipe, suspect the memory limit ({{ .Values.resources.limits.memory }}): that is when the Node API loads all 505 operations."
+
+        - alert: CyberChefMCPHighFailureRate
+          expr: sum(rate(cyberchef_mcp_tool_failures_total[5m])) / clamp_min(sum(rate(cyberchef_mcp_tool_calls_total[5m])), 1e-9) > 0.05
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "More than 5% of tool executions are failing"
+            description: "Check the Tool leaderboard: one tool red inside healthy traffic is usually a caller sending bad input; a broad rise is usually a limit being hit."
+
+        - alert: CyberChefMCPToolFailing
+          expr: (sum by (tool) (rate(cyberchef_mcp_tool_failures_total[10m])) / clamp_min(sum by (tool) (rate(cyberchef_mcp_tool_calls_total[10m])), 1e-9) > 0.5) and (sum by (tool) (rate(cyberchef_mcp_tool_calls_total[10m])) > 0.05)
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Tool {{`{{ $labels.tool }}`}} is failing more than half the time"
+            description: "Majority-failure rate at a non-trivial call rate: either the operation is broken or a client is calling it wrongly and retrying."
+
+        - alert: CyberChefMCPQuotaSaturated
+          expr: (cyberchef_mcp_operations_in_flight >= cyberchef_mcp_max_concurrent_operations) and (cyberchef_mcp_active_tenants <= 1)
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Concurrency quota saturated on {{`{{ $labels.instance }}`}}"
+            description: "In-flight operations have sat at the per-tenant limit for 5 minutes with a single active tenant, so callers are being refused. Raise CYBERCHEF_MAX_CONCURRENT_OPS or add replicas."
+
+        - alert: CyberChefMCPCacheThrashing
+          expr: (cyberchef_mcp_cache_bytes / clamp_min(cyberchef_mcp_cache_max_bytes, 1) > 0.98) and on (instance) (sum by (instance) (rate(cyberchef_mcp_tool_cache_hits_total[15m])) / clamp_min(sum by (instance) (rate(cyberchef_mcp_tool_calls_total[15m])), 1e-9) < 0.05)
+          for: 30m
+          labels:
+            severity: info
+          annotations:
+            summary: "Operation cache is full and rarely hitting on {{`{{ $labels.instance }}`}}"
+            description: "The working set no longer fits, so entries are evicted before reuse. A cost signal, not a fault."
+
+        - alert: CyberChefMCPVersionSkew
+          expr: count(count by (version) (cyberchef_mcp_build_info)) > 1
+          for: 30m
+          labels:
+            severity: info
+          annotations:
+            summary: "More than one CyberChef MCP version is serving"
+            description: "Expected during a rollout. After 30 minutes it usually means one stalled part-way."
+{{- end }}

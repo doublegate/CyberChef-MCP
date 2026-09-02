@@ -9,7 +9,8 @@ server is a service several people or machines talk to.
 
 | | |
 |---|---|
-| [`helm/cyberchef-mcp`](helm/cyberchef-mcp) | Kubernetes chart: probes, drain, HPA, PDB, ingress |
+| [`helm/cyberchef-mcp`](helm/cyberchef-mcp) | Kubernetes chart: probes, drain, HPA, PDB, ingress, ServiceMonitor |
+| [`grafana/`](grafana) | Dashboard, alert rules, and the metric reference — see its README |
 | [`compose/docker-compose.yml`](compose/docker-compose.yml) | Docker Compose, for a single host |
 
 ## What scales, and what does not

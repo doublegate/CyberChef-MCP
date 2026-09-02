@@ -1,0 +1,48 @@
+{{/*
+ServiceMonitor for the Prometheus Operator.
+
+Guarded on metrics.enabled as well as its own flag, and that guard is the point: a ServiceMonitor
+pointing at /metrics while the server has metrics disabled produces a target that is permanently
+down. That is worse than no target -- an absent target is obviously absent, whereas a down one
+looks like an outage and will be chased as one.
+
+Requires the Prometheus Operator CRDs. Without them, use monitoring.podAnnotations instead for the
+classic prometheus.io/scrape annotations.
+*/}}
+{{- if and .Values.metrics.enabled .Values.monitoring.serviceMonitor.enabled }}
+{{- if not (.Capabilities.APIVersions.Has "monitoring.coreos.com/v1") }}
+{{- fail "monitoring.serviceMonitor.enabled=true but the monitoring.coreos.com/v1 API is not available in this cluster. Install the Prometheus Operator CRDs, or use monitoring.podAnnotations instead." }}
+{{- end }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "cyberchef-mcp.fullname" . }}
+  {{- with .Values.monitoring.serviceMonitor.namespace }}
+  namespace: {{ . }}
+  {{- end }}
+  labels:
+    {{- include "cyberchef-mcp.labels" . | nindent 4 }}
+    {{- with .Values.monitoring.serviceMonitor.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "cyberchef-mcp.selectorLabels" . | nindent 6 }}
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: {{ .Values.monitoring.serviceMonitor.interval }}
+      scrapeTimeout: {{ .Values.monitoring.serviceMonitor.scrapeTimeout }}
+      {{- with .Values.monitoring.serviceMonitor.relabelings }}
+      relabelings:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.monitoring.serviceMonitor.metricRelabelings }}
+      metricRelabelings:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+{{- end }}

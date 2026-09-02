@@ -10,7 +10,7 @@
 
 services:
   cyberchef-mcp:
-    image: ghcr.io/doublegate/cyberchef-mcp_v2:2.6.0
+    image: ghcr.io/doublegate/cyberchef-mcp_v2:2.7.0
     # Pinned, not `latest`: a compose file that floats its tag cannot be rolled back to a known
     # state, and `latest` moves on every release.
 

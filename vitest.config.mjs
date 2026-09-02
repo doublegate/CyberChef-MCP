@@ -78,7 +78,7 @@ export default defineConfig({
             // ten healthy ones before v2.0.0:
             thresholds: {
                 // The whole measured surface. Each sits just under its own actual figure
-                // (95.71 / 88.79 / 96.34 / 96.57) so a real regression trips it.
+                // (95.78 / 89.97 / 96.62 / 96.63 as of v2.7.0) so a real regression trips it.
                 //
                 // NOTE the order. Vitest takes these as named keys; the docs quote them in the
                 // conventional statements/branches/functions/lines order, so the gate written here
@@ -87,7 +87,7 @@ export default defineConfig({
                 // swapped once, which is why this note exists.
                 lines: 96,
                 functions: 96,
-                branches: 88,
+                branches: 89,
                 statements: 95,
 
                 // The extracted pure-logic modules are held near-perfect, because they are pure

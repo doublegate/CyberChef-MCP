@@ -1,0 +1,15 @@
+apiVersion: 1
+
+providers:
+  - name: cyberchef-mcp
+    orgId: 1
+    folder: CyberChef
+    type: file
+    disableDeletion: false
+    # Edits made in the UI are overwritten on the next provisioning pass. That is the point: the
+    # dashboard in git is the source of truth, and a change worth keeping belongs in
+    # deploy/grafana/cyberchef-mcp-dashboard.json, not in a running container's database.
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false
