@@ -45,6 +45,11 @@ forward.
   - The release asset and both Trivy scans referenced `:latest` rather than the version just
     built, so a v1.9.x release could have attached and scanned a **v2** image. Now pinned to the
     tag's own version.
+  - `aquasecurity/trivy-action@0.28.0` **no longer exists** — Aqua retagged to `v`-prefixed
+    releases, so the tag 404s and the job fails at *Set up job* before anything runs. This was
+    fixed on the v2 line in v2.0.0 and never backported, which meant the v1.9.x line could not cut
+    a release at all. Re-pinned to `v0.36.0`. Discovered by the first v1.9.1 release attempt
+    failing.
 
 
 ## [1.9.0] - 2026-02-05

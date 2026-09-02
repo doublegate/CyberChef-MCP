@@ -159,7 +159,7 @@ jobs:
       # - Compliance documentation (SOC 2, ISO 27001, NIST SSDF)
       # - Manual verification and archival
       - name: Generate SBOM with Trivy (CycloneDX artifact)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: '${{ env.DOCKERHUB_REGISTRY }}/${{ env.DOCKERHUB_IMAGE_NAME }}:${{ steps.meta-dockerhub.outputs.version }}'
           format: 'cyclonedx'
@@ -168,7 +168,7 @@ jobs:
 
       # Security: Run vulnerability scan on release image (scanning Docker Hub image)
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: '${{ env.DOCKERHUB_REGISTRY }}/${{ env.DOCKERHUB_IMAGE_NAME }}:${{ steps.meta-dockerhub.outputs.version }}'
           format: 'sarif'
