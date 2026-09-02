@@ -9,8 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2.8.1] - 2026-09-02
 
-A CI correctness release. **No runtime code changed** — the server, the image contents and every
-operation are byte-for-byte what v2.8.0 shipped. What changed is what CI measures.
+A CI correctness release. **No functional runtime code or dependency changed** — every operation,
+the engine and the resolved dependency tree are what v2.8.0 shipped. What changed is what CI
+measures. (Not byte-for-byte: the version string is read at startup and surfaces in the MCP
+`serverInfo`, the startup log and the `cyberchef_mcp_build_info` metric, so a running v2.8.1 server
+reports `2.8.1`.)
 
 ### Fixed
 
