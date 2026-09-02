@@ -1,6 +1,6 @@
 {
   "name": "cyberchef-mcp",
-  "version": "2.6.0",
+  "version": "2.7.0",
   "description": "MCP server exposing CyberChef's 504 data-transformation operations -- encryption, encoding, compression, forensics -- as tools for AI assistants.",
   "author": "n1474335 <n1474335@gmail.com>",
   "homepage": "https://github.com/doublegate/CyberChef-MCP#readme",
@@ -119,6 +119,7 @@
     "@modelcontextprotocol/server": "^2.0.0",
     "@natlibfi/loglevel-message-prefix": "^3.0.1",
     "@noble/hashes": "2.3.0",
+    "@opentelemetry/api": "^1.9.1",
     "@wavesenterprise/crypto-gost-js": "^2.1.0-RC1",
     "@xmldom/xmldom": "^0.8.15",
     "argon2-browser": "^1.18.0",

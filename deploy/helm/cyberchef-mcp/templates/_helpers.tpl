@@ -64,6 +64,14 @@ Environment shared by the Deployment and StatefulSet paths, so the two cannot dr
   value: {{ mul .Values.drain.timeoutSeconds 1000 | quote }}
 - name: CYBERCHEF_LOG_LEVEL
   value: {{ .Values.logLevel | quote }}
+{{- if .Values.metrics.enabled }}
+# Set only when enabled, rather than always with a "false". The server tests for the exact
+# string "true", so an explicit false and an absent variable are the same thing -- and an env
+# var that reads CYBERCHEF_METRICS_ENABLED=false in `kubectl describe` invites someone to flip
+# it without reading what it exposes.
+- name: CYBERCHEF_METRICS_ENABLED
+  value: "true"
+{{- end }}
 {{- if .Values.persistence.enabled }}
 - name: CYBERCHEF_RECIPE_STORAGE
   value: {{ printf "%s/recipes.json" .Values.persistence.mountPath | quote }}
@@ -122,4 +130,19 @@ livenessProbe:
   periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
   timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
   failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
+{{- end }}
+
+{{/*
+Classic prometheus.io scrape annotations, for clusters without the Prometheus Operator.
+
+Emitted only when BOTH metrics and the annotations are asked for: annotations pointing a scraper
+at a path that 404s produce a permanently-down target, which is worse than no target at all
+because it looks like an outage.
+*/}}
+{{- define "cyberchef-mcp.scrapeAnnotations" -}}
+{{- if and .Values.metrics.enabled .Values.monitoring.podAnnotations }}
+prometheus.io/scrape: "true"
+prometheus.io/path: "/metrics"
+prometheus.io/port: {{ .Values.service.port | quote }}
+{{- end }}
 {{- end }}

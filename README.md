@@ -4,7 +4,7 @@ This project provides a **Model Context Protocol (MCP)** server interface for **
 
 By running this server, you enable AI assistants (like Claude, Cursor AI, and others) to natively utilize CyberChef's extensive library of **504 data manipulation operations**—including encryption, encoding, compression, and forensic analysis—as executable tools.
 
-**Latest Release:** v2.6.0 | [Release Notes](docs/releases/v2.6.0.md) | [Tutorial](docs/guides/tutorial.md) | [Examples](examples/) | [Breaking Changes](docs/v2.0.0-breaking-changes.md) | [Security Policy](SECURITY.md)
+**Latest Release:** v2.7.0 | [Release Notes](docs/releases/v2.7.0.md) | [Tutorial](docs/guides/tutorial.md) | [Examples](examples/) | [Breaking Changes](docs/v2.0.0-breaking-changes.md) | [Security Policy](SECURITY.md)
 
 **Upstream base:** GCHQ CyberChef **v11.4.0** | **Licence:** GPL-3.0-or-later (from v2.0.0; v1.9.x and earlier remain Apache-2.0)
 
@@ -48,6 +48,7 @@ See [Upstream Sync Guide](docs/guides/upstream-sync-guide.md) for details on the
 ### MCP Tools
 The server exposes CyberChef operations as MCP tools:
 
+*   **Observable** (v2.7.0): a dependency-free Prometheus endpoint at `/metrics` (20 metric families, **off by default** — unlike the health probes it reports which tools are used, how often and how large the inputs are, which is a reconnaissance surface), OpenTelemetry spans following the MCP semantic conventions, and `trace_id`/`span_id` on every log line. It adds **one** package: the OTel *API*, not the SDK — measured at 1 package / 2.6 MB / +9 ms against the SDK's 71 packages / 50 MB / +100 ms, which would have handed back more than half of v2.6.0's startup work on every stdio launch. You supply the SDK, so every OTLP backend works rather than a chosen few. Ships a [Grafana dashboard, alert rules and a runnable Prometheus stack](deploy/grafana/) — all executed against a live server rather than reviewed. Tool arguments are **never** recorded: the conventions mark them Opt-In, and for this server the arguments *are* the sensitive material.
 *   **OAuth 2.1 authentication on HTTP** (v2.5.0): the server acts as an OAuth 2.1 **Resource Server** — RFC 9728 Protected Resource Metadata, JWKS-based bearer validation, and RFC 8707 audience binding, which is the check that stops a token minted for another service being replayed here. Scope-based RBAC with three scopes (`cyberchef:read`, `cyberchef:write`, `cyberchef:network`), where the scope a tool needs is *derived from its annotations* rather than a table that goes stale. Audit logging for who called what. **Off unless `CYBERCHEF_AUTH_ISSUER` is set**, and deliberately not applied to stdio — the MCP specification says stdio SHOULD NOT use OAuth, because a bearer token protects nothing when the client already owns the process.
 *   **Multi-tenancy** (v2.5.0): the operation cache, recipe store, concurrency pool and audit trail are isolated per tenant, with the tenant read from a claim on an already-verified token (`CYBERCHEF_TENANT_CLAIM`) — never from a header the caller controls. Without it, any caller on a shared HTTP deployment could list, modify and delete any other caller's saved recipes, and `clear()` destroyed every tenant's at once. **Off unless configured**, and configuring it without `CYBERCHEF_AUTH_ISSUER` is a startup error rather than a silent downgrade.
 *   **Starts in ~185 ms** (v2.6.0): it used to take ~1.3 seconds, of which ~1.15 s was importing all 505 operation implementations before answering anything — paid on every launch, on stdio, which is how every editor starts the server. The 505-operation *barrel* is now loaded only by the three tools that need it (`cyberchef_search`, batch search, and saved-recipe execution). `tools/list` is built from metadata, and an ordinary operation call loads just the one operation it runs — verified: `cyberchef_bake` completes without the barrel being loaded at all. A background warm-up was tried, measured, and removed: module loading blocks the event loop, so it just moved the cost in front of the first request.
@@ -157,13 +158,13 @@ For environments without direct GHCR access, download the pre-built Docker image
 1.  **Download the tarball** (approximately 196 MB compressed; measured, not estimated):
     ```bash
     # Download from GitHub Releases
-    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v2.6.0/cyberchef-mcp-v2.6.0-docker-image.tar.gz
+    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v2.7.0/cyberchef-mcp-v2.7.0-docker-image.tar.gz
     ```
 
 2.  **Load the image into Docker:**
 
     ```bash
-    docker load < cyberchef-mcp-v2.6.0-docker-image.tar.gz
+    docker load < cyberchef-mcp-v2.7.0-docker-image.tar.gz
     ```
 
 3.  **Tag for easier usage:**
@@ -590,7 +591,7 @@ CyberChef MCP Server has a comprehensive development roadmap spanning **19 relea
 | **Phase 2: Enhancement** | v1.5.0 - v1.7.3 | Q2 2026 | Streaming, recipe management, batch processing | **Completed** |
 | **Phase 3: Maturity** | v1.8.0 - v2.0.0 | Q3 2026 | API stabilization, upstream catch-up, relicensing, v2.0.0 | **v2.0.0 Released** |
 | **Phase 4: Expansion** | v2.2.0 - v2.4.0 | Q4 2026 | Multi-modal (**v2.2.0 shipped**), protocol currency and transports (**v2.3.0 shipped**), the tool registry and its first four tools (**v2.4.0 shipped**) | Complete |
-| **Phase 5: Enterprise** | v2.5.0 - v2.7.0 | Q1 2027 | OAuth 2.1, RBAC, audit logging and multi-tenancy (**v2.5.0 shipped**), horizontal scaling and deployment (**v2.6.0 shipped**), then observability | In progress |
+| **Phase 5: Enterprise** | v2.5.0 - v2.7.0 | Q1 2027 | OAuth 2.1, RBAC, audit logging and multi-tenancy (**v2.5.0 shipped**), horizontal scaling and deployment (**v2.6.0 shipped**), metrics, tracing and dashboards (**v2.7.0 shipped**) | Complete |
 | **Phase 6: Evolution** | v2.8.0 - v3.0.0 | Q2-Q3 2027 | Edge deployment, AI-native features, v3.0.0 | Planned |
 
 **External project integration — what it actually produced.** The planning tree

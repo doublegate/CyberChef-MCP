@@ -26,7 +26,7 @@ image:
   pullPolicy: IfNotPresent
   # Pinned rather than "latest". A chart that floats its tag cannot be rolled back to a known
   # state, and `latest` moves on every release.
-  tag: "2.6.0"
+  tag: "2.7.0"
 
 imagePullSecrets: []
 nameOverride: ""
@@ -169,6 +169,48 @@ tenancy:
 toolSurface: ""
 
 logLevel: info
+
+# Prometheus metrics (v2.7.0).
+#
+# OFF BY DEFAULT, and that is a security decision rather than caution about cost.
+#
+# The health probes are unauthenticated and always on, because a kubelet probe carries no bearer
+# token and a probe answers "should I get traffic" in one word. /metrics is unauthenticated for the
+# same reason -- a Prometheus scraper carries no token either -- but it says considerably more:
+# which tools are being used, how often, how large the inputs are, how many tenants are active.
+# That is a useful reconnaissance surface, so it is opt-in and belongs on an internal network or
+# behind a NetworkPolicy.
+#
+# What it never exposes: tenant identifiers, tool arguments, subject digests, recipe names, error
+# messages. Tenant COUNT yes; tenant NAMES no.
+metrics:
+  enabled: false
+
+# How Prometheus finds the endpoint above. Both paths are guarded on metrics.enabled: pointing a
+# scraper at a /metrics that 404s produces a permanently-down target, which is worse than no target
+# because it looks like an outage and gets chased as one.
+monitoring:
+  serviceMonitor:
+    # Needs the Prometheus Operator CRDs. The template fails rendering with an explanation if the
+    # monitoring.coreos.com/v1 API is absent, rather than applying an object the cluster drops.
+    enabled: false
+    # Empty means the release namespace. Set it if your Prometheus only watches one namespace.
+    namespace: ""
+    # Most Prometheus Operator installs select ServiceMonitors by a label; without the right one
+    # here the object is created and then silently ignored. Check your Prometheus CR's
+    # serviceMonitorSelector before assuming the default works.
+    additionalLabels: {}
+    interval: 30s
+    scrapeTimeout: 10s
+    relabelings: []
+    metricRelabelings: []
+  prometheusRule:
+    # Ships the 9 alerting rules from deploy/grafana/alerts.yaml as a PrometheusRule.
+    enabled: false
+    additionalLabels: {}
+  # Classic prometheus.io/scrape pod annotations, for clusters WITHOUT the Prometheus Operator.
+  # Use one or the other; both at once means two scrapes of the same target.
+  podAnnotations: false
 
 # Extra environment variables, for anything not modelled above.
 extraEnv: []

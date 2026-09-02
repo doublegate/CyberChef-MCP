@@ -1,0 +1,74 @@
+# Prometheus + Grafana, wired to the CyberChef MCP server.
+#
+#   docker compose -f deploy/compose/docker-compose.yml \
+#                  -f deploy/compose/docker-compose.observability.yml up
+#
+# Then open http://127.0.0.1:3001 (anonymous, admin role -- see the note below) and the dashboard
+# is already there under the CyberChef folder. Prometheus is on http://127.0.0.1:9090.
+#
+# WHY THIS FILE EXISTS
+# --------------------
+# A dashboard nobody has run is a JSON file with opinions in it. This stack is how the dashboard
+# and the alert rules in deploy/grafana/ were actually verified: every query executed against a
+# real scrape of a real server, rather than being reviewed by eye.
+#
+# It is a DEVELOPMENT stack. Do not deploy it: Grafana runs unauthenticated below, and the metrics
+# endpoint it scrapes is unauthenticated by design.
+
+services:
+  cyberchef-mcp:
+    environment:
+      # /metrics is OFF by default and this is what turns it on.
+      #
+      # Off by default is a security decision, not caution about cost. A health probe answers
+      # "should I get traffic" in one word; a scrape reports which tools are being used, how often,
+      # how large the inputs are and how many tenants are active. That is a useful reconnaissance
+      # surface, so unlike the probes it is opt-in -- and it is unauthenticated when on, because a
+      # Prometheus scraper carries no bearer token. Keep it on an internal network.
+      CYBERCHEF_METRICS_ENABLED: "true"
+
+  prometheus:
+    image: prom/prometheus:v3.0.1
+    ports:
+      # Loopback only. Prometheus has no authentication and its API can read every metric.
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # The SAME rules file the Helm chart ships as a PrometheusRule, so what is tested here is
+      # what is deployed rather than a copy that drifts.
+      - ../grafana/alerts.yaml:/etc/prometheus/rules/alerts.yaml:ro
+      - prometheus-data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=24h
+      # Required for exemplars. Harmless with none: the storage is allocated lazily.
+      - --enable-feature=exemplar-storage
+    depends_on:
+      cyberchef-mcp:
+        condition: service_healthy
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    ports:
+      - "127.0.0.1:3001:3000"
+    environment:
+      # ANONYMOUS ADMIN. Acceptable only because this binds to loopback and holds nothing but
+      # metrics from a server you are running yourself. Never copy these three lines anywhere else.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_USERS_DEFAULT_THEME: dark
+      # Open the dashboard directly instead of the empty home page.
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/cyberchef-mcp-dashboard.json
+    volumes:
+      - ./observability/provisioning:/etc/grafana/provisioning:ro
+      # Mounted read-only from the repository, so the dashboard under test is the one in git.
+      - ../grafana:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
+volumes:
+  prometheus-data:
+  grafana-data:

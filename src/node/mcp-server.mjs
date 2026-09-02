@@ -226,6 +226,7 @@ import {
     executeWithStreamingProgress
 } from "./streaming.mjs";
 import { createTransport, getTransportType } from "./transports.mjs";
+import { withServerSpan, ATTR } from "./lib/otel.mjs";
 import {
     initWorkerPool,
     shouldUseWorker,
@@ -269,7 +270,7 @@ import {
 } from "./lib/config.mjs";
 import { LRUCache } from "./lib/cache.mjs";
 import { MemoryMonitor } from "./lib/memory.mjs";
-import { TelemetryCollector } from "./lib/telemetry.mjs";
+import { TelemetryCollector, OVERFLOW_TOOL } from "./lib/telemetry.mjs";
 import { RateLimiter } from "./lib/rate-limit.mjs";
 import { ResourceQuotaTracker } from "./lib/quota.mjs";
 import { BatchProcessor } from "./lib/batch.mjs";
@@ -625,7 +626,7 @@ function annotationsForToolName(name) {
     const registryTool = toolRegistry.getByExposedName(name);
     if (registryTool) return registryTool.annotations || { readOnlyHint: false, openWorldHint: true };
     if (metaToolNames().includes(name)) return annotationsForMetaTool(name, metaToolTitle(name));
-    const opName = Object.keys(OperationConfig).find(k => sanitizeToolName(k) === name);
+    const opName = OPERATION_BY_TOOL_NAME.get(name);
     if (opName) return annotationsForOperation(opName);
     return { readOnlyHint: false, openWorldHint: true };
 }
@@ -640,6 +641,71 @@ const toolRegistry = buildRegistry({
         ...metaToolNames()
     ])
 });
+
+/**
+ * Sanitized operation tool name -> the `OperationConfig` key it came from.
+ *
+ * Built once. The mapping is derived from `OperationConfig`, which is a generated file loaded at
+ * startup and never mutated, so there is nothing for a cached index to go stale against -- and
+ * `buildRegistry` above already derives exactly these names for its reserved set.
+ *
+ * It replaces two linear scans that each sanitized all 504 keys on every `tools/call`: one in
+ * `toolDimension` and one in the dispatch below. Measured at **223 microseconds** per unresolved
+ * lookup, and `toolDimension` runs twice per request -- so roughly half a millisecond of string
+ * processing per call, all of it recomputing a constant.
+ *
+ * The worst case was the one that mattered. An unknown name scans the WHOLE catalogue before
+ * failing, so the cardinality defence added CPU amplification on precisely the attack path it
+ * exists to blunt. A Map lookup is O(1) whether the name resolves or not.
+ */
+const OPERATION_BY_TOOL_NAME = new Map(
+    Object.keys(OperationConfig)
+        .map(key => [sanitizeToolName(key), key])
+        .filter(([toolName]) => toolName)
+);
+
+/**
+ * A tool name safe to use as a telemetry dimension.
+ *
+ * Returns the name when it resolves to something this server actually dispatches, and
+ * `__other__` when it does not.
+ *
+ * WHY THIS EXISTS
+ * ---------------
+ * `request.params.name` is caller-controlled and reaches instrumentation BEFORE the unknown-tool
+ * check: any `cyberchef_*` name enters the operation branch, acquires quota, fails to resolve, and
+ * is recorded as a failure. So an unresolved name would otherwise become a Prometheus label and an
+ * OpenTelemetry span attribute.
+ *
+ * Unbounded, that is a cardinality denial of service against the MONITORING system rather than
+ * against this process: each distinct label set is a new time series that persists for the whole
+ * retention period, taking out dashboards for every other service sharing that Prometheus. Found
+ * in the very first scrape of a running server:
+ *
+ *     cyberchef_mcp_tool_calls_total{tool="cyberchef_definitely_not_a_tool"} 1
+ *
+ * A cap alone is not enough, and that is the subtle part. Capping distinct names still lets an
+ * attacker fill every slot before real traffic arrives, after which LEGITIMATE tools collapse into
+ * the overflow bucket -- the attack degrades exactly the metrics the cap was meant to protect.
+ * Resolving against the catalogue removes that, because an unknown name never occupies a slot.
+ *
+ * Resolution covers all three kinds this server dispatches -- registry tools, meta-tools and
+ * operations -- deliberately mirroring `annotationsForToolName`, because a dimension that
+ * disagreed with the authorisation decision about what a name IS would be its own bug.
+ *
+ * The raw name is untouched everywhere the caller can see it: the error response still says which
+ * tool was not found, and the audit trail still records what was asked for.
+ *
+ * @param {string} name - The caller-supplied tool name.
+ * @returns {string} The name, or `__other__`.
+ */
+function toolDimension(name) {
+    if (typeof name !== "string" || !name) return OVERFLOW_TOOL;
+    if (toolRegistry.getByExposedName(name)) return name;
+    if (metaToolNames().includes(name)) return name;
+    if (OPERATION_BY_TOOL_NAME.has(name)) return name;
+    return OVERFLOW_TOOL;
+}
 
 const handleListTools = async () => {
     // A fresh copy each call: annotations are attached below, and mutating the module-level
@@ -705,7 +771,43 @@ const handleListTools = async () => {
     return { tools };
 };
 
+/**
+ * `tools/call`, wrapped in an OpenTelemetry server span.
+ *
+ * A thin wrapper rather than instrumentation threaded through the body below, for two reasons.
+ * The body has a dozen early returns -- rate limit, quota, authorisation, each meta-tool -- and
+ * a span opened per branch would miss some of them the first time anyone adds a branch. And
+ * `context.with` makes the span ACTIVE for everything inside, so `traceFields()` in the logger
+ * correlates every log line the call produces without a single call site being changed.
+ *
+ * When no OpenTelemetry SDK is registered this costs approximately 0.08 microseconds, measured
+ * over 100,000 cycles. See lib/otel.mjs for why the SDK is not a dependency.
+ *
+ * @param {Object} request - The MCP request.
+ * @param {Object} extra - SDK-supplied request context.
+ * @param {Object} [ownerServer] - The Server instance handling this session.
+ * @returns {Promise<Object>} The MCP result.
+ */
 const handleCallTool = async (request, extra, ownerServer = server) => {
+    // The DIMENSION, not the raw name: `request.params.name` is caller-controlled and reaches
+    // here before the unknown-tool check. See toolDimension() for why a cap alone is not enough.
+    const toolName = toolDimension(request?.params?.name);
+    return withServerSpan({
+        method: "tools/call",
+        tool: toolName,
+        transport: getTransportType(),
+        // Sizes, never content. The arguments to a CyberChef tool are the sensitive material --
+        // a key, a password hash, the document being decoded -- so recording them would copy
+        // exactly what the caller is analysing into a backend with different retention and
+        // different access control. The convention marks those attributes Opt-In; this server
+        // does not opt in.
+        attributes: typeof request?.params?.arguments?.input === "string" ?
+            { [ATTR.INPUT_BYTES]: Buffer.byteLength(request.params.arguments.input, "utf8") } :
+            {}
+    }, () => handleCallToolInner(request, extra, ownerServer));
+};
+
+const handleCallToolInner = async (request, extra, ownerServer = server) => {
     const { name, arguments: args } = request.params;
 
     // Start request tracking
@@ -960,7 +1062,7 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
 
                 // Record telemetry
                 telemetryCollector.record({
-                    tool: name,
+                    tool: toolDimension(name),
                     duration,
                     inputSize: batchInputSize(args.operations),
                     outputSize: JSON.stringify(result).length,
@@ -982,7 +1084,7 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
             } catch (error) {
                 const duration = Date.now() - startTime;
                 telemetryCollector.record({
-                    tool: name,
+                    tool: toolDimension(name),
                     duration,
                     inputSize: batchInputSize(args.operations),
                     outputSize: 0,
@@ -1184,7 +1286,7 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
                     return { content: [{ type: "text", text: output }] };
                 }
 
-                const opName = Object.keys(OperationConfig).find(k => sanitizeToolName(k) === name);
+                const opName = OPERATION_BY_TOOL_NAME.get(name);
 
                 if (!opName) {
                     throw createOperationNotFoundError(name, { requestId });
@@ -1257,7 +1359,7 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
                         // Record telemetry
                         const duration = Date.now() - startTime;
                         telemetryCollector.record({
-                            tool: name,
+                            tool: toolDimension(name),
                             duration,
                             inputSize,
                             outputSize,
@@ -1348,7 +1450,7 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
 
                 // Record telemetry
                 telemetryCollector.record({
-                    tool: name,
+                    tool: toolDimension(name),
                     duration,
                     inputSize,
                     outputSize,
@@ -1369,7 +1471,7 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
                 const duration = Date.now() - startTime;
                 const inputSize = args.input ? Buffer.byteLength(args.input, "utf8") : 0;
                 telemetryCollector.record({
-                    tool: name,
+                    tool: toolDimension(name),
                     duration,
                     inputSize,
                     outputSize: 0,
@@ -1488,7 +1590,13 @@ async function runServer() {
     // HTTP builds a Server per session inside createTransport (issue #36), so there is no
     // process-wide transport to connect and `transport` comes back null. Connecting the module
     // singleton here would recreate the shared-instance bug the factory exists to avoid.
-    const { transport, closeAll, drain } = await createTransport({ createServer: createMcpServer });
+    const { transport, closeAll, drain } = await createTransport({
+        createServer: createMcpServer,
+        // The live collectors, for the Prometheus endpoint. Passed by reference so /metrics
+        // reports the instances this process is actually using -- a metrics endpoint that keeps
+        // its own counters is a second source of truth that drifts from the first one silently.
+        metricsSources: { quotaTracker, rateLimiter, operationCache, telemetryCollector }
+    });
     if (transport) {
         await server.connect(transport);
     }
@@ -1623,6 +1731,9 @@ export {
     ResourceQuotaTracker,
     BatchProcessor,
     sanitizeToolName,
+    // Exported for the cardinality tests: the bound has to be asserted against the REAL catalogue,
+    // and a test that rebuilt its own copy would be asserting against a fixture instead.
+    toolDimension,
     mapArgsToZod,
     resolveArgValue,
     validateInputSize,

@@ -7,6 +7,109 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.7.0] - 2026-09-02
+
+### Added
+
+- **Prometheus metrics endpoint** at `/metrics`, dependency-free and **off by default**
+  (`CYBERCHEF_METRICS_ENABLED=true`). 20 metric families — traffic, per-tool counters, quota,
+  cache, rate limiter, lifecycle, process — served on the same listener as `/mcp`, behind the same
+  routing, CORS and DNS-rebinding protection. Unauthenticated when on, because a Prometheus
+  scraper carries no bearer token; opt-in because unlike a health probe it reports which tools are
+  used, how often, how large the inputs are and how many tenants are active. When disabled the
+  path falls through to the ordinary 404, so a prober cannot distinguish "metrics off" from "not
+  this server". Never exposes tenant identifiers, tool arguments, subject digests, recipe names or
+  error messages.
+- **OpenTelemetry tracing** following the MCP semantic conventions: a server span per `tools/call`
+  named `{mcp.method.name} {target}`, and the conventional `mcp.server.operation.duration`
+  histogram recorded in seconds. Depends on `@opentelemetry/api` **only** — measured at 1 package,
+  2.6 MB and +9 ms startup against the SDK's 71 packages, 50 MB and +100 ms, which would have
+  handed back more than half of v2.6.0's startup work on every stdio launch. The API is a genuine
+  no-op with no SDK registered (100,000 span+metric cycles in 8 ms). The operator supplies the SDK
+  and picks the exporter, so every OTLP backend works rather than a chosen few.
+- **Trace correlation in the logs**: `trace_id` and `span_id` on every log line via a pino `mixin`,
+  rather than threaded through the request helpers — the useful line during an incident is
+  invariably one of the others. Adds no fields at all when nothing is recording.
+- **Grafana dashboard** (`deploy/grafana/cyberchef-mcp-dashboard.json`), 25 panels across 5 rows: a
+  state timeline for the lifecycle, a bucket heatmap with exemplars for latency, a four-query
+  joined table with gauge and colour-background cells, a bar chart, threshold-dashed limit
+  overlays, and annotation queries marking restarts and drains on every graph. Every panel carries
+  a description; no data source uid is hard-coded.
+- **Prometheus alerting rules** (`deploy/grafana/alerts.yaml`), 9 rules, also shipped by the Helm
+  chart as a `PrometheusRule`.
+- **Helm `ServiceMonitor` and `PrometheusRule` templates**, plus classic `prometheus.io/scrape` pod
+  annotations for clusters without the Prometheus Operator. All guarded on `metrics.enabled`:
+  pointing a scraper at a `/metrics` that 404s produces a permanently-down target, which looks like
+  an outage.
+- **A runnable observability stack** (`deploy/compose/docker-compose.observability.yml`) —
+  Prometheus and Grafana, provisioned — which is how the dashboard and rules were verified rather
+  than reviewed.
+- Four new test suites (60 tests): `prometheus`, `otel`, `metrics-endpoint`, `observability-assets`.
+  The last executes the shipped configuration against the code, so a renamed metric or a drifted
+  alert rule fails the build.
+
+### Changed
+
+- `TelemetryCollector` now maintains **monotonic per-tool counters** alongside its sampled ring
+  buffer, and maintains them regardless of `CYBERCHEF_TELEMETRY_ENABLED`. That flag gates the
+  per-call records — duration, sizes, timestamp, one row per execution — not the fact that a tool
+  ran. Counts are readable only through `/metrics`, which is itself off by default.
+- Coverage floor raised: branches 88 → 89, matching the policy of sitting just under actual.
+- Chart version 0.1.0 → 0.2.0; `appVersion` and the pinned image tag → 2.7.0.
+
+### Fixed
+
+- **Unbounded caller-controlled metric labels.** The tool name reaching the counters is the name
+  the *caller* asked for, and an unknown one is still dispatched, fails to resolve, and is recorded
+  as a failure. Anyone able to call the server could therefore mint arbitrary Prometheus labels by
+  invoking `cyberchef_<random>` in a loop, exploding cardinality in a monitoring system shared with
+  every other service. Now capped at 1024 distinct labels, overflowing into a single `__other__`
+  series — bucketed rather than dropped, because a flood of unknown tool names is worth seeing.
+- **A duration histogram that would have contained only failures.** `withServerSpan` recorded on
+  the error path alone, so the success path ended its span and recorded nothing — and there is
+  nothing in a latency graph to reveal that that is what it shows.
+- **Failed tool calls reported as successes.** MCP returns tool failures as an ordinary result with
+  `isError: true` rather than throwing, so a span watching only for exceptions marked every failed
+  operation successful.
+- **Per-tool counts that could decrease.** Derived from a 10,000-entry ring buffer, they fell on
+  rollover — which Prometheus reads as a process restart, inventing traffic in every `rate()`.
+- **Metrics empty by default.** With the counters behind the telemetry opt-in, `/metrics` reported
+  zero tool calls forever on a default deployment, under any load.
+- **A duplicated `# HELP` declaration.** The lifecycle states were emitted as three families
+  sharing one name; Prometheus rejects that and fails the *entire* scrape, so every other metric
+  would have disappeared with it.
+- **`/metrics` served before DNS-rebinding validation.** It was routed beside the health probes,
+  which deliberately skip the `Host` allowlist because a kubelet addresses the pod by an IP the
+  allowlist does not name and the probes disclose nothing. A scrape is equally unauthenticated but
+  genuinely informative, so a DNS-rebound request could read an internal server's traffic profile
+  through an attacker-controlled `Host` header. A scraper on another host must now be named in
+  `CYBERCHEF_ALLOWED_HOSTS`; the probes are unchanged.
+- **An exhaustible cardinality cap, and an unbounded span dimension.** Capping distinct tool labels
+  bounds the count but not who gets the slots: an attacker filling all of them before real traffic
+  makes *legitimate* tools collapse into the overflow bucket. And the cap applied to the Prometheus
+  labels only — the OpenTelemetry span name and histogram attributes took the caller-supplied name
+  verbatim. Tool names are now resolved against the real dispatch catalogue at the single boundary
+  both consume, so an unknown name never occupies a slot; the cap remains as defence in depth.
+- **`undefined` rendered into the exposition body.** The renderer read collector fields directly, so
+  a partial or substituted collector emitted `cyberchef_mcp_operations_total undefined` — and
+  Prometheus rejects the whole scrape on one bad line, taking every other metric with it. Values are
+  now coerced to `NaN`/`±Inf`.
+- **A leaked span per `isRecording()` call.** The probe span was never ended, so against a real SDK
+  it grew without bound and put a synthetic span in the trace data that no request produced.
+- **Alerts that mixed deployments.** Every aggregate is now `by (job)`: one Prometheus commonly
+  scrapes staging beside production, so a bare `sum()` let a healthy production mask a staging fleet
+  with nothing serving, and a normal rollout read as version skew across all of them.
+- **A 504-key linear scan on every tool call.** Resolving a tool name against the operation
+  catalogue sanitized all 504 keys, measured at 223 microseconds per unresolved lookup and running
+  four times per request across the dimension bound, the dispatch and the annotation lookup. The
+  worst case was the one that mattered: an *unknown* name scanned the whole catalogue before
+  failing, so the cardinality defence added CPU amplification on the attack path it exists to
+  blunt. Replaced with one shared module-level index — 223 us to 0.254 us.
+- **Three tests that asserted nothing** — a buffer-rollover check that ran against an empty buffer,
+  an escaping check that never drove a reserved character through the escaper, and a
+  DNS-rebinding check written with `fetch`, which silently drops a `Host` override. All three are
+  now mutation-verified.
+
 ## [2.6.0] - 2026-09-02
 
 ### Added

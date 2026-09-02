@@ -25,9 +25,15 @@ spec:
       {{- include "cyberchef-mcp.selectorLabels" . | nindent 6 }}
   template:
     metadata:
-      {{- with .Values.podAnnotations }}
+      {{- $scrape := include "cyberchef-mcp.scrapeAnnotations" . }}
+      {{- if or .Values.podAnnotations (trim $scrape) }}
       annotations:
+        {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- with trim $scrape }}
+        {{- nindent 8 . }}
+        {{- end }}
       {{- end }}
       labels:
         {{- include "cyberchef-mcp.selectorLabels" . | nindent 8 }}
