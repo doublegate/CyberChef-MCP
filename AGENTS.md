@@ -186,6 +186,20 @@ Tool naming: operations are sanitized to snake_case with a `cyberchef_` prefix
 | `performance-benchmarks.yml` | Push | Performance regression testing |
 | `codeql.yml` | Push/PR/weekly | CodeQL security scanning |
 
+**Version bump locations.** `package.json` is the single source at RUNTIME, but a release touches
+seven places, and the last two are the ones that get missed:
+
+1. `package.json` `version`
+2. `package-lock.json` -- two fields; `npm install --package-lock-only` does both
+3. `deploy/helm/cyberchef-mcp/Chart.yaml` `appVersion` **and** the chart's own `version`
+4. `deploy/helm/cyberchef-mcp/values.yaml` `image.tag`
+5. `deploy/compose/docker-compose.yml` -- the `image:` line
+6. **`deploy/compose/docker-compose.yml` -- the PROSE in the digest-pinning comment.** Missed at
+   both v2.8.0 and v2.8.1, because a bump replaces the image reference and not the sentence above
+   it. Two occurrences is a pattern, not an accident.
+7. README `**Latest Release:**` banner, the offline download URLs, and the AGENTS.md heading + docs
+   map + MCP Version row in this file
+
 Release cut (module 70 has the ceremony; this is the repo-specific mechanic):
 
 ```bash
