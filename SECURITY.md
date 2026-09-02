@@ -8,7 +8,7 @@ This document covers security for the **CyberChef MCP Server** fork. For the ori
 
 | Version | Supported          | Notes                                                                 |
 | ------- | ------------------ | --------------------------------------------------------------------- |
-| 2.4.x   | :white_check_mark: | Current release. Fixes land here.                                     |
+| 2.4.x   | :white_check_mark: | Current release (2.4.1). Fixes land here.                                     |
 | 2.3.x   | :white_check_mark: | Security fixes only, until the next minor.                            |
 | 1.9.x   | :white_check_mark: | Security fixes only, until ~March 2027. Published to `cyberchef-mcp_v1`, and it stays **Apache-2.0** — the GPL-3.0-or-later relicensing applies from v2.0.0 forward. |
 | < 1.9   | :x:                | Upgrade. Note that v2.0.0 has breaking changes; see [the migration guide](docs/v2.0.0-breaking-changes.md). |
@@ -146,6 +146,13 @@ patterns.
   needs at least one capability. So the server still executes only code that is in the image.
   Reasoning and the conditions for revisiting it:
   [ADR 0002](docs/adr/0002-tool-registry-is-not-a-plugin-loader.md).
+- **v2.4.1 (2026-09-02)**: Fixed a cache-key collision that could return one caller's result to
+  another. `getCacheKey` hashed only the first 1,000 characters of the input, so two different
+  inputs sharing that prefix produced the same key — a silently wrong result, and on a shared HTTP
+  server, cross-caller data exposure. Present since v1.4.0.
+  [GHSA-rmg9-8936-vx66](https://github.com/doublegate/CyberChef-MCP/security/advisories/GHSA-rmg9-8936-vx66),
+  CVSS 5.9. Mitigation without upgrading: `CYBERCHEF_CACHE_ENABLED=false`. Also cleared
+  GHSA-f88m-g3jw-g9cj (sharp/libvips) and GHSA-w9m9-85wc-3x92 (postcss-selector-parser).
 - **v2.3.0 (2026-08-31)**: Fixed a pooled-buffer defect in 17 image operations — the surplus bytes
   were adjacent heap, which on a multi-caller server can be another caller's data — and reported it
   and two related findings privately to upstream (GHSA-hj7h-fgw7-x6w8). Closed a `umask` window

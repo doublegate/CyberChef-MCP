@@ -37,7 +37,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as a salted digest rather than an email address, and error **messages** are deliberately excluded
   — they can quote the very key or document being analysed.
 
-### Fixed
+## [2.4.1] - 2026-09-02
+
+Released as a patch off v2.4.0, deliberately excluding the unreleased v2.5.0 work above: a
+patch release is not the place to ship a feature. Advisory:
+[GHSA-rmg9-8936-vx66](https://github.com/doublegate/CyberChef-MCP/security/advisories/GHSA-rmg9-8936-vx66)
+(CVSS 5.9, medium, CWE-524).
+
+### Security
 
 - **The operation cache could return one caller's result to another.** `getCacheKey` hashed only
   `input.substring(0, 1000)`, so two different inputs sharing their first 1,000 characters produced
