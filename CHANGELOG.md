@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Multi-tenancy: cache, recipes, concurrency and audit are isolated per tenant.** The fourth and
-  last Phase 5 theme. The server has always held process-wide state shared by every caller — one
+  last of the Enterprise Features themes. The server has always held process-wide state shared by every caller — one
   operation cache, one recipe store, one concurrency pool. On stdio that is correct: there is one
   client and it owns the process. On a shared HTTP deployment it was four ways for one caller's
   activity to reach another.

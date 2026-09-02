@@ -101,7 +101,7 @@ The server exposes CyberChef operations as MCP tools:
 *   **Advanced Features** (v1.7.0): Enterprise-grade capabilities with batch processing (parallel/sequential execution of up to 100 operations), privacy-first telemetry collection (disabled by default, no input/output data captured), sliding window rate limiting for resource protection, enhanced caching with inspection tools, and resource quota tracking (concurrent operations, data sizes). All features are configurable via environment variables with secure defaults. See [Release Notes](docs/releases/v1.7.0.md) for details.
 *   **Enhanced Observability** (v1.5.0): Structured JSON logging with Pino for production monitoring, comprehensive error handling with actionable recovery suggestions, automatic retry logic with exponential backoff, request correlation with UUID tracking, circuit breaker pattern for cascading failure prevention, and streaming infrastructure for progressive results on large operations. See [Release Notes](docs/releases/v1.5.0.md) for details.
 *   **Performance Optimized** (v1.4.0): LRU cache for operation results (100MB default), automatic streaming for large inputs (10MB+ threshold), configurable resource limits (100MB max input, 30s timeout), memory monitoring, and comprehensive benchmark suite. See [Performance Tuning Guide](docs/architecture/performance-tuning.md) for configuration options.
-*   **Upstream Sync Automation** (v1.3.0; **rebuilt in v2.0.0**): Weekly monitoring of upstream releases, an atomic whole-tree mirror, fork changes carried as patches that fail the sync if they stop applying, comprehensive validation (1,213 MCP + 241 Node-API + 2,289 operation tests), and an emergency rollback. See the [Upstream Sync Guide](docs/guides/upstream-sync-guide.md).
+*   **Upstream Sync Automation** (v1.3.0; **rebuilt in v2.0.0**): Weekly monitoring of upstream releases, an atomic whole-tree mirror, fork changes carried as patches that fail the sync if they stop applying, comprehensive validation (1,218 MCP + 241 Node-API + 2,289 operation tests), and an emergency rollback. See the [Upstream Sync Guide](docs/guides/upstream-sync-guide.md).
 *   **Security Hardened** (v1.4.5+): Chainguard distroless base image with zero-CVE baseline, non-root execution (UID 65532), automated Trivy vulnerability scanning with build-fail thresholds, dual SBOM strategy (Docker Scout attestations + CycloneDX), read-only filesystem support, SLSA Build Level 3 provenance, and 7-day SLA for critical CVE patches. Fixed 11 of 12 code scanning vulnerabilities including critical cryptographic randomness weakness and 7 ReDoS vulnerabilities. See [Security Policy](SECURITY.md) and [Security Fixes Report](docs/security/SECURITY_FIX_REPORT.md) for details.
 *   **Production Ready**: Comprehensive CI/CD with CodeQL v4, automated testing, and dual-registry container publishing (Docker Hub + GHCR) with complete supply chain attestations.
 
@@ -643,7 +643,7 @@ Detailed documentation is organized in the [`docs/`](docs/) directory:
 *   [**Security Fixes Report**](docs/security/SECURITY_FIX_REPORT.md): Detailed report of 11 vulnerability fixes (ReDoS and cryptographic weaknesses)
 *   [**Security Fixes Summary**](docs/security/SECURITY_FIXES_SUMMARY.md): Quick reference for recent security improvements
 *   [**v2.0.0 Breaking Changes**](docs/v2.0.0-breaking-changes.md): Comprehensive migration guide for v2.0.0 with deprecation codes, examples, and FAQ
-*   [**Release Notes v2.5.0**](docs/releases/v2.5.0.md): Multi-tenancy completes Phase 5 — the cache, recipe store, concurrency pool and audit trail isolated per tenant, with identity taken only from an already-verified token. Plus a rate limiter that had never limited anything since v1.7.0: it was keyed on a per-request UUID, so 1000 requests against a limit of 5 produced 0 denials and 1000 leaked map entries. 1,213 MCP tests.
+*   [**Release Notes v2.5.0**](docs/releases/v2.5.0.md): Multi-tenancy completes the Enterprise Features milestone — the cache, recipe store, concurrency pool and audit trail isolated per tenant, with identity taken only from an already-verified token. Plus a rate limiter that had never limited anything since v1.7.0: it was keyed on a per-request UUID, so 1000 requests against a limit of 5 produced 0 denials and 1000 leaked map entries. 1,218 MCP tests.
 *   [**Release Notes v2.4.0**](docs/releases/v2.4.0.md): The tool registry and its first four tools — XOR key length by index of coincidence, De Bruijn patterns compatible with pwntools, hash identification with hashcat modes, and four RSA attacks. No plugin loader, with the `node:vm` measurement that rules one out. Three documents corrected that described work nobody had done.
 *   [**Release Notes v2.3.0**](docs/releases/v2.3.0.md): Protocol revision 2026-07-28 on stdio and HTTP, a socket transport, npm distribution unblocked, 17 image operations returning a pooled backing `ArrayBuffer` — unrelated bytes — instead of the image, `Add Text To Image` working for the first time, the coverage gate raised from 75/70/90/75 to 95/88/96/96, 1,023 MCP tests
 *   [**Release Notes v2.2.0**](docs/releases/v2.2.0.md): Images and audio as content blocks (`Generate QR Code` returned `""` and never worked), tool annotations on all 527 tools, prompts and resources, LM Hash off OpenSSL, unknown arguments rejected instead of silently defaulted, 955 MCP tests
@@ -736,7 +736,7 @@ All workflows use the latest CodeQL Action v4 for security scanning and SARIF up
 # Run all tests (requires Node.js >=24 <27; 241 Node-API + 2,289 operation tests)
 npm test
 
-# Run MCP validation test suite (1,213 tests across 42 files, with Vitest)
+# Run MCP validation test suite (1,218 tests across 42 files, with Vitest)
 npm run test:mcp
 
 # Run MCP tests with coverage report
@@ -757,7 +757,7 @@ npm run lint
 
 **Test Coverage:**
 The MCP server maintains comprehensive test coverage:
-- **1,111 MCP tests** across 39 suites, plus 241 Node-API tests, 2,289 operation tests and 9 runnable examples executed by CI
+- **1,218 MCP tests** across 42 suites, plus 241 Node-API tests, 2,289 operation tests and 9 runnable examples executed by CI
 - **Coverage thresholds** (`vitest.config.mjs`): 96% lines, 95% statements, 88% branches, 96% functions, with `src/node/lib/**` held separately at 99 lines / 99 statements / 94 branches / 100 functions
 - **Current coverage**: 96.50% lines, 95.67% statements, 96.43% functions, 89.16% branches
 - Note: individual suite names are not listed here because the list went stale three times;
