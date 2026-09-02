@@ -1,5 +1,73 @@
 # Release Plan: v2.6.0 - Distributed Architecture
 
+> **Re-scoped during execution. Read this before the plan below.**
+>
+> This plan was written in December 2025 and its centrepiece — externalising **session state** to
+> Redis, plus session affinity, sticky sessions, session migration and failover recovery — solves a
+> problem that **no longer exists**. MCP protocol revision `2026-07-28`, which this server has
+> implemented since v2.3.0, removed protocol-level sessions outright:
+>
+> > *"Revision 2026-07-28 changed the behavior of Streamable HTTP. Changes included: Removal of the
+> > GET stream endpoint. **Removal of protocol-level sessions.**"*
+> >
+> > *"An `Mcp-Session-Id` header on a request: **ignore it, and do not mint or echo session IDs.**"*
+>
+> There is no session to externalise, no affinity to configure, and no store to run. The modern
+> request path is already stateless per request.
+>
+> The plan's state table is also simply wrong: it says recipes live in SQLite. They are a JSON
+> file, and **that** is the real constraint on running replicas.
+>
+> | plan feature | disposition |
+> |---|---|
+> | 1. Stateless server design | **partly withdrawn** — already stateless; recipes are the exception, see below |
+> | 2. Load balancer integration | **shipped** — health probes, drain, connection handling |
+> | 3. Kubernetes deployment | **shipped** — Helm chart with probes, HPA, PDB, ingress |
+> | 4. Docker Swarm deployment | **re-scoped** to Docker Compose — see below |
+> | 5. Warm pool support | **withdrawn on measurement** — the target was met by deleting the cost, not hiding it |
+> | 6. Session affinity & persistence | **withdrawn** — the protocol removed sessions |
+> | 7. Circuit breakers | **shipped** — wired to the one dependency that can fail: the authorization server |
+> | 8. Graceful shutdown | **shipped** — existed since v2.3.0, extended with draining |
+>
+> **Recipes, not sessions.** Saved recipes are a per-process JSON file, so replicas do not share
+> them. v2.6.0 does not add a database to fix that: the supported configurations are a volume per
+> replica or a single replica, the chart refuses anything else, and the server detects a clobbering
+> write rather than silently losing a recipe. Documented rather than engineered away, deliberately.
+>
+> **Warm pools.** The plan's target was "<1 s cold start (with warm pools)". Cold start was
+> ~1300 ms, of which ~1150 ms was one eager import of all 505 operation implementations. Deferring
+> it gives **185 ms** — five times better than the target, with no pre-warmed instances and no
+> orchestrator. A background warm-up was then implemented, measured, and removed: it restored the
+> full 1300 ms, because module loading blocks the event loop and therefore cannot happen "in the
+> background".
+>
+> **Circuit breakers.** `retry.mjs` already exported a `CircuitBreaker` that **nothing
+> instantiated** — the only `new CircuitBreaker` in the repository was in its own test. The first
+> disposition here was "leave it: a breaker protects a failing dependency, and this server's work
+> is local CPU". That was right about the operations and forgot the authorization server.
+>
+> `fetchJwks` cached successes and not failures, and `discoverJwksUri` tries two metadata URLs, so
+> an issuer outage turned every incoming request into two outbound ones — none with a deadline,
+> because Node's `fetch` has no default timeout. Measured, 20 verifications against a down issuer:
+>
+> ```text
+> before:  40 outbound attempts   (2 per request, growing with traffic)
+> after:   10 outbound attempts   (then the breaker opens; the rest make none)
+> ```
+>
+> Now wired there, plus a 5 s deadline on every request to the authorization server — the smaller
+> fix, and arguably the more important one, since a breaker without a timeout still lets five
+> requests hang for minutes before it opens.
+>
+> **Docker Swarm.** Re-scoped to Compose. Swarm is in maintenance and is not where anyone deploying
+> this in 2026 is going; Compose covers the same "one host, not Kubernetes" case that the Swarm
+> item was really for.
+>
+> The measurements behind each of these are in
+> [`docs/internal/v2.6.0-findings-log.md`](../../internal/v2.6.0-findings-log.md), and what shipped
+> is in [`docs/releases/v2.6.0.md`](../../releases/v2.6.0.md).
+
+
 **Release Date:** February 2027
 **Theme:** Horizontal Scaling and High Availability
 **Phase:** Phase 5 - Enterprise

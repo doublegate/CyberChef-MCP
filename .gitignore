@@ -72,6 +72,18 @@ recipes.json.*.tmp
 /ref-proj/*
 !/ref-proj/CyberChef
 
+# Helm working files. The chart has no dependencies today, so neither of these exists yet --
+# listed now because `helm dependency update` creates both the moment one is added, and a
+# committed `charts/` is a vendored copy of somebody else's chart that nothing updates.
+# `*.tgz` above already covers `helm package` output.
+deploy/helm/**/charts/
+deploy/helm/**/Chart.lock
+
+# Local Helm value overrides. A values file is where an issuer URL, a hostname or a pull secret
+# gets pasted "just to try it", so the convention is worth having before someone needs it.
+values.local.yaml
+values.*.local.yaml
+
 # Antigravity PR reviewer: large-diff on-disk handoff (transient, removed by the script).
 /.agy-review-work/
 
