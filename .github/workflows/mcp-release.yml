@@ -71,12 +71,24 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.DOCKERHUB_REGISTRY }}/${{ env.DOCKERHUB_IMAGE_NAME }}
+          # `latest=false` is REQUIRED on this branch, not a preference.
+          #
+          # Docker Hub uses ONE repository across majors (`cyberchef-mcp`), unlike GHCR which is
+          # per-major. metadata-action defaults to `latest=auto`, which tags `latest` for any
+          # non-prerelease semver tag and does NOT compare versions -- so releasing a v1.9.x
+          # security patch would move `latest` BACKWARDS onto the v1 image and hand every
+          # unpinned user a two-major-version downgrade.
+          #
+          # Verified rather than assumed: v2.4.1 was tagged on a release branch, not the default
+          # branch, and `latest` moved anyway -- which also shows the
+          # `enable={{is_default_branch}}` line below was never what controlled it.
+          flavor: |
+            latest=false
           tags: |
             type=semver,pattern={{major}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{version}}
             type=sha
-            type=raw,value=latest,enable={{is_default_branch}}
 
       # =============================================================================
       # Build and Push: Single build, multi-registry push with attestations
@@ -117,15 +129,23 @@ jobs:
       # Export: Create tarball for offline distribution
       # =============================================================================
       # Note: We pull from Docker Hub since that's the primary distribution channel
+      # Pull the VERSION that was just built, never `:latest`.
+      #
+      # `latest` is a moving pointer to some other release -- on this maintenance branch it points
+      # at the v2 line entirely. Exporting and scanning it meant the tarball attached to a v1.9.x
+      # release could be a v2 image, and the Trivy results could describe a build this release
+      # never produced.
       - name: Pull Docker image from Docker Hub for export
+        env:
+          TAG_NAME: ${{ github.ref_name }}
         run: |
-          docker pull "$DOCKERHUB_REGISTRY/$DOCKERHUB_IMAGE_NAME:latest"
+          docker pull "$DOCKERHUB_REGISTRY/$DOCKERHUB_IMAGE_NAME:${TAG_NAME#v}"
 
       - name: Export Docker image as tarball
         env:
           TAG_NAME: ${{ github.ref_name }}
         run: |
-          docker save "$DOCKERHUB_REGISTRY/$DOCKERHUB_IMAGE_NAME:latest" | gzip > "cyberchef-mcp-${TAG_NAME}-docker-image.tar.gz"
+          docker save "$DOCKERHUB_REGISTRY/$DOCKERHUB_IMAGE_NAME:${TAG_NAME#v}" | gzip > "cyberchef-mcp-${TAG_NAME}-docker-image.tar.gz"
           ls -lh cyberchef-mcp-*.tar.gz
 
       # =============================================================================
@@ -141,7 +161,7 @@ jobs:
       - name: Generate SBOM with Trivy (CycloneDX artifact)
         uses: aquasecurity/trivy-action@0.28.0
         with:
-          image-ref: '${{ env.DOCKERHUB_REGISTRY }}/${{ env.DOCKERHUB_IMAGE_NAME }}:latest'
+          image-ref: '${{ env.DOCKERHUB_REGISTRY }}/${{ env.DOCKERHUB_IMAGE_NAME }}:${{ steps.meta-dockerhub.outputs.version }}'
           format: 'cyclonedx'
           output: 'sbom.cyclonedx.json'
           vuln-type: 'os,library'
@@ -150,7 +170,7 @@ jobs:
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@0.28.0
         with:
-          image-ref: '${{ env.DOCKERHUB_REGISTRY }}/${{ env.DOCKERHUB_IMAGE_NAME }}:latest'
+          image-ref: '${{ env.DOCKERHUB_REGISTRY }}/${{ env.DOCKERHUB_IMAGE_NAME }}:${{ steps.meta-dockerhub.outputs.version }}'
           format: 'sarif'
           output: 'trivy-release-results.sarif'
           severity: 'CRITICAL,HIGH'

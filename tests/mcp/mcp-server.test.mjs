@@ -226,7 +226,7 @@ describe("MCP Server Core Functions", () => {
 
     describe("VERSION and Configuration", () => {
         it("should have correct version", () => {
-            expect(VERSION).toBe("1.9.0");
+            expect(VERSION).toBe("1.9.1");
         });
 
         it("should have valid configuration defaults", () => {
@@ -567,5 +567,38 @@ describe("Edge Cases and Error Handling", () => {
             const argDef = { value: "default" };
             expect(resolveArgValue(argDef, "")).toBe("");
         });
+    });
+});
+
+describe("LRUCache: the key must identify the input, not resemble it", () => {
+    it("does not collide two inputs that share a long prefix", () => {
+        // Regression test for GHSA-rmg9-8936-vx66. The key hashed only
+        // `input.substring(0, 1000)`, so two different inputs sharing their first 1,000
+        // characters produced the same key -- and the second caller received the FIRST caller's
+        // answer. A silently wrong result, and on a shared server, cross-caller data exposure.
+        const cache = new LRUCache();
+        const a = "x".repeat(1000) + "SECRET-A";
+        const b = "x".repeat(1000) + "DIFFERENT-B";
+
+        const keyA = cache.getCacheKey("To Base64", a, []);
+        const keyB = cache.getCacheKey("To Base64", b, []);
+        expect(keyA).to.not.equal(keyB);
+
+        cache.set(keyA, "ANSWER-FOR-A");
+        expect(cache.get(keyB)).to.not.equal("ANSWER-FOR-A");
+        expect(cache.get(keyA)).to.equal("ANSWER-FOR-A");
+    });
+
+    it("still gives identical calls the same key, or the cache is pointless", () => {
+        const cache = new LRUCache();
+        const input = "y".repeat(5000);
+        expect(cache.getCacheKey("SHA2", input, ["256"]))
+            .to.equal(cache.getCacheKey("SHA2", input, ["256"]));
+    });
+
+    it("separates two inputs of the same content but different length", () => {
+        const cache = new LRUCache();
+        expect(cache.getCacheKey("To Hex", "a".repeat(1500), []))
+            .to.not.equal(cache.getCacheKey("To Hex", "a".repeat(1501), []));
     });
 });

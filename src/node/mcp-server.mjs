@@ -66,7 +66,7 @@ import {
 } from "./deprecation.mjs";
 
 // Performance configuration (configurable via environment variables)
-const VERSION = "1.9.0";
+const VERSION = "1.9.1";
 const MAX_INPUT_SIZE = parseInt(process.env.CYBERCHEF_MAX_INPUT_SIZE, 10) || 100 * 1024 * 1024; // 100MB default
 const OPERATION_TIMEOUT = parseInt(process.env.CYBERCHEF_OPERATION_TIMEOUT, 10) || 30000; // 30s default
 const STREAMING_THRESHOLD = parseInt(process.env.CYBERCHEF_STREAMING_THRESHOLD, 10) || 10 * 1024 * 1024; // 10MB default
@@ -116,7 +116,23 @@ class LRUCache {
     getCacheKey(operation, input, args) {
         const hash = createHash("sha256");
         hash.update(operation);
-        hash.update(input.substring(0, 1000)); // Use first 1KB for hash
+        // The WHOLE input, not a prefix.
+        //
+        // This hashed `input.substring(0, 1000)`, which is unsound: two different inputs sharing
+        // their first 1,000 characters produce the same key, so the second caller receives the
+        // FIRST caller's answer. Reproduced:
+        //
+        //     a = "x".repeat(1000) + "SECRET-A"        (1,008 chars)
+        //     b = "x".repeat(1000) + "DIFFERENT-B"     (1,011 chars)
+        //     keys equal: true   -> lookup with b returned "ANSWER-FOR-A"
+        //
+        // A silently wrong result for valid input, and on a shared server, one caller receiving
+        // output computed from another caller's data. See GHSA-rmg9-8936-vx66.
+        //
+        // Full SHA-256 costs 2.3 ms at 1 MB and 252 ms at the 100 MB input ceiling -- negligible
+        // against the operation it guards, which scales with the same input.
+        hash.update(String(input.length));
+        hash.update(input);
         hash.update(JSON.stringify(args));
         return hash.digest("hex");
     }

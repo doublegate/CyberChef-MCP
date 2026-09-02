@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.1] - 2026-09-02
+
+Security-only maintenance release for the v1.9.x line, which is supported until approximately
+March 2027. **This line remains Apache-2.0**; the GPL-3.0-or-later relicensing applies from v2.0.0
+forward.
+
+### Security
+
+- **The operation cache could return one caller's result to another.** `getCacheKey` hashed only
+  `input.substring(0, 1000)`, so two different inputs sharing their first 1,000 characters produced
+  the same key. Reproduced:
+
+  ```
+  a = "x".repeat(1000) + "SECRET-A"        (1,008 chars)
+  b = "x".repeat(1000) + "DIFFERENT-B"     (1,011 chars)
+  keys equal: true   ->  lookup with b returned "ANSWER-FOR-A"
+  ```
+
+  A **silently wrong result** for valid input, and on a shared HTTP server, **one caller receiving
+  output computed from another caller's data**. The cache is on by default and inputs over 1,000
+  characters are ordinary, so no malice is required — two honest callers sending documents with a
+  shared header are enough.
+
+  Present since **v1.4.0**. Now hashes the full input plus its length.
+  [GHSA-rmg9-8936-vx66](https://github.com/doublegate/CyberChef-MCP/security/advisories/GHSA-rmg9-8936-vx66),
+  CVSS 5.9. Mitigation without upgrading: `CYBERCHEF_CACHE_ENABLED=false`.
+
+### Fixed
+
+- **The release workflow could publish the wrong image and hijack `latest`.** Two defects in the
+  same file, both latent until this release needed it:
+  - Docker Hub uses one repository across majors, and `docker/metadata-action` defaults to
+    `latest=auto`, which tags `latest` for any non-prerelease semver tag **without comparing
+    versions**. Releasing this v1.9.x patch would have moved `latest` backwards onto the v1 image,
+    handing every unpinned user a two-major-version downgrade. Now `latest=false` on this line.
+  - The release asset and both Trivy scans referenced `:latest` rather than the version just
+    built, so a v1.9.x release could have attached and scanned a **v2** image. Now pinned to the
+    tag's own version.
+
+
 ## [1.9.0] - 2026-02-05
 
 ### Added
