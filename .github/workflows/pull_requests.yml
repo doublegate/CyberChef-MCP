@@ -30,7 +30,7 @@ jobs:
         npm install
         npm run setheapsize
 
-    - name: Patch Dependencies for Node 22
+    - name: Patch Dependencies (SlowBuffer)
       run: |
         sed -i 's/new SlowBuffer/Buffer.alloc/g' node_modules/avsc/lib/types.js
         sed -i 's/SlowBuffer/Buffer/g' node_modules/buffer-equal-constant-time/index.js

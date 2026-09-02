@@ -290,10 +290,10 @@ jobs:
         if: steps.changes.outputs.needs_sync == 'true'
         run: npm install
 
-      - name: Apply Node 22 compatibility patches
+      - name: Apply SlowBuffer compatibility patches
         if: steps.changes.outputs.needs_sync == 'true'
         run: |
-          # Apply SlowBuffer patches for Node 22 compatibility
+          # Apply SlowBuffer patches (removed from Node; needed on every supported version)
           if [ -f "node_modules/avsc/lib/types.js" ]; then
             sed -i 's/new SlowBuffer/Buffer.alloc/g' node_modules/avsc/lib/types.js
             echo "Applied avsc patch"
@@ -467,7 +467,7 @@ jobs:
           * Noted $DELETED_COUNT deleted operations (kept in MCP)
           * Regenerated OperationConfig.json ($operation_count operations)
           * Updated baseline.json
-          * Applied Node 22 compatibility patches
+          * Applied SlowBuffer compatibility patches
 
           Sync method: Selective file copying (preserves MCP modifications)
 

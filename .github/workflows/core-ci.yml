@@ -64,7 +64,12 @@ jobs:
     - name: Update browserslist database
       run: npx update-browserslist-db@latest
 
-    # We need to patch the node_modules for Node 22 compatibility here as well
+    # Patch node_modules for the removed `SlowBuffer`, as the other suites do.
+    #
+    # NOT "Node 22 compatibility", which is what this said and what it never was: SlowBuffer was
+    # REMOVED from Node, so the patch is needed on every version this project supports and will
+    # be needed on later ones too. Naming a version here implied the opposite -- that moving off
+    # 22 would retire it -- which is exactly the wrong thing to believe while debugging.
     # because npm install might overwrite them or they might not be patched in the repo
     - name: Patch Dependencies (SlowBuffer)
       run: |

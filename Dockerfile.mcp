@@ -60,7 +60,8 @@ RUN npm ci --ignore-scripts
 # Copy all source files
 COPY . .
 
-# Apply patches for Node 22 compatibility (SlowBuffer deprecation)
+# Apply patches for the removed `SlowBuffer` (not a "Node 22" concern -- it is removed on every
+# version this project supports, so the patch outlives any particular one)
 # These packages use the deprecated SlowBuffer which was removed/changed in newer Node versions
 RUN sed -i 's/new SlowBuffer/Buffer.alloc/g' node_modules/avsc/lib/types.js && \
     sed -i 's/SlowBuffer/Buffer/g' node_modules/buffer-equal-constant-time/index.js
