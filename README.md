@@ -138,8 +138,8 @@ The package also ships `cyberchef-migrate`, which checks and converts v1.x recip
 **Option 2: Pull from Docker Hub**
 ```bash
 # Docker Hub provides health scores and supply chain attestations
-docker pull doublegate/cyberchef-mcp:latest
-docker tag doublegate/cyberchef-mcp:latest cyberchef-mcp
+docker pull parobek/cyberchef-mcp:latest
+docker tag parobek/cyberchef-mcp:latest cyberchef-mcp
 docker run -i --rm cyberchef-mcp
 ```
 
@@ -169,7 +169,7 @@ For environments without direct GHCR access, download the pre-built Docker image
 3.  **Tag for easier usage:**
 
     ```bash
-    docker tag ghcr.io/doublegate/cyberchef-mcp_v2:v2.6.0 cyberchef-mcp
+    docker tag parobek/cyberchef-mcp:latest cyberchef-mcp
     ```
 
 4.  **Run the server:**

@@ -84,6 +84,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+- **The README told people to pull a Docker image that does not exist.** `docker pull
+  doublegate/cyberchef-mcp:latest` 404s — the Docker Hub repository is `parobek/cyberchef-mcp`,
+  named from the account rather than the GitHub org. The offline path was wrong twice over: after
+  `docker load` the image is `parobek/cyberchef-mcp:latest`, not the `ghcr.io/...:v2.6.0` the
+  README named, and no `v`-prefixed GHCR tag is ever published. Every docker reference in the
+  README is now verified to resolve.
 - `git tag -F` strips every markdown heading, because git treats `#` lines as comments. Every tag
   in the v2.x line lost its structure this way (v2.4.0 lost 16 headings); v2.5.0 is the first with
   them intact. The documented command now passes `--cleanup=verbatim`. Published tags are
