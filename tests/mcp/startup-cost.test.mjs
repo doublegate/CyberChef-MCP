@@ -124,10 +124,24 @@ describe("loadNodeApi", () => {
     }, 60_000);
 
     it("memoises, so concurrent callers share one import", async () => {
-        const { loadNodeApi } = await import("../../src/node/lib/node-api.mjs");
-        const [a, b] = await Promise.all([loadNodeApi(), loadNodeApi()]);
-        expect(a).toBe(b);
-        expect(typeof a.help).toBe("function");
-        expect(typeof a.bake).toBe("function");
+        const mod = await import("../../src/node/lib/node-api.mjs");
+        mod._resetNodeApiForTest();
+
+        // Compare the PROMISES, not the resolved namespaces. Two separate `import()` calls resolve
+        // to the same namespace object because ESM caches modules -- so asserting on the resolved
+        // values passes whether or not this function memoises anything, and tests the module
+        // system rather than the contract. Promise identity is the contract: one import in flight,
+        // however many callers.
+        const first = mod.loadNodeApi();
+        const second = mod.loadNodeApi();
+        expect(second).toBe(first);
+
+        const api = await first;
+        expect(typeof api.help).toBe("function");
+        expect(typeof api.bake).toBe("function");
+
+        // And a caller arriving after it resolves still gets the same promise, rather than
+        // starting a fresh import.
+        expect(mod.loadNodeApi()).toBe(first);
     }, 60_000);
 });
