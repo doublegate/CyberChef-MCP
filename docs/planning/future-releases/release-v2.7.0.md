@@ -1,384 +1,367 @@
-# Release Plan: v2.7.0 - Edge Deployment Optimization
+# Release Plan: v2.7.0 - Observability & Monitoring
 
-**Release Date:** April 2027
-**Theme:** Minimal Footprint for Edge and IoT
-**Phase:** Phase 6 - Evolution
+**Release Date:** March 2027
+**Theme:** Production Visibility with OpenTelemetry
+**Phase:** Phase 5 - Enterprise
 **Effort:** L (4 weeks)
 **Risk Level:** Low
 
 ## Overview
 
-v2.7.0 optimizes CyberChef MCP Server for edge computing and resource-constrained environments. Edge deployments require minimal container sizes, fast startup times, ARM64 support, and offline operation capabilities.
+v2.7.0 provides comprehensive monitoring capabilities using OpenTelemetry, the industry standard for observability in 2025. This release enables production deployments to have full visibility into server behavior, performance, and health.
 
 ## Goals
 
-1. **Primary Goal**: Reduce container size to <50MB (from ~200MB)
-2. **Secondary Goal**: Achieve <1s cold start time
-3. **Tertiary Goal**: Enable offline operation mode
+1. **Primary Goal**: OpenTelemetry integration (traces, metrics, logs)
+2. **Secondary Goal**: Pre-built Grafana dashboards
+3. **Tertiary Goal**: Integration with major observability backends
 
 ## Success Criteria
 
-- [ ] Container size: <50MB (currently ~200MB)
-- [ ] Cold start: <1s (currently ~3s)
-- [ ] ARM64 performance: 95% of AMD64
-- [ ] Offline mode: 100% core operations functional
-- [ ] Memory usage: <100MB baseline
+- [ ] <5ms tracing overhead per operation
+- [ ] Trace sampling configurability
+- [ ] 100% request correlation (logs, traces, metrics)
+- [ ] Pre-built dashboards for key metrics
+- [ ] Integration with 3+ backends (Jaeger, Datadog, New Relic)
 
 ## Features
 
-### 1. Multi-Platform Docker Builds
+### 1. OpenTelemetry Traces
 **Priority:** P0 | **Effort:** M
 
-Native builds for multiple architectures.
+Distributed tracing across operations.
 
 **Tasks:**
-- [ ] Configure Docker BuildKit multi-platform
-- [ ] Build for AMD64, ARM64, ARM/v7
-- [ ] Create platform-specific optimizations
-- [ ] Test on each platform
-- [ ] Automate multi-arch CI/CD
-- [ ] Create manifest lists for multi-arch images
+- [ ] Integrate OpenTelemetry SDK
+- [ ] Add auto-instrumentation for HTTP
+- [ ] Create spans for MCP protocol handling
+- [ ] Add spans for CyberChef operations
+- [ ] Implement trace context propagation
+- [ ] Configure sampling strategies
+- [ ] Add custom span attributes
 
-**Target Platforms:**
-| Platform | Use Case |
-|----------|----------|
-| linux/amd64 | Servers, cloud |
-| linux/arm64 | AWS Graviton, Apple Silicon, RPi4 |
-| linux/arm/v7 | Raspberry Pi 3, older ARM |
-
-**Dockerfile.multi-arch:**
-```dockerfile
-FROM --platform=$BUILDPLATFORM node:22-alpine AS builder
-ARG TARGETPLATFORM
-ARG BUILDPLATFORM
-
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci --omit=dev --ignore-scripts
-
-COPY src ./src
-RUN npm run build
-
-FROM --platform=$TARGETPLATFORM node:22-alpine
-WORKDIR /app
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-
-CMD ["node", "dist/mcp-server.mjs"]
+**Span Structure:**
+```
+Request (parent)
+  |
+  +-- MCP Protocol Parsing
+  |
+  +-- Authentication
+  |
+  +-- Operation Execution
+  |     |
+  |     +-- Input Processing
+  |     +-- Core Operation (e.g., AES Decrypt)
+  |     +-- Output Formatting
+  |
+  +-- Response Serialization
 ```
 
-### 2. Minimal Container Images
-**Priority:** P0 | **Effort:** L
-
-Aggressive size reduction strategies.
-
-**Tasks:**
-- [ ] Use Alpine-based base image
-- [ ] Implement multi-stage builds
-- [ ] Tree-shake unused dependencies
-- [ ] Remove development dependencies
-- [ ] Use npm ci --omit=dev
-- [ ] Prune node_modules
-- [ ] Create distroless variant (optional)
-
-**Size Reduction Strategies:**
-| Strategy | Size Reduction |
-|----------|----------------|
-| Alpine base | ~50MB |
-| Multi-stage build | ~30MB |
-| Dev dep removal | ~40MB |
-| Tree shaking | ~20MB |
-| npm prune | ~10MB |
-| Compression | ~10MB |
-
-**Target Breakdown:**
-```
-Base image (node:22-alpine): ~50MB
-Application code: ~5MB
-Production dependencies: ~40MB
-Total: ~95MB -> Target: <50MB
-```
-
-### 3. Lazy Loading
-**Priority:** P0 | **Effort:** M
-
-Load operations on demand.
-
-**Tasks:**
-- [ ] Implement operation module lazy loading
-- [ ] Create operation registry without loading
-- [ ] Load operation on first use
-- [ ] Cache loaded operations
-- [ ] Unload unused operations (optional)
-- [ ] Measure loading overhead
-
-**Implementation:**
+**Custom Attributes:**
 ```javascript
-class OperationLoader {
-  constructor() {
-    this.loaded = new Map();
-    this.metadata = require('./operation-metadata.json');
-  }
-
-  async getOperation(name) {
-    if (!this.loaded.has(name)) {
-      const path = this.metadata[name].path;
-      const module = await import(path);
-      this.loaded.set(name, module.default);
-    }
-    return this.loaded.get(name);
-  }
-}
+span.setAttributes({
+  'cyberchef.operation': 'to_base64',
+  'cyberchef.input_size': 1024,
+  'cyberchef.output_size': 1368,
+  'cyberchef.recipe_length': 1,
+  'cyberchef.user_id': 'user-123'
+});
 ```
 
-### 4. Startup Optimization
+### 2. OpenTelemetry Metrics
 **Priority:** P0 | **Effort:** M
 
-Sub-second cold start.
+Comprehensive metrics collection.
 
 **Tasks:**
-- [ ] Profile startup bottlenecks
-- [ ] Defer non-critical initialization
-- [ ] Pre-compile critical paths
-- [ ] Use V8 code cache
-- [ ] Optimize import order
-- [ ] Create startup benchmark
+- [ ] Configure metrics SDK
+- [ ] Add request count/latency metrics
+- [ ] Add operation-specific metrics
+- [ ] Add resource usage metrics
+- [ ] Create business metrics
+- [ ] Implement metric aggregation
+- [ ] Add histogram for latencies
 
-**Optimization Techniques:**
-- Lazy import for non-essential modules
-- Pre-computed operation metadata
-- V8 snapshot for faster parsing
-- Connection pooling warm-up
-- Parallel initialization where possible
+**Core Metrics:**
+| Metric | Type | Description |
+|--------|------|-------------|
+| `cyberchef_requests_total` | Counter | Total MCP requests |
+| `cyberchef_request_duration_seconds` | Histogram | Request latency |
+| `cyberchef_operations_total` | Counter | Operations executed |
+| `cyberchef_operation_duration_seconds` | Histogram | Operation latency |
+| `cyberchef_errors_total` | Counter | Error count by type |
+| `cyberchef_active_sessions` | Gauge | Current sessions |
+| `cyberchef_input_bytes_total` | Counter | Input data processed |
+| `cyberchef_output_bytes_total` | Counter | Output data produced |
 
-### 5. Offline Operation Mode
-**Priority:** P1 | **Effort:** M
+### 3. Structured Logging
+**Priority:** P0 | **Effort:** S
 
-Function without network connectivity.
-
-**Tasks:**
-- [ ] Identify network dependencies
-- [ ] Bundle all required assets
-- [ ] Handle network failures gracefully
-- [ ] Disable network-requiring features
-- [ ] Add offline mode configuration
-- [ ] Test in air-gapped environment
-
-**Network Dependencies:**
-| Component | Online | Offline Mode |
-|-----------|--------|--------------|
-| Core operations | No network | Fully functional |
-| Plugin loading | NPM registry | Disabled/cached |
-| Telemetry | OTLP export | Buffer/disable |
-| Health checks | Optional | Local only |
-| Auth validation | IdP | Token cache |
-
-### 6. Resource-Constrained Profiles
-**Priority:** P1 | **Effort:** S
-
-Preset configurations for limited resources.
+Logs with trace correlation.
 
 **Tasks:**
-- [ ] Create "minimal" profile
-- [ ] Create "balanced" profile
-- [ ] Create "performance" profile
-- [ ] Add memory limit configurations
-- [ ] Add CPU limit handling
-- [ ] Document profile selection
+- [ ] Integrate with Pino logger
+- [ ] Add trace/span ID to logs
+- [ ] Configure log levels
+- [ ] Add structured context
+- [ ] Implement log sampling
+- [ ] Create log exporters
 
-**Profiles:**
+**Log Format:**
 ```json
 {
-  "profiles": {
-    "minimal": {
-      "lazyLoading": true,
-      "cacheSize": 10,
-      "maxOperations": 100,
-      "telemetry": false,
-      "memoryLimit": "128Mi"
-    },
-    "balanced": {
-      "lazyLoading": true,
-      "cacheSize": 100,
-      "maxOperations": 300,
-      "telemetry": true,
-      "memoryLimit": "512Mi"
-    },
-    "performance": {
-      "lazyLoading": false,
-      "cacheSize": 500,
-      "maxOperations": "all",
-      "telemetry": true,
-      "memoryLimit": "2Gi"
-    }
-  }
+  "timestamp": "2027-03-15T10:30:00Z",
+  "level": "info",
+  "message": "Operation completed",
+  "traceId": "abc123",
+  "spanId": "def456",
+  "operation": "to_base64",
+  "duration": 15,
+  "inputSize": 1024,
+  "userId": "user-123"
 }
 ```
 
-### 7. Memory Footprint Optimization
+### 4. Prometheus Endpoint
+**Priority:** P0 | **Effort:** S
+
+Metrics scraping endpoint for Prometheus.
+
+**Tasks:**
+- [ ] Create `/metrics` endpoint
+- [ ] Format in Prometheus exposition format
+- [ ] Add custom metrics registration
+- [ ] Configure metric prefix
+- [ ] Add service discovery annotations
+
+**Prometheus Configuration:**
+```yaml
+scrape_configs:
+  - job_name: 'cyberchef-mcp'
+    kubernetes_sd_configs:
+      - role: pod
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        action: keep
+        regex: true
+```
+
+### 5. Grafana Dashboards
 **Priority:** P1 | **Effort:** M
 
-Reduce baseline memory usage.
+Pre-built dashboards for key metrics.
 
 **Tasks:**
-- [ ] Profile memory usage
-- [ ] Identify memory leaks
-- [ ] Optimize large data handling
-- [ ] Implement buffer pooling
-- [ ] Add memory monitoring
-- [ ] Create memory pressure handling
+- [ ] Create overview dashboard
+- [ ] Create performance dashboard
+- [ ] Create operations dashboard
+- [ ] Create error analysis dashboard
+- [ ] Create resource usage dashboard
+- [ ] Add alerting rules
 
-**Memory Optimization Strategies:**
-- Streaming for large inputs
-- Buffer reuse pools
-- Weak references for caches
-- Aggressive garbage collection hints
-- Memory-mapped files for large operations
+**Dashboard Panels:**
 
-### 8. Edge Caching
-**Priority:** P2 | **Effort:** S
+**Overview Dashboard:**
+- Request rate (req/s)
+- Error rate (%)
+- Latency percentiles (p50, p95, p99)
+- Active sessions
+- Top operations by count
 
-Caching strategies for edge deployments.
+**Performance Dashboard:**
+- Latency distribution
+- Slowest operations
+- Resource consumption
+- Throughput by operation
+- Memory/CPU trends
+
+### 6. Alerting Integration
+**Priority:** P1 | **Effort:** S
+
+Hooks for alerting systems.
 
 **Tasks:**
-- [ ] Implement local file cache
-- [ ] Add cache warming
-- [ ] Create cache invalidation
-- [ ] Handle cache size limits
-- [ ] Add cache statistics
+- [ ] Define alerting rules
+- [ ] Create Prometheus alert rules
+- [ ] Add custom alert hooks
+- [ ] Implement alert context enrichment
+
+**Alert Rules:**
+```yaml
+groups:
+  - name: cyberchef
+    rules:
+      - alert: HighErrorRate
+        expr: rate(cyberchef_errors_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+
+      - alert: HighLatency
+        expr: histogram_quantile(0.99, cyberchef_request_duration_seconds_bucket) > 5
+        for: 5m
+        labels:
+          severity: warning
+```
+
+### 7. Performance Profiling
+**Priority:** P2 | **Effort:** M
+
+On-demand performance profiling.
+
+**Tasks:**
+- [ ] Add CPU profiling endpoint
+- [ ] Add memory profiling endpoint
+- [ ] Create heap snapshot utility
+- [ ] Add flame graph generation
+- [ ] Implement continuous profiling (optional)
 
 ## Technical Design
-
-### Container Optimization
-
-```dockerfile
-# Stage 1: Build
-FROM node:22-alpine AS builder
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci --omit=dev --ignore-scripts
-COPY src ./src
-RUN npm run build && npm prune --production
-
-# Stage 2: Runtime (minimal)
-FROM gcr.io/distroless/nodejs22-debian12
-WORKDIR /app
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-CMD ["dist/mcp-server.mjs"]
-```
 
 ### Architecture
 
 ```
-+--------------------+
-| Edge Deployment    |
-+--------------------+
-         |
-+--------------------+
-| CyberChef MCP      |
-| - Lazy loading     |
-| - Minimal deps     |
-| - Local cache      |
-+--------------------+
-         |
-+--------------------+
-| Local Storage      |
-| - Operations cache |
-| - Recipe cache     |
-+--------------------+
++-------------------+
+| CyberChef MCP     |
++-------------------+
+        |
++-------------------+
+| OpenTelemetry SDK |
+| - Traces          |
+| - Metrics         |
+| - Logs            |
++-------------------+
+        |
++-------------------+
+| OTLP Exporter     |
++-------------------+
+        |
++-------+-------+-------+
+|       |       |       |
+v       v       v       v
+Jaeger  Prom   Loki   Backend
+```
+
+### Configuration
+
+```json
+{
+  "observability": {
+    "enabled": true,
+    "serviceName": "cyberchef-mcp",
+    "serviceVersion": "2.7.0",
+
+    "traces": {
+      "enabled": true,
+      "exporter": "otlp",
+      "endpoint": "http://jaeger:4317",
+      "sampling": {
+        "type": "parentBased",
+        "ratio": 0.1
+      }
+    },
+
+    "metrics": {
+      "enabled": true,
+      "exporter": "prometheus",
+      "port": 9090,
+      "prefix": "cyberchef"
+    },
+
+    "logs": {
+      "enabled": true,
+      "level": "info",
+      "format": "json",
+      "traceCorrelation": true
+    }
+  }
+}
 ```
 
 ## Implementation Plan
 
-### Week 1: Multi-Platform & Size
-- [ ] BuildKit configuration
-- [ ] Multi-arch builds
-- [ ] Size reduction
-- [ ] Alpine optimization
+### Week 1: Traces
+- [ ] OpenTelemetry SDK setup
+- [ ] HTTP instrumentation
+- [ ] MCP protocol spans
+- [ ] Operation spans
 
-### Week 2: Startup & Loading
-- [ ] Lazy loading implementation
-- [ ] Startup profiling
-- [ ] V8 optimization
-- [ ] Benchmark creation
+### Week 2: Metrics
+- [ ] Metrics SDK setup
+- [ ] Core metrics
+- [ ] Prometheus endpoint
+- [ ] Custom metrics
 
-### Week 3: Offline & Memory
-- [ ] Offline mode
-- [ ] Resource profiles
-- [ ] Memory optimization
-- [ ] Testing
+### Week 3: Logs & Dashboards
+- [ ] Structured logging
+- [ ] Trace correlation
+- [ ] Grafana dashboards
+- [ ] Alerting rules
 
 ### Week 4: Integration & Testing
-- [ ] Platform testing
-- [ ] Edge caching
+- [ ] Backend integrations
+- [ ] Performance testing
 - [ ] Documentation
-- [ ] Performance validation
+- [ ] Dashboard polish
 
 ## Dependencies
 
 ### Required
-- Docker BuildKit
-- QEMU (for cross-platform builds)
-- Node.js 22 (Alpine)
+- `@opentelemetry/sdk-node`: OpenTelemetry SDK
+- `@opentelemetry/exporter-trace-otlp-grpc`: OTLP exporter
+- `@opentelemetry/exporter-prometheus`: Prometheus exporter
+- `@opentelemetry/instrumentation-http`: HTTP instrumentation
+- `pino`: Structured logging
 
-### Optional
-- Distroless base images
-- V8 snapshot tools
+### External Services
+- OpenTelemetry Collector (optional)
+- Prometheus
+- Grafana
+- Jaeger/Tempo (traces)
+- Loki (logs)
 
 ## Testing Requirements
 
-### Platform Tests
-- [ ] AMD64 functionality
-- [ ] ARM64 functionality
-- [ ] ARM/v7 functionality
+### Unit Tests
+- [ ] Span creation
+- [ ] Metric recording
+- [ ] Log formatting
+
+### Integration Tests
+- [ ] Trace propagation
+- [ ] Metric scraping
+- [ ] Log correlation
 
 ### Performance Tests
-- [ ] Container size measurement
-- [ ] Startup time benchmark
-- [ ] Memory usage profiling
-- [ ] Latency comparison
-
-### Offline Tests
-- [ ] Air-gapped operation
-- [ ] Network failure handling
-- [ ] Cache functionality
-
-## Performance Targets
-
-| Metric | Current | Target |
-|--------|---------|--------|
-| Image size | ~200MB | <50MB |
-| Cold start | ~3s | <1s |
-| Memory (idle) | ~150MB | <100MB |
-| ARM64 perf | N/A | 95% of AMD64 |
+- [ ] Tracing overhead (<5ms)
+- [ ] Memory impact
+- [ ] Export latency
 
 ## Documentation Updates
 
-- [ ] Edge deployment guide
-- [ ] Platform compatibility matrix
-- [ ] Resource profile reference
-- [ ] Offline mode documentation
-- [ ] Performance tuning guide
+- [ ] Observability setup guide
+- [ ] Grafana dashboard import
+- [ ] Alerting configuration
+- [ ] Backend integration guides
+- [ ] Performance tuning
+- [ ] Troubleshooting guide
 
 ## GitHub Milestone
 
-Create milestone: `v2.7.0 - Edge Deployment`
+Create milestone: `v2.7.0 - Observability & Monitoring`
 
 **Issues:**
-1. Implement Multi-Platform Docker Builds (P0, M)
-2. Create Minimal Container Images (P0, L)
-3. Add Lazy Loading System (P0, M)
-4. Implement Startup Optimization (P0, M)
-5. Add Offline Operation Mode (P1, M)
-6. Create Resource-Constrained Profiles (P1, S)
-7. Optimize Memory Footprint (P1, M)
-8. Implement Edge Caching (P2, S)
-9. Platform Testing & Validation (P0, L)
-10. Documentation (P0, M)
+1. Integrate OpenTelemetry Traces (P0, M)
+2. Add OpenTelemetry Metrics (P0, M)
+3. Implement Structured Logging (P0, S)
+4. Create Prometheus Endpoint (P0, S)
+5. Build Grafana Dashboards (P1, M)
+6. Add Alerting Integration (P1, S)
+7. Implement Performance Profiling (P2, M)
+8. Documentation & Guides (P0, M)
 
 ---
 
 **Last Updated:** December 2025
 **Status:** Planning
-**Next Review:** March 2027
+**Next Review:** February 2027

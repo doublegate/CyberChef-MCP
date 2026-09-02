@@ -1,5 +1,16 @@
 # Release Plan: v2.1.0 - Multi-Modal Support
 
+> **Superseded — this plan shipped as v2.2.0, not as the version in its title.**
+>
+> Releases from v2.1.0 onward ran one version ahead of this plan set, so "Multi-Modal Support"
+> was delivered as **v2.2.0**. The authoritative record of what shipped is
+> [`docs/releases/v2.2.0.md`](../../releases/v2.2.0.md); `ROADMAP.md` carries the
+> current numbering. This file is kept unrenamed as the historical plan — renaming a
+> spent plan to match the release would rewrite the record rather than explain it.
+>
+> Unshipped plans in this directory HAVE been renumbered to match ROADMAP.md; see
+> [`README.md`](README.md).
+
 **Release Date:** October 2026
 **Theme:** Binary Data, Image, and Audio Handling
 **Phase:** Phase 4 - Expansion

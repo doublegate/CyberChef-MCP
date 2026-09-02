@@ -49,6 +49,7 @@ because a bearer token protects nothing when the client already owns the process
 | `CYBERCHEF_AUTH_JWKS_URI` | discovered | Skips RFC 8414 / OpenID discovery |
 | `CYBERCHEF_AUTH_REQUIRED_SCOPES` | *none* | A baseline scope demanded on every request, in addition to the per-tool check |
 | `CYBERCHEF_AUDIT_ENABLED` | follows auth | Force audit logging on or off independently |
+| `CYBERCHEF_TENANT_CLAIM` | *unset* | Token claim naming the tenant, e.g. `tid`. **Setting this turns multi-tenancy on**, and requires `CYBERCHEF_AUTH_ISSUER` |
 
 **`CYBERCHEF_AUTH_RESOURCE` is not optional in practice.** It is what the token's `aud` claim is
 checked against (RFC 8707), so a mismatch — a stray trailing slash, a different host — rejects
@@ -87,6 +88,48 @@ token, by design:
 ```bash
 curl -s http://127.0.0.1:3000/.well-known/oauth-protected-resource/mcp | jq
 ```
+
+
+## Multi-tenancy (v2.5.0)
+
+**Off unless `CYBERCHEF_TENANT_CLAIM` is set.** With it unset the server runs in a single tenant
+and behaves exactly as it did before v2.5.0 — which is correct for stdio, where one client owns the
+process, and for any single-user HTTP deployment.
+
+Set it to the claim your authorization server puts the tenant in: `tid` for Microsoft Entra,
+`org_id` for Auth0, or whatever your issuer uses.
+
+```bash
+docker run -i --rm \
+  -e CYBERCHEF_TRANSPORT=http \
+  -e CYBERCHEF_AUTH_ISSUER=https://auth.example.com \
+  -e CYBERCHEF_AUTH_RESOURCE=https://mcp.example.com/mcp \
+  -e CYBERCHEF_TENANT_CLAIM=tid \
+  cyberchef-mcp
+```
+
+**Tenancy requires authorization, and the server will not start without it.** The tenant is read
+from a claim on a token the server has already verified. Without authorization there is no verified
+token, so every caller would silently share one tenant while you believed they were separated —
+which is why this is a startup error rather than a warning.
+
+What is isolated:
+
+| | |
+|---|---|
+| **Recipes** | scoped per tenant for read, list, update, delete, stats and `clear()` |
+| **Operation cache** | tenant is part of the cache key |
+| **Concurrency slots** | `CYBERCHEF_MAX_CONCURRENT_OPS` applies *per tenant* |
+| **Recipe cap** | `CYBERCHEF_RECIPE_MAX_COUNT` applies *per tenant* |
+| **Audit records** | carry the tenant |
+
+**Upgrading an existing recipe store is safe.** A recipe saved before v2.5.0 has no tenant field
+and belongs to the default tenant, so a single-tenant deployment sees exactly what it saw before.
+
+**A token whose tenant claim is missing, blank, or malformed is refused with `403`** rather than
+placed in the default tenant — putting an unidentifiable caller in with everyone else is the
+failure this feature exists to prevent. Identifiers are validated against an allowlist
+(`A-Za-z0-9._:@-`, at most 128 characters); `.`, `..` and `default` are reserved.
 
 ## Limits and safety
 

@@ -281,10 +281,10 @@ After v3.0.0 release (August 2027):
 - [Docker Multi-Platform Builds](https://docs.docker.com/build/building/multi-platform/)
 - [Alpine Linux Optimization](https://alpinelinux.org/about/)
 - [LLM Function Calling](https://platform.openai.com/docs/guides/function-calling)
-- [Release v2.7.0 Plan](./release-v2.7.0.md)
-- [Release v2.8.0 Plan](./release-v2.8.0.md)
-- [Release v2.9.0 Plan](./release-v2.9.0.md)
-- [Release v3.0.0 Plan](./release-v3.0.0.md)
+- [Release v2.8.0 Plan](../future-releases/release-v2.8.0.md)
+- [Release v2.9.0 Plan](../future-releases/release-v2.9.0.md)
+- [Release v2.9.x Plan](../future-releases/release-v2.9.x.md)
+- [Release v3.0.0 Plan](../future-releases/release-v3.0.0.md)
 
 ---
 

@@ -436,11 +436,11 @@ cp -r ./recipes-backup ./recipes
 
 ## Related Documents
 
-- [Phase 3: Maturity](./phase-3-maturity.md)
+- [Phase 3: Maturity](../phases/phase-3-maturity.md)
 - [v1.8.0 Release Plan](./release-v1.8.0.md)
 - [v1.9.0 Release Plan](./release-v1.9.0.md)
 - [ROADMAP.md](../ROADMAP.md)
-- [v2.0.0 Breaking Changes](../migration/breaking-changes.md)
+- [v2.0.0 Breaking Changes](../../v2.0.0-breaking-changes.md)
 
 ## GitHub Milestone
 

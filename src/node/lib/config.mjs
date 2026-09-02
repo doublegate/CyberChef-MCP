@@ -33,7 +33,11 @@ export const MAX_INPUT_SIZE = parseInt(process.env.CYBERCHEF_MAX_INPUT_SIZE, 10)
 export const OPERATION_TIMEOUT = parseInt(process.env.CYBERCHEF_OPERATION_TIMEOUT, 10) || 30000; // 30s default
 export const STREAMING_THRESHOLD = parseInt(process.env.CYBERCHEF_STREAMING_THRESHOLD, 10) || 10 * 1024 * 1024; // 10MB default
 export const ENABLE_STREAMING = process.env.CYBERCHEF_ENABLE_STREAMING !== "false"; // Enabled by default
-export const ENABLE_WORKERS = process.env.CYBERCHEF_ENABLE_WORKERS === "true"; // Disabled by default (workers not yet implemented)
+// Disabled by default -- opt-in, not unimplemented. The comment here read "workers not yet
+// implemented" long after `worker-pool.mjs`, `worker.mjs` and the `shouldUseWorker` routing in
+// `handleCallTool` all shipped, which is the kind of stale note that makes a reader distrust the
+// feature rather than the comment.
+export const ENABLE_WORKERS = process.env.CYBERCHEF_ENABLE_WORKERS === "true";
 export const CACHE_MAX_SIZE = parseInt(process.env.CYBERCHEF_CACHE_MAX_SIZE, 10) || 100 * 1024 * 1024; // 100MB default
 export const CACHE_MAX_ITEMS = parseInt(process.env.CYBERCHEF_CACHE_MAX_ITEMS, 10) || 1000;
 export const BATCH_MAX_SIZE = parseInt(process.env.CYBERCHEF_BATCH_MAX_SIZE, 10) || 100;
@@ -43,5 +47,12 @@ export const RATE_LIMIT_ENABLED = process.env.CYBERCHEF_RATE_LIMIT_ENABLED === "
 export const RATE_LIMIT_REQUESTS = parseInt(process.env.CYBERCHEF_RATE_LIMIT_REQUESTS, 10) || 100;
 export const RATE_LIMIT_WINDOW = parseInt(process.env.CYBERCHEF_RATE_LIMIT_WINDOW, 10) || 60000; // 60 seconds
 export const CACHE_ENABLED = process.env.CYBERCHEF_CACHE_ENABLED !== "false"; // Enabled by default
+// The tenant every entry belongs to when tenancy is disabled.
+//
+// Lives here rather than in tenancy.mjs so the leaf modules that need it -- cache, quota,
+// rate-limit -- can key on it without importing the tenancy module, which pulls in auth.mjs and
+// jsonwebtoken behind it. tenancy.mjs re-exports it, so there is still one definition and one
+// obvious place to import it from.
+export const DEFAULT_TENANT = "default";
 export const V2_COMPATIBILITY_MODE = process.env.V2_COMPATIBILITY_MODE === "true"; // Disabled by default
 export const SUPPRESS_DEPRECATIONS = process.env.CYBERCHEF_SUPPRESS_DEPRECATIONS === "true"; // Disabled by default

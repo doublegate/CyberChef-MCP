@@ -24,6 +24,7 @@
  */
 
 import { getLogger } from "../logger.mjs";
+import { currentTenant } from "./tenancy.mjs";
 
 /** Outcomes an audited call can have. */
 export const OUTCOME = Object.freeze({
@@ -62,6 +63,7 @@ export function auditEnabled(env = process.env, authEnabled = false) {
  * @param {string} entry.outcome - One of `OUTCOME`.
  * @param {string} entry.tool - Tool name.
  * @param {string} [entry.subject] - Digest of the caller, never the raw subject.
+ * @param {string} [entry.tenant] - Tenant; defaults to the current request's.
  * @param {string[]} [entry.scopes] - Scopes the token carried.
  * @param {string[]} [entry.required] - Scopes the call needed.
  * @param {string} [entry.sessionId] - Transport session, when there is one.
@@ -77,6 +79,12 @@ export function audit(entry) {
         outcome: entry.outcome,
         tool: entry.tool,
         subject: entry.subject || "anonymous",
+        // Read from the request context rather than required from each call site. An audit record
+        // that omits the tenant because one of a dozen call sites forgot to pass it is precisely
+        // the gap rule 1 exists to prevent -- and the missing records would be the denials, which
+        // are written from the fewest places. Unconditional, like `subject`: uniform records are
+        // queryable, and "default" is the truthful answer in a single-tenant deployment.
+        tenant: entry.tenant || currentTenant(),
         ...(entry.scopes?.length ? { scopes: entry.scopes } : {}),
         ...(entry.required?.length ? { required: entry.required } : {}),
         ...(entry.sessionId ? { sessionId: entry.sessionId } : {}),

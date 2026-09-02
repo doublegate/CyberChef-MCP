@@ -19,6 +19,9 @@ const MAX_RECIPE_NAME_LENGTH = 200;
 const MAX_RECIPE_DESCRIPTION_LENGTH = 1000;
 const MAX_TAG_COUNT = 20;
 const MAX_TAG_LENGTH = 50;
+// Matches the cap tenancy.mjs enforces on a tenant identifier. Kept in step deliberately: a
+// recipe whose tenant the storage schema would reject could never be read back by its owner.
+const MAX_TENANT_LENGTH = 128;
 
 /**
  * Schema for a single operation in a recipe.
@@ -104,7 +107,23 @@ export const RecipeSchema = z.object({
         .describe("List of operations to perform"),
     metadata: RecipeMetadataSchema
         .optional()
-        .describe("Additional recipe metadata")
+        .describe("Additional recipe metadata"),
+    // Server-assigned, never supplied by a caller: `create` stamps it from the verified token.
+    //
+    // Optional because every recipe written before v2.5.0 lacks it, and a required field would
+    // make an existing recipes.json fail to load -- silently discarding a user's saved work on
+    // upgrade. A recipe with no tenant belongs to the default tenant, which is exactly what it
+    // meant when it was written.
+    //
+    // Declared explicitly rather than left as an unknown key: this schema is a plain `z.object`,
+    // so Zod STRIPS unknown keys instead of rejecting them. `create` happens to push the original
+    // object rather than the parse result, so an undeclared `tenant` would survive today -- and
+    // would vanish the moment someone tidied that to use the parsed value, taking every recipe's
+    // ownership with it.
+    tenant: z.string()
+        .max(MAX_TENANT_LENGTH)
+        .optional()
+        .describe("Owning tenant; absent means the default (single-tenant) owner")
 });
 
 /**

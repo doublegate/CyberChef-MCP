@@ -1,367 +1,360 @@
-# Release Plan: v2.6.0 - Observability & Monitoring
+# Release Plan: v2.6.0 - Distributed Architecture
 
-**Release Date:** March 2027
-**Theme:** Production Visibility with OpenTelemetry
+**Release Date:** February 2027
+**Theme:** Horizontal Scaling and High Availability
 **Phase:** Phase 5 - Enterprise
-**Effort:** L (4 weeks)
-**Risk Level:** Low
+**Effort:** XL (6 weeks)
+**Risk Level:** High
 
 ## Overview
 
-v2.6.0 provides comprehensive monitoring capabilities using OpenTelemetry, the industry standard for observability in 2025. This release enables production deployments to have full visibility into server behavior, performance, and health.
+v2.6.0 enables CyberChef MCP Server to run as a distributed service with horizontal scaling and high availability. Production deployments require the ability to handle variable loads and meet uptime SLAs.
 
 ## Goals
 
-1. **Primary Goal**: OpenTelemetry integration (traces, metrics, logs)
-2. **Secondary Goal**: Pre-built Grafana dashboards
-3. **Tertiary Goal**: Integration with major observability backends
+1. **Primary Goal**: Enable horizontal scaling to 10+ replicas
+2. **Secondary Goal**: Achieve 99.9% uptime with graceful failover
+3. **Tertiary Goal**: Support Kubernetes and Docker Swarm deployments
 
 ## Success Criteria
 
-- [ ] <5ms tracing overhead per operation
-- [ ] Trace sampling configurability
-- [ ] 100% request correlation (logs, traces, metrics)
-- [ ] Pre-built dashboards for key metrics
-- [ ] Integration with 3+ backends (Jaeger, Datadog, New Relic)
+- [ ] Linear scaling to 10+ replicas
+- [ ] <1s cold start time (with warm pools)
+- [ ] 99.9% uptime in production
+- [ ] Zero message loss during scale events
+- [ ] Kubernetes and Docker Swarm support
 
 ## Features
 
-### 1. OpenTelemetry Traces
+### 1. Stateless Server Design
+**Priority:** P0 | **Effort:** L
+
+Refactor server to externalize all state.
+
+**Tasks:**
+- [ ] Identify and externalize session state
+- [ ] Move recipe storage to external store
+- [ ] Externalize cache to Redis/Valkey
+- [ ] Remove all in-process state dependencies
+- [ ] Add state store health checks
+- [ ] Implement graceful state migration
+
+**State Externalization:**
+| State Type | Current | Target |
+|------------|---------|--------|
+| Sessions | In-memory | Redis |
+| Recipes | SQLite | PostgreSQL/Redis |
+| Cache | In-memory | Redis |
+| Plugins | Filesystem | Shared volume/S3 |
+
+### 2. Load Balancer Integration
 **Priority:** P0 | **Effort:** M
 
-Distributed tracing across operations.
+Support various load balancing strategies.
 
 **Tasks:**
-- [ ] Integrate OpenTelemetry SDK
-- [ ] Add auto-instrumentation for HTTP
-- [ ] Create spans for MCP protocol handling
-- [ ] Add spans for CyberChef operations
-- [ ] Implement trace context propagation
-- [ ] Configure sampling strategies
-- [ ] Add custom span attributes
+- [ ] Implement health endpoints (liveness, readiness, startup)
+- [ ] Add load balancer-aware session handling
+- [ ] Support sticky sessions (optional)
+- [ ] Add graceful shutdown for zero-downtime deploys
+- [ ] Implement connection draining
+- [ ] Support multiple LB types (L4, L7)
 
-**Span Structure:**
+**Health Endpoints:**
 ```
-Request (parent)
-  |
-  +-- MCP Protocol Parsing
-  |
-  +-- Authentication
-  |
-  +-- Operation Execution
-  |     |
-  |     +-- Input Processing
-  |     +-- Core Operation (e.g., AES Decrypt)
-  |     +-- Output Formatting
-  |
-  +-- Response Serialization
+GET /health/live     -> 200 OK (process alive)
+GET /health/ready    -> 200 OK (ready to serve)
+GET /health/startup  -> 200 OK (initialization complete)
 ```
 
-**Custom Attributes:**
-```javascript
-span.setAttributes({
-  'cyberchef.operation': 'to_base64',
-  'cyberchef.input_size': 1024,
-  'cyberchef.output_size': 1368,
-  'cyberchef.recipe_length': 1,
-  'cyberchef.user_id': 'user-123'
-});
+### 3. Kubernetes Deployment
+**Priority:** P0 | **Effort:** L
+
+Kubernetes-native deployment with Helm chart.
+
+**Tasks:**
+- [ ] Create Helm chart
+- [ ] Add ConfigMap and Secret management
+- [ ] Implement HPA (Horizontal Pod Autoscaler)
+- [ ] Add PodDisruptionBudget
+- [ ] Create ServiceMonitor for Prometheus
+- [ ] Add network policies
+- [ ] Support Ingress and Gateway API
+
+**Helm Values:**
+```yaml
+replicaCount: 3
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilization: 70
+
+resources:
+  requests:
+    memory: "256Mi"
+    cpu: "100m"
+  limits:
+    memory: "1Gi"
+    cpu: "1000m"
+
+redis:
+  enabled: true
+  architecture: replication
+
+ingress:
+  enabled: true
+  className: nginx
 ```
 
-### 2. OpenTelemetry Metrics
+### 4. Docker Swarm Deployment
+**Priority:** P1 | **Effort:** M
+
+Docker Swarm deployment patterns.
+
+**Tasks:**
+- [ ] Create docker-compose.yml for Swarm
+- [ ] Add service health checks
+- [ ] Implement update rollout strategy
+- [ ] Add resource constraints
+- [ ] Create overlay network configuration
+- [ ] Add secret management
+
+### 5. Warm Pool Support
+**Priority:** P1 | **Effort:** M
+
+Fast startup with pre-warmed instances.
+
+**Tasks:**
+- [ ] Implement instance pre-warming
+- [ ] Add warm pool orchestrator
+- [ ] Create startup optimization
+- [ ] Implement lazy loading
+- [ ] Add module caching
+- [ ] Target: <1s cold start
+
+**Optimization Strategies:**
+- Lazy load operations (only load when used)
+- Pre-compile critical paths
+- Cache compiled modules
+- V8 code cache (snapshot)
+- Reduce dependency tree
+
+### 6. Session Affinity & Persistence
 **Priority:** P0 | **Effort:** M
 
-Comprehensive metrics collection.
+Handle sessions across multiple instances.
 
 **Tasks:**
-- [ ] Configure metrics SDK
-- [ ] Add request count/latency metrics
-- [ ] Add operation-specific metrics
-- [ ] Add resource usage metrics
-- [ ] Create business metrics
-- [ ] Implement metric aggregation
-- [ ] Add histogram for latencies
+- [ ] Implement Redis session store
+- [ ] Add session serialization
+- [ ] Handle session migration
+- [ ] Implement session timeout
+- [ ] Add session recovery after failover
+- [ ] Create session replication (optional)
 
-**Core Metrics:**
-| Metric | Type | Description |
-|--------|------|-------------|
-| `cyberchef_requests_total` | Counter | Total MCP requests |
-| `cyberchef_request_duration_seconds` | Histogram | Request latency |
-| `cyberchef_operations_total` | Counter | Operations executed |
-| `cyberchef_operation_duration_seconds` | Histogram | Operation latency |
-| `cyberchef_errors_total` | Counter | Error count by type |
-| `cyberchef_active_sessions` | Gauge | Current sessions |
-| `cyberchef_input_bytes_total` | Counter | Input data processed |
-| `cyberchef_output_bytes_total` | Counter | Output data produced |
-
-### 3. Structured Logging
-**Priority:** P0 | **Effort:** S
-
-Logs with trace correlation.
-
-**Tasks:**
-- [ ] Integrate with Pino logger
-- [ ] Add trace/span ID to logs
-- [ ] Configure log levels
-- [ ] Add structured context
-- [ ] Implement log sampling
-- [ ] Create log exporters
-
-**Log Format:**
+**Session Store Configuration:**
 ```json
 {
-  "timestamp": "2027-03-15T10:30:00Z",
-  "level": "info",
-  "message": "Operation completed",
-  "traceId": "abc123",
-  "spanId": "def456",
-  "operation": "to_base64",
-  "duration": 15,
-  "inputSize": 1024,
-  "userId": "user-123"
+  "sessions": {
+    "store": "redis",
+    "redis": {
+      "url": "redis://redis:6379",
+      "prefix": "cyberchef:session:",
+      "ttl": 3600
+    },
+    "replication": {
+      "enabled": false,
+      "minReplicas": 2
+    }
+  }
 }
 ```
 
-### 4. Prometheus Endpoint
-**Priority:** P0 | **Effort:** S
-
-Metrics scraping endpoint for Prometheus.
-
-**Tasks:**
-- [ ] Create `/metrics` endpoint
-- [ ] Format in Prometheus exposition format
-- [ ] Add custom metrics registration
-- [ ] Configure metric prefix
-- [ ] Add service discovery annotations
-
-**Prometheus Configuration:**
-```yaml
-scrape_configs:
-  - job_name: 'cyberchef-mcp'
-    kubernetes_sd_configs:
-      - role: pod
-    relabel_configs:
-      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
-        action: keep
-        regex: true
-```
-
-### 5. Grafana Dashboards
-**Priority:** P1 | **Effort:** M
-
-Pre-built dashboards for key metrics.
-
-**Tasks:**
-- [ ] Create overview dashboard
-- [ ] Create performance dashboard
-- [ ] Create operations dashboard
-- [ ] Create error analysis dashboard
-- [ ] Create resource usage dashboard
-- [ ] Add alerting rules
-
-**Dashboard Panels:**
-
-**Overview Dashboard:**
-- Request rate (req/s)
-- Error rate (%)
-- Latency percentiles (p50, p95, p99)
-- Active sessions
-- Top operations by count
-
-**Performance Dashboard:**
-- Latency distribution
-- Slowest operations
-- Resource consumption
-- Throughput by operation
-- Memory/CPU trends
-
-### 6. Alerting Integration
+### 7. Circuit Breaker Patterns
 **Priority:** P1 | **Effort:** S
 
-Hooks for alerting systems.
+Resilience patterns for distributed systems.
 
 **Tasks:**
-- [ ] Define alerting rules
-- [ ] Create Prometheus alert rules
-- [ ] Add custom alert hooks
-- [ ] Implement alert context enrichment
+- [ ] Implement circuit breaker for external calls
+- [ ] Add retry with exponential backoff
+- [ ] Create fallback mechanisms
+- [ ] Add bulkhead isolation
+- [ ] Implement timeout handling
 
-**Alert Rules:**
-```yaml
-groups:
-  - name: cyberchef
-    rules:
-      - alert: HighErrorRate
-        expr: rate(cyberchef_errors_total[5m]) > 0.1
-        for: 5m
-        labels:
-          severity: warning
+### 8. Graceful Shutdown
+**Priority:** P0 | **Effort:** S
 
-      - alert: HighLatency
-        expr: histogram_quantile(0.99, cyberchef_request_duration_seconds_bucket) > 5
-        for: 5m
-        labels:
-          severity: warning
-```
-
-### 7. Performance Profiling
-**Priority:** P2 | **Effort:** M
-
-On-demand performance profiling.
+Zero-downtime deployments.
 
 **Tasks:**
-- [ ] Add CPU profiling endpoint
-- [ ] Add memory profiling endpoint
-- [ ] Create heap snapshot utility
-- [ ] Add flame graph generation
-- [ ] Implement continuous profiling (optional)
+- [ ] Handle SIGTERM signal
+- [ ] Complete in-flight requests
+- [ ] Close connections gracefully
+- [ ] Persist critical state
+- [ ] Notify load balancer (ready=false)
 
 ## Technical Design
 
 ### Architecture
 
 ```
-+-------------------+
-| CyberChef MCP     |
-+-------------------+
-        |
-+-------------------+
-| OpenTelemetry SDK |
-| - Traces          |
-| - Metrics         |
-| - Logs            |
-+-------------------+
-        |
-+-------------------+
-| OTLP Exporter     |
-+-------------------+
-        |
-+-------+-------+-------+
-|       |       |       |
-v       v       v       v
-Jaeger  Prom   Loki   Backend
+              +---------------+
+              | Load Balancer |
+              +---------------+
+                     |
+     +---------------+---------------+
+     |               |               |
++--------+     +--------+     +--------+
+| Pod 1  |     | Pod 2  |     | Pod 3  |
++--------+     +--------+     +--------+
+     |               |               |
+     +---------------+---------------+
+                     |
+              +---------------+
+              | Redis Cluster |
+              +---------------+
 ```
 
-### Configuration
+### Deployment Topology
 
-```json
-{
-  "observability": {
-    "enabled": true,
-    "serviceName": "cyberchef-mcp",
-    "serviceVersion": "2.6.0",
-
-    "traces": {
-      "enabled": true,
-      "exporter": "otlp",
-      "endpoint": "http://jaeger:4317",
-      "sampling": {
-        "type": "parentBased",
-        "ratio": 0.1
-      }
-    },
-
-    "metrics": {
-      "enabled": true,
-      "exporter": "prometheus",
-      "port": 9090,
-      "prefix": "cyberchef"
-    },
-
-    "logs": {
-      "enabled": true,
-      "level": "info",
-      "format": "json",
-      "traceCorrelation": true
-    }
-  }
-}
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cyberchef-mcp
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    spec:
+      containers:
+      - name: cyberchef-mcp
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: 3000
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 3000
+        lifecycle:
+          preStop:
+            exec:
+              command: ["/bin/sh", "-c", "sleep 10"]
 ```
 
 ## Implementation Plan
 
-### Week 1: Traces
-- [ ] OpenTelemetry SDK setup
-- [ ] HTTP instrumentation
-- [ ] MCP protocol spans
-- [ ] Operation spans
+### Week 1-2: Stateless Refactor
+- [ ] Externalize session state
+- [ ] Redis integration
+- [ ] Health endpoints
+- [ ] State migration
 
-### Week 2: Metrics
-- [ ] Metrics SDK setup
-- [ ] Core metrics
-- [ ] Prometheus endpoint
-- [ ] Custom metrics
+### Week 3-4: Kubernetes
+- [ ] Helm chart creation
+- [ ] Autoscaling configuration
+- [ ] Ingress setup
+- [ ] Testing
 
-### Week 3: Logs & Dashboards
-- [ ] Structured logging
-- [ ] Trace correlation
-- [ ] Grafana dashboards
-- [ ] Alerting rules
+### Week 5: Docker Swarm & Optimizations
+- [ ] Swarm deployment
+- [ ] Warm pool support
+- [ ] Startup optimization
+- [ ] Circuit breakers
 
-### Week 4: Integration & Testing
-- [ ] Backend integrations
-- [ ] Performance testing
+### Week 6: Testing & Documentation
+- [ ] Load testing
+- [ ] Failover testing
 - [ ] Documentation
-- [ ] Dashboard polish
+- [ ] Performance tuning
 
 ## Dependencies
 
 ### Required
-- `@opentelemetry/sdk-node`: OpenTelemetry SDK
-- `@opentelemetry/exporter-trace-otlp-grpc`: OTLP exporter
-- `@opentelemetry/exporter-prometheus`: Prometheus exporter
-- `@opentelemetry/instrumentation-http`: HTTP instrumentation
-- `pino`: Structured logging
+- `ioredis`: Redis client
+- `@kubernetes/client-node` (optional): K8s API
+- `opossum`: Circuit breaker
+- `helmet`: Security headers
 
 ### External Services
-- OpenTelemetry Collector (optional)
-- Prometheus
-- Grafana
-- Jaeger/Tempo (traces)
-- Loki (logs)
+- Redis/Valkey cluster
+- Kubernetes (optional)
+- Load balancer
 
 ## Testing Requirements
 
 ### Unit Tests
-- [ ] Span creation
-- [ ] Metric recording
-- [ ] Log formatting
+- [ ] State externalization
+- [ ] Health endpoints
+- [ ] Circuit breaker logic
 
 ### Integration Tests
-- [ ] Trace propagation
-- [ ] Metric scraping
-- [ ] Log correlation
+- [ ] Redis session persistence
+- [ ] Multi-instance scenarios
+- [ ] Failover behavior
 
-### Performance Tests
-- [ ] Tracing overhead (<5ms)
-- [ ] Memory impact
-- [ ] Export latency
+### Load Tests
+- [ ] Horizontal scaling
+- [ ] High concurrency (1000 req/s)
+- [ ] Failover under load
+
+### Chaos Tests
+- [ ] Pod termination
+- [ ] Network partition
+- [ ] Redis failure
+
+## Performance Targets
+
+| Metric | Target |
+|--------|--------|
+| Cold start | <1s |
+| Warm start | <100ms |
+| Failover time | <5s |
+| Session recovery | <1s |
+| Max replicas | 10+ |
 
 ## Documentation Updates
 
-- [ ] Observability setup guide
-- [ ] Grafana dashboard import
-- [ ] Alerting configuration
-- [ ] Backend integration guides
-- [ ] Performance tuning
+- [ ] Kubernetes deployment guide
+- [ ] Docker Swarm deployment guide
+- [ ] Scaling best practices
 - [ ] Troubleshooting guide
+- [ ] Architecture diagrams
+- [ ] Helm chart reference
 
 ## GitHub Milestone
 
-Create milestone: `v2.6.0 - Observability & Monitoring`
+Create milestone: `v2.6.0 - Distributed Architecture`
 
 **Issues:**
-1. Integrate OpenTelemetry Traces (P0, M)
-2. Add OpenTelemetry Metrics (P0, M)
-3. Implement Structured Logging (P0, S)
-4. Create Prometheus Endpoint (P0, S)
-5. Build Grafana Dashboards (P1, M)
-6. Add Alerting Integration (P1, S)
-7. Implement Performance Profiling (P2, M)
-8. Documentation & Guides (P0, M)
+1. Implement Stateless Server Design (P0, L)
+2. Add Load Balancer Integration (P0, M)
+3. Create Kubernetes Deployment (Helm) (P0, L)
+4. Add Docker Swarm Deployment (P1, M)
+5. Implement Warm Pool Support (P1, M)
+6. Add Session Affinity & Persistence (P0, M)
+7. Implement Circuit Breaker Patterns (P1, S)
+8. Add Graceful Shutdown (P0, S)
+9. Load Testing & Performance (P0, L)
+10. Documentation & Guides (P0, M)
 
 ---
 
 **Last Updated:** December 2025
 **Status:** Planning
-**Next Review:** February 2027
+**Next Review:** January 2027

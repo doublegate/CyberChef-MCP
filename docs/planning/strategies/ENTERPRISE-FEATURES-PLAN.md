@@ -745,10 +745,10 @@ operationDuration.record(0.015, { operation: 'to_base64' });
 - [MCP Authorization Specification](https://modelcontextprotocol.io/docs/tutorials/security/authorization)
 - [OAuth 2.1 Specification](https://oauth.net/2.1/)
 - [OpenTelemetry Documentation](https://opentelemetry.io/docs/)
-- [Release v2.4.0 Plan](./release-v2.4.0.md)
-- [Release v2.5.0 Plan](./release-v2.5.0.md)
-- [Release v2.6.0 Plan](./release-v2.6.0.md)
-- [Phase 5: Enterprise](./phase-5-enterprise.md)
+- [Release v2.5.0 Plan](../future-releases/release-v2.4.0.md) (planned as v2.4.0; shipped as v2.5.0)
+- [Release v2.6.0 Plan](../future-releases/release-v2.6.0.md)
+- [Release v2.7.0 Plan](../future-releases/release-v2.7.0.md)
+- [Phase 5: Enterprise](../phases/phase-5-enterprise.md)
 
 ---
 
