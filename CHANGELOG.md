@@ -39,6 +39,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The operation cache could return one caller's result to another.** `getCacheKey` hashed only
+  `input.substring(0, 1000)`, so two different inputs sharing their first 1,000 characters produced
+  the same key. Measured:
+
+  ```
+  a = "x".repeat(1000) + "SECRET-A"        (1,008 chars)
+  b = "x".repeat(1000) + "DIFFERENT-B"     (1,011 chars)
+  keys equal: true   ->  lookup with b returned "ANSWER-FOR-A"
+  ```
+
+  Two consequences, the second being the serious one: a **silently wrong result** for valid input,
+  and on a shared HTTP server, **one caller receiving output computed from another caller's data**.
+  Long inputs sharing a prefix are ordinary — the same document with different trailing content,
+  log lines, padded records. The cache is on by default.
+
+  Now hashes the full input plus its length. The cost is affordable and was measured rather than
+  assumed: full SHA-256 is 2.3 ms at 1 MB and 252 ms at the 100 MB input ceiling, against an
+  operation that scales with the same input — Gzip alone is 305 ms at 100 KB. A cache that returns
+  the wrong answer quickly is worth less than no cache at all.
+
 - **sharp** in `docs-site` raised to `^0.35.3` (resolving 0.35.4), clearing GHSA-f88m-g3jw-g9cj and
   four inherited libvips CVEs. The caret is deliberate: 0.35.4 ships libvips 8.18.6 and further
   bounds-checking, so pinning 0.35.3 exactly would decline a strictly better patch.
