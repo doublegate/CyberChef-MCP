@@ -35,10 +35,22 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Setup Node.js 22
+      - name: Setup Node.js 26
         uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          # 26 -- the version the published image actually runs, because a benchmark must
+          # measure the runtime that ships.
+          #
+          # This was the last '22' in the repository. The v2.0.0 plan called for moving all seven
+          # workflows to 24 and this one was missed, so every benchmark run since has printed
+          #
+          #   npm warn EBADENGINE package: 'cyberchef-mcp@2.8.0'
+          #   npm warn EBADENGINE required: { node: '>=24 <27' }, current: { node: 'v22.23.2' }
+          #
+          # which is worse than a warning: the numbers posted to every pull request were measured
+          # on a runtime this project does not support, against a V8 two majors behind the one it
+          # ships. A performance benchmark run on the wrong engine is not a benchmark.
+          node-version: '26'
           cache: 'npm'
 
       - name: Install dependencies
