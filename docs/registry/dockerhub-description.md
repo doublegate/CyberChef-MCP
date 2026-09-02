@@ -1,5 +1,27 @@
 # CyberChef MCP Server
 
+> ## ⚠️ Security advisory — upgrade to `2.4.1` or `1.9.1`
+>
+> **[GHSA-rmg9-8936-vx66](https://github.com/doublegate/CyberChef-MCP/security/advisories/GHSA-rmg9-8936-vx66)** (CVSS 5.9)
+>
+> **Every tag below `2.4.1` on the v2 line, and below `1.9.1` on the v1 line, is affected** —
+> that is `1.4.0` through `2.4.0`, including all `release-v*` tags.
+>
+> The operation cache keyed entries on only the first 1,000 characters of the input, so two
+> different inputs sharing that prefix collided. The second caller received the **first caller's
+> result** — a silently wrong answer, and on a shared server, one caller receiving output computed
+> from another caller's data.
+>
+> | | |
+> |---|---|
+> | **Patched** | `2.4.1` (current) · `1.9.1` (Apache-2.0 maintenance line) |
+> | **Mitigation without upgrading** | `CYBERCHEF_CACHE_ENABLED=false` |
+> | **`latest`** | already points at `2.4.1` |
+>
+> Older tags are **kept deliberately** so pinned deployments and reproducible builds do not break.
+> They are not maintained and will not receive fixes. Pin to `2.4.1` or later.
+
+
 A **Model Context Protocol (MCP)** server wrapping [GCHQ CyberChef](https://github.com/gchq/CyberChef),
 the "Cyber Swiss Army Knife". It exposes **504 data-manipulation operations** — encryption, encoding,
 compression, hashing, forensics — as tools an AI assistant can call directly.
@@ -138,3 +160,4 @@ docker run -i --rm --read-only --tmpfs /tmp:size=100M \
 - [User Guide](https://github.com/doublegate/CyberChef-MCP/blob/master/docs/guides/user_guide.md) — install, config, tuning
 - [Tool reference](https://github.com/doublegate/CyberChef-MCP/blob/master/docs/guides/commands.md)
 - [Release notes](https://github.com/doublegate/CyberChef-MCP/releases)
+

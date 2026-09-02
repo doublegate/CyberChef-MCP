@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The registry description carries the security advisory.** `docs/registry/dockerhub-description.md`
+  now opens with GHSA-rmg9-8936-vx66, naming the affected range (`1.4.0` through `2.4.0`, including
+  every `release-v*` tag), the two patched versions, and the `CYBERCHEF_CACHE_ENABLED=false`
+  mitigation.
+
+  The old tags are **kept deliberately**, and the description says so. Deleting them would not force
+  an upgrade — it would break every deployment that pinned a version responsibly, while leaving
+  untouched the people who already pulled the image and are still running it. The advisory reaches
+  those people through their own scanners; a missing tag only reaches the ones who did the right
+  thing. Publishing is handled by the existing release-workflow sync, added in v2.3.0.
+
 - **OAuth 2.1 Resource Server support on the HTTP transport** (v2.5.0, Phase 5). The server has
   never had authentication on any transport. The MCP authorization specification says stdio
   **SHOULD NOT** use OAuth — it takes credentials from the environment, and a bearer token protects
