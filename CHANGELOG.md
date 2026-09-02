@@ -7,7 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-09-02
+
 ### Added
+
+- **Multi-tenancy: cache, recipes, concurrency and audit are isolated per tenant.** The fourth and
+  last Phase 5 theme. The server has always held process-wide state shared by every caller — one
+  operation cache, one recipe store, one concurrency pool. On stdio that is correct: there is one
+  client and it owns the process. On a shared HTTP deployment it was four ways for one caller's
+  activity to reach another.
+  - **Tenant identity comes from a claim on an already-verified token** (signature, issuer, and
+    RFC 8707 audience all checked), named by `CYBERCHEF_TENANT_CLAIM`. Never from a header or query
+    parameter, which the caller controls and could therefore choose.
+  - **Recipes** are the only outright data exposure of the four: without scoping, any caller could
+    list, read, modify and **delete** any other caller's saved recipes. `getStats` leaked further
+    than a count — `tags` and `categories` are free text the user wrote. `clear()` was the worst:
+    it replaced the whole store, so any caller could destroy every tenant's work in one call.
+  - **The cache key** carries the tenant. Results are deterministic, so a shared cache never handed
+    over another tenant's output — but a hit is fast and a miss is not, so it revealed whether
+    someone else had already run a given input. The same shape of leak as GHSA-rmg9-8936-vx66.
+  - **Concurrency slots and recipe caps are per tenant**, so the busiest tenant no longer decides
+    how much capacity everyone else gets.
+  - Ownership is server-assigned and not editable: `create` stamps it after the caller's fields so
+    a payload cannot choose its own owner, and `update` pins it as it already pins `id`. A
+    cross-tenant read reports **absent**, not forbidden — "forbidden" confirms the id exists.
+  - **Off unless configured**, and configuring it without authorization is a startup error rather
+    than a silent downgrade. A recipe with no `tenant` field belongs to the default tenant, so an
+    existing `recipes.json` keeps working across the upgrade.
+
 
 - **The registry description carries the security advisory.** `docs/registry/dockerhub-description.md`
   now opens with GHSA-rmg9-8936-vx66, naming the affected range (`1.4.0` through `2.4.0`, including
@@ -47,6 +74,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   happen. Denials are logged at `warn` so a level filter still surfaces them, subjects are recorded
   as a salted digest rather than an email address, and error **messages** are deliberately excluded
   — they can quote the very key or document being analysed.
+
+### Fixed
+
+- **The rate limiter has never limited anything since v1.7.0.** `handleCallTool` keyed it on
+  `requestId`, which is a fresh `randomUUID()` per request, so every call presented as a caller
+  never seen before and the sliding window was always empty. Measured at a limit of 5 per 60s:
+
+  | keyed by | requests | denied | tracking-map entries |
+  |---|---|---|---|
+  | `requestId` (as shipped) | 1000 | **0** | **1000** |
+  | a stable caller | 1000 | 995 | 1 |
+
+  Both halves were defects: nothing was ever refused, **and** the tracking Map gained an entry per
+  request and never dropped one — an unbounded leak in a long-running HTTP server. Now keyed on the
+  caller (subject within tenant) with an amortised sweep that reclaims expired entries.
+
+  The existing tests covered the sliding-window algorithm thoroughly and keyed it on a stable
+  connection id, as any reasonable unit test would. The module was correct; the call site was not,
+  and nothing tested the call site. The regression tests added here run through the real dispatch
+  path for that reason.
+
+- **Plan documents and release numbering had drifted a full version apart.** From v2.1.0 onward
+  every release plan shipped one version later than its title, while `ROADMAP.md` was updated to
+  reality — so a plan titled "v2.4.0 — Enterprise Features" described what was being built as
+  v2.5.0. Unshipped plans are renumbered to match ROADMAP; shipped plans are annotated with the
+  release that delivered them rather than renamed, because renaming a spent plan falsifies the
+  record instead of explaining it. Nine broken relative links in the planning tree fixed alongside.
+
+- The `ENABLE_WORKERS` comment claimed "workers not yet implemented" long after they were.
+
+### Changed
+
+- `package-lock.json` recorded `2.4.0` while `package.json` said `2.4.1`; the v2.4.1 release bumped
+  one and not the other.
+
 
 ## [2.4.1] - 2026-09-02
 
