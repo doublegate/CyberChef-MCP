@@ -10,6 +10,7 @@ By running this server, you enable AI assistants (like Claude, Cursor AI, and ot
 
 ![CyberChef MCP Banner](images/CyberChef-MCP_Banner-Logo.jpg)
 
+[![npm](https://img.shields.io/npm/v/cyberchef-mcp?logo=npm)](https://www.npmjs.com/package/cyberchef-mcp)
 [![MCP Enabled](https://img.shields.io/badge/MCP-Enabled-blue)](https://modelcontextprotocol.io/)
 [![License](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
 [![Docker Version](https://img.shields.io/github/v/release/doublegate/CyberChef-MCP?logo=docker&label=docker)](https://github.com/doublegate/CyberChef-MCP/releases)
@@ -108,11 +109,30 @@ The server exposes CyberChef operations as MCP tools:
 ## Quick Start
 
 ### Prerequisites
-*   **Docker** installed and running.
+*   **Node.js** `>=24 <27` for the npm install, or **Docker** for the container.
 
 ### Installation Options
 
-**Option 1: Pull from Docker Hub (Online, Recommended)**
+**Option 1: npm (Recommended)**
+
+```bash
+npx cyberchef-mcp
+```
+
+No clone, no build, no Docker daemon. For an MCP client, point it at the same command:
+
+```json
+{
+  "mcpServers": {
+    "cyberchef": { "command": "npx", "args": ["-y", "cyberchef-mcp"] }
+  }
+}
+```
+
+Installing it permanently works too — `npm install -g cyberchef-mcp`, then run `cyberchef-mcp`.
+The package also ships `cyberchef-migrate`, which checks and converts v1.x recipes for v2.x.
+
+**Option 2: Pull from Docker Hub**
 ```bash
 # Docker Hub provides health scores and supply chain attestations
 docker pull doublegate/cyberchef-mcp:latest
@@ -120,14 +140,14 @@ docker tag doublegate/cyberchef-mcp:latest cyberchef-mcp
 docker run -i --rm cyberchef-mcp
 ```
 
-**Option 1b: Pull from GitHub Container Registry (Alternative)**
+**Option 2b: Pull from GitHub Container Registry (Alternative)**
 ```bash
 docker pull ghcr.io/doublegate/cyberchef-mcp_v2:latest
 docker tag ghcr.io/doublegate/cyberchef-mcp_v2:latest cyberchef-mcp
 docker run -i --rm cyberchef-mcp
 ```
 
-**Option 2: Download Pre-built Image (Offline Installation)**
+**Option 3: Download Pre-built Image (Offline Installation)**
 
 For environments without direct GHCR access, download the pre-built Docker image tarball from the [latest release](https://github.com/doublegate/CyberChef-MCP/releases/latest):
 
@@ -154,7 +174,7 @@ For environments without direct GHCR access, download the pre-built Docker image
     docker run -i --rm cyberchef-mcp
     ```
 
-**Option 3: Build from Source**
+**Option 4: Build from Source**
 1.  **Clone the Repository:**
     ```bash
     git clone https://github.com/doublegate/CyberChef-MCP.git

@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`cyberchef-mcp` is on npm.** `npx cyberchef-mcp` now runs the server with no clone, no build
+  and no Docker daemon — the way essentially every MCP server is installed, and a gap open since
+  v2.2.0. The package ships a second bin, `cyberchef-migrate`. Verified from the registry rather
+  than from a local tarball, which is the distinction v2.5.0's F-12 was about: a pack that looks
+  right says nothing about whether the package *installs*.
+- **Releases publish to npm automatically.** `mcp-release.yml` gained a publish step, guarded three
+  ways: it runs only for `v2.*` tags (the v1.9.x line cannot be published at all — F-12), it
+  refuses to publish when the tag and `package.json` disagree, and it skips silently when the
+  version already exists so a re-run cannot fail a completed release.
+
+### Fixed
+
+- `git tag -F` strips every markdown heading, because git treats `#` lines as comments. Every tag
+  in the v2.x line lost its structure this way (v2.4.0 lost 16 headings); v2.5.0 is the first with
+  them intact. The documented command now passes `--cleanup=verbatim`. Published tags are
+  immutable, so the earlier ones stay as they are.
+
+
 ## [2.5.0] - 2026-09-02
 
 ### Added

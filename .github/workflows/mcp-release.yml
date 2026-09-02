@@ -332,3 +332,58 @@ jobs:
           TAG_NAME: ${{ github.ref_name }}
         run: |
           gh release upload "$TAG_NAME" sbom.cyclonedx.json --clobber
+
+      # ---- npm, for v2.x tags only ----
+      #
+      # The v1.9.x line publishes to GHCR `_v1` but CANNOT be published to npm: its `postinstall`
+      # runs five grunt tasks that patch node_modules, which cannot survive being installed from a
+      # tarball (see docs/internal/v2.5.0-findings-log.md F-12). Guarding on the tag rather than
+      # trusting that v1 tags never reach this workflow.
+      - name: Set up Node for npm publish
+        if: startsWith(github.ref_name, 'v2.')
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies for packaging
+        if: startsWith(github.ref_name, 'v2.')
+        # Not --ignore-scripts: `prepack` runs `grunt configTests`, which needs the postinstall
+        # dependency patching to have happened, and the generated OperationConfig.json and
+        # index.mjs are shipped in the tarball.
+        run: npm ci
+
+      - name: Publish to npm
+        if: startsWith(github.ref_name, 'v2.')
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          # The secrets context is NOT available in a step-level `if:` -- referencing it there
+          # fails the workflow at parse time -- so the "is it configured" guard lives here.
+          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+            echo "::warning::NPM_TOKEN is not set; skipping npm publish."
+            exit 0
+          fi
+
+          VERSION="${TAG_NAME#v}"
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          PKG_NAME="$(node -p "require('./package.json').name")"
+
+          # A tag and a package.json that disagree would publish a version nobody tagged.
+          if [ "$VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::Tag $TAG_NAME implies $VERSION but package.json says $PKG_VERSION."
+            exit 1
+          fi
+
+          # Idempotent: a re-run of a release must not fail because the version already exists.
+          # `npm view` exits non-zero for an unpublished version, which is the ordinary case here.
+          if npm view "${PKG_NAME}@${VERSION}" version >/dev/null 2>&1; then
+            echo "::notice::${PKG_NAME}@${VERSION} is already published; nothing to do."
+            exit 0
+          fi
+
+          npm publish --provenance --access public
+          echo "Published ${PKG_NAME}@${VERSION}"
