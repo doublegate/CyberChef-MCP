@@ -16,8 +16,13 @@
  *
  * **Nothing on the hot path needs it.** `tools/list` is built from `OperationConfig.json` and
  * `Categories.json`; every operation call, registry tool and streaming path goes through
- * `bakeOnCore`, which uses `Chef.mjs` at 20 ms. The Node API was reached from exactly two places:
- * `help()` for `cyberchef_search`, and `bake()` inside recipe execution.
+ * `bakeOnCore`, which uses `Chef.mjs` at 20 ms. The Node API is reached from exactly THREE places,
+ * and the third is worth naming because omitting it is what made the first attempt at this change
+ * measure no improvement at all:
+ *
+ *   1. `help()` for `cyberchef_search`            -- mcp-server.mjs
+ *   2. `help()` for the batched search branch     -- lib/batch.mjs
+ *   3. `bake()` for recipe execute/test           -- recipe-manager.mjs
  *
  * So a server that is launched and then asked to list tools -- which is what every editor does,
  * on stdio, on every session -- paid 1.15 s to import 505 operation implementations it had not

@@ -595,18 +595,20 @@ export async function createTransport(options = {}) {
         let inFlight = 0;
 
         const httpServer = http.createServer(async (req, res) => {
+            // Counts WORK IN PROGRESS, not open responses, and the distinction is the whole
+            // point of the counter.
+            //
+            // This previously settled on the response's `finish`/`close` events. `close` fires the
+            // moment a CLIENT DISCONNECTS -- which can happen while this handler is still awaiting
+            // MCP dispatch or a running operation -- so the counter reached zero early, a
+            // concurrent drain concluded nothing was in flight, and `closeAll()` could tear the
+            // process down while an accepted operation was still executing. A drain that waits for
+            // responses rather than for work is not draining.
+            //
+            // Decremented in `finally` instead: it covers every return path in this handler,
+            // including the early ones (health, metadata, 404, preflight), and it is tied to the
+            // handler actually finishing rather than to whether anyone is still listening.
             inFlight++;
-            // `finish` fires when the response is fully flushed; `close` covers a client that
-            // disconnected first. Both, and a guard, because either alone leaks the counter and a
-            // leaked counter makes every future drain wait the full timeout.
-            let settled = false;
-            const settle = () => {
-                if (settled) return;
-                settled = true;
-                inFlight--;
-            };
-            res.once("finish", settle);
-            res.once("close", settle);
             try {
                 const cors = corsHeaders(req);
                 for (const [k, v] of Object.entries(cors)) res.setHeader(k, v);
@@ -882,6 +884,8 @@ export async function createTransport(options = {}) {
                         res.once("finish", () => req.destroy());
                     }
                 }
+            } finally {
+                inFlight--;
             }
         });
 

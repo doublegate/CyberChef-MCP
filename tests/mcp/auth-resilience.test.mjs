@@ -24,6 +24,18 @@ import {
     verifyToken, _discoveryBreakerState, _resetDiscoveryBreaker, _resetJwksCache
 } from "../../src/node/lib/auth.mjs";
 
+/** A syntactically valid RSA JWK, so a JWKS containing it yields a usable key. */
+const VALID_JWK = {
+    kty: "RSA", kid: "k1", use: "sig", alg: "RS256",
+    n: "sXchDaQebHnPiGvyDOAT4saGEUetSyo9MKLOoWFsueri23bOdgWp4Dy1Wl" +
+       "UzewbgBHod5pcM9H95GQRV3JDXboIRROSBigeC5yjU1hGzHHyXss8UDpre" +
+       "cbAYxknTcQkhslANGRUZmdTOQ5qTRsLAt6BTYuyvVRdhS8exSZEy_c4gs_" +
+       "7svlJJQ4H9_NxsiIoLwAEk7-Q3UXERGYw_75IDrGA84-lA_-Ct4eTlXHBI" +
+       "Y2EaV7t7LjJaynVJCpkv4LKjTTAumiGUIuQhrNhZLuF_RJLqHpM2kgWFLU" +
+       "7-VTdL1VbC2tejvcI2BlMkEpk1BzBZI0KQB0GaDWFLN-aEAw3vRw",
+    e: "AQAB"
+};
+
 /**
  * A fetch stand-in that serves discovery metadata and a JWKS.
  *
@@ -159,17 +171,7 @@ describe("recovery", () => {
     }, 30_000);
 
     it("closes fully once discovery succeeds", async () => {
-        // One syntactically valid RSA JWK, so the JWKS parses and yields a usable key.
-        globalThis.fetch = issuerServing([{
-            kty: "RSA", kid: "k1", use: "sig", alg: "RS256",
-            n: "sXchDaQebHnPiGvyDOAT4saGEUetSyo9MKLOoWFsueri23bOdgWp4Dy1Wl" +
-               "UzewbgBHod5pcM9H95GQRV3JDXboIRROSBigeC5yjU1hGzHHyXss8UDpre" +
-               "cbAYxknTcQkhslANGRUZmdTOQ5qTRsLAt6BTYuyvVRdhS8exSZEy_c4gs_" +
-               "7svlJJQ4H9_NxsiIoLwAEk7-Q3UXERGYw_75IDrGA84-lA_-Ct4eTlXHBI" +
-               "Y2EaV7t7LjJaynVJCpkv4LKjTTAumiGUIuQhrNhZLuF_RJLqHpM2kgWFLU" +
-               "7-VTdL1VbC2tejvcI2BlMkEpk1BzBZI0KQB0GaDWFLN-aEAw3vRw",
-            e: "AQAB"
-        }]);
+        globalThis.fetch = issuerServing([VALID_JWK]);
 
         // The token itself is nonsense, so verification fails -- but key discovery SUCCEEDS, and
         // that is what the breaker tracks.
@@ -183,34 +185,58 @@ describe("timeouts", () => {
         // Against a black-holed host this is the difference between a bounded failure and a
         // request that hangs for the OS TCP timeout. Asserted by observing the signal rather than
         // by waiting, which would make the test as slow as the bug.
-        const signals = [];
+        //
+        // Discovery must SUCCEED here so the JWKS fetch is actually reached. An earlier version
+        // failed both metadata requests, which meant `discoverJwksUri()` threw and `fetchJwks()`
+        // was never called -- so the test proved discovery had a deadline and said nothing at all
+        // about the JWKS request, which is the other half of the change.
+        const seen = [];
         globalThis.fetch = async (url, init) => {
-            signals.push(init?.signal);
-            throw new Error("ECONNREFUSED");
+            seen.push({ url: String(url), signal: init?.signal });
+            if (String(url).includes("jwks")) throw new Error("ECONNREFUSED");
+            return {
+                ok: true,
+                arrayBuffer: async () => Buffer.from(JSON.stringify({
+                    issuer: CONFIG.issuer, "jwks_uri": "https://auth.example.invalid/jwks"
+                }))
+            };
         };
 
         await verifyToken("a.b.c", CONFIG);
 
-        expect(signals.length).toBeGreaterThan(0);
-        for (const s of signals) {
-            expect(s, "every outbound request needs a deadline").toBeInstanceOf(AbortSignal);
+        // Both kinds of request were made...
+        expect(seen.some(r => r.url.includes("well-known"))).toBe(true);
+        expect(seen.some(r => r.url.includes("jwks")), "the JWKS fetch must be reached").toBe(true);
+        // ...and every one of them carried a deadline.
+        for (const r of seen) {
+            expect(r.signal, `no deadline on ${r.url}`).toBeInstanceOf(AbortSignal);
         }
     });
 });
 
 describe("a healthy authorization server", () => {
-    it("does not trip the breaker when the JWKS is served from cache", async () => {
-        // A cache hit makes no outbound request. It must count as success, not as a silent
-        // failure -- the server is serving, so the breaker belongs closed.
-        let attempts = 0;
-        const serving = issuerServing([]);
+    it("serves the second verification from cache without new JWKS requests", async () => {
+        // A cache hit makes no outbound JWKS request and must count as success -- the server is
+        // serving, so the breaker belongs closed.
+        //
+        // This needs a JWKS that actually PARSES. An earlier version served an empty key set, so
+        // `fetchJwks` threw "no usable keys", never wrote the cache, and the test passed while
+        // exercising no cache at all -- one failure is below the breaker's threshold, so even the
+        // breaker assertion proved nothing.
+        let jwksFetches = 0;
+        const serving = issuerServing([VALID_JWK]);
         globalThis.fetch = async (url) => {
-            attempts++;
+            if (String(url).includes("jwks")) jwksFetches++;
             return serving(url);
         };
 
-        await verifyToken("a.b.c", CONFIG);
-        expect(_discoveryBreakerState()).not.toBe("OPEN");
-        expect(attempts).toBeGreaterThan(0);
+        await verifyToken("not.a.real.token", CONFIG);
+        expect(jwksFetches).toBe(1);
+        expect(_discoveryBreakerState()).toBe("CLOSED");
+
+        await verifyToken("not.a.real.token", CONFIG);
+        // The decisive assertion: still one. The second verification used the cache.
+        expect(jwksFetches).toBe(1);
+        expect(_discoveryBreakerState()).toBe("CLOSED");
     });
 });
