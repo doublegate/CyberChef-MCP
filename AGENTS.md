@@ -20,12 +20,12 @@
 <<< MC-PROJECT-START >>>
 ## Project: CyberChef
 
-**CyberChef MCP Server** (v2.9.0) - Fork of GCHQ CyberChef wrapping the Node.js API into an MCP
+**CyberChef MCP Server** (v2.10.0) - Fork of GCHQ CyberChef wrapping the Node.js API into an MCP
 server. Exposes 504 operations (encryption, encoding, compression, forensics) as AI assistant tools.
 
 | Metric | Value |
 |--------|-------|
-| MCP Version | 2.9.0 (single source: `package.json` `version`, read by `src/node/lib/config.mjs`). `mcpVersion` was removed in v2.2.0 -- npm requires `version` to be the published version, so the upstream base moved to `cyberchefUpstreamVersion`. |
+| MCP Version | 2.10.0 (single source: `package.json` `version`, read by `src/node/lib/config.mjs`). `mcpVersion` was removed in v2.2.0 -- npm requires `version` to be the published version, so the upstream base moved to `cyberchefUpstreamVersion`. |
 | Upstream base | CyberChef **v11.4.0** |
 | Operations / tools | 504 operations **plus 4 registry tools** that are not operations. `tools/list` is an **index** by default (28 tools, ~4.9k tokens); `CYBERCHEF_TOOL_SURFACE=curated\|all` for 106 (~20.7k) or all 531 (~100k). All 504 reachable via `cyberchef_bake` + the three navigation tools. Every tool carries annotations + a title. |
 | Licence | **GPL-3.0-or-later** (from v2.0.0; v1.9.x and earlier are Apache-2.0) |
@@ -35,7 +35,8 @@ server. Exposes 504 operations (encryption, encoding, compression, forensics) as
 | Offline | `CYBERCHEF_OFFLINE=true` refuses the only 2 networked operations (`HTTP request`, `DNS over HTTPS`) of 504. Guard is on the **recipe**, not the tool name (`cyberchef_bake` carrying `HTTP request` is a network call), applied at all 4 engine entries -- `bakeOnCore`, the direct-operation branch above the worker split, and recipe-manager execute + test. A posture, not a sandbox. |
 | Presented output | **44 operations declare a `presentType` differing from `outputType`** -- the presenter targets a browser. `bakeOnCore` asks for the presented form because a few carry their payload ONLY in markup (`Generate QR Code` -> `<img src="data:image/png...">`); for the rest it returned a browser artefact. Since v2.9.0 it prefers `Chef.bake`'s `dish` (the raw, unpresented value, free from the same bake) when the presented value has markup and **no** media. Resolved **before the cache** -- a decision downstream of the cache applies to a miss and not a hit. `JSON Beautify` is why this is a correctness rule and not a formatting one: its keys' quotes were markup structure, so stripping tags returned unparseable JSON. Both directions are pinned by `tests/mcp/presented-output.test.mjs`. |
 | Magic | `cyberchef_magic` does NOT go through the operation; `src/node/lib/magic.mjs` calls `speculativeExecution` directly and returns a plain-text report + `structuredContent`. Reason: the operation emitted the web results **table**, with its recipes in the pretty form (`From_Base64('A-Za-z0-9+/=',true,false)`) which **`bake` rejects** -- the most actionable field was the one field a caller could not use. Recipes are now emitted as `[{op,args}]` and a test bakes every one. Language is an **estimate**, never a determination: chi-squared byte frequencies called "Attack at dawn" German at probability 1.35e-8, and accuracy does not rise monotonically with length, so no cutoff fixes it. This path bypasses `resolveArgValue`, so it screens the crib regex itself. |
-| Tests | 1,373 MCP (53 files) + 241 Node-API + 2,289 operations + 9 CI-executed examples |
+| Configuration | Two sources: `cyberchef.config.json` and environment variables, with **env > file > default**. 64 settings in 15 sections; the mapping is a committed literal in `src/node/lib/config-file.mjs`, NOT a runtime transform (`http.maxSessions` is `CYBERCHEF_MAX_SESSIONS`, not `CYBERCHEF_HTTP_MAX_SESSIONS`, so a derived name would be set and read by nothing). Applied by populating `process.env` before anything reads it, because settings are resolved at MODULE LOAD in ~30 places across five modules -- hence `bootstrap-config.mjs` and the rule that it is imported FIRST. Fails closed on unknown sections/keys/types. Added in v2.10.0; the migration guide had told users to write this file since v1.8.0 and nothing read it. |
+| Tests | 1,397 MCP (54 files) + 241 Node-API + 2,289 operations + 9 CI-executed examples |
 | Coverage | 96.7% lines / 90.1% branches / 96.6% functions / 95.8% statements. Thresholds raised in v2.3.0 from 75/70/90/75 to **95/89/96/96** (branches raised again in v2.7.0), with `src/node/lib/**` held separately at 99/94/100/99 -- the old numbers were twenty points below actual, so the gate could not fail. `perFile` is off deliberately; see `vitest.config.mjs` for why. Gated on **pull requests** since v2.2.0. |
 | Open security alerts | **0** Dependabot, **0** code-scanning (55 dispositioned in v2.1.1) |
 | MCP surfaces | tools + **prompts** (5) + **resources** (`recipe://<id>`), all three declared from one `SERVER_CAPABILITIES` -- there are two server construction sites and two capability lists drift. |
@@ -197,10 +198,18 @@ seven places, and the last two are the ones that get missed:
 4. `deploy/helm/cyberchef-mcp/values.yaml` `image.tag`
 5. `deploy/compose/docker-compose.yml` -- the `image:` line
 6. **`deploy/compose/docker-compose.yml` -- the PROSE in the digest-pinning comment.** Missed at
-   both v2.8.0 and v2.8.1, because a bump replaces the image reference and not the sentence above
-   it. Two occurrences is a pattern, not an accident.
+   v2.8.0, v2.8.1 **and v2.9.0** -- and at v2.9.0 the `image:` line, `Chart.yaml` `appVersion` and
+   `values.yaml` `image.tag` were missed too, so the chart and compose file published with that tag
+   deploy **v2.8.1**.
 7. README `**Latest Release:**` banner, the offline download URLs, and the AGENTS.md heading + docs
    map + MCP Version row in this file
+
+**Do not rely on this list. Run `npm run check:versions`.** Three consecutive releases got the
+version wrong while the note above told the author not to, which is the point at which a checklist
+has to become a gate. `scripts/check-version-consistency.mjs` runs in both CI workflows, checks
+every location here, and fails when a location matches *nothing* as well as when it disagrees -- a
+pattern that has stopped matching is how a consistency check silently stops checking. The list is
+kept as documentation of what is covered, not as the mechanism.
 
 Release cut (module 70 has the ceremony; this is the repo-specific mechanic):
 
@@ -255,7 +264,7 @@ perfectly good tag and would be ignored within a release or two.
 | Guides | `docs/guides/commands.md` (MCP tools), `user_guide.md` (installation), `edge-deployment.md` (arm64, size, offline, air-gapped), `configuration.md` (all 64 settings; generated from `config-file.mjs` and asserted against it) |
 | Planning | `docs/planning/ROADMAP.md`, `docs/planning/phases/overview.md` |
 | Security | `docs/security/audit.md` |
-| Releases | `docs/releases/v2.9.0.md` (latest), then `v2.8.1.md`, `v2.8.0.md`, `v2.7.0.md` ... `v2.0.0.md`, `v1.9.0.md` ... `v1.0.0.md` |
+| Releases | `docs/releases/v2.10.0.md` (latest), then `v2.9.0.md`, `v2.8.1.md`, `v2.8.0.md`, `v2.7.0.md` ... `v2.0.0.md`, `v1.9.0.md` ... `v1.0.0.md` |
 | Internal | `docs/internal/tech-debt-analysis-v1.6.1.md` (project health: 8.9/10) |
 
 <<< MC-PROJECT-END >>>
