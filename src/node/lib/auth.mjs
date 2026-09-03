@@ -441,7 +441,7 @@ export function bearerFrom(headers) {
  */
 export function subjectDigest(claims) {
     if (!claims?.sub) return "anonymous";
-    return createHash("sha256").update(`${claims.iss || ""} ${claims.sub}`)
+    return createHash("sha256").update(`${claims.iss || ""}\x00${claims.sub}`)
         .digest("hex").slice(0, 16);
 }
 

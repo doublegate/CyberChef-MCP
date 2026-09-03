@@ -134,6 +134,27 @@ describe("resolving a configuration", () => {
             .toThrow(/arrays may contain only strings or numbers, found object/);
     });
 
+    it("refuses an array for a setting that takes a single value", () => {
+        // `[1024, 2048]` joined to "1024,2048" and parseInt took the leading 1024 without
+        // complaint, so the server ran with a limit nobody wrote. Only the four settings their
+        // consumers actually split on commas may be lists.
+        expect(() => resolveConfig({ server: { maxInputSize: [1024, 2048] } }, {}))
+            .toThrow(/takes a single value, not a list/);
+        // ...and the genuine list settings still accept one.
+        expect(resolveConfig({ http: { allowedHosts: ["a.example", "b.example"] } }, {}).applied)
+            .toEqual({ CYBERCHEF_ALLOWED_HOSTS: "a.example,b.example" });
+    });
+
+    it("validates a value the environment is going to override anyway", () => {
+        // Validating only when the file wins made a file's validity depend on the environment it
+        // loaded in: this was ACCEPTED while CYBERCHEF_OFFLINE was set, and became a startup
+        // failure the day someone removed the override. A file that passes in staging and fails in
+        // production because an unrelated variable was dropped is the surprise a fail-closed
+        // loader exists to remove.
+        expect(() => resolveConfig({ security: { offline: {} } }, { CYBERCHEF_OFFLINE: "true" }))
+            .toThrow(/expected a string, number, boolean or array/);
+    });
+
     it("refuses a section that is not an object", () => {
         expect(() => resolveConfig({ server: "yes" }, {})).toThrow(/must be an object of settings/);
         expect(() => resolveConfig([], {})).toThrow(/top level must be an object/);
@@ -257,9 +278,32 @@ describe("the server, started with a configuration file", () => {
             // stopped once it has said what it was going to say.
             const done = code => resolvePromise({ stderr, code });
             child.on("close", done);
-            setTimeout(() => {
-                if (stderr.includes("=====") || stderr.length > 0) child.kill();
-            }, 20000);
+
+            // Wait for the banner's closing separator, then stop the server -- it would otherwise
+            // sit on stdin forever.
+            //
+            // An earlier version killed it after a fixed 20s if ANY stderr had arrived, which is
+            // two mistakes: `stderr.length > 0` made the sentinel check dead code, and a slow
+            // runner could be killed mid-banner and fail on a truncated assertion. Polling for the
+            // sentinel means the fast case finishes quickly and the slow case still gets a
+            // complete banner.
+            const poll = setInterval(() => {
+                if (stderr.includes("=====================================")) {
+                    clearInterval(poll);
+                    clearTimeout(fallback);
+                    child.kill();
+                }
+            }, 100);
+            // Still bounded, for a server that never reaches the banner at all -- a failing
+            // config exits on its own, but a hang must not wedge the suite.
+            const fallback = setTimeout(() => {
+                clearInterval(poll);
+                child.kill();
+            }, 60000);
+            child.on("close", () => {
+                clearInterval(poll);
+                clearTimeout(fallback);
+            });
         });
     }
 
@@ -279,6 +323,17 @@ describe("the server, started with a configuration file", () => {
 
         expect(stderr).toMatch(/tool surface: index/);
         expect(stderr).toMatch(/overridden by environment: tools.surface/);
+    }, 90_000);
+
+    it("names the file the operator actually pointed at", async () => {
+        // Prefixing every failure with "cyberchef.config.json" was misleading under
+        // CYBERCHEF_CONFIG_FILE: the message named a file that was not the one being read, which
+        // sends someone to edit the wrong thing.
+        writeConfig({ security: { offlien: true } }, "prod.json");
+        const { stderr } = await startServer(dir, { CYBERCHEF_CONFIG_FILE: "prod.json" });
+
+        expect(stderr).toMatch(/^\s*prod\.json: unknown setting/m);
+        expect(stderr).not.toMatch(/^\s*cyberchef\.config\.json: unknown setting/m);
     }, 90_000);
 
     it("refuses to start on a bad file, with a message and not a stack trace", async () => {

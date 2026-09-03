@@ -167,6 +167,25 @@ const SETTINGS = Object.freeze({
 });
 
 /**
+ * The settings that are genuinely lists, and are the only ones an array is valid for.
+ *
+ * Derived from the code that PARSES them, not from the name: each of these is split on commas by
+ * its consumer -- `configuredAllowlist` in `tool-surface.mjs`, the `csv()` helper in
+ * `transports.mjs`, and `csvScopes` in `auth.mjs`.
+ *
+ * Accepting an array anywhere else silently corrupts the value. `server.maxInputSize: [1024, 2048]`
+ * joined to `"1024,2048"`, and `parseInt` takes the leading `1024` without complaint -- so the
+ * server runs with a limit the operator never wrote and nothing reports it. That is the exact
+ * failure this module exists to prevent, so an array on a scalar setting is now an error.
+ */
+const LIST_SETTINGS = new Set([
+    "CYBERCHEF_TOOL_ALLOWLIST",
+    "CYBERCHEF_ALLOWED_HOSTS",
+    "CYBERCHEF_ALLOWED_ORIGINS",
+    "CYBERCHEF_AUTH_REQUIRED_SCOPES"
+]);
+
+/**
  * An error in the configuration file.
  *
  * A plain Error rather than the structured `CyberChefMCPError`: this is thrown during module load,
@@ -241,7 +260,12 @@ function suggest(unknown, known) {
  * @returns {string} The environment-variable form.
  * @throws {ConfigFileError} If the value cannot be one.
  */
-function toEnvValue(value, where) {
+function toEnvValue(value, where, envName) {
+    if (Array.isArray(value) && !LIST_SETTINGS.has(envName)) {
+        throw new ConfigFileError(
+            `${where}: this setting takes a single value, not a list. Only ` +
+            `${[...LIST_SETTINGS].length} settings are lists, and this is not one of them`);
+    }
     if (typeof value === "string") return value;
     if (typeof value === "boolean") return value ? "true" : "false";
     if (typeof value === "number") {
@@ -310,14 +334,26 @@ export function resolveConfig(config, env = process.env) {
             }
 
             const envName = SETTINGS[section][key];
+
+            // VALIDATED BEFORE PRECEDENCE IS APPLIED, not after.
+            //
+            // Checking the value only when the file is about to win made a file's validity depend
+            // on the environment it happened to load in: `security.offline: {}` was accepted while
+            // `CYBERCHEF_OFFLINE` was set, and became a startup failure the day someone removed
+            // the override. A file that passes in staging and fails in production because an
+            // unrelated variable was dropped is precisely the kind of surprise a fail-closed
+            // loader is supposed to remove.
+            const converted = toEnvValue(value, `${section}.${key}`, envName);
+
             // Precedence. An environment variable that is present -- even empty -- wins, because
             // an operator setting one at run time is being more specific than a file baked into an
-            // image, and silently overriding them would be its own surprise.
+            // image, and silently overriding them would be its own surprise. The converted value
+            // is discarded, but it had to be correct to get here.
             if (env[envName] !== undefined) {
                 deferredToEnv.push(`${section}.${key}`);
                 continue;
             }
-            applied[envName] = toEnvValue(value, `${section}.${key}`);
+            applied[envName] = converted;
         }
     }
 

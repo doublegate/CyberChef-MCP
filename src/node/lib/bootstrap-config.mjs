@@ -63,8 +63,13 @@ function load() {
         // stderr, never stdout: the stdio transport reserves stdout for JSON-RPC, and a stray line
         // there corrupts the stream for a client that is already connected. Same rule the logger
         // follows, and the reason logging to fd 1 was a shipped defect through v2.0.0.
+        // The file the OPERATOR named, not the default. Prefixing every failure with
+        // "cyberchef.config.json" was misleading for anyone using CYBERCHEF_CONFIG_FILE: the
+        // message pointed at a filename that was not the one being read, which is the worst thing
+        // a startup error can do to someone trying to find the file they need to edit.
+        const named = process.env.CYBERCHEF_CONFIG_FILE || "cyberchef.config.json";
         process.stderr.write(
-            `\ncyberchef.config.json: ${error.message}\n\n` +
+            `\n${named}: ${error.message}\n\n` +
             `The server did not start. Fix the file, or remove it to use environment variables ` +
             `only.\n`);
         process.exit(1);
