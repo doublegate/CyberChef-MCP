@@ -30,6 +30,7 @@ import { listPrompts, getPrompt } from "./lib/prompts.mjs";
 import { listResources, readResource, listResourceTemplates } from "./lib/resources.mjs";
 import { bakeOnCore } from "./lib/core-recipe.mjs";
 import { assertOfflineAllowed } from "./lib/offline.mjs";
+import { runMagic, renderMagicReport } from "./lib/magic.mjs";
 import { isExposed, describeSurface } from "./lib/tool-surface.mjs";
 import { categoryIndex, listOperations, describeOperations } from "./lib/tool-catalog.mjs";
 import { installWasmFetch } from "./lib/wasm-fetch.mjs";
@@ -1339,6 +1340,49 @@ const handleCallToolInner = async (request, extra, ownerServer = server) => {
                 // belongs above EVERY path that can answer the request, and a cache is one of
                 // those paths even though it executes nothing.
                 assertOfflineAllowed([{ op: opName }], { tool: name });
+
+                // Magic is answered by a renderer, not by the operation.
+                //
+                // It is the operation an assistant reaches for first on an unknown blob, and the
+                // one whose output an assistant could least act on: `presentType: "html"` means
+                // Chef applies `present()` regardless of `outputType`, so what reached the client
+                // was the web app's results TABLE with its markup stripped -- headers, run-together
+                // fields, and the literal string "Recipe (click to load)", a UI affordance with no
+                // meaning over MCP. Worse, the recipe in that table is the pretty form, which
+                // `bake` REJECTS ("Couldn't find an operation with name 'From_Base64(...)'"), so
+                // the single most actionable field was the one field a caller could not use.
+                //
+                // ABOVE THE CACHE, deliberately, and for a sharper reason than the offline guard:
+                // the cache stores `result.value`, a STRING. A structured result cannot round-trip
+                // through it, so a cached Magic would come back shaped differently from a fresh
+                // one -- exactly the defect that made `cyberchef_generate_qr_code` return an image
+                // on the first call and text on every one after it.
+                if (opName === "Magic") {
+                    const [depth, intensive, extLang, crib] = recipeArgs;
+                    const shaped = await runMagic(args.input, { depth, intensive, extLang, crib });
+                    const report = renderMagicReport(shaped);
+                    const duration = Date.now() - startTime;
+                    const magicInputSize = Buffer.byteLength(args.input, "utf8");
+
+                    quotaTracker.trackData(magicInputSize, report.length);
+                    telemetryCollector.record({
+                        tool: toolDimension(name),
+                        duration,
+                        inputSize: magicInputSize,
+                        outputSize: report.length,
+                        success: true,
+                        cached: false
+                    });
+                    logRequestComplete(requestId, {
+                        outputSize: report.length, cached: false, streamed: false, duration
+                    });
+
+                    // Both halves, built from one value. The text is the readable report a person
+                    // is shown; the structured half is the same facts for a client that reads
+                    // them. `structuredResult` is not used here because its text half is the JSON,
+                    // and a JSON dump is the thing this branch exists to stop sending.
+                    return { content: [{ type: "text", text: report }], structuredContent: shaped };
+                }
 
                 // Check cache (only if caching is enabled)
                 const inputSize = Buffer.byteLength(args.input, "utf8");

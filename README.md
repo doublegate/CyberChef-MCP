@@ -4,7 +4,7 @@ This project provides a **Model Context Protocol (MCP)** server interface for **
 
 By running this server, you enable AI assistants (like Claude, Cursor AI, and others) to natively utilize CyberChef's extensive library of **504 data manipulation operations**—including encryption, encoding, compression, and forensic analysis—as executable tools.
 
-**Latest Release:** v2.8.1 | [Release Notes](docs/releases/v2.8.1.md) | [Tutorial](docs/guides/tutorial.md) | [Examples](examples/) | [Breaking Changes](docs/v2.0.0-breaking-changes.md) | [Security Policy](SECURITY.md)
+**Latest Release:** v2.9.0 | [Release Notes](docs/releases/v2.9.0.md) | [Tutorial](docs/guides/tutorial.md) | [Examples](examples/) | [Breaking Changes](docs/v2.0.0-breaking-changes.md) | [Security Policy](SECURITY.md)
 
 **Upstream base:** GCHQ CyberChef **v11.4.0** | **Licence:** GPL-3.0-or-later (from v2.0.0; v1.9.x and earlier remain Apache-2.0)
 
@@ -159,13 +159,13 @@ For environments without direct GHCR access, download the pre-built Docker image
 1.  **Download the tarball** (approximately 196 MB compressed; measured, not estimated):
     ```bash
     # Download from GitHub Releases
-    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v2.8.1/cyberchef-mcp-v2.8.1-docker-image.tar.gz
+    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v2.9.0/cyberchef-mcp-v2.9.0-docker-image.tar.gz
     ```
 
 2.  **Load the image into Docker:**
 
     ```bash
-    docker load < cyberchef-mcp-v2.8.1-docker-image.tar.gz
+    docker load < cyberchef-mcp-v2.9.0-docker-image.tar.gz
     ```
 
 3.  **Tag for easier usage:**

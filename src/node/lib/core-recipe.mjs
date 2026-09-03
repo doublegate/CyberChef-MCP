@@ -42,11 +42,22 @@
  */
 
 import Chef from "../../core/Chef.mjs";
+import Dish from "../../core/Dish.mjs";
 import { assertOfflineAllowed } from "./offline.mjs";
+import { mediaFromHtml } from "./content-blocks.mjs";
 import Utils from "../../core/Utils.mjs";
 import OperationConfig from "../../core/config/OperationConfig.json" with {type: "json"};
 import { resolveArgValue, toolArgName, assertKnownArgs } from "./tool-schema.mjs";
 import { createInputError } from "../errors.mjs";
+
+/**
+ * Does this string look like browser markup rather than a result?
+ *
+ * Deliberately narrow: an opening tag whose name starts with a letter. A result that merely
+ * CONTAINS an angle bracket -- a diff, a shell snippet, XML the caller asked for verbatim -- must
+ * not be mistaken for a presentation and swapped out from under them.
+ */
+const HTML_TAG = /<[a-z][a-z0-9]*(\s[^>]*)?>/i;
 
 /**
  * Operation names, indexed case-insensitively so a caller need not match capitalisation exactly.
@@ -187,19 +198,61 @@ export async function bakeOnCore(input, recipeConfig) {
         OperationConfig[recipe[recipe.length - 1].op]?.outputType :
         undefined;
 
+    // Prefer the UNPRESENTED value when the presentation is browser markup.
+    //
+    // `returnType: "string"` above asks for the presented form, which is right for the operations
+    // whose presentation carries a picture -- `Generate QR Code` emits `<img src="data:...">` and
+    // the bytes exist nowhere else. It is wrong for every other html-presenting operation, because
+    // the presenter targets a browser and the markup does not survive being reduced to text.
+    //
+    // Measured. 44 operations declare a `presentType` that differs from their `outputType`, and
+    // for the non-media ones the presented form is both larger and worse:
+    //
+    //   JSON Beautify              689 B of markup  ->  53 B of correctly indented JSON
+    //   Text Encoding Brute Force  9,842 B table    ->  7,650 B of valid JSON
+    //   Frequency distribution     15,669 B + chart ->  5,865 B of valid JSON
+    //
+    // `JSON Beautify` is the one that makes this a CORRECTNESS fix rather than a formatting one.
+    // Its presenter renders a key as bare text inside `<li>name<span class="json-colon">:</span>`,
+    // so the quotes around every key exist only as markup structure. Stripping tags therefore
+    // returned `{name: "alice",age: 30}` -- not valid JSON, with the indentation the operation
+    // exists to add also gone. A "beautify" that emits unparseable output is a silently wrong
+    // answer, which is the failure mode this project treats as the expensive one.
+    //
+    // Chef hands back `dish` -- "a raw version of the dish, unpresented" -- from the same bake, so
+    // this costs no second execution.
+    //
+    // Resolved HERE rather than in `toContentBlocks` on purpose: the cache stores `result.value`,
+    // so a decision made downstream of the cache would apply to a miss and not to a hit. That is
+    // exactly how `cyberchef_generate_qr_code` came to return an image on the first call and text
+    // on every call after it.
+    let value = baked.result;
+    if (typeof value === "string" && HTML_TAG.test(value) && !mediaFromHtml(value)) {
+        try {
+            const raw = await baked.dish.get(Dish.STRING);
+            // Only when there is something there. An operation whose raw dish is empty but whose
+            // presentation is not (a pure-visualisation op) must keep the presentation, or the
+            // caller gets nothing at all.
+            if (typeof raw === "string" && raw.length > 0) value = raw;
+        } catch (e) {
+            // A dish that will not convert to a string keeps the presented form. Falling back is
+            // always safe here: it is the behaviour every release before this one had.
+        }
+    }
+
     return {
-        value: baked.result,
+        value,
         outputType,
         /**
          * @returns {string} The presented result, with browser markup reduced to text.
          */
         toString() {
-            if (outputType === "html" && typeof baked.result === "string") {
+            if (outputType === "html" && typeof value === "string") {
                 // Upstream's own pair, and its own conclusion for non-browser consumers:
                 // `DishHTML.toArrayBuffer()` runs exactly this before handing bytes on.
-                return Utils.unescapeHtml(Utils.stripHtmlTags(baked.result, true));
+                return Utils.unescapeHtml(Utils.stripHtmlTags(value, true));
             }
-            return typeof baked.result === "string" ? baked.result : JSON.stringify(baked.result);
+            return typeof value === "string" ? value : JSON.stringify(value);
         }
     };
 }

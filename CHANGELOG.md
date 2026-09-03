@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.9.0] - 2026-09-02
+
+Results now come back as something a person can read and a model can act on. Three defects, all in
+what this server returns when the answer is not a plain string.
+
+### Fixed
+
+- **`Magic` recommended recipes that `cyberchef_bake` refused to run.** Its results were rendered
+  through the web app's display form, so the recommended recipe arrived as
+  `From_Base64('A-Za-z0-9+/=',true,false)` and `bake` answered *"Couldn't find an operation with
+  name ..."*. The single most actionable field it produced was the one field a caller could not
+  use; acting on it meant reverse-engineering the string back into `[{op, args}]` by guessing that
+  underscores become spaces and that quoted arguments map positionally. `cyberchef_magic` now
+  returns a plain-text report plus matching `structuredContent`, with every recipe in executable
+  form. The round trip is a test: each recommended recipe is fed back to `bake`, and the best one
+  must reproduce the plaintext the report advertised.
+- **`cyberchef_json_beautify` returned invalid JSON.** Its presenter renders an object key as bare
+  text inside `<li>name<span class="json-colon">:</span>`, so the quotes around every key were
+  markup structure rather than characters. Reduced to text this gave `{name: "alice",age: 30}` —
+  unparseable, with the indentation the operation exists to add also gone. The server now prefers
+  the unpresented dish (which `Chef.bake` already returns from the same execution) whenever the
+  presented value is markup carrying no media.
+- **`cyberchef_text_encoding_brute_force` and `cyberchef_frequency_distribution` returned fused
+  tables.** Stripping the markup ran headers into values with no delimiter anywhere
+  (`EncodingValueUTF-8 (65001)Hello`), and `Frequency distribution` opened with a `<canvas>`
+  element carrying no data. Both now return their real JSON output — 9,842 B to 7,650 B and
+  15,669 B to 5,865 B respectively.
+
+### Changed
+
+- **The language a candidate is written in is reported as an estimate, not a determination.**
+  `detectLanguage` is a chi-squared byte-frequency comparison whose scores are always populated and
+  always sorted, so the top entry names a language even for a PNG. Gating on `probability > 0` — as
+  the web presenter does — still reported *German* for "Attack at dawn" (probability 1.35e-8) and
+  *Polish* for "just some ordinary words here". Accuracy does not rise monotonically with length, so
+  no cutoff fixes it; the report now names the runners-up and says the estimate is sometimes wrong.
+- **`cyberchef_index_of_coincidence` returns the bare coefficient** rather than static explanatory
+  prose wrapped around a `<canvas>` element, dropping from 1,072 B to 20 B.
+
 ## [2.8.1] - 2026-09-02
 
 A CI correctness release. **No functional runtime code or dependency changed** — every operation,
