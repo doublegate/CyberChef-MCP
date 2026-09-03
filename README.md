@@ -272,7 +272,24 @@ Version 1.4.0 introduces comprehensive performance optimizations and configurabl
 
 ### Configuration Options
 
-All features are configurable via environment variables:
+Every setting can be given either in a `cyberchef.config.json` file or as an environment variable,
+with **environment variables taking precedence** over the file. Nothing is required: with no file,
+the server behaves exactly as it always has.
+
+```json
+{
+  "server":   { "maxInputSize": 10485760, "operationTimeout": 30000 },
+  "security": { "offline": true },
+  "tools":    { "surface": "curated" }
+}
+```
+
+A malformed file, an unknown section or an unknown setting stops the server with a message naming
+the mistake, rather than starting on defaults nobody chose. All 64 settings, their sections and
+their environment-variable equivalents are in the
+**[configuration guide](docs/guides/configuration.md)**.
+
+The same settings as environment variables:
 
 ```bash
 # Logging (v1.5.0+)

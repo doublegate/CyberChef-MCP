@@ -252,7 +252,7 @@ perfectly good tag and would be ignored within a release or two.
 | Category | Key Files |
 |----------|-----------|
 | Architecture | `docs/architecture/architecture.md`, `technical_implementation.md`, `performance-tuning.md` |
-| Guides | `docs/guides/commands.md` (MCP tools), `user_guide.md` (installation), `edge-deployment.md` (arm64, size, offline, air-gapped) |
+| Guides | `docs/guides/commands.md` (MCP tools), `user_guide.md` (installation), `edge-deployment.md` (arm64, size, offline, air-gapped), `configuration.md` (all 64 settings; generated from `config-file.mjs` and asserted against it) |
 | Planning | `docs/planning/ROADMAP.md`, `docs/planning/phases/overview.md` |
 | Security | `docs/security/audit.md` |
 | Releases | `docs/releases/v2.9.0.md` (latest), then `v2.8.1.md`, `v2.8.0.md`, `v2.7.0.md` ... `v2.0.0.md`, `v1.9.0.md` ... `v1.0.0.md` |

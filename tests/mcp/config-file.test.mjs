@@ -13,6 +13,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { spawn } from "node:child_process";
@@ -211,6 +212,25 @@ describe("reading the file", () => {
         const env = {};
         expect(() => applyConfigFile({ env, cwd: dir })).toThrow(/unknown setting/);
         expect(env.CYBERCHEF_CACHE_ENABLED).toBeUndefined();
+    });
+});
+
+describe("the guide and the code agree", () => {
+    it("documents every setting, with its environment variable", async () => {
+        // The whole release exists because a document described a behaviour the code did not have.
+        // Shipping a settings table that can drift out of date would be that defect again, so the
+        // guide's own claim -- "a setting cannot be added without appearing here" -- is enforced
+        // rather than asserted.
+        const guide = await readFile(resolve(HERE, "../../docs/guides/configuration.md"), "utf8");
+
+        const missing = [];
+        for (const [section, entries] of Object.entries(SETTINGS)) {
+            for (const [key, envName] of Object.entries(entries)) {
+                if (!guide.includes(`\`${section}.${key}\``)) missing.push(`${section}.${key}`);
+                if (!guide.includes(`\`${envName}\``)) missing.push(envName);
+            }
+        }
+        expect(missing).toEqual([]);
     });
 });
 
