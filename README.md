@@ -4,7 +4,7 @@ This project provides a **Model Context Protocol (MCP)** server interface for **
 
 By running this server, you enable AI assistants (like Claude, Cursor AI, and others) to natively utilize CyberChef's extensive library of **504 data manipulation operations**—including encryption, encoding, compression, and forensic analysis—as executable tools.
 
-**Latest Release:** v2.10.0 | [Release Notes](docs/releases/v2.10.0.md) | [Tutorial](docs/guides/tutorial.md) | [Examples](examples/) | [Breaking Changes](docs/v2.0.0-breaking-changes.md) | [Security Policy](SECURITY.md)
+**Latest Release:** v3.0.0 | [Release Notes](docs/releases/v3.0.0.md) | [Tutorial](docs/guides/tutorial.md) | [Examples](examples/) | [Breaking Changes](docs/v2.0.0-breaking-changes.md) | [Security Policy](SECURITY.md)
 
 **Upstream base:** GCHQ CyberChef **v11.4.0** | **Licence:** GPL-3.0-or-later (from v2.0.0; v1.9.x and earlier remain Apache-2.0)
 
@@ -147,8 +147,8 @@ docker run -i --rm cyberchef-mcp
 
 **Option 2b: Pull from GitHub Container Registry (Alternative)**
 ```bash
-docker pull ghcr.io/doublegate/cyberchef-mcp_v2:latest
-docker tag ghcr.io/doublegate/cyberchef-mcp_v2:latest cyberchef-mcp
+docker pull ghcr.io/doublegate/cyberchef-mcp_v3:latest
+docker tag ghcr.io/doublegate/cyberchef-mcp_v3:latest cyberchef-mcp
 docker run -i --rm cyberchef-mcp
 ```
 
@@ -159,7 +159,7 @@ For environments without direct GHCR access, download the pre-built Docker image
 1.  **Download the tarball** (approximately 196 MB compressed; measured, not estimated):
     ```bash
     # Download from GitHub Releases
-    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v2.10.0/cyberchef-mcp-v2.10.0-docker-image.tar.gz
+    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v3.0.0/cyberchef-mcp-v3.0.0-docker-image.tar.gz
     ```
 
 2.  **Load the image into Docker:**
@@ -372,7 +372,7 @@ docker run -i --rm --memory=4g \
   -e CYBERCHEF_STREAMING_THRESHOLD=52428800 \
   -e CYBERCHEF_CACHE_MAX_SIZE=524288000 \
   -e CYBERCHEF_OPERATION_TIMEOUT=120000 \
-  ghcr.io/doublegate/cyberchef-mcp_v2:latest
+  ghcr.io/doublegate/cyberchef-mcp_v3:latest
 ```
 
 **Low-Memory Environment**
@@ -382,7 +382,7 @@ docker run -i --rm --memory=512m \
   -e CYBERCHEF_STREAMING_THRESHOLD=5242880 \
   -e CYBERCHEF_CACHE_MAX_SIZE=10485760 \
   -e CYBERCHEF_CACHE_MAX_ITEMS=100 \
-  ghcr.io/doublegate/cyberchef-mcp_v2:latest
+  ghcr.io/doublegate/cyberchef-mcp_v3:latest
 ```
 
 **Claude Desktop with Custom Limits**
@@ -395,7 +395,7 @@ docker run -i --rm --memory=512m \
         "run", "-i", "--rm",
         "-e", "CYBERCHEF_MAX_INPUT_SIZE=209715200",
         "-e", "CYBERCHEF_CACHE_MAX_SIZE=209715200",
-        "ghcr.io/doublegate/cyberchef-mcp_v2:latest"
+        "ghcr.io/doublegate/cyberchef-mcp_v3:latest"
       ]
     }
   }
@@ -407,7 +407,7 @@ docker run -i --rm --memory=512m \
 docker run -i --rm \
   -e LOG_LEVEL=debug \
   -e CYBERCHEF_MAX_RETRIES=5 \
-  ghcr.io/doublegate/cyberchef-mcp_v2:latest
+  ghcr.io/doublegate/cyberchef-mcp_v3:latest
 ```
 
 **Worker Thread Pool for CPU-Intensive Operations (v1.9.0+)**
@@ -416,7 +416,7 @@ docker run -i --rm \
   -e CYBERCHEF_ENABLE_WORKERS=true \
   -e CYBERCHEF_WORKER_MAX_THREADS=8 \
   -e CYBERCHEF_WORKER_IDLE_TIMEOUT=60000 \
-  ghcr.io/doublegate/cyberchef-mcp_v2:latest
+  ghcr.io/doublegate/cyberchef-mcp_v3:latest
 ```
 
 **HTTP Transport for Browser/Remote Clients (v1.9.0+)**
@@ -426,7 +426,7 @@ docker run --rm -p 3000:3000 \
   -e CYBERCHEF_HTTP_PORT=3000 \
   -e CYBERCHEF_HTTP_HOST=0.0.0.0 \
   -e CYBERCHEF_ALLOWED_HOSTS=localhost:3000,127.0.0.1:3000 \
-  ghcr.io/doublegate/cyberchef-mcp_v2:latest
+  ghcr.io/doublegate/cyberchef-mcp_v3:latest
 ```
 
 `CYBERCHEF_ALLOWED_HOSTS` is new in v2.0.0. **DNS-rebinding protection is on by default** — with
@@ -830,7 +830,7 @@ For contributions to the core CyberChef operations, please credit the original [
 *   **MCP Fork**: [doublegate/CyberChef-MCP](https://github.com/doublegate/CyberChef-MCP)
 *   **Container Registries**:
     *   **Docker Hub** (Primary): [doublegate/cyberchef-mcp](https://hub.docker.com/r/doublegate/cyberchef-mcp) - With Docker Scout health scores and attestations
-    *   **GHCR** (Secondary): [ghcr.io/doublegate/cyberchef-mcp_v2](https://github.com/doublegate/CyberChef-MCP/pkgs/container/cyberchef-mcp_v2) — v2.x
+    *   **GHCR** (Secondary): [ghcr.io/doublegate/cyberchef-mcp_v3](https://github.com/doublegate/CyberChef-MCP/pkgs/container/cyberchef-mcp_v3) — v3.x. The package name carries the major, so v2.x stays at [`cyberchef-mcp_v2`](https://github.com/doublegate/CyberChef-MCP/pkgs/container/cyberchef-mcp_v2) and is not superseded in place.
     *   **GHCR (v1, frozen)**: [ghcr.io/doublegate/cyberchef-mcp_v1](https://github.com/doublegate/CyberChef-MCP/pkgs/container/cyberchef-mcp_v1)
         *   Remains pullable; receives security-only patches on the `v1.9.x` line until ~March 2027.
         *   Apache-2.0, not GPL-3.0-or-later.

@@ -7,7 +7,7 @@ native crypto and image libraries.
 ## Docker
 
 ```bash
-docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v2:latest
+docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v3:latest
 ```
 
 | Tag | Points at |
@@ -79,7 +79,7 @@ A one-line ping is still a useful *container* smoke test — it proves the image
 
 ```bash
 echo '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' \
-  | docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v2:latest
+  | docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v3:latest
 ```
 
 Next: **[Client Setup](Client-Setup)**.

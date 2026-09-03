@@ -7,13 +7,13 @@
     "url": "https://github.com/doublegate/CyberChef-MCP",
     "source": "github"
   },
-  "version": "2.4.1",
+  "version": "3.0.0",
   "packages": [
     {
       "registryType": "oci",
       "registryBaseUrl": "https://ghcr.io",
-      "identifier": "doublegate/cyberchef-mcp_v2",
-      "version": "2.4.1",
+      "identifier": "doublegate/cyberchef-mcp_v3",
+      "version": "3.0.0",
       "transport": {
         "type": "stdio"
       }

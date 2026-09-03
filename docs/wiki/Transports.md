@@ -12,7 +12,7 @@ does not define one, and no SDK ships one.
 ## stdio
 
 ```bash
-docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v2:latest
+docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v3:latest
 ```
 
 The server reads JSON-RPC on stdin and writes it on stdout. **All logging goes to stderr** — there
@@ -24,7 +24,7 @@ corrupts the protocol stream and the failure looks like a client bug.
 ```bash
 docker run -i --rm -p 127.0.0.1:3000:3000 \
   -e CYBERCHEF_TRANSPORT=http \
-  ghcr.io/doublegate/cyberchef-mcp_v2:latest
+  ghcr.io/doublegate/cyberchef-mcp_v3:latest
 ```
 
 | Variable | Default |

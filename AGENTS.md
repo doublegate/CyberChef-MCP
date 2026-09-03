@@ -228,7 +228,10 @@ Release cut (module 70 has the ceremony; this is the repo-specific mechanic):
 git tag -a vX.Y.Z --cleanup=verbatim -F docs/releases/vX.Y.Z.md && git push origin vX.Y.Z
 # Tag from `master` AFTER the release PR merges: `docker/metadata-action` moves `latest` for any
 # non-prerelease semver tag, so tagging a release branch still moves it.
-# v2.x publishes to ghcr.io/doublegate/cyberchef-mcp_v2; the v1.9.x line to ..._v1.
+# The GHCR package name carries the MAJOR: v3.x publishes to
+# ghcr.io/doublegate/cyberchef-mcp_v3, v2.x to ..._v2, the v1.9.x line to ..._v1.
+# A major bump therefore RENAMES the image -- `check:versions` asserts the major in
+# docker-compose.yml, values.yaml and server.json for exactly that reason.
 ```
 
 Verify the tag kept its structure before pushing. Count headings rather than diffing the whole

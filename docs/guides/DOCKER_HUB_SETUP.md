@@ -154,11 +154,11 @@ Users can now pull from Docker Hub instead of GHCR:
 docker pull YOUR_USERNAME/cyberchef-mcp:latest
 
 # Option 2: Pull from GHCR (existing)
-docker pull ghcr.io/doublegate/cyberchef-mcp_v2:latest
+docker pull ghcr.io/doublegate/cyberchef-mcp_v3:latest
 ```
 
-The GHCR package is major-versioned: `cyberchef-mcp_v2` for v2.x, `cyberchef-mcp_v1` for the
-frozen v1.9.x line. `mcp-release.yml` derives the suffix from the tag being built, so a `v1.9.x`
+The GHCR package is major-versioned: `cyberchef-mcp_v3` for v3.x, `cyberchef-mcp_v2` for the
+v2.x line, `cyberchef-mcp_v1` for the frozen v1.9.x line. `mcp-release.yml` derives the suffix from the tag being built, so a `v1.9.x`
 maintenance tag still publishes to `_v1`. Docker Hub is a single un-suffixed repository, and its
 `latest` moves only for a tag cut from the default branch.
 

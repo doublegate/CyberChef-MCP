@@ -49,7 +49,7 @@ need to advertise 504 separate tools — and by default it does not. More on tha
 ### The quickest route: Docker
 
 ```bash
-docker pull ghcr.io/doublegate/cyberchef-mcp_v2:latest
+docker pull ghcr.io/doublegate/cyberchef-mcp_v3:latest
 ```
 
 Check it works. The `-i` flag is **required** — without stdin the container exits immediately,
@@ -57,7 +57,7 @@ which is the single most common setup mistake:
 
 ```bash
 echo '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' \
-  | docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v2:latest
+  | docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v3:latest
 ```
 
 You should get a JSON response listing tools. If you get nothing, you left out `-i`.
@@ -71,7 +71,7 @@ For Claude Desktop or any MCP client using the standard config shape:
   "mcpServers": {
     "cyberchef": {
       "command": "docker",
-      "args": ["run", "-i", "--rm", "ghcr.io/doublegate/cyberchef-mcp_v2:latest"]
+      "args": ["run", "-i", "--rm", "ghcr.io/doublegate/cyberchef-mcp_v3:latest"]
     }
   }
 }

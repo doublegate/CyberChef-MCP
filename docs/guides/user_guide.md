@@ -23,19 +23,19 @@ back to.
 ### Docker (recommended)
 
 ```bash
-docker pull ghcr.io/doublegate/cyberchef-mcp_v2:latest
-docker tag  ghcr.io/doublegate/cyberchef-mcp_v2:latest cyberchef-mcp
+docker pull ghcr.io/doublegate/cyberchef-mcp_v3:latest
+docker tag  ghcr.io/doublegate/cyberchef-mcp_v3:latest cyberchef-mcp
 ```
 
 Docker Hub carries the same image as `parobek/cyberchef-mcp`. The GHCR package is
-**major-versioned**: `_v2` for 2.x, `_v1` for the frozen 1.9.x line.
+**major-versioned**: `_v3` for 3.x, `_v2` for 2.x, `_v1` for the frozen 1.9.x line.
 
 Offline, from a release tarball:
 
 ```bash
-wget https://github.com/doublegate/CyberChef-MCP/releases/download/v2.1.0/cyberchef-mcp-v2.1.0-docker-image.tar.gz
-docker load < cyberchef-mcp-v2.1.0-docker-image.tar.gz
-docker tag ghcr.io/doublegate/cyberchef-mcp_v2:v2.1.0 cyberchef-mcp
+wget https://github.com/doublegate/CyberChef-MCP/releases/download/v3.0.0/cyberchef-mcp-v3.0.0-docker-image.tar.gz
+docker load < cyberchef-mcp-v3.0.0-docker-image.tar.gz
+docker tag ghcr.io/doublegate/cyberchef-mcp_v3:3.0.0 cyberchef-mcp
 ```
 
 From source:

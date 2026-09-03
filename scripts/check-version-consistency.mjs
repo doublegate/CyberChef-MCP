@@ -51,11 +51,17 @@ function read(relative) {
     return readFileSync(join(ROOT, relative), "utf8");
 }
 
+const expected = JSON.parse(read("package.json")).version;
+const expectedMajor = expected.split(".")[0];
+
 /**
  * Every place the release version appears, and how to find it.
  *
  * Each entry yields zero or more occurrences. A location that yields NONE is itself a failure:
  * that means the pattern stopped matching, which is how a check quietly stops checking.
+ *
+ * An occurrence may carry its own `compare` value when what is being asserted is not the full
+ * version -- the container package name carries only the major.
  */
 const LOCATIONS = [
     {
@@ -75,18 +81,58 @@ const LOCATIONS = [
     },
     {
         file: "deploy/helm/cyberchef-mcp/values.yaml",
-        find: text => [...text.matchAll(/^\s*tag:\s*"?([0-9]+\.[0-9]+\.[0-9]+)"?/gm)]
-            .map(m => ({ what: "image.tag", value: m[1] })),
+        find: text => [
+            ...[...text.matchAll(/^\s*tag:\s*"?([0-9]+\.[0-9]+\.[0-9]+)"?/gm)]
+                .map(m => ({ what: "image.tag", value: m[1] })),
+            // The repository name carries the major, and the tag alone cannot catch that.
+            // `image.repository` + `image.tag` are two halves of one reference: at v3.0.0 the
+            // tag moved and the repository did not, which resolves to
+            // `cyberchef-mcp_v2:3.0.0` -- an image that will never be pushed, in the chart
+            // this project publishes. A green tag check beside a stale repository is worse
+            // than no check, because it reads as verified.
+            ...[...text.matchAll(/^\s*repository:.*cyberchef-mcp_v([0-9]+)/gm)]
+                .map(m => ({ what: "image.repository major", value: `${m[1]}.x.x`,
+                    compare: `${expectedMajor}.x.x` }))
+        ],
         // The chart defaults `tag` to the chart's appVersion, so an explicit tag is optional.
         optional: true
+    },
+    {
+        // The MCP registry record. Not published from CI, which is exactly why it drifts: it sat
+        // at 2.4.1 through six releases and nothing reported it, because nothing was looking.
+        file: "server.json",
+        find: text => {
+            const doc = JSON.parse(text);
+            return [
+                { what: "version", value: doc.version },
+                ...(doc.packages ?? []).flatMap((pkg, i) => [
+                    { what: `packages[${i}].version`, value: pkg.version },
+                    ...(/cyberchef-mcp_v([0-9]+)/.exec(pkg.identifier ?? "") ?? []).slice(1)
+                        .map(major => ({ what: `packages[${i}].identifier major`,
+                            value: `${major}.x.x`, compare: `${expectedMajor}.x.x` }))
+                ])
+            ].filter(o => o.value !== undefined);
+        }
     },
     {
         file: "deploy/compose/docker-compose.yml",
         // Every image reference, including the ones inside the digest-pinning COMMENT. The prose
         // is the half that keeps getting missed, because a bump replaces the image line and not
         // the sentence above it.
-        find: text => [...text.matchAll(/cyberchef-mcp_v2:([0-9]+\.[0-9]+\.[0-9]+)/g)]
-            .map((m, i) => ({ what: `image reference ${i + 1}`, value: m[1] }))
+        //
+        // The package-name major is matched too, and checked. This pattern read `_v2` literally
+        // until v3.0.0, which made it the same dated fuse as the npm-publish guard in
+        // `mcp-release.yml`: `mcp-release.yml` publishes to `cyberchef-mcp_v${major}`, so at
+        // v3.0.0 the compose file must move to `_v3` -- and a hardcoded `_v2` pattern would have
+        // found ZERO references and, by the rule below, failed with "the pattern has stopped
+        // matching" rather than naming the actual problem. A check that only works for the major
+        // it was written in is a check with an expiry date.
+        find: text => [...text.matchAll(/cyberchef-mcp_v([0-9]+):([0-9]+\.[0-9]+\.[0-9]+)/g)]
+            .flatMap((m, i) => [
+                { what: `image reference ${i + 1}`, value: m[2] },
+                { what: `image reference ${i + 1} package major`, value: `${m[1]}.x.x`,
+                    compare: `${expectedMajor}.x.x` }
+            ])
     },
     {
         file: "README.md",
@@ -100,7 +146,6 @@ const LOCATIONS = [
     }
 ];
 
-const expected = JSON.parse(read("package.json")).version;
 const problems = [];
 const checked = [];
 
@@ -125,10 +170,15 @@ for (const location of LOCATIONS) {
         continue;
     }
 
-    for (const { what, value } of occurrences) {
-        checked.push(`${location.file} (${what}): ${value}`);
-        if (value !== expected) {
-            problems.push(`${location.file} (${what}): ${value}, expected ${expected}`);
+    for (const { what, value, compare } of occurrences) {
+        const want = compare ?? expected;
+        // Marked from the comparison, not from having been visited. It previously read `ok` for
+        // every occurrence including the failing ones, so a drifted file appeared twice -- once
+        // as `ok  values.yaml (image.repository major): 2.x.x` and once as a FAIL for the same
+        // line. A report that says `ok` next to a wrong value teaches the reader to skim it.
+        checked.push(`${value === want ? "ok" : "BAD"}  ${location.file} (${what}): ${value}`);
+        if (value !== want) {
+            problems.push(`${location.file} (${what}): ${value}, expected ${want}`);
         }
     }
 }
@@ -141,7 +191,7 @@ try {
 } catch { /* reported by the appVersion entry above */ }
 
 process.stdout.write(`package.json version: ${expected}\n\n`);
-for (const line of checked) process.stdout.write(`  ok  ${line}\n`);
+for (const line of checked) process.stdout.write(`  ${line}\n`);
 process.stdout.write(`\n  --  Helm chart version (not checked, moves with the templates): ${chartVersion}\n`);
 
 if (problems.length > 0) {

@@ -5,7 +5,7 @@ operations** for encryption, encoding, compression and forensics, plus **four an
 an operation cannot express.
 
 ```bash
-docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v2:latest
+docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v3:latest
 ```
 
 The `-i` is not optional. Without it the container exits immediately and your client reports the

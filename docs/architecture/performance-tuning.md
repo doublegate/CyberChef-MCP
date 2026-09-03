@@ -138,7 +138,7 @@ Reserved for future worker pool implementation.
 
 ```bash
 # Use defaults - no configuration needed
-docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v2:latest
+docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v3:latest
 ```
 
 **Expected Performance:**
@@ -157,7 +157,7 @@ docker run -i --rm --memory=512m \
   -e CYBERCHEF_STREAMING_THRESHOLD=5242880 \
   -e CYBERCHEF_CACHE_MAX_SIZE=10485760 \
   -e CYBERCHEF_CACHE_MAX_ITEMS=100 \
-  ghcr.io/doublegate/cyberchef-mcp_v2:latest
+  ghcr.io/doublegate/cyberchef-mcp_v3:latest
 ```
 
 **Expected Performance:**
@@ -177,7 +177,7 @@ docker run -i --rm --memory=4g \
   -e CYBERCHEF_CACHE_MAX_SIZE=524288000 \
   -e CYBERCHEF_CACHE_MAX_ITEMS=5000 \
   -e CYBERCHEF_OPERATION_TIMEOUT=120000 \
-  ghcr.io/doublegate/cyberchef-mcp_v2:latest
+  ghcr.io/doublegate/cyberchef-mcp_v3:latest
 ```
 
 **Expected Performance:**
@@ -198,7 +198,7 @@ docker run -i --rm --memory=8g \
   -e CYBERCHEF_CACHE_MAX_SIZE=1073741824 \
   -e CYBERCHEF_CACHE_MAX_ITEMS=10000 \
   -e CYBERCHEF_OPERATION_TIMEOUT=600000 \
-  ghcr.io/doublegate/cyberchef-mcp_v2:latest
+  ghcr.io/doublegate/cyberchef-mcp_v3:latest
 ```
 
 **Expected Performance:**
