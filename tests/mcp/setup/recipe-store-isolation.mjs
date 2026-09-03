@@ -44,8 +44,7 @@
  * @license GPL-3.0-or-later
  */
 
-import { afterAll } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -61,6 +60,16 @@ if (process.env.CYBERCHEF_RECIPE_BACKUP === undefined) {
     process.env.CYBERCHEF_RECIPE_BACKUP = "false";
 }
 
-afterAll(() => {
-    rmSync(storeDir, { recursive: true, force: true });
-});
+// DELIBERATELY NOT CLEANED UP.
+//
+// The first version removed this directory in an `afterAll`, and that broke CI on both Node
+// versions: a spawned server inherits the path through the environment and can still be starting
+// when the file that spawned it finishes, so the directory vanishes underneath it.
+//
+//     ENOENT: no such file or directory, mkdir '/tmp/cyberchef-test-store-61RMcN'
+//     Fatal error running server
+//
+// Deleting a directory that another process still holds a path into is a race by construction, and
+// there is no hook that reliably runs after every descendant has exited. What is left behind is one
+// small JSON file per test file, under the OS temp directory, which the OS reclaims.
+export { storeDir };
