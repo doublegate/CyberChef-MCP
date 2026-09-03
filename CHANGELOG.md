@@ -45,6 +45,14 @@ what this server returns when the answer is not a plain string.
   of operation descriptions: only 7 of 504 operations use that convention, and it would still have
   missed the crib. Costs 1,354 B of the 20,289 B index surface (6.7%), measured.
 
+- **Concurrent recipe saves could make the process race itself.** `RecipeStorage.save()` checks the
+  on-disk generation before committing, with a window between the check and the rename. Two
+  overlapping saves in one process both read the same generation and the last to commit failed with
+  a message blaming "another process" -- reachable by two concurrent `cyberchef_recipe_create`
+  calls. Saves are now serialised per instance; the generation check still guards the multi-replica
+  case. The window was observed once and is not reliably reproducible, so the fix is justified by
+  construction rather than by a failing test.
+
 ### Changed
 
 - **The language a candidate is written in is reported as an estimate, not a determination.**
