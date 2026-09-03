@@ -4,7 +4,7 @@ This project provides a **Model Context Protocol (MCP)** server interface for **
 
 By running this server, you enable AI assistants (like Claude, Cursor AI, and others) to natively utilize CyberChef's extensive library of **504 data manipulation operations**—including encryption, encoding, compression, and forensic analysis—as executable tools.
 
-**Latest Release:** v2.9.0 | [Release Notes](docs/releases/v2.9.0.md) | [Tutorial](docs/guides/tutorial.md) | [Examples](examples/) | [Breaking Changes](docs/v2.0.0-breaking-changes.md) | [Security Policy](SECURITY.md)
+**Latest Release:** v2.10.0 | [Release Notes](docs/releases/v2.10.0.md) | [Tutorial](docs/guides/tutorial.md) | [Examples](examples/) | [Breaking Changes](docs/v2.0.0-breaking-changes.md) | [Security Policy](SECURITY.md)
 
 **Upstream base:** GCHQ CyberChef **v11.4.0** | **Licence:** GPL-3.0-or-later (from v2.0.0; v1.9.x and earlier remain Apache-2.0)
 
@@ -159,13 +159,13 @@ For environments without direct GHCR access, download the pre-built Docker image
 1.  **Download the tarball** (approximately 196 MB compressed; measured, not estimated):
     ```bash
     # Download from GitHub Releases
-    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v2.9.0/cyberchef-mcp-v2.9.0-docker-image.tar.gz
+    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v2.10.0/cyberchef-mcp-v2.10.0-docker-image.tar.gz
     ```
 
 2.  **Load the image into Docker:**
 
     ```bash
-    docker load < cyberchef-mcp-v2.9.0-docker-image.tar.gz
+    docker load < cyberchef-mcp-v2.10.0-docker-image.tar.gz
     ```
 
 3.  **Tag for easier usage:**
@@ -272,7 +272,24 @@ Version 1.4.0 introduces comprehensive performance optimizations and configurabl
 
 ### Configuration Options
 
-All features are configurable via environment variables:
+Every setting can be given either in a `cyberchef.config.json` file or as an environment variable,
+with **environment variables taking precedence** over the file. Nothing is required: with no file,
+the server behaves exactly as it always has.
+
+```json
+{
+  "server":   { "maxInputSize": 10485760, "operationTimeout": 30000 },
+  "security": { "offline": true },
+  "tools":    { "surface": "curated" }
+}
+```
+
+A malformed file, an unknown section or an unknown setting stops the server with a message naming
+the mistake, rather than starting on defaults nobody chose. All 64 settings, their sections and
+their environment-variable equivalents are in the
+**[configuration guide](docs/guides/configuration.md)**.
+
+The same settings as environment variables:
 
 ```bash
 # Logging (v1.5.0+)

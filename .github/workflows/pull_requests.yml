@@ -38,6 +38,12 @@ jobs:
     - name: Lint
       run: npx grunt lint
 
+    # A prose checklist could not fail a build, and did not: v2.9.0 shipped with the Helm chart and
+    # the compose file still pointing at 2.8.1, which is the third consecutive release to get this
+    # wrong while AGENTS.md told the author not to.
+    - name: Version consistency
+      run: npm run check:versions
+
     - name: Config Tests
       run: npx grunt configTests
 

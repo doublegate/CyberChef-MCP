@@ -37,6 +37,15 @@ Extend the platform with binary/image handling, WebSocket/SSE transports, and a 
 Deploy enterprise-grade features including OAuth 2.1 authentication, RBAC authorization, horizontal scaling with Kubernetes, and comprehensive OpenTelemetry observability. This phase enables production deployment at scale.
 
 ### Phase 6: Evolution (v2.8.0 - v3.0.0) - Q2-Q3 2027
+
+> **Corrected 2026-09-03.** This phase listed "v2.9.x Pre-v3.0.0 Polish", whose primary goal was
+> deprecation warnings for v3.0.0's breaking changes. Measured against the server, that goal is
+> empty: of v3.0.0's four breaking changes, tool naming was **withdrawn permanently** in v2.0.0,
+> named arguments and structured errors were **enacted** in v2.0.0, and the unified configuration
+> file was announced as shipped and never built -- which is what v2.10.0 delivered. There is
+> nothing left to warn about, so the polish release is replaced by v2.10.0, and v3.0.0's scope
+> needs re-deriving before it is planned rather than executed. See
+> `docs/internal/v2.10.0-findings-log.md`.
 **Focus:** Edge deployment, AI-native features, and major version evolution
 
 Prepare for and execute v3.0.0 with edge computing support, AI-assisted operations, and breaking API improvements. This phase establishes the next-generation architecture with a stable API contract through 2029.
@@ -69,8 +78,8 @@ gantt
     v2.7.0 Observability                :2027-03-01, 4w
     section Phase 6 Evolution
     v2.8.0 Edge Deployment              :2027-04-01, 4w
-    v2.9.0 AI-Native Features           :2027-05-01, 4w
-    v2.9.x Pre-v3.0.0 Polish            :2027-06-01, 4w
+    v2.9.0 Readable Results             :2027-05-01, 4w
+    v2.10.0 Configuration File          :2027-06-01, 4w
     v3.0.0 Major Release                :2027-08-01, 6w
 ```
 

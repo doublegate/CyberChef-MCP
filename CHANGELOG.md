@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.10.0] - 2026-09-03
+
+The configuration file this project has told users to write since v1.8.0 now exists.
+
+### Added
+
+- **`cyberchef.config.json`.** All 64 settings, in 15 sections, in one file, with precedence
+  `environment variable > config file > built-in default`. Nothing is required: with no file the
+  server behaves exactly as it did in v2.9.0. The startup log names the file, the settings applied,
+  and anything the environment overrode. Full table in
+  [the configuration guide](docs/guides/configuration.md), which is generated from the mapping in
+  `config-file.mjs` and asserted against it by a test.
+- **Helm support.** `.Values.config` renders a ConfigMap mounted at `/app/cyberchef.config.json`,
+  with a `checksum/config` pod annotation -- a ConfigMap edit restarts nothing, and the file is read
+  once at startup, so without it `helm upgrade` would report success and leave the old settings
+  running.
+- **`npm run check:versions`**, in both CI workflows. A release touches the version in several
+  files, and a prose checklist could not fail a build.
+
+### Fixed
+
+- **The v2.0.0 configuration promise, unkept for nine releases.** The migration guide instructed
+  users to create `cyberchef.config.json` under a heading reading "v2.0.0 (New)". No loader was ever
+  written; the only occurrence of that filename in the source was the deprecation message
+  recommending it. A file asking for `maxInputSize: 1024` left the effective value at `104857600`,
+  with no error and no warning. The DEP004 section now describes what exists, and opens by saying it
+  previously did not.
+- **v2.9.0's Helm chart and compose file deploy v2.8.1.** `package.json` said `2.9.0`; the compose
+  image line, the compose digest-pinning prose, `Chart.yaml` `appVersion` and `values.yaml`
+  `image.tag` all said `2.8.1`. Anyone taking the chart from that tag got the previous release.
+  Fixed here, and now gated.
+
+### Changed
+
+- **A bad configuration file stops the server**, with a message naming the mistake and, where it
+  can, the name you probably meant. This file sets the offline switch, the regex-length cap and the
+  operation allowlist; starting on defaults nobody chose is the worse failure.
+
+
 ## [2.9.0] - 2026-09-02
 
 Results now come back as something a person can read and a model can act on. Three defects, all in

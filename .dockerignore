@@ -25,6 +25,12 @@ recipes.json
 recipes.json.backup
 *.recipes.json
 
+# The local configuration file (v2.10.0), for the same reason as the recipe store above: a
+# developer building locally would bake their own settings into a layer, and those settings now
+# include the offline switch, the regex cap and the operation allowlist. An image must take its
+# configuration from the operator who runs it, not from whoever happened to build it.
+cyberchef.config.json
+
 # Generated files (regenerated during build by grunt configTests)
 src/core/config/OperationConfig.json
 src/core/config/modules/
