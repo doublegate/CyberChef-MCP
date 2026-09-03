@@ -1,5 +1,21 @@
 # Release Plan: v3.0.0 - Major Release
 
+> **Superseded — all six of its breaking changes were done, withdrawn, or superseded.**
+>
+> Measured 2026-09-03: the `cyberchef_` prefix removal was permanently **withdrawn** in v2.0.0;
+> named recipe arguments and structured errors had **shipped**; unified configuration shipped in
+> **v2.10.0**; the plugin API is superseded by
+> [ADR 0002](../../adr/0002-tool-registry-is-not-a-plugin-loader.md), which records that there is
+> deliberately no plugin loader; and the "MCP Protocol 2027 / SDK v3.x" it depends on does not
+> exist — SDK v2.0.0 is current and installed.
+>
+> **The replacement plan is [`docs/planning/v3/v3.0.0-plan.md`](../v3/v3.0.0-plan.md)**, derived
+> from the 2026-07-28 specification rather than from this file. Read
+> [`docs/planning/v3/RE-MEASURE.md`](../v3/RE-MEASURE.md) before executing any later charter: six
+> consecutive releases have now opened by finding their plan empty.
+>
+> Annotated 2026-09-03 during the v3.0.0 corpus retirement. The plan below is unedited.
+
 **Release Date:** August 2027
 **Theme:** Breaking Changes & API Evolution
 **Phase:** Phase 6 - Evolution

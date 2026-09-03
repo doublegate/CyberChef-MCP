@@ -1,5 +1,14 @@
 # Release Plan: v1.2.0 - Security Hardening
 
+> **Delivered as v1.2.0.** Kept as the historical plan, not as a description of the
+> release.
+>
+> What shipped is recorded in [`docs/releases/v1.2.0.md`](../../releases/v1.2.0.md); read that
+> first. Where the two disagree, the release notes are right and this file is the
+> intention that preceded them.
+>
+> Annotated 2026-09-03 during the v3.0.0 corpus retirement. The plan below is unedited.
+
 **Release Date:** January 2026 (Target: Week of Jan 27)
 **Theme:** Security Hardening & CI/CD Enhancement
 **Phase:** Phase 1 - Foundation

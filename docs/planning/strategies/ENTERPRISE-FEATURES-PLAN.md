@@ -1,5 +1,18 @@
 # Enterprise Features Plan
 
+> **Delivered across v2.5.0-v2.7.0**, not the v2.4.0-v2.6.0 in the header below.
+>
+> Authorization applies to **HTTP only**: the specification says stdio SHOULD NOT use OAuth and
+> should take credentials from the environment, so the default transport is untouched. v3.0.0 then
+> changed how the scopes are computed — `cyberchef_bake` is priced by the recipe it carries rather
+> than by an `openWorldHint` that assumed every recipe might reach the network — and wired
+> `tools/list` filtering, which had shipped in v2.5.0 and was never called.
+>
+> What shipped: [`v2.5.0`](../../releases/v2.5.0.md), [`v2.6.0`](../../releases/v2.6.0.md),
+> [`v2.7.0`](../../releases/v2.7.0.md), [`v3.0.0`](../../releases/v3.0.0.md).
+>
+> Annotated 2026-09-03 during the v3.0.0 corpus retirement. The document below is unedited.
+
 **Version:** 1.0.0
 **Target Release:** v2.4.0 - v2.6.0 (Q1 2027)
 **Last Updated:** December 2025

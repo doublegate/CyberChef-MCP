@@ -1,5 +1,14 @@
 # Release Plan: v1.3.0 - Upstream Sync Automation
 
+> **Delivered as v1.3.0.** Kept as the historical plan, not as a description of the
+> release.
+>
+> What shipped is recorded in [`docs/releases/v1.3.0.md`](../../releases/v1.3.0.md); read that
+> first. Where the two disagree, the release notes are right and this file is the
+> intention that preceded them.
+>
+> Annotated 2026-09-03 during the v3.0.0 corpus retirement. The plan below is unedited.
+
 **Release Date:** February 2026 (Target: Week of Feb 24)
 **Theme:** Automated CyberChef Upstream Synchronization
 **Phase:** Phase 1 - Foundation

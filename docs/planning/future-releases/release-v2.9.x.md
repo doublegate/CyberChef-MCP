@@ -1,5 +1,17 @@
 # Release Plan: v2.9.x - Pre-v3.0.0 Polish
 
+> **Superseded — the polish this plan describes shipped as v2.10.0, on different evidence.**
+>
+> There was no v2.10.0 in the plan set, and the release it did name was empty. v2.10.0 built
+> `cyberchef.config.json` — a unified configuration file promised for v2.0.0 and documented as
+> existing for nine releases without ever being written — plus `npm run check:versions`, which
+> caught five version drifts on its first run.
+>
+> What shipped: [`docs/releases/v2.10.0.md`](../../releases/v2.10.0.md). Why it differs:
+> [`docs/internal/v2.10.0-findings-log.md`](../../internal/v2.10.0-findings-log.md).
+>
+> Annotated 2026-09-03 during the v3.0.0 corpus retirement. The plan below is unedited.
+
 **Release Date:** June 2027
 **Theme:** Stabilization and Migration Preparation
 **Phase:** Phase 6 - Evolution

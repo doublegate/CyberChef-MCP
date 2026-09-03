@@ -1,5 +1,18 @@
 # Security Hardening Plan
 
+> **Delivered, and then some — but this is not the current security record.**
+>
+> v2.0.0 took 272 open findings to zero and v2.1.1 dispositioned all 55 code-scanning alerts (8
+> fixed, 47 dismissed with written reasons). Open Dependabot and code-scanning alerts have been
+> **0** since. The live document is [`docs/security/audit.md`](../../security/audit.md).
+>
+> The standing gap this plan does not cover is in
+> [`../v3/charters/v3.x-supply-chain.md`](../v3/charters/v3.x-supply-chain.md): tool metadata
+> reaches the model from `src/core`, which is mirrored from upstream on every sync, and nothing
+> guards its integrity.
+>
+> Annotated 2026-09-03 during the v3.0.0 corpus retirement. The document below is unedited.
+
 **Version:** 1.0.0
 **Last Updated:** December 2025
 **Target Release:** v1.2.0 (initial), ongoing through v2.0.0

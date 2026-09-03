@@ -1,5 +1,17 @@
 # Release Plan: v2.7.0 - Observability & Monitoring
 
+> **Delivered as v2.7.0, re-scoped during execution.**
+>
+> The theme survived; the implementation did not. This plan names the OpenTelemetry **SDK**, and
+> measuring it found the SDK costs 71 packages / 50 MB / +100 ms against the API's 1 / 2.6 MB /
+> +9 ms — so v2.7.0 shipped the API only, with the operator supplying an SDK via `--import`.
+> `/metrics` is likewise dependency-free rather than built on a Prometheus client.
+>
+> What shipped: [`docs/releases/v2.7.0.md`](../../releases/v2.7.0.md). Why it differs:
+> [`docs/internal/v2.7.0-findings-log.md`](../../internal/v2.7.0-findings-log.md).
+>
+> Annotated 2026-09-03 during the v3.0.0 corpus retirement. The plan below is unedited.
+
 **Release Date:** March 2027
 **Theme:** Production Visibility with OpenTelemetry
 **Phase:** Phase 5 - Enterprise

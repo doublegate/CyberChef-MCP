@@ -1,5 +1,12 @@
 # Phase 1: Foundation (v1.2.0 - v1.4.0)
 
+> **Complete. `Status: Planning` below is stale — v1.2.0, v1.3.0 and v1.4.0 all shipped.**
+>
+> The authoritative record of each is in [`docs/releases/`](../../releases/); the authoritative
+> numbering is [`../ROADMAP.md`](../ROADMAP.md).
+>
+> Annotated 2026-09-03 during the v3.0.0 corpus retirement. The document below is unedited.
+
 **Timeline:** January 2026 - March 2026 (Q1 2026)
 **Focus:** Security, Reliability, and Operational Excellence
 **Status:** Planning

@@ -1,5 +1,20 @@
 # Plugin Architecture Design
 
+> **Superseded by [ADR 0002](../../adr/0002-tool-registry-is-not-a-plugin-loader.md). Do not build
+> from this document.**
+>
+> Its central assumption — that `node:vm` can sandbox third-party code — is false, and it was
+> measured rather than argued: a function passed into a vm context carries a `constructor` that
+> closes over the host realm, so `bake.constructor('return process')()` returns the real `process`.
+> Every tool worth loading needs at least one host capability, so the "narrow API" defence is
+> unavailable by construction.
+>
+> v2.4.0 shipped the **registry** without the loader: tools are registered by explicit import in a
+> reviewed pull request. The design becomes buildable only with process isolation plus an explicit
+> capability allowlist — a different piece of work, with a threat model.
+>
+> Annotated 2026-09-03 during the v3.0.0 corpus retirement. The document below is unedited.
+
 **Version:** 1.0.0
 **Target Release:** v2.3.0 (December 2026)
 **Last Updated:** December 2025

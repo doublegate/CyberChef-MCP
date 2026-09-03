@@ -1,5 +1,14 @@
 # Release Plan: v2.0.0 - Major Release
 
+> **Delivered as v2.0.0.** Kept as the historical plan, not as a description of the
+> release.
+>
+> What shipped is recorded in [`docs/releases/v2.0.0.md`](../../releases/v2.0.0.md); read that
+> first. Where the two disagree, the release notes are right and this file is the
+> intention that preceded them.
+>
+> Annotated 2026-09-03 during the v3.0.0 corpus retirement. The plan below is unedited.
+
 **Release Date:** September 2026 (Target: Week of Sep 8)
 **Theme:** Major Release with Breaking Changes & API Stabilization
 **Phase:** Phase 3 - Maturity
