@@ -747,7 +747,7 @@ const handleListTools = async () => {
         if (!toolName) return;
 
         try {
-            const argsSchema = mapArgsToZod(op.args || []);
+            const argsSchema = mapArgsToZod(op.args || [], opName);
             tools.push({
                 name: toolName,
                 description: summariseDescription(op.description) || opName,

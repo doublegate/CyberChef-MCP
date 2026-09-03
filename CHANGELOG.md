@@ -35,6 +35,16 @@ what this server returns when the answer is not a plain string.
   element carrying no data. Both now return their real JSON output — 9,842 B to 7,650 B and
   15,669 B to 5,865 B respectively.
 
+### Added
+
+- **`cyberchef_magic`'s four arguments now carry descriptions.** The schema advertised `depth`,
+  `intensive_mode`, `extensive_language_support` and `crib_known_plaintext_string_or_regex` and
+  explained none of them, so the most useful argument the operation has — a crib that filters
+  candidate decodings down to the ones producing known plaintext — was undiscoverable from the
+  schema. Implemented as a curated table rather than by parsing the `<u>Arg:</u>` convention out
+  of operation descriptions: only 7 of 504 operations use that convention, and it would still have
+  missed the crib. Costs 1,354 B of the 20,289 B index surface (6.7%), measured.
+
 ### Changed
 
 - **The language a candidate is written in is reported as an estimate, not a determination.**

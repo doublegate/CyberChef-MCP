@@ -21,6 +21,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
 import { runMagic, renderMagicReport, likelyLanguage, toPreview, describeEntropy } from "../../src/node/lib/magic.mjs";
+import { mapArgsToZod } from "../../src/node/lib/tool-schema.mjs";
+import OperationConfig from "../../src/core/config/OperationConfig.json" with { type: "json" };
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SERVER = resolve(HERE, "../../src/node/mcp-server.mjs");
@@ -223,6 +225,56 @@ describe("magic report shaping", () => {
         expect(report).toMatch(/crib/i);
         // An empty result must still tell the caller what to do next, not just go quiet.
         expect(report.length).toBeGreaterThan(120);
+    });
+});
+
+describe("magic's argument schema", () => {
+    it("describes every argument Magic takes", () => {
+        const schema = mapArgsToZod(OperationConfig.Magic.args, "Magic");
+        const keys = [
+            "depth", "intensive_mode", "extensive_language_support",
+            "crib_known_plaintext_string_or_regex"
+        ];
+        for (const key of keys) {
+            const described = schema[key]?.description ?? schema[key]?._def?.description ?? "";
+            expect(described.length).toBeGreaterThan(30);
+        }
+    });
+
+    it("tells a caller what the crib actually does", () => {
+        // The crib is the most effective filter Magic has and the least guessable from its name,
+        // which is the whole reason the curated table exists.
+        const schema = mapArgsToZod(OperationConfig.Magic.args, "Magic");
+        const crib = schema.crib_known_plaintext_string_or_regex;
+        const text = crib.description ?? crib._def?.description ?? "";
+        expect(text.toLowerCase()).toContain("regex");
+        expect(text.toLowerCase()).toContain("match");
+    });
+
+    it("adds nothing when the operation name is not supplied", () => {
+        // The lookup is keyed by operation, so the old single-argument call must behave exactly as
+        // it did -- every other caller of mapArgsToZod depends on that.
+        const schema = mapArgsToZod(OperationConfig.Magic.args);
+        const depth = schema.depth;
+        expect(depth.description ?? depth._def?.description ?? "").toBe("");
+    });
+
+    it("leaves the derived toggleString prose intact for other operations", () => {
+        // The curated table must not displace the option list a caller needs in order to pass a
+        // key in the right encoding.
+        const schema = mapArgsToZod(OperationConfig["AES Decrypt"].args, "AES Decrypt");
+        const key = schema.key;
+        const text = key.description ?? key._def?.description ?? "";
+        expect(text).toContain("Hex");
+        expect(text).toContain("default");
+    });
+
+    it("does not describe arguments that explain themselves", () => {
+        // The bar for an entry is deliberately high, because tools/list is a per-request cost.
+        const schema = mapArgsToZod(OperationConfig["To Base64"].args, "To Base64");
+        const alphabet = schema.alphabet;
+        const text = alphabet.description ?? alphabet._def?.description ?? "";
+        expect(text).not.toContain("Magic");
     });
 });
 

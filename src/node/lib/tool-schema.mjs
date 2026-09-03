@@ -69,12 +69,48 @@ function toolArgName(argName) {
 }
 
 /**
+ * Curated prose for arguments whose name does not explain them.
+ *
+ * Keyed `"<Operation>|<Argument>"`, using the operation's own argument names verbatim.
+ *
+ * WHY THIS IS A TABLE AND NOT A PARSER
+ * ------------------------------------
+ * CyberChef operations document their arguments inside the operation DESCRIPTION, as
+ * `<u>Depth:</u> ...`, and extracting that automatically was the obvious first idea. Measured
+ * before building it: **7 of 504 operations use the convention at all**, yielding 14 arguments
+ * whose `<u>` heading matches an argument name. That is a fragile HTML parser, run over prose
+ * upstream is free to reword, for fourteen descriptions -- and it would still miss the one that
+ * prompted this, because `Magic` documents its crib as running prose rather than under a heading.
+ *
+ * So the entries below are written, not scraped. The bar for adding one is that a caller cannot
+ * infer the argument's meaning or a sensible value from its name and type, AND getting it wrong
+ * produces a bad answer rather than an error.
+ *
+ * Everything else stays undescribed on purpose. `tools/list` is a per-request cost, and an
+ * argument called `Delimiter` typed as an enum of delimiters does not need a sentence.
+ */
+const ARG_DESCRIPTIONS = Object.freeze({
+    // Magic is the discovery entry point -- the tool an agent reaches for when it does not yet
+    // know what it is holding -- so its arguments are the ones most often set blind.
+    "Magic|Depth": "Layers of encoding to unwrap. Default 3 handles the usual nesting " +
+        "(base64-then-gzip); raise only if output is still encoded. Cost grows fast.",
+    "Magic|Intensive mode": "Also brute-force XOR, bit rotations and encodings, not just detect " +
+        "them. Finds single-byte XOR; slow, and only the first 100 bytes are tried.",
+    "Magic|Extensive language support": "Compare against 284 languages instead of ~40. Usually " +
+        "widens the match list without sharpening it; the language result is an estimate either way.",
+    "Magic|Crib (known plaintext string or regex)": "Regex a decoding must match to be reported. " +
+        "The most effective filter when you know any of the plaintext -- a flag prefix, a header, " +
+        "an expected word."
+});
+
+/**
  * Map CyberChef arguments to Zod schema.
  *
  * @param {Array} args - The arguments from OperationConfig.
+ * @param {string} [opName] - The operation name, used to look up curated argument prose.
  * @returns {Object} The Zod schema object.
  */
-function mapArgsToZod(args) {
+function mapArgsToZod(args, opName) {
     const schema = {};
     args.forEach((arg) => {
         const name = toolArgName(arg.name);
@@ -160,8 +196,15 @@ function mapArgsToZod(args) {
         // already states in `type`/`enum`, and then had the full option list appended, duplicating
         // `enum` verbatim. Across 524 tools that redundancy came to roughly 42 KB, paid on every
         // `tools/list` and carrying no information a client could not already read.
+        // Curated prose wins over the derived text. Where both exist -- a `toggleString` whose
+        // encoding list matters AND whose meaning is unobvious -- the derived half is appended, so
+        // adding an entry never costs a caller the option list it needs to call the tool.
+        const curated = opName ? ARG_DESCRIPTIONS[`${opName}|${arg.name}`] : undefined;
         const informative = description && description !== (arg.type || "");
-        zodType = informative ? zodType.optional().describe(description) : zodType.optional();
+        if (curated) description = informative ? `${curated} (${description})` : curated;
+
+        const describable = curated || informative;
+        zodType = describable ? zodType.optional().describe(description) : zodType.optional();
         schema[name] = zodType;
     });
 
