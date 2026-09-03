@@ -59,7 +59,10 @@ describe("stdio contract, via the official MCP client", () => {
         await client.connect(new StdioClientTransport({
             command: process.execPath,
             args: [SERVER],
-            env: { ...process.env, CYBERCHEF_TOOL_SURFACE: "all" }
+            env: {
+                ...process.env,
+                CYBERCHEF_TOOL_SURFACE: "all",
+            }
         }));
         ({ tools } = await client.listTools());
     }, BOOT_TIMEOUT_MS);

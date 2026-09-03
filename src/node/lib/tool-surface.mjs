@@ -98,8 +98,15 @@ export const CURATED_OPERATIONS = [
  * looking at* inverts the cost: three round trips for the one operation whose entire purpose is to
  * answer the first question.
  *
- * It is also nearly free. Magic has four arguments, so its schema is a few hundred bytes against
- * an index measured in kilobytes -- well under a percent, for the most likely first call.
+ * It is also cheap, though no longer "nearly free" -- a claim this comment made until v2.9.0 gave
+ * Magic's four arguments curated descriptions. Measured rather than estimated:
+ *
+ *     cyberchef_magic   1,354 B of a 20,289 B index   6.7%
+ *
+ * That buys a caller the two facts it cannot guess: what `crib` does, which is the most effective
+ * way to cut candidates when any of the plaintext is known, and what a sensible `depth` is. Paid
+ * on every `tools/list`, and judged worth it for the operation most likely to be called first --
+ * but it is a real cost, and the next entry added here should be measured the same way.
  *
  * The bar for adding a second entry here is high: it must be something a caller needs BEFORE it
  * knows what it is dealing with. `Detect File Type` and `Entropy` are close, and are deliberately

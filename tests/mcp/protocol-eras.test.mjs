@@ -52,7 +52,9 @@ const SPAWN = {
     args: [SERVER],
     // `index` is the default surface and is enough here: this suite is about the wire, and
     // stdio-client-contract.test.mjs is what exercises all 504 schemas.
-    env: { ...process.env, CYBERCHEF_TRANSPORT: "stdio", CYBERCHEF_LOG_LEVEL: "error" }
+    env: {
+        ...process.env, CYBERCHEF_TRANSPORT: "stdio", CYBERCHEF_LOG_LEVEL: "error",
+    }
 };
 
 describe("protocol eras", () => {
