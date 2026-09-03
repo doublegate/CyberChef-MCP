@@ -431,7 +431,7 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
 <CardGrid stagger>
   <Card title="Run it in one line" icon="rocket">
     \`\`\`bash
-    docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v2:${pkg.version}
+    docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v${pkg.version.split('.')[0]}:${pkg.version}
     \`\`\`
     Then point any MCP client at it. See the [user guide](/CyberChef-MCP/guides/user-guide/).
   </Card>

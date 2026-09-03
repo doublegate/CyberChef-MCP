@@ -1,5 +1,14 @@
 # Release Plan: v1.4.0 - Performance Optimization
 
+> **Delivered as v1.4.0.** Kept as the historical plan, not as a description of the
+> release.
+>
+> What shipped is recorded in [`docs/releases/v1.4.0.md`](../../releases/v1.4.0.md); read that
+> first. Where the two disagree, the release notes are right and this file is the
+> intention that preceded them.
+>
+> Annotated 2026-09-03 during the v3.0.0 corpus retirement. The plan below is unedited.
+
 **Release Date:** March 2026 (Target: Week of Mar 24)
 **Theme:** Performance Optimization & Resource Management
 **Phase:** Phase 1 - Foundation

@@ -10,7 +10,7 @@ server with no stdin has nothing to read, so it exits at once. The client sees a
 during startup.
 
 ```bash
-docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v2:latest
+docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v3:latest
 ```
 
 ## `ERR_MODULE_NOT_FOUND` for `./index.mjs` or `OperationConfig`

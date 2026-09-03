@@ -1,5 +1,21 @@
 # Upstream Synchronization Strategy
 
+> **Delivered in v1.3.0 and rebuilt in v2.0.0. The mechanism is live; this document is not its
+> specification.**
+>
+> The v1.3.0 sync could not express a six-release jump, which is how the upstream base came to be
+> six releases behind. v2.0.0 rebuilt it so that cannot reopen. The rule that matters now is not in
+> this file: `src/core/**` and six upstream-owned `src/node/*.mjs` files are **mirrored** and must
+> never be hand-edited — a change goes in `patches/fork/*.patch`, which the sync re-applies and
+> which **fails the sync if it stops applying**.
+>
+> That rule exists because a ReDoS mitigation was once hand-edited into `src/core/operations/` and
+> silently reverted by a sync, staying gone for four releases while three documents claimed it was
+> active:
+> [`docs/security/2026-08-30-saferegex-reverted-by-upstream-sync.md`](../../security/2026-08-30-saferegex-reverted-by-upstream-sync.md).
+>
+> Annotated 2026-09-03 during the v3.0.0 corpus retirement. The document below is unedited.
+
 **Version:** 1.0.0
 **Last Updated:** December 2025
 **Target Release:** v1.3.0

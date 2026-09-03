@@ -3,6 +3,17 @@
 One plan per release, written ahead of the work. `ROADMAP.md` is the authoritative numbering;
 `docs/releases/<version>.md` is the authoritative record of what actually shipped.
 
+> **Historical as of 2026-09-03.** Every file in this directory now carries a dated banner saying
+> whether it was delivered, delivered-and-re-scoped, or superseded, and by what. **No plan here
+> describes unshipped work.**
+>
+> Planning for v3.0.0 onward lives in [`../v3/`](../v3/), and is deliberately shaped differently:
+> one deep plan for the release being executed, a one-page charter for each candidate after it, and
+> [`../v3/RE-MEASURE.md`](../v3/RE-MEASURE.md) as a mandatory gate between them. The reason is in
+> this directory's own record — six consecutive releases opened by measuring their plan and finding
+> it empty, already built, or superseded. **A detailed plan for a release two years out is a
+> hypothesis written at the point of least information.**
+
 ## The one-version offset, and how it was reconciled
 
 This set was written in December 2025 and numbered on the assumption that every planned release

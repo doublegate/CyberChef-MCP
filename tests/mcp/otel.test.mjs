@@ -18,10 +18,13 @@
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { trace, metrics, context, SpanStatusCode, ROOT_CONTEXT } from "@opentelemetry/api";
+import {
+    trace, metrics, context, SpanStatusCode, ROOT_CONTEXT, propagation
+} from "@opentelemetry/api";
 
 import {
-    ATTR, withServerSpan, recordDuration, traceFields, isRecording, _resetOtelForTest
+    ATTR, withServerSpan, recordDuration, traceFields, isRecording, _resetOtelForTest,
+    parentContextFrom
 } from "../../src/node/lib/otel.mjs";
 
 /**
@@ -378,5 +381,163 @@ describe("attribute names", () => {
         const values = Object.values(ATTR);
         expect(values).not.toContain("gen_ai.tool.call.arguments");
         expect(values).not.toContain("gen_ai.tool.call.result");
+    });
+});
+
+describe("trace context from the caller", () => {
+    const VALID = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+    const parentOf = meta => {
+        const ctx = parentContextFrom(meta);
+        return ctx ? trace.getSpanContext(ctx) : undefined;
+    };
+
+    it("joins the caller's trace when they send one", () => {
+        // Without this every span this server emits is a ROOT: correct in isolation, and useless
+        // for answering "what did that call actually do", because the client's span and the
+        // server's sit in two unconnected trees.
+        const sc = parentOf({ traceparent: VALID });
+        expect(sc.traceId).toBe("4bf92f3577b34da6a3ce929d0e0e4736");
+        expect(sc.spanId).toBe("00f067aa0ba902b7");
+        expect(sc.isRemote).toBe(true);
+    });
+
+    it("rejects the all-zero ids the W3C spec defines as invalid", () => {
+        // Not pedantry. An all-zero trace id is the INVALID sentinel, so parenting onto it would
+        // attach every span to a trace that cannot exist -- silently unreachable, rather than
+        // obviously root.
+        expect(parentOf({ traceparent: `00-${"0".repeat(32)}-00f067aa0ba902b7-01` })).toBeUndefined();
+        expect(parentOf({ traceparent: `00-4bf92f3577b34da6a3ce929d0e0e4736-${"0".repeat(16)}-01` }))
+            .toBeUndefined();
+    });
+
+    it("starts a root span rather than throwing on anything unparseable", () => {
+        // This runs on every tools/call, so it must never be the thing that fails a request.
+        for (const meta of [
+            undefined, {}, { traceparent: "" }, { traceparent: "nonsense" },
+            { traceparent: 42 }, { traceparent: `01-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01` }
+        ]) {
+            expect(parentOf(meta)).toBeUndefined();
+        }
+    });
+
+    it("ignores baggage unless it is explicitly enabled", () => {
+        // Baggage is caller-controlled key/value data that some SDK configurations promote onto
+        // span attributes -- the one place caller content could reach a telemetry backend, which
+        // this module's standing rule forbids. Trace and span ids are opaque and carry none.
+        const saved = process.env.CYBERCHEF_OTEL_BAGGAGE;
+        try {
+            delete process.env.CYBERCHEF_OTEL_BAGGAGE;
+            // The parent still resolves; only the baggage is dropped, and dropping it must not
+            // cost the trace.
+            expect(parentOf({ traceparent: VALID, baggage: "secret=value" }).traceId)
+                .toBe("4bf92f3577b34da6a3ce929d0e0e4736");
+        } finally {
+            if (saved === undefined) delete process.env.CYBERCHEF_OTEL_BAGGAGE;
+            else process.env.CYBERCHEF_OTEL_BAGGAGE = saved;
+        }
+    });
+
+    it("prefers a registered propagator over parsing the header itself", () => {
+        // The manual parse exists because this module depends on the OpenTelemetry API only, and
+        // the API's global propagator is a no-op until an operator registers one. When they HAVE
+        // registered one, it must win -- it may understand vendor formats this parser does not.
+        //
+        // Built on the API's own interfaces, like the recording TracerProvider above, because
+        // registering a real one would mean depending on the SDK this module exists to avoid.
+        const propagator = {
+            inject() {},
+            fields: () => ["traceparent"],
+            extract(ctx, carrier) {
+                // A deliberately DIFFERENT span id from the header, so the assertion below can
+                // only pass if the propagator's answer was used rather than the manual parse.
+                if (!carrier?.traceparent) return ctx;
+                return trace.setSpanContext(ctx, {
+                    traceId: "11111111111111111111111111111111",
+                    spanId: "2222222222222222",
+                    traceFlags: 1,
+                    isRemote: true
+                });
+            }
+        };
+        propagation.setGlobalPropagator(propagator);
+        try {
+            const sc = parentOf({ traceparent: VALID });
+            expect(sc.traceId).toBe("11111111111111111111111111111111");
+            expect(sc.spanId).toBe("2222222222222222");
+        } finally {
+            propagation.disable();
+        }
+    });
+
+    it("carries baggage and tracestate when the operator opts in", () => {
+        // The opt-in path. Both are passed to the PROPAGATOR rather than parsed here -- only
+        // `traceparent` has a manual fallback, because it is the one the parent depends on.
+        //
+        // So the assertion has to be on the carrier the propagator was handed. Asserting the
+        // resulting traceId instead proves nothing: with no propagator registered, the manual
+        // fallback parses `traceparent` and returns the same id whether or not the other two
+        // fields were ever copied across. That earlier version of this test passed with the
+        // `tracestate` and `baggage` lines of `parentContextFrom` deleted.
+        const seen = [];
+        const propagator = {
+            inject() {},
+            fields: () => ["traceparent", "tracestate", "baggage"],
+            extract(ctx, carrier) {
+                seen.push({ ...carrier });
+                return ctx;
+            }
+        };
+        const saved = process.env.CYBERCHEF_OTEL_BAGGAGE;
+        propagation.setGlobalPropagator(propagator);
+        try {
+            process.env.CYBERCHEF_OTEL_BAGGAGE = "true";
+            const sc = parentOf({
+                traceparent: VALID,
+                tracestate: "vendor=opaque",
+                baggage: "deployment=blue"
+            });
+
+            expect(seen).toHaveLength(1);
+            expect(seen[0].traceparent).toBe(VALID);
+            expect(seen[0].tracestate).toBe("vendor=opaque");
+            expect(seen[0].baggage).toBe("deployment=blue");
+            // The propagator here returns the context unchanged, so the manual fallback still
+            // yields the parent -- which is the behaviour a propagator that does not understand
+            // the header should get.
+            expect(sc.traceId).toBe("4bf92f3577b34da6a3ce929d0e0e4736");
+        } finally {
+            propagation.disable();
+            if (saved === undefined) delete process.env.CYBERCHEF_OTEL_BAGGAGE;
+            else process.env.CYBERCHEF_OTEL_BAGGAGE = saved;
+        }
+    });
+
+    it("withholds baggage unless the operator opts in, and never withholds tracestate", () => {
+        // Baggage is opt-in because it is arbitrary caller-supplied key/value data that would
+        // otherwise ride into every span; `tracestate` is part of the trace context itself and is
+        // always forwarded. Without this case the opt-in could be deleted and the suite stay
+        // green -- the test above only exercises the enabled branch.
+        const seen = [];
+        const propagator = {
+            inject() {},
+            fields: () => ["traceparent", "tracestate", "baggage"],
+            extract(ctx, carrier) {
+                seen.push({ ...carrier });
+                return ctx;
+            }
+        };
+        const saved = process.env.CYBERCHEF_OTEL_BAGGAGE;
+        propagation.setGlobalPropagator(propagator);
+        try {
+            delete process.env.CYBERCHEF_OTEL_BAGGAGE;
+            parentOf({ traceparent: VALID, tracestate: "vendor=opaque", baggage: "secret=1" });
+
+            expect(seen[0].tracestate).toBe("vendor=opaque");
+            expect(seen[0].baggage).toBeUndefined();
+        } finally {
+            propagation.disable();
+            if (saved === undefined) delete process.env.CYBERCHEF_OTEL_BAGGAGE;
+            else process.env.CYBERCHEF_OTEL_BAGGAGE = saved;
+        }
     });
 });

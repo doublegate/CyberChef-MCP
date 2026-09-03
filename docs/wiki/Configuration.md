@@ -79,7 +79,7 @@ docker run -i --rm -p 127.0.0.1:3000:3000 \
   -e CYBERCHEF_TRANSPORT=http \
   -e CYBERCHEF_AUTH_ISSUER=https://auth.example.com \
   -e CYBERCHEF_AUTH_RESOURCE=https://mcp.example.com/mcp \
-  ghcr.io/doublegate/cyberchef-mcp_v2:latest
+  ghcr.io/doublegate/cyberchef-mcp_v3:latest
 ```
 
 Verify discovery works before pointing a client at it — the metadata document is served without a
@@ -344,7 +344,7 @@ If you do not use saved recipes, none of this applies — scale freely.
 docker run -i --rm \
   -e CYBERCHEF_TOOL_SURFACE=curated \
   -e LOG_LEVEL=debug \
-  ghcr.io/doublegate/cyberchef-mcp_v2:latest
+  ghcr.io/doublegate/cyberchef-mcp_v3:latest
 ```
 
 **In a client config** (`env` block):
@@ -354,7 +354,7 @@ docker run -i --rm \
     "cyberchef": {
       "command": "docker",
       "args": ["run", "-i", "--rm", "-e", "CYBERCHEF_TOOL_SURFACE=curated",
-               "ghcr.io/doublegate/cyberchef-mcp_v2:latest"]
+               "ghcr.io/doublegate/cyberchef-mcp_v3:latest"]
     }
   }
 }

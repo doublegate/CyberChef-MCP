@@ -390,28 +390,44 @@ jobs:
         run: |
           gh release upload "$TAG_NAME" sbom.cyclonedx.json --clobber
 
-      # ---- npm, for v2.x tags only ----
+      # ---- npm, for every tag EXCEPT the v1.9.x maintenance line ----
       #
       # The v1.9.x line publishes to GHCR `_v1` but CANNOT be published to npm: its `postinstall`
       # runs five grunt tasks that patch node_modules, which cannot survive being installed from a
       # tarball (see docs/internal/v2.5.0-findings-log.md F-12). Guarding on the tag rather than
       # trusting that v1 tags never reach this workflow.
+      #
+      # EXCLUDE v1, do not allow-list v2. This condition read
+      # `startsWith(github.ref_name, 'v2.')` until v3.0.0, which expressed the intent above as an
+      # allowlist of the then-current major -- so it also excluded every major after it. A `v3.0.0`
+      # tag would have published the image to GHCR `_v3` correctly (that step resolves any numeric
+      # major) and then silently skipped npm entirely, with no failure and no warning, because a
+      # skipped `if:` is a green step.
+      #
+      # A dated fuse like this is unobservable until the one tag that trips it, which is why it is
+      # written as the exclusion it always meant and cannot re-arm at v4.
+      #
+      # `ref_type == 'tag'` is the other half. `workflow_dispatch` runs on a BRANCH, so
+      # `github.ref_name` is `master` -- which is not a v1 tag and therefore passed the exclusion
+      # above. The publish step would then compute VERSION=master, disagree with package.json and
+      # fail the run, turning every manual dispatch red for a step that had nothing to publish.
+      # The release-creation step at line 253 already guards this way; these now match it.
       - name: Set up Node for npm publish
-        if: startsWith(github.ref_name, 'v2.')
+        if: "github.ref_type == 'tag' && !startsWith(github.ref_name, 'v1.')"
         uses: actions/setup-node@v5
         with:
           node-version: '26'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies for packaging
-        if: startsWith(github.ref_name, 'v2.')
+        if: "github.ref_type == 'tag' && !startsWith(github.ref_name, 'v1.')"
         # Not --ignore-scripts: `prepack` runs `grunt configTests`, which needs the postinstall
         # dependency patching to have happened, and the generated OperationConfig.json and
         # index.mjs are shipped in the tarball.
         run: npm ci
 
       - name: Publish to npm
-        if: startsWith(github.ref_name, 'v2.')
+        if: "github.ref_type == 'tag' && !startsWith(github.ref_name, 'v1.')"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           TAG_NAME: ${{ github.ref_name }}

@@ -1,5 +1,12 @@
 # Phase 2: Enhancement (v1.5.0 - v1.7.0)
 
+> **Complete. `Status: Planning` below is stale — v1.5.0, v1.6.0 and v1.7.0 all shipped.**
+>
+> The authoritative record of each is in [`docs/releases/`](../../releases/); the authoritative
+> numbering is [`../ROADMAP.md`](../ROADMAP.md).
+>
+> Annotated 2026-09-03 during the v3.0.0 corpus retirement. The document below is unedited.
+
 **Timeline:** April 2026 - June 2026 (Q2 2026)
 **Focus:** Advanced MCP Features and User Experience
 **Status:** Planning

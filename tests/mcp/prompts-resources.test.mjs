@@ -153,6 +153,40 @@ describe("prompts", () => {
 });
 
 describe("resources", () => {
+    it("answers a missing resource with -32602 and data.uri, not Internal Error", async () => {
+        // Before v3.0.0 this was -32603 Internal Error with no data, because
+        // `CyberChefMCPError.code` is the STRING "INVALID_INPUT" and the SDK dispatcher keeps a
+        // thrown code only when it is a safe integer. A caller could not distinguish "that
+        // resource does not exist" from "the server broke".
+        const { client, close } = await connected();
+        try {
+            const missing = "recipe://00000000-0000-4000-8000-000000000000";
+            const failure = await client.readResource({ uri: missing }).catch(e => e);
+
+            expect(failure.code).toBe(-32602);
+            // `data.uri` is the shape the SDK documents clients to recognise resource-not-found
+            // by, and is what separates this from a malformed request below.
+            expect(failure.data).toEqual({ uri: missing });
+        } finally {
+            await close();
+        }
+    });
+
+    it("distinguishes a malformed URI from a missing one", async () => {
+        // Both are -32602. Only the missing one carries `data.uri`; a client that keys off it
+        // must not be told an unsupported scheme is a resource that merely does not exist yet.
+        const { client, close } = await connected();
+        try {
+            const failure = await client.readResource({ uri: "file:///etc/passwd" }).catch(e => e);
+
+            expect(failure.code).toBe(-32602);
+            expect(failure.data.uri).toBeUndefined();
+            expect(failure.data.supported).toBe("recipe://<id>");
+        } finally {
+            await close();
+        }
+    });
+
     it("exposes saved recipes, keyed by id rather than by name", async () => {
         const { client, close } = await connected();
         try {
@@ -222,6 +256,26 @@ describe("resources", () => {
 });
 
 describe("capabilities", () => {
+    it("does not advertise tasks, extensions or logging", async () => {
+        // A tripwire, not pedantry. `@modelcontextprotocol/server` is pinned `^2.0.0`, so a 2.x
+        // minor that began auto-declaring any of these would ship silently and promise handlers
+        // this server does not have -- a client would call something that answers "method not
+        // found", which is worse than not advertising it.
+        //
+        // tasks was assessed for v3.0.0 and declined: streaming plus progress notifications
+        // already cover long operations, and the extension needs state outliving the request,
+        // which this server deliberately has none of. Logging, Roots and Sampling are all
+        // deprecated by 2026-07-28 and were never declared here.
+        const { client, close } = await connected();
+        try {
+            const caps = client.getServerCapabilities();
+            expect(caps.tasks).toBeUndefined();
+            expect(caps.extensions).toBeUndefined();
+            expect(caps.logging).toBeUndefined();
+        } finally {
+            await close();
+        }
+    });
     it("advertises exactly the surfaces it serves", async () => {
         const { client, close } = await connected();
         try {

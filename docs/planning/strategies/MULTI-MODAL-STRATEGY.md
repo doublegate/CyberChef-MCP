@@ -1,5 +1,17 @@
 # Multi-Modal Support Strategy
 
+> **Delivered as v2.2.0**, not as the v2.1.0 in the header below.
+>
+> It turned out to be a defect fix rather than a feature: `Generate QR Code` and `Play Media`
+> produced valid payloads inside `data:` URIs and the html-to-text conversion deleted them, so
+> those operations had **never** worked over MCP. Binary was the opposite — it looked broken and
+> measured byte-for-byte reversible, so it shipped as an opt-in
+> (`CYBERCHEF_BINARY_OUTPUT=base64`) rather than a changed default.
+>
+> What shipped: [`docs/releases/v2.2.0.md`](../../releases/v2.2.0.md).
+>
+> Annotated 2026-09-03 during the v3.0.0 corpus retirement. The document below is unedited.
+
 **Version:** 1.0.0
 **Target Release:** v2.1.0 (October 2026)
 **Last Updated:** December 2025

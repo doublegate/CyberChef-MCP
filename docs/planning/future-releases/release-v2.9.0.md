@@ -1,5 +1,18 @@
 # Release Plan: v2.9.0 - AI-Native Features
 
+> **Superseded — four of its seven features were already built when it was measured.**
+>
+> Context-aware suggestions, auto-recipe generation, intelligent error correction and LLM-powered
+> documentation all existed as `cyberchef_magic`, `Magic` at depth 3, `ErrorSuggestions` in
+> `errors.mjs`, and `cyberchef_describe_operation`. The release that took this number instead
+> fixed the flagship: `Magic` was shipped and unusable to its only consumer, emitting the web
+> results **table** with recipes in a pretty form that `bake` rejects.
+>
+> What shipped: [`docs/releases/v2.9.0.md`](../../releases/v2.9.0.md). Why it differs:
+> [`docs/internal/v2.9.0-findings-log.md`](../../internal/v2.9.0-findings-log.md).
+>
+> Annotated 2026-09-03 during the v3.0.0 corpus retirement. The plan below is unedited.
+
 **Release Date:** May 2027
 **Theme:** LLM-Powered Operation Discovery and Recipe Generation
 **Phase:** Phase 6 - Evolution

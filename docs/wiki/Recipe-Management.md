@@ -61,7 +61,7 @@ In a Docker run with no volume mounted, storage is **inside the container** and 
 ```bash
 docker run -i --rm -v cyberchef-recipes:/data \
   -e CYBERCHEF_RECIPE_STORAGE=/data/recipes.json \
-  ghcr.io/doublegate/cyberchef-mcp_v2:latest
+  ghcr.io/doublegate/cyberchef-mcp_v3:latest
 ```
 
 ## Saved recipes are also resources

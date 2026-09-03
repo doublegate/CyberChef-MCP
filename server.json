@@ -7,17 +7,26 @@
     "url": "https://github.com/doublegate/CyberChef-MCP",
     "source": "github"
   },
-  "version": "2.4.1",
+  "version": "3.0.0",
   "packages": [
     {
       "registryType": "oci",
       "registryBaseUrl": "https://ghcr.io",
-      "identifier": "doublegate/cyberchef-mcp_v2",
-      "version": "2.4.1",
+      "identifier": "doublegate/cyberchef-mcp_v3",
+      "version": "3.0.0",
+      "transport": {
+        "type": "stdio"
+      }
+    },
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "cyberchef-mcp",
+      "version": "3.0.0",
       "transport": {
         "type": "stdio"
       }
     }
   ],
-  "_comment": "The npm package record is deliberately absent: cyberchef-mcp is publishable as of v2.3.0 -- the install script it used to need is gone, and a --ignore-scripts install of the packed tarball starts and serves -- but it has not been published yet. Advertising a package that is not on the registry would send clients to an install that 404s. Add the record in the same change that publishes it. See docs/releases/v2.3.0.md."
+  "_comment": "The npm record was ABSENT until v3.0.0, and should not have been: cyberchef-mcp has been on the registry since 2.5.0 -- seven versions -- while this file, docs/wiki/Installation.md, docs/wiki/FAQ.md and AGENTS.md all said it was publishable but unpublished. The comment here even said to add the record in the same change that publishes it, and nothing did. Verified with `npm view cyberchef-mcp versions` before writing this. The version fields are gated by `npm run check:versions`, which this file was outside of until v3.0.0 and had been stale at 2.4.1 for six releases as a result."
 }

@@ -20,12 +20,12 @@
 <<< MC-PROJECT-START >>>
 ## Project: CyberChef
 
-**CyberChef MCP Server** (v2.10.0) - Fork of GCHQ CyberChef wrapping the Node.js API into an MCP
+**CyberChef MCP Server** (v3.0.0) - Fork of GCHQ CyberChef wrapping the Node.js API into an MCP
 server. Exposes 504 operations (encryption, encoding, compression, forensics) as AI assistant tools.
 
 | Metric | Value |
 |--------|-------|
-| MCP Version | 2.10.0 (single source: `package.json` `version`, read by `src/node/lib/config.mjs`). `mcpVersion` was removed in v2.2.0 -- npm requires `version` to be the published version, so the upstream base moved to `cyberchefUpstreamVersion`. |
+| MCP Version | 3.0.0 (single source: `package.json` `version`, read by `src/node/lib/config.mjs`). `mcpVersion` was removed in v2.2.0 -- npm requires `version` to be the published version, so the upstream base moved to `cyberchefUpstreamVersion`. |
 | Upstream base | CyberChef **v11.4.0** |
 | Operations / tools | 504 operations **plus 4 registry tools** that are not operations. `tools/list` is an **index** by default (28 tools, ~4.9k tokens); `CYBERCHEF_TOOL_SURFACE=curated\|all` for 106 (~20.7k) or all 531 (~100k). All 504 reachable via `cyberchef_bake` + the three navigation tools. Every tool carries annotations + a title. |
 | Licence | **GPL-3.0-or-later** (from v2.0.0; v1.9.x and earlier are Apache-2.0) |
@@ -36,17 +36,19 @@ server. Exposes 504 operations (encryption, encoding, compression, forensics) as
 | Presented output | **44 operations declare a `presentType` differing from `outputType`** -- the presenter targets a browser. `bakeOnCore` asks for the presented form because a few carry their payload ONLY in markup (`Generate QR Code` -> `<img src="data:image/png...">`); for the rest it returned a browser artefact. Since v2.9.0 it prefers `Chef.bake`'s `dish` (the raw, unpresented value, free from the same bake) when the presented value has markup and **no** media. Resolved **before the cache** -- a decision downstream of the cache applies to a miss and not a hit. `JSON Beautify` is why this is a correctness rule and not a formatting one: its keys' quotes were markup structure, so stripping tags returned unparseable JSON. Both directions are pinned by `tests/mcp/presented-output.test.mjs`. |
 | Magic | `cyberchef_magic` does NOT go through the operation; `src/node/lib/magic.mjs` calls `speculativeExecution` directly and returns a plain-text report + `structuredContent`. Reason: the operation emitted the web results **table**, with its recipes in the pretty form (`From_Base64('A-Za-z0-9+/=',true,false)`) which **`bake` rejects** -- the most actionable field was the one field a caller could not use. Recipes are now emitted as `[{op,args}]` and a test bakes every one. Language is an **estimate**, never a determination: chi-squared byte frequencies called "Attack at dawn" German at probability 1.35e-8, and accuracy does not rise monotonically with length, so no cutoff fixes it. This path bypasses `resolveArgValue`, so it screens the crib regex itself. |
 | Configuration | Two sources: `cyberchef.config.json` and environment variables, with **env > file > default**. 64 settings in 15 sections; the mapping is a committed literal in `src/node/lib/config-file.mjs`, NOT a runtime transform (`http.maxSessions` is `CYBERCHEF_MAX_SESSIONS`, not `CYBERCHEF_HTTP_MAX_SESSIONS`, so a derived name would be set and read by nothing). Applied by populating `process.env` before anything reads it, because settings are resolved at MODULE LOAD in ~30 places across five modules -- hence `bootstrap-config.mjs` and the rule that it is imported FIRST. Fails closed on unknown sections/keys/types. Added in v2.10.0; the migration guide had told users to write this file since v1.8.0 and nothing read it. |
-| Tests | 1,397 MCP (54 files) + 241 Node-API + 2,289 operations + 9 CI-executed examples |
-| Coverage | 96.7% lines / 90.1% branches / 96.6% functions / 95.8% statements. Thresholds raised in v2.3.0 from 75/70/90/75 to **95/89/96/96** (branches raised again in v2.7.0), with `src/node/lib/**` held separately at 99/94/100/99 -- the old numbers were twenty points below actual, so the gate could not fail. `perFile` is off deliberately; see `vitest.config.mjs` for why. Gated on **pull requests** since v2.2.0. |
+| Tests | 1,426 MCP (54 files) + 241 Node-API + 2,289 operations + 9 CI-executed examples |
+| Coverage | 95.5% lines / 89.9% branches / 96.4% functions / 96.2% statements. Thresholds raised in v2.3.0 from 75/70/90/75 to **95/89/96/96** (branches raised again in v2.7.0), with `src/node/lib/**` held separately at 99/94/100/99 -- the old numbers were twenty points below actual, so the gate could not fail. `perFile` is off deliberately; see `vitest.config.mjs` for why. Gated on **pull requests** since v2.2.0. |
 | Open security alerts | **0** Dependabot, **0** code-scanning (55 dispositioned in v2.1.1) |
-| MCP surfaces | tools + **prompts** (5) + **resources** (`recipe://<id>`), all three declared from one `SERVER_CAPABILITIES` -- there are two server construction sites and two capability lists drift. |
+| MCP surfaces | tools + **prompts** (5) + **resources** (`recipe://<id>`), all three declared from one `SERVER_CAPABILITIES` -- there are two server construction sites and two capability lists drift. **Tasks and `extensions` are declined**, with the reasons at `SERVER_CAPABILITIES` and a negative test as a tripwire: tasks need state outliving the request and this server deliberately has none. |
+| RBAC | Scope filtering on `tools/list` activates only when auth is on. `cyberchef_bake` and `cyberchef_batch` are priced by the **recipe submitted**, not by `openWorldHint` -- 502 of 504 operations need only `cyberchef:read`, so pricing `bake` at `network` made the meta-tool cost more than the operations it runs. `cyberchef_recipe_execute` is deliberately excluded: it carries only an id, and resolving it would move the authorization check after a storage read. Listing must never be stricter than dispatch -- hiding a tool the caller could successfully invoke is misinformation, not caution. |
+| Cache hints | `ttlMs`/`cacheScope` (SEP-2549) are filled by the SDK at the 2026-era encode seam from a `cacheHints` constructor option -- the server does NOT build the fields. It defaulted to `{0, private}`, i.e. conformant and telling every client to cache nothing. Values chosen in `src/node/lib/cache-hints.mjs`; `resources/list` and `resources/read` stay at **0** because saved recipes change on any caller's write and **no `listChanged` capability is declared**, so the TTL is a client's only invalidation signal. The option, not a handler-returned field: the legacy codec passes results through unchanged, so a handler-set `ttlMs` would leak onto the **2025 wire**. |
 | Protocol | **2026-07-28 and the 2025 era**, both served from one set of handlers, on stdio and HTTP. SDK v2 (`@modelcontextprotocol/server` + `/node`); `@modelcontextprotocol/sdk` 1.x is a **devDependency only**, kept so the suite can prove a legacy client still connects. The era decision lives in the `serveStdio` entry, NOT in the transport -- a bare `StdioServerTransport` plus `server.connect()` serves 2025 only. |
 | Transports | `stdio` (default), `http` (Streamable HTTP, per session), `socket` (Unix domain socket or loopback TCP, one pinned server per connection). No WebSocket: MCP does not define one and no SDK ships one. |
 | Observability | `/metrics` (Prometheus, dependency-free, **off** unless `CYBERCHEF_METRICS_ENABLED=true`) + OpenTelemetry spans on the **API only** -- `@opentelemetry/api` is the sole runtime dep added in v2.7.0, and the SDK is deliberately NOT bundled (71 pkgs / 50 MB / +100 ms vs 1 / 2.6 MB / +9 ms). Operator supplies the SDK via `--import`. Tool arguments are never recorded -- the MCP conventions mark them Opt-In and here they ARE the sensitive material. Tool names are resolved against the real dispatch catalogue before becoming a metric label OR a span attribute (`toolDimension` in mcp-server.mjs), with a 1024-name cap behind it as defence in depth -- the name is caller-controlled, and a cap ALONE is exhaustible: fill it first and legitimate tools collapse into `__other__`. `/metrics` is behind `hostAllowed()`, unlike the health probes, which may skip it because they disclose nothing. Dashboard + alerts in `deploy/grafana/`, verified by execution (`promtool`, a live scrape, a real drain) not review. |
 | Fork patches | 9 in `patches/fork/` (01, 03-10). A patch that stops applying **fails the sync** -- that is the alarm SafeRegex never had. |
 | Vendored | `src/vendor/crypto-api/` (MIT -- the published package cannot be loaded: no `main` file in its tarball, extensionless ESM imports) and `src/vendor/bmfonts/` (Apache-2.0, for `Add Text To Image`). Both are lint- and coverage-exempt and carry a README explaining when to delete them. |
 | Registry tools | 4 in `src/node/tools/` (`xor_key_length`, `cyclic_pattern`, `hash_identify`, `rsa_attack`), added in v2.4.0 for analyses an operation cannot express. Loading is an explicit import list in `src/node/tools/index.mjs` (**not** `src/node/index.mjs`, which is the generated operation bridge) -- **no loader, no directory scan, no path from configuration.** `node:vm` is not a security boundary and this was measured: a capability passed into a vm context reaches the real `process` via `constructor`. Registration **throws** if a tool would shadow an operation or meta-tool. [ADR 0002](docs/adr/0002-tool-registry-is-not-a-plugin-loader.md). |
-| npm | **Publishable, not published.** The install script that blocked it is gone; `npm install --ignore-scripts` of the packed tarball starts and serves. `server.json` carries no npm record until an actual publish happens. |
+| npm | **Published since 2.5.0** as `cyberchef-mcp` -- seven versions, verified with `npm view cyberchef-mcp versions`. Four documents said otherwise until v3.0.0 (this row, `docs/wiki/Installation.md`, `docs/wiki/FAQ.md` and `server.json`'s own comment), because the claim was written when it was true and nothing re-checked it after the first publish succeeded. `server.json` now carries the npm record and is in `check:versions`. |
 
 **Focus:** MCP server (`src/node/mcp-server.mjs` + `src/node/lib/**`), not the web app.
 
@@ -190,19 +192,27 @@ Tool naming: operations are sanitized to snake_case with a `cyberchef_` prefix
 | `codeql.yml` | Push/PR/weekly | CodeQL security scanning |
 
 **Version bump locations.** `package.json` is the single source at RUNTIME, but a release touches
-seven places, and the last two are the ones that get missed:
+nine places, and the last three are the ones that get missed:
 
 1. `package.json` `version`
 2. `package-lock.json` -- two fields; `npm install --package-lock-only` does both
 3. `deploy/helm/cyberchef-mcp/Chart.yaml` `appVersion` **and** the chart's own `version`
 4. `deploy/helm/cyberchef-mcp/values.yaml` `image.tag`
-5. `deploy/compose/docker-compose.yml` -- the `image:` line
+5. `deploy/compose/docker-compose.yml` -- the `image:` line **including the package major**
 6. **`deploy/compose/docker-compose.yml` -- the PROSE in the digest-pinning comment.** Missed at
    v2.8.0, v2.8.1 **and v2.9.0** -- and at v2.9.0 the `image:` line, `Chart.yaml` `appVersion` and
    `values.yaml` `image.tag` were missed too, so the chart and compose file published with that tag
    deploy **v2.8.1**.
 7. README `**Latest Release:**` banner, the offline download URLs, and the AGENTS.md heading + docs
    map + MCP Version row in this file
+8. `server.json` -- `version` and `packages[0].version`/`identifier`. Stale at `2.4.1` for six
+   releases, because it is not published from CI and nothing was looking at it.
+9. **On a MAJOR bump, the image is RENAMED, not re-tagged.** `mcp-release.yml` derives the GHCR
+   package from the tag's major (`cyberchef-mcp_v${major}`), so `values.yaml` `image.repository`,
+   the compose `image:` line and `server.json` `identifier` all move to `_v<new major>` -- and the
+   ~40 live documents that name the image do too. At v3.0.0 the chart paired an un-bumped
+   `repository` with a bumped `tag`, which resolves to an image that will never be pushed while
+   `check:versions` reported ok. It now asserts the major as well as the version.
 
 **Do not rely on this list. Run `npm run check:versions`.** Three consecutive releases got the
 version wrong while the note above told the author not to, which is the point at which a checklist
@@ -228,7 +238,10 @@ Release cut (module 70 has the ceremony; this is the repo-specific mechanic):
 git tag -a vX.Y.Z --cleanup=verbatim -F docs/releases/vX.Y.Z.md && git push origin vX.Y.Z
 # Tag from `master` AFTER the release PR merges: `docker/metadata-action` moves `latest` for any
 # non-prerelease semver tag, so tagging a release branch still moves it.
-# v2.x publishes to ghcr.io/doublegate/cyberchef-mcp_v2; the v1.9.x line to ..._v1.
+# The GHCR package name carries the MAJOR: v3.x publishes to
+# ghcr.io/doublegate/cyberchef-mcp_v3, v2.x to ..._v2, the v1.9.x line to ..._v1.
+# A major bump therefore RENAMES the image -- `check:versions` asserts the major in
+# docker-compose.yml, values.yaml and server.json for exactly that reason.
 ```
 
 Verify the tag kept its structure before pushing. Count headings rather than diffing the whole
@@ -262,9 +275,10 @@ perfectly good tag and would be ignored within a release or two.
 |----------|-----------|
 | Architecture | `docs/architecture/architecture.md`, `technical_implementation.md`, `performance-tuning.md` |
 | Guides | `docs/guides/commands.md` (MCP tools), `user_guide.md` (installation), `edge-deployment.md` (arm64, size, offline, air-gapped), `configuration.md` (all 64 settings; generated from `config-file.mjs` and asserted against it) |
-| Planning | `docs/planning/ROADMAP.md`, `docs/planning/phases/overview.md` |
+| Planning | `docs/planning/v3/` (**current**: the v3.0.0 plan, `RE-MEASURE.md`, and one-page charters through v4.0.0), `docs/planning/ROADMAP.md`. `docs/planning/future-releases/` and `phases/` are **historical** -- every file carries a dated banner saying what replaced it. |
 | Security | `docs/security/audit.md` |
-| Releases | `docs/releases/v2.10.0.md` (latest), then `v2.9.0.md`, `v2.8.1.md`, `v2.8.0.md`, `v2.7.0.md` ... `v2.0.0.md`, `v1.9.0.md` ... `v1.0.0.md` |
+| Reference | `docs/reference/mcp-2026-07-28-conformance.md`, `agent-tool-design.md`, `mcp-eval-benchmarks.md`, `mcp-threat-model-2026.md` -- written summaries with citations and retrieval dates, not vendored PDFs |
+| Releases | `docs/releases/v3.0.0.md` (latest), then `v2.10.0.md`, `v2.9.0.md`, `v2.8.1.md`, `v2.8.0.md` ... `v2.0.0.md`, `v1.9.0.md` ... `v1.0.0.md` |
 | Internal | `docs/internal/tech-debt-analysis-v1.6.1.md` (project health: 8.9/10) |
 
 <<< MC-PROJECT-END >>>

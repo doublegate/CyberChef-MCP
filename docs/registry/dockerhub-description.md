@@ -98,7 +98,7 @@ docker run -i --rm -e CYBERCHEF_TOOL_SURFACE=curated parobek/cyberchef-mcp:lates
 
 `release-v1.x.x` tags predate the current scheme and are kept so older references keep working.
 
-Also on GHCR: `ghcr.io/doublegate/cyberchef-mcp_v2` (major-versioned).
+Also on GHCR: `ghcr.io/doublegate/cyberchef-mcp_v3` (major-versioned).
 
 ## Example
 

@@ -1,5 +1,17 @@
 # Phase 6: Evolution (Q2-Q3 2027)
 
+> **Complete, and numbered one version behind the releases that delivered it.**
+>
+> This file says v2.7.0-v3.0.0; the phase ran **v2.8.0-v3.0.0**, and its "AI Integration" theme was
+> measured and found already built — `Magic`, `ErrorSuggestions` and `cyberchef_describe_operation`
+> all predate it. v2.9.0 made `Magic`'s output usable to an MCP client instead of building a second
+> one. The 20-week estimate was overtaken: the phase shipped in days, which is the clearest single
+> measure of how far these estimates had drifted.
+>
+> See the "Phase 6: Evolution — complete" section of [`../ROADMAP.md`](../ROADMAP.md).
+>
+> Annotated 2026-09-03 during the v3.0.0 corpus retirement. The document below is unedited.
+
 **Version Range:** v2.7.0 - v3.0.0
 **Timeline:** April 2027 - August 2027
 **Theme:** Optimization, AI Integration, and Major Release

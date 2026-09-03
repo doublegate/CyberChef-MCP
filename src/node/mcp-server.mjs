@@ -27,12 +27,23 @@ import OperationConfig from "../core/config/OperationConfig.json" with {type: "j
 import { toContentBlocks } from "./lib/content-blocks.mjs";
 import { annotationsForOperation, annotationsForMetaTool } from "./lib/tool-annotations.mjs";
 import { currentAuth, insufficientScopeChallenge, loadAuthConfig } from "./lib/auth.mjs";
-import { authorise } from "./lib/rbac.mjs";
+import {
+    authorise, visibleTools, requiredScopesForRecipe, RECIPE_SCOPED_TOOLS
+} from "./lib/rbac.mjs";
+import { serverCacheHints } from "./lib/cache-hints.mjs";
+
+/**
+ * Cache hints for the list results, resolved once.
+ *
+ * Auth is a process-wide setting, so whether `tools/list` is shareable is decidable here rather
+ * than per request. Validated by the SDK at construction, so a bad value fails startup.
+ */
+const CACHE_HINTS = serverCacheHints(loadAuthConfig().enabled);
 import { audit, OUTCOME } from "./lib/audit.mjs";
 import { currentTenant, callerKey } from "./lib/tenancy.mjs";
 import { listPrompts, getPrompt } from "./lib/prompts.mjs";
 import { listResources, readResource, listResourceTemplates } from "./lib/resources.mjs";
-import { bakeOnCore } from "./lib/core-recipe.mjs";
+import { bakeOnCore, toCoreRecipe } from "./lib/core-recipe.mjs";
 import { assertOfflineAllowed } from "./lib/offline.mjs";
 import { runMagic, renderMagicReport } from "./lib/magic.mjs";
 import { isExposed, describeSurface } from "./lib/tool-surface.mjs";
@@ -232,7 +243,7 @@ import {
     executeWithStreamingProgress
 } from "./streaming.mjs";
 import { createTransport, getTransportType } from "./transports.mjs";
-import { withServerSpan, ATTR } from "./lib/otel.mjs";
+import { withServerSpan, ATTR, parentContextFrom } from "./lib/otel.mjs";
 import {
     initWorkerPool,
     shouldUseWorker,
@@ -319,12 +330,40 @@ const SERVER_CAPABILITIES = {
     resources: {}
 };
 
+/*
+ * WHY `tasks` AND `extensions` ARE NOT HERE (assessed for v3.0.0, decided against)
+ *
+ * 2026-07-28 moves long-running work into an official extension,
+ * `io.modelcontextprotocol/tasks` -- `tasks/get` polling, `tasks/update` for client input -- and
+ * adds an `extensions` field to `ServerCapabilities`. Both were considered and neither is declared.
+ *
+ * 1. The problem is already solved differently here. `streaming.mjs` plus progress notifications
+ *    cover long operations, and the worker pool keeps them off the event loop. CyberChef
+ *    operations run in seconds; a polling model buys nothing for work that finishes before a
+ *    client could poll twice.
+ *
+ * 2. There is nowhere to put the state. Tasks need state outliving the request, and this server
+ *    deliberately has none: HTTP builds a Server per session and stdio pins one per connection.
+ *    Adding a process-wide store re-opens the cross-client isolation issue #36 was filed for and
+ *    the tenant partitioning in recipe-storage.
+ *
+ * 3. The rule immediately above forbids it. A capability listed here MUST have a handler, and
+ *    tasks is a subsystem -- a store, a retention policy, three methods -- not a declaration.
+ *
+ * An empty `extensions: {}` is likewise omitted rather than added for completeness: it advertises
+ * nothing and would read to the next person as an intent that does not exist.
+ *
+ * `tests/mcp/prompts-resources.test.mjs` asserts both are absent. That is a tripwire, not
+ * pedantry: `@modelcontextprotocol/server` is pinned `^2.0.0`, and a 2.x minor that began
+ * auto-declaring either would otherwise ship silently and promise handlers that are not here.
+ */
+
 const server = new Server(
     {
         name: "cyberchef-mcp",
         version: VERSION,
     },
-    { capabilities: SERVER_CAPABILITIES }
+    { capabilities: SERVER_CAPABILITIES, cacheHints: CACHE_HINTS }
 );
 
 
@@ -729,8 +768,9 @@ const handleListTools = async () => {
     // default payload, and there are a handful of these. They carry their own annotations,
     // because what is read-only or open-world about them is a property of the tool rather than of
     // its name.
+    const registryTools = [];
     for (const tool of toolRegistry.list()) {
-        tools.push({
+        registryTools.push({
             name: ToolRegistry.exposedName(tool.name),
             description: tool.description,
             inputSchema: toInputSchema(tool.inputSchema),
@@ -739,6 +779,7 @@ const handleListTools = async () => {
         });
     }
 
+    const operationTools = [];
     Object.keys(OperationConfig).forEach(opName => {
         // The default surface is `index`, which pre-loads no ordinary operation tools at all;
         // `curated` and `all` pre-load progressively more, and CYBERCHEF_TOOL_ALLOWLIST overrides
@@ -752,7 +793,7 @@ const handleListTools = async () => {
 
         try {
             const argsSchema = mapArgsToZod(op.args || [], opName);
-            tools.push({
+            operationTools.push({
                 name: toolName,
                 description: summariseDescription(op.description) || opName,
                 inputSchema: toInputSchema(z.object(argsSchema)),
@@ -774,8 +815,76 @@ const handleListTools = async () => {
         }
     });
 
-    return { tools };
+    // Deterministic order, which the 2026-07-28 spec asks for so clients can cache a list and so
+    // an unchanged prefix keeps hitting an LLM's prompt cache.
+    //
+    // THREE TIERS, EACH SORTED, THEN CONCATENATED -- not one flat sort. The front of the list is
+    // what a model reads first, and the meta-tools are the navigation surface: on the default
+    // `index` surface they are nearly the whole list, and burying `cyberchef_bake` among 504
+    // alphabetically-earlier operation names would make the catalogue harder to enter, not easier.
+    // Tier order is itself part of the contract.
+    //
+    // `byName` compares CODE UNITS, deliberately not `localeCompare`: that is locale- and
+    // ICU-dependent, so the same server would order its tools differently on two hosts -- which is
+    // precisely the non-determinism this is meant to remove.
+    const ordered = [...tools.sort(byName), ...registryTools.sort(byName), ...operationTools.sort(byName)];
+
+    // Scope filtering, finally wired.
+    //
+    // `visibleTools` has existed since v2.5.0 with a unit test asserting it works, and nothing
+    // called it -- so a token was listed tools it would be refused at dispatch. Tested-but-unwired
+    // is a worse state than absent: the green test says the capability is there.
+    //
+    // BUILD, then SORT, then FILTER. `isExposed` above is a SURFACE decision (which schemas are
+    // worth pre-loading); this is an AUTHORISATION decision on the finished list, where the
+    // annotations are already attached. The two are orthogonal and stay that way.
+    //
+    // `currentAuth()` is null on stdio and whenever authorization is disabled -- the default -- so
+    // this changes nothing for a deployment that has not asked for scopes.
+    const caller = currentAuth();
+    return { tools: caller ? visibleTools(ordered, caller.scopes) : ordered };
 };
+
+/**
+ * The scopes this specific call needs, when they come from a recipe rather than a tool name.
+ *
+ * Returns `undefined` for everything else, which leaves `authorise` on its annotation-derived
+ * path -- so this can only ever refine the two tools in `RECIPE_SCOPED_TOOLS`, never widen the
+ * check. `cyberchef_recipe_execute` also carries a recipe and is deliberately not one of them;
+ * `rbac.mjs` records why.
+ *
+ * @param {string} name - The tool being called.
+ * @param {Object} args - The call arguments.
+ * @returns {string[]|undefined} Required scopes, or undefined to use the annotations.
+ */
+function recipeScopesFor(name, args) {
+    if (!RECIPE_SCOPED_TOOLS.has(name)) return undefined;
+
+    let operationNames = [];
+    if (name === "cyberchef_bake") {
+        operationNames = toCoreRecipe(args?.recipe).map(step => step.op);
+    } else if (name === "cyberchef_batch") {
+        // A batch names TOOLS, not operations, so each is resolved through the same map dispatch
+        // uses. An unresolvable name contributes nothing here and is rejected later by the
+        // dispatcher -- scope checking is not the right place to report a bad tool name.
+        operationNames = (args?.operations ?? [])
+            .map(o => OPERATION_BY_TOOL_NAME.get(o?.tool))
+            .filter(Boolean);
+    }
+    return requiredScopesForRecipe(operationNames, annotationsForOperation);
+}
+
+/**
+ * Order two tools by name, by code unit.
+ *
+ * @param {Object} a - A tool.
+ * @param {Object} b - Another tool.
+ * @returns {number} Negative, zero or positive.
+ */
+function byName(a, b) {
+    if (a.name === b.name) return 0;
+    return a.name < b.name ? -1 : 1;
+}
 
 /**
  * `tools/call`, wrapped in an OpenTelemetry server span.
@@ -809,7 +918,12 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
         // does not opt in.
         attributes: typeof request?.params?.arguments?.input === "string" ?
             { [ATTR.INPUT_BYTES]: Buffer.byteLength(request.params.arguments.input, "utf8") } :
-            {}
+            {},
+        // The caller's trace, when they sent one. Without this every span here is a ROOT --
+        // correct in isolation and useless for answering "what did that agent's call actually
+        // do", because the client's span and the server's span sit in two unconnected trees.
+        // Reads `_meta` only; `params.arguments` is never touched.
+        parent: parentContextFrom(request?.params?._meta)
     }, () => handleCallToolInner(request, extra, ownerServer));
 };
 
@@ -841,7 +955,16 @@ const handleCallToolInner = async (request, extra, ownerServer = server) => {
         const caller = currentAuth();
         if (caller) {
             const annotations = annotationsForToolName(name);
-            const decision = authorise({ granted: caller.scopes, annotations });
+            // A recipe-carrying tool is priced by the recipe it carries, not by its own name, so
+            // `bake([To Base64])` costs exactly what `cyberchef_to_base64` costs -- `read` -- and
+            // `bake([HTTP request])` costs `network`. Without this the same work was priced
+            // differently depending on which door it came through, and the cheaper door was the
+            // one exposing 504 separate tools. Same granularity the offline guard settled on.
+            const decision = authorise({
+                granted: caller.scopes,
+                annotations,
+                required: recipeScopesFor(name, args)
+            });
             if (!decision.allowed) {
                 audit({
                     outcome: OUTCOME.DENIED, tool: name, subject: caller.subject,
@@ -1610,7 +1733,7 @@ function createMcpServer() {
             name: "cyberchef-mcp",
             version: VERSION,
         },
-        { capabilities: SERVER_CAPABILITIES }
+        { capabilities: SERVER_CAPABILITIES, cacheHints: CACHE_HINTS }
     );
     registerHandlers(instance);
     return instance;

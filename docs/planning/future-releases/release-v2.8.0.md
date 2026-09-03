@@ -1,5 +1,19 @@
 # Release Plan: v2.8.0 - Edge Deployment Optimization
 
+> **Delivered as v2.8.0, re-scoped during execution.**
+>
+> Three of this plan's eight features had already shipped in v2.6.0, and its image-size baseline
+> was wrong by 3.4x — the target it set had effectively been met before the release opened, while
+> the reduction that mattered (a hardcoded `rm -rf` list that could not keep pace with a 1,310-path
+> tree) was not in the plan at all. The **<50 MB** goal stated here is unreachable and the release
+> says so: `@jimp` at 89 MB and `tesseract.js-core` at 44 MB are production dependencies of real
+> operations.
+>
+> What shipped: [`docs/releases/v2.8.0.md`](../../releases/v2.8.0.md). Why it differs:
+> [`docs/internal/v2.8.0-findings-log.md`](../../internal/v2.8.0-findings-log.md).
+>
+> Annotated 2026-09-03 during the v3.0.0 corpus retirement. The plan below is unedited.
+
 **Release Date:** April 2027
 **Theme:** Minimal Footprint for Edge and IoT
 **Phase:** Phase 6 - Evolution

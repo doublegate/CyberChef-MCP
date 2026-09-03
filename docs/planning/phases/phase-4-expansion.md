@@ -1,5 +1,17 @@
 # Phase 4: Expansion (Q4 2026)
 
+> **Complete, and numbered one version behind the releases that delivered it.**
+>
+> This file says v2.1.0-v2.3.0; the work shipped as **v2.2.0-v2.4.0**, because v2.1.0 was taken by
+> an unplanned release that existed only because smoke-testing the published v2.0.0 image through a
+> real MCP client found that none of its 524 tools carried a usable input schema.
+>
+> The plugin line did **not** ship as designed: the registry shipped without a loader, and
+> [ADR 0002](../../adr/0002-tool-registry-is-not-a-plugin-loader.md) records why `node:vm` is not a
+> boundary that can hold one. `../ROADMAP.md` carries the current numbering.
+>
+> Annotated 2026-09-03 during the v3.0.0 corpus retirement. The document below is unedited.
+
 **Version Range:** v2.1.0 - v2.3.0
 **Timeline:** October 2026 - December 2026
 **Theme:** Extending Capabilities and Reach

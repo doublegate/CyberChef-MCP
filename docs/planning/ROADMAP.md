@@ -1,9 +1,17 @@
 # CyberChef MCP Server - Product Roadmap
 
-**Current version:** **v2.2.0** (released 2026-08-31) · **Upstream base:** CyberChef v11.4.0
-**Planned through:** v3.0.0
-**Timeline:** January 2026 - August 2027
-**Last Updated:** 2026-08-31
+**Current version:** **v3.0.0** (released 2026-09-03) · **Upstream base:** CyberChef v11.4.0
+**Charted through:** v4.0.0 — as one plan plus five charters, not five plans
+**Timeline:** January 2026 - present
+**Last Updated:** 2026-09-03
+
+> **Read this before trusting a date below.** Every release from v2.5.0 onward opened by measuring
+> its plan against the running server, and all six found the plan empty, already built, or
+> superseded. The dates in this file's gantt were written in December 2025 and describe a schedule
+> that reality outran by roughly eighteen months. They are corrected here as of 2026-09-03; the
+> mechanism that keeps them from rotting again is
+> [`v3/RE-MEASURE.md`](./v3/RE-MEASURE.md), which is mandatory before any charter becomes a
+> release.
 
 ## Vision
 
@@ -11,32 +19,32 @@ Transform CyberChef MCP Server from a functional prototype into a production-rea
 
 ## Strategic Themes
 
-### Phase 1: Foundation (v1.2.0 - v1.4.0) - Q1 2026
+### Phase 1: Foundation (v1.2.0 - v1.4.0) - shipped Q1 2026
 **Focus:** Security, reliability, and operational excellence
 
 Establish production-ready infrastructure with enterprise-grade security, automated upstream synchronization, and performance optimization. This phase addresses the critical gaps preventing production deployment.
 
-### Phase 2: Enhancement (v1.5.0 - v1.7.0) - Q2 2026
+### Phase 2: Enhancement (v1.5.0 - v1.7.0) - shipped Q2 2026
 **Focus:** Advanced MCP features and user experience
 
 Extend MCP protocol capabilities with streaming support, recipe management, and batch processing. This phase transforms the server from a simple tool wrapper into a sophisticated data manipulation platform.
 
-### Phase 3: Maturity (v1.8.0 - v2.0.0) - Q3 2026
+### Phase 3: Maturity (v1.8.0 - v2.0.0) - shipped Q3 2026
 **Focus:** Breaking changes, API stabilization, and long-term maintainability
 
 Prepare for and execute a major version release with architectural improvements, enhanced type safety, and a refined API surface. This phase sets the foundation for sustained evolution.
 
-### Phase 4: Expansion (v2.2.0 - v2.4.0) - Q4 2026
+### Phase 4: Expansion (v2.2.0 - v2.4.0) - shipped August-September 2026
 **Focus:** Multi-modal support, advanced transports, and plugin architecture
 
 Extend the platform with binary/image handling, WebSocket/SSE transports, and a sandboxed plugin system. This phase transforms the server into a fully extensible platform supporting the complete MCP specification.
 
-### Phase 5: Enterprise (v2.5.0 - v2.7.0) - Q1 2027
+### Phase 5: Enterprise (v2.5.0 - v2.7.0) - shipped September 2026
 **Focus:** Authentication, scaling, and observability
 
 Deploy enterprise-grade features including OAuth 2.1 authentication, RBAC authorization, horizontal scaling with Kubernetes, and comprehensive OpenTelemetry observability. This phase enables production deployment at scale.
 
-### Phase 6: Evolution (v2.8.0 - v3.0.0) - Q2-Q3 2027
+### Phase 6: Evolution (v2.8.0 - v3.0.0) - shipped September 2026
 
 > **Corrected 2026-09-03.** This phase listed "v2.9.x Pre-v3.0.0 Polish", whose primary goal was
 > deprecation warnings for v3.0.0's breaking changes. Measured against the server, that goal is
@@ -46,9 +54,13 @@ Deploy enterprise-grade features including OAuth 2.1 authentication, RBAC author
 > nothing left to warn about, so the polish release is replaced by v2.10.0, and v3.0.0's scope
 > needs re-deriving before it is planned rather than executed. See
 > `docs/internal/v2.10.0-findings-log.md`.
-**Focus:** Edge deployment, AI-native features, and major version evolution
+**Focus:** Edge deployment, result legibility, configuration, and specification conformance
 
-Prepare for and execute v3.0.0 with edge computing support, AI-assisted operations, and breaking API improvements. This phase establishes the next-generation architecture with a stable API contract through 2029.
+What this phase actually delivered: arm64 images and a fail-closed offline mode (v2.8.0), a CI
+matrix that exercises the runtime users get (v2.8.1), `Magic` made legible and executable to its
+only consumer (v2.9.0), the unified configuration file promised nine releases earlier (v2.10.0),
+and MCP 2026-07-28 conformance with the breaking cleanups it forces (v3.0.0). "AI-native features"
+was measured and found already built; see the v2.9.0 findings log.
 
 ## Release Timeline
 
@@ -75,12 +87,13 @@ gantt
     section Phase 5 Enterprise
     v2.5.0 Enterprise Features          :done, 2026-09-02, 1d
     v2.6.0 Distributed Architecture     :done, 2026-09-02, 1d
-    v2.7.0 Observability                :2027-03-01, 4w
+    v2.7.0 Observability                :done, 2026-09-02, 1d
     section Phase 6 Evolution
-    v2.8.0 Edge Deployment              :2027-04-01, 4w
-    v2.9.0 Readable Results             :2027-05-01, 4w
-    v2.10.0 Configuration File          :2027-06-01, 4w
-    v3.0.0 Major Release                :2027-08-01, 6w
+    v2.8.0 Edge Deployment              :done, 2026-09-02, 1d
+    v2.8.1 CI Correctness               :done, 2026-09-02, 1d
+    v2.9.0 Readable Results             :done, 2026-09-02, 1d
+    v2.10.0 Configuration File          :done, 2026-09-03, 1d
+    v3.0.0 Spec Conformance             :done, 2026-09-03, 1d
 ```
 
 ## Release Overview
@@ -146,9 +159,15 @@ gantt
 | **v2.7.0** | Observability | **Released 2026-09-02.** Closes Phase 5. A dependency-free Prometheus endpoint (20 families, off by default), OpenTelemetry spans following the MCP semantic conventions, trace correlation on every log line, a 25-panel Grafana dashboard, 9 alert rules, Helm ServiceMonitor/PrometheusRule, and a runnable Prometheus+Grafana stack. **Re-scoped:** the plan's "integrate the OTel SDK + exporters for 3+ backends" was rejected on measurement — the SDK costs 71 packages / 50 MB / +100 ms against the API's 1 / 2.6 MB / +9 ms, which would have returned half of v2.6.0's startup work on every stdio launch. Depending on the API alone and letting the operator supply the SDK makes *every* OTLP backend work rather than three. Structured logging was already shipped (Pino, since v1.5.0). | L | Medium |
 | **v2.8.0** | Edge Deployment | **Released 2026-09-02.** Opens Phase 6. `linux/arm64` images, image 643 MB -> 453 MB (1,190 packages -> 432) via a real `npm prune --omit=dev` replacing a hardcoded glob list, and `CYBERCHEF_OFFLINE` as a fail-closed switch for the only 2 networked operations of 504. **Re-scoped:** three of the plan's eight features were already delivered by v2.6.0 (lazy loading, startup optimisation, the memory target), and its cold-start baseline was ~19x pessimistic. Not done, with reasons recorded: arm/v7 (no Chainguard base), the <50 MB target (`@jimp` + `tesseract.js-core` are production deps of real operations), and resource profiles (two of five fields describe settings that do not exist). | L | High |
 | **v2.8.1** | CI correctness | **Released 2026-09-02.** No runtime change. CI tested Node 24 while the image shipped 26.8.1, so the runtime users get was never exercised by a test -- the test gates now run a matrix of BOTH ends of the declared `>=24 <27` range. The performance benchmarks were additionally pinned to Node 22, which `engines` does not permit, so every number posted to a PR was measured on an unsupported runtime. Three Pages actions moved off deprecated Node 20. | S | Medium |
-| **v2.9.0** | AI-Native Features | NL-to-recipe, operation suggestions, smart recipes | M | Medium |
-| **v2.9.x** | Pre-v3.0.0 Polish | Migration tooling, deprecation warnings, compatibility mode | M | Medium |
-| **v3.0.0** | Major Release | API evolution, breaking changes, v2.x LTS | XL | High |
+| **v2.9.0** | Readable results | **Released 2026-09-02.** `cyberchef_magic` rewritten to a plain-text report with executable `[{op,args}]` recipes — it had been emitting the web results *table*, whose recipes `bake` rejects, so the most actionable field was the one a caller could not use. Also: `bakeOnCore` now prefers the raw dish over the browser-targeted presented value for the 44 operations where those differ. **Re-scoped:** four of the plan's seven "AI-native" features already existed as `Magic`, `ErrorSuggestions` and `cyberchef_describe_operation`. | M | Medium |
+| **v2.10.0** | Configuration file | **Released 2026-09-03.** `cyberchef.config.json` — 64 settings across 15 sections, announced for v2.0.0 and documented as existing for nine releases without ever being written — with typo suggestions and fail-closed parsing, plus `npm run check:versions`, which caught five version drifts on its first run. **Unplanned:** there was no v2.10.0 in the plan set. | M | Medium |
+| **v3.0.0** | Spec conformance | **Released 2026-09-03.** MCP 2026-07-28 conformance and the breaking cleanups it forces: resource errors answer `-32602` instead of Internal Error, `tools/list` is deterministically ordered and filtered by the caller's scopes, `cyberchef_bake` is priced by the recipe it carries rather than by an `openWorldHint` that assumed the worst, honest cache hints on all six cacheable methods, and server spans that join the caller's trace. **Re-scoped:** all six planned breaking changes were already done, withdrawn, or superseded — see [`v3/v3.0.0-plan.md`](./v3/v3.0.0-plan.md). | L | High |
+
+> **v2.9.x "Pre-v3.0.0 Polish" was dropped**, not deferred. Its primary goal was deprecation
+> warnings for v3.0.0's breaking changes, and there was nothing left to warn about: the tool-name
+> removal was withdrawn in v2.0.0, named arguments and structured errors were enacted there, and
+> the configuration file shipped as v2.10.0. See
+> [`future-releases/release-v2.9.x.md`](./future-releases/release-v2.9.x.md).
 
 
 ### Note: why v2.4.0's plugin line was re-scoped
@@ -242,13 +261,17 @@ the honest successor to this line, and it is not yet built.
   participating, and the Helm chart already emits the labels and probes a mesh reads. There was no
   code to write, so writing some to close a checklist item would have been the wrong outcome.
 
-### Phase 6: Evolution
-- Edge/WASM deployment support
-- Offline operation capabilities
-- AI-assisted recipe generation
-- Natural language to recipe translation
-- v3.0.0 breaking changes and API evolution
-- v2.x Long-Term Support (LTS) maintenance
+### Phase 6: Evolution — complete
+- `linux/arm64` images; 643 MB -> 453 MB — v2.8.0. **Not WASM**: no runtime need was found, and
+  arm/v7 is unavailable because the Chainguard base does not exist for it.
+- Offline operation — v2.8.0, `CYBERCHEF_OFFLINE` guarding the recipe rather than the tool name.
+  A posture, not a sandbox, and the docs say so.
+- AI-assisted recipe generation and natural-language translation — **already shipped** as `Magic`
+  before the phase opened. v2.9.0 made its output usable instead of building it again.
+- Unified configuration — v2.10.0.
+- v3.0.0 breaking changes and API evolution — v3.0.0, re-derived from the specification.
+- v2.x LTS — see below; the dates in that section are the December 2025 estimates and have not
+  been re-committed to.
 
 ## Breaking Changes (v2.0.0)
 
@@ -268,24 +291,41 @@ All breaking changes will be:
 
 ## Breaking Changes (v3.0.0)
 
-The following breaking changes are planned for v3.0.0:
+**Corrected 2026-09-03.** The six changes this section listed were measured before v3.0.0 was
+written, and none of them was buildable:
 
-1. **Simplified Tool Naming**: Remove mandatory `cyberchef_` prefix (configurable)
-2. **Recipe Schema v2**: Named arguments instead of positional arrays
-3. **Structured Errors**: Rich error format with codes, context, and suggestions
-4. **Unified Configuration**: Single config file replaces environment variables
-5. **Plugin API v2**: Updated plugin interface with lifecycle hooks
-6. **MCP Protocol 2027**: Update to latest MCP specification
+| Planned | Disposition |
+|---|---|
+| Simplified tool naming (drop `cyberchef_`) | **Withdrawn permanently** in v2.0.0 — 2.6% payload saving against 19 colliding names and every integration broken |
+| Recipe schema v2 (named arguments) | **Shipped** — `args: {alphabet: "…"}` bakes today |
+| Structured errors | **Shipped** — code + context + `toMCPError` |
+| Unified configuration | **Shipped** in v2.10.0 |
+| Plugin API v2 | **Superseded** by [ADR 0002](../adr/0002-tool-registry-is-not-a-plugin-loader.md) — there is deliberately no plugin loader |
+| MCP Protocol 2027 / SDK v3.x | **Does not exist** — SDK v2.0.0 is current and installed |
 
-All v3.0.0 breaking changes will be:
-- Announced in v2.8.0 with deprecation warnings
-- Documented in comprehensive migration guides (v2.9.0)
-- Supported by `npx cyberchef-migrate` CLI tool
-- Available in compatibility mode for gradual migration
+What v3.0.0 shipped instead, and what a caller may need to change:
+
+1. **Resource errors are `-32602`, not `-32603`.** Every `resources/read` failure previously
+   answered Internal Error with no `data`, so a client could not distinguish a missing recipe from
+   a broken server.
+2. **`tools/list` is filtered by the caller's scopes** when authorization is enabled (off by
+   default). A read-scoped token is no longer shown tools it cannot call. This changes behaviour
+   for deployments that turned auth on and relied on seeing the full surface.
+3. **`cyberchef_bake` and `cyberchef_batch` are priced by the recipe they carry**, not by an
+   `openWorldHint` that assumed every recipe might reach the network. A purely local recipe now
+   costs `cyberchef:read`; one networked operation still costs `cyberchef:network`.
+4. **List results carry real cache TTLs.** A client that ignored `ttlMs` because it was always `0`
+   will now cache `tools/list` for 10 minutes and `prompts/list` for an hour.
+
+There is no `npx cyberchef-migrate` and no compatibility mode: none of the four requires a code
+change on the caller's side, and building migration tooling for changes nobody has to migrate
+would have been ceremony. The details are in
+[`v3/v3.0.0-plan.md`](./v3/v3.0.0-plan.md) and
+[`docs/internal/v3.0.0-findings-log.md`](../internal/v3.0.0-findings-log.md).
 
 ### v2.x Long-Term Support (LTS)
 
-After v3.0.0 release:
+After the v3.0.0 release, as estimated in December 2025 and not since re-committed to:
 - **Security fixes**: 12 months (until August 2028)
 - **Critical bugs**: 6 months (until February 2028)
 - **New features**: None
@@ -355,21 +395,24 @@ After v3.0.0 release:
 - Security disclosure policy
 - Contributor guidelines
 
-## Long-Term Vision (Beyond v3.0.0)
+## Beyond v3.0.0 — charters, not plans
 
-### v3.1.0+: Platform Maturity (2028+)
-- Multi-language SDK support (Python, Rust, Go bindings)
-- GraphQL-style query interface for complex operations
-- Federated plugin marketplace
-- Cross-MCP server orchestration
-- Real-time collaboration features
+**Rewritten 2026-09-03.** This section previously listed nine speculative capabilities for 2028-2029,
+two of which ("federated plugin marketplace", "full WebAssembly runtime") depend on a plugin loader
+this project has deliberately rejected. Writing more of that is the failure this whole retirement
+pass is correcting.
 
-### v4.0.0: Next Generation (2029+)
-- Distributed operation execution across clusters
-- Advanced caching with global invalidation
-- Machine learning-optimized operation selection
-- Full WebAssembly runtime support
-- Quantum-safe cryptographic operations
+What replaces it is one page per candidate release in [`v3/charters/`](./v3/charters/), each with
+an intent, a candidate scope, and kill criteria — and none of them may be executed without the
+[`v3/RE-MEASURE.md`](./v3/RE-MEASURE.md) pass first.
+
+| Charter | Intent | Why this, on the evidence |
+|---|---|---|
+| [v3.1.0](./v3/charters/v3.1.0-evaluation-harness.md) | Evaluation harness | Every tool-quality claim in this project is currently asserted rather than measured. This is the release that makes v3.2.0 provable. |
+| [v3.2.0](./v3/charters/v3.2.0-result-efficiency.md) | Tool result efficiency | A `response_format` enum is measured at 65% token reduction elsewhere; truncation *with guidance*; specific rather than generic error suggestions. Gated on v3.1.0 proving the delta. |
+| [v3.3.0+](./v3/charters/v3.3.0-external-tools.md) | The `ext-proj-int` programme | The real feature backlog: 80-120 tools from 8 reference projects, of which ~4 shipped in v2.4.0. The GPL-3.0 relicense unblocked katana and John the Ripper. Spans several releases. |
+| [v3.x](./v3/charters/v3.x-supply-chain.md) | Security and supply chain | Tool metadata reaches the model from `src/core`, which is mirrored from upstream on every sync, and there is no integrity guard. Two CI gates are also weaker than they read. |
+| [v4.0.0](./v3/charters/v4.0.0.md) | Determined by the spec, not by us | The MCP roadmap's five priorities — notably **progressive tool discovery**, which is the problem this server's hand-rolled index surface solves privately. |
 
 ## References
 
@@ -389,7 +432,9 @@ After v3.0.0 release:
 - [Security Hardening Plan](./strategies/SECURITY-HARDENING-PLAN.md)
 
 ### Release Plans
-- [Individual Release Plans](./future-releases/) (v1.2.0 - v3.0.0)
+- [v3 planning](./v3/) — the current plan, the re-measurement ritual, and the charters
+- [Individual Release Plans](./future-releases/) (v1.2.0 - v3.0.0) — **historical**. Every file
+  carries a dated banner saying whether it was delivered, re-scoped, or superseded, and by what.
 
 ---
 

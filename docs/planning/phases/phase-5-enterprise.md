@@ -1,5 +1,15 @@
 # Phase 5: Enterprise (Q1 2027)
 
+> **Complete, and numbered one version behind the releases that delivered it.**
+>
+> This file says v2.4.0-v2.6.0; the work shipped as **v2.5.0-v2.7.0**. Two lines were re-scoped on
+> measurement and one was dropped with reasons: the Redis session store solved a problem MCP
+> 2026-07-28 deleted (the protocol has no sessions), the OpenTelemetry **SDK** was rejected in
+> favour of the API alone, and service-mesh integration required no code at all. See the "Phase 5:
+> Enterprise — complete" section of [`../ROADMAP.md`](../ROADMAP.md).
+>
+> Annotated 2026-09-03 during the v3.0.0 corpus retirement. The document below is unedited.
+
 **Version Range:** v2.4.0 - v2.6.0
 **Timeline:** January 2027 - March 2027
 **Theme:** Production-Ready Enterprise Features

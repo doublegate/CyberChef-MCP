@@ -1,5 +1,16 @@
 # Phase 3: Maturity (v1.8.0 - v2.0.0)
 
+> **Complete, and it did not go as written. `Status: Planning` below is stale.**
+>
+> v2.0.0 shipped, but as a different release: the plan assumed the upstream base was current, and
+> it was six releases behind, so the work became closing that gap, rebuilding the sync so it cannot
+> reopen, relicensing to GPL-3.0-or-later, and taking 272 security findings to zero. Three of the
+> eight announced breaking changes were **withdrawn on measurement**. See
+> [`docs/releases/v2.0.0.md`](../../releases/v2.0.0.md) and
+> [the breaking-changes guide](../../v2.0.0-breaking-changes.md#withdrawn-changes-dep001-dep007-dep008).
+>
+> Annotated 2026-09-03 during the v3.0.0 corpus retirement. The document below is unedited.
+
 **Timeline:** July 2026 - September 2026 (Q3 2026)
 **Focus:** Breaking Changes, API Stabilization, and Long-Term Maintainability
 **Status:** Planning

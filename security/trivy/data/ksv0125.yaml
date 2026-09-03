@@ -2,7 +2,7 @@
 #
 # KSV-0125 fails any workload whose image comes from a registry outside a built-in allowlist, and
 # that allowlist does not include GHCR. The chart pins
-# `ghcr.io/doublegate/cyberchef-mcp_v2:<version>`, which is where this project's own release
+# `ghcr.io/doublegate/cyberchef-mcp_v3:<version>`, which is where this project's own release
 # workflow publishes -- so the finding is "you use your own registry", not a misconfiguration.
 #
 # Configured rather than ignored, deliberately. Suppressing the check would also stop it firing if

@@ -19,7 +19,7 @@ docker run --rm -p 3000:3000 \
   -e CYBERCHEF_TRANSPORT=http \
   -e CYBERCHEF_HTTP_HOST=0.0.0.0 \
   -e CYBERCHEF_ALLOWED_HOSTS=localhost:3000,127.0.0.1:3000 \
-  ghcr.io/doublegate/cyberchef-mcp_v2:latest
+  ghcr.io/doublegate/cyberchef-mcp_v3:latest
 ```
 
 Point any MCP client at `http://127.0.0.1:3000/mcp`.

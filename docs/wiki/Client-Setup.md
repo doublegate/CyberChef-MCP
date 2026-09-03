@@ -10,7 +10,7 @@ the client reports the server as failed. It is the single most common setup mist
 ## Claude Code
 
 ```bash
-claude mcp add cyberchef -- docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v2:latest
+claude mcp add cyberchef -- docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v3:latest
 ```
 
 Or add it to `.mcp.json` in your project:
@@ -20,7 +20,7 @@ Or add it to `.mcp.json` in your project:
   "mcpServers": {
     "cyberchef": {
       "command": "docker",
-      "args": ["run", "-i", "--rm", "ghcr.io/doublegate/cyberchef-mcp_v2:latest"]
+      "args": ["run", "-i", "--rm", "ghcr.io/doublegate/cyberchef-mcp_v3:latest"]
     }
   }
 }
@@ -36,7 +36,7 @@ Or add it to `.mcp.json` in your project:
   "mcpServers": {
     "cyberchef": {
       "command": "docker",
-      "args": ["run", "-i", "--rm", "ghcr.io/doublegate/cyberchef-mcp_v2:latest"]
+      "args": ["run", "-i", "--rm", "ghcr.io/doublegate/cyberchef-mcp_v3:latest"]
     }
   }
 }
@@ -52,7 +52,7 @@ Edit mcp.json**, or directly at `~/.lmstudio/mcp.json`:
   "mcpServers": {
     "CyberChef-MCP": {
       "command": "podman",
-      "args": ["run", "-i", "--rm", "ghcr.io/doublegate/cyberchef-mcp_v2:latest"]
+      "args": ["run", "-i", "--rm", "ghcr.io/doublegate/cyberchef-mcp_v3:latest"]
     }
   }
 }
@@ -68,7 +68,7 @@ locally-hosted context windows:
 
 ```json
 "args": ["run", "-i", "--rm", "-e", "CYBERCHEF_TOOL_SURFACE=curated",
-         "ghcr.io/doublegate/cyberchef-mcp_v2:latest"]
+         "ghcr.io/doublegate/cyberchef-mcp_v3:latest"]
 ```
 
 ## Cursor
@@ -80,7 +80,7 @@ locally-hosted context windows:
 Useful for seeing exactly what the server advertises:
 
 ```bash
-npx @modelcontextprotocol/inspector docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v2:latest
+npx @modelcontextprotocol/inspector docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v3:latest
 ```
 
 ## Running from a checkout instead of a container
@@ -107,7 +107,7 @@ docker run -d --name cyberchef-mcp -p 127.0.0.1:3000:3000 \
   -e CYBERCHEF_TRANSPORT=http \
   -e CYBERCHEF_HTTP_HOST=0.0.0.0 \
   -e CYBERCHEF_ALLOWED_HOSTS=localhost:3000,127.0.0.1:3000 \
-  ghcr.io/doublegate/cyberchef-mcp_v2:latest
+  ghcr.io/doublegate/cyberchef-mcp_v3:latest
 ```
 
 **Note the `127.0.0.1:` in front of the port mapping.** A bare `-p 3000:3000` publishes on *every*

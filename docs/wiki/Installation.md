@@ -7,15 +7,19 @@ native crypto and image libraries.
 ## Docker
 
 ```bash
-docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v2:latest
+docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v3:latest
 ```
 
 | Tag | Points at |
 |---|---|
 | `latest` | The newest release |
-| `2.4.0` | An exact version — **use this in anything you depend on** |
-| `2.4` | The newest patch of 2.4 |
-| `2` | The newest 2.x |
+| `3.0.0` | An exact version — **use this in anything you depend on** |
+| `3.0` | The newest patch of 3.0 |
+| `3` | The newest 3.x |
+
+The package name carries the major, so the v2.x line stays reachable at
+`ghcr.io/doublegate/cyberchef-mcp_v2` with its own `2.10.0` / `2.10` / `2` / `latest` tags, and
+v1.9.x at `_v1`. A major release renames the image rather than superseding the old one.
 
 Also published to Docker Hub as `parobek/cyberchef-mcp`. Both registries carry the same image,
 built once and pushed to both, with provenance and SBOM attestations.
@@ -28,19 +32,22 @@ disconnects. Without it you accumulate stopped containers.
 
 The image runs as UID 65532 (`nonroot`) on a distroless Chainguard base, and contains no shell.
 
-## npm — prepared, not yet published
+## npm
 
-**`npx cyberchef-mcp` does not work today.** The package is *publishable* as of v2.3.0 — the
-install script that blocked it is gone, and `npm install --ignore-scripts` of the packed tarball
-starts and serves — but it is not on the registry.
+```bash
+npx cyberchef-mcp
+```
 
-`server.json` deliberately carries no npm record for the same reason: advertising a package that is
-not there sends clients to an install that 404s. The record gets added in the same change that
-publishes it.
+Published as `cyberchef-mcp` since **2.5.0**. Requires **Node `>=24 <27`**, matching upstream
+CyberChef's own floor, and carries a second binary — `cyberchef-migrate`, the v1-to-v2 migration
+helper.
 
-Until then, use Docker or a source checkout. When it does ship it will require **Node `>=24 <27`**,
-matching upstream CyberChef's own floor, and will carry a second binary — `cyberchef-migrate`, the
-v1-to-v2 migration helper.
+> This section said "prepared, not yet published" until v3.0.0. Publishing was *prepared* in
+> v2.3.0; the first release that actually published was v2.5.0, and no document was updated when
+> it succeeded. Corrected against `npm view cyberchef-mcp versions`.
+
+Docker is still the recommended route — it pins Node, the operating system and every dependency,
+which matters because CyberChef's operation set reaches into native crypto and image libraries.
 
 ## From source
 
@@ -79,7 +86,7 @@ A one-line ping is still a useful *container* smoke test — it proves the image
 
 ```bash
 echo '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' \
-  | docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v2:latest
+  | docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v3:latest
 ```
 
 Next: **[Client Setup](Client-Setup)**.

@@ -1,5 +1,14 @@
 # Release Plan: v1.8.0 - Breaking Changes Preparation
 
+> **Delivered as v1.8.0.** Kept as the historical plan, not as a description of the
+> release.
+>
+> What shipped is recorded in [`docs/releases/v1.8.0.md`](../../releases/v1.8.0.md); read that
+> first. Where the two disagree, the release notes are right and this file is the
+> intention that preceded them.
+>
+> Annotated 2026-09-03 during the v3.0.0 corpus retirement. The plan below is unedited.
+
 **Release Date:** July 2026 (Target: Week of Jul 14)
 **Theme:** Breaking Changes Preparation & Deprecation Warnings
 **Phase:** Phase 3 - Maturity
