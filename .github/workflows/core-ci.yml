@@ -97,6 +97,24 @@ jobs:
     - name: MCP Tests with Coverage
       run: npm run test:coverage
 
+    # THE EXTERNAL ORACLE.
+    #
+    # Every test above this line was written in this repository, which makes them a check that the
+    # server does what its authors believe -- not that it does what the specification says. v3.0.0
+    # shipped "MCP 2026-07-28 conformance" on exactly that basis, four weeks after the official
+    # suite published scenarios for the SEPs it implemented, and the suite found a real defect on
+    # its first run (v3.1.0 findings log F-03).
+    #
+    # Runs both protocol eras against `conformance/expected-failures.yaml`, which fails the build
+    # when a baselined entry starts passing as well as when something new breaks -- a baseline that
+    # cannot go stale is the same property `check:versions` was built for.
+    #
+    # Node 26 only: this exercises the protocol, not the runtime, and running it on both matrix
+    # legs would double a two-minute job to prove the same thing twice.
+    - name: Conformance (official MCP suite, both eras)
+      if: matrix.node-version == '26'
+      run: npm run conformance
+
     - name: Upload Coverage to Codecov
       uses: codecov/codecov-action@v7
       if: always()
