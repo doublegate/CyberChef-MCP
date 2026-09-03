@@ -1359,7 +1359,23 @@ const handleCallToolInner = async (request, extra, ownerServer = server) => {
                 // on the first call and text on every one after it.
                 if (opName === "Magic") {
                     const [depth, intensive, extLang, crib] = recipeArgs;
-                    const shaped = await runMagic(args.input, { depth, intensive, extLang, crib });
+
+                    // Bounded by the same timeout as every other operation.
+                    //
+                    // The first version of this branch awaited `runMagic` directly and returned
+                    // before the timeout/retry wrapper below, which silently REMOVED a bound that
+                    // Magic previously had -- and Magic is the most expensive operation in the
+                    // catalogue, since `depth` and `intensive` both multiply the work. Taking the
+                    // bound off the one operation most able to run long is the wrong direction,
+                    // and it held a quota slot for as long as it took.
+                    //
+                    // Retries are left at the default: `speculativeExecution` is deterministic
+                    // over its input, so a retry after a genuine timeout re-runs identical work.
+                    const shaped = await executeWithTimeoutAndRetry(
+                        () => runMagic(args.input, { depth, intensive, extLang, crib }),
+                        OPERATION_TIMEOUT,
+                        { requestId, maxRetries: 0, context: { tool: name } }
+                    );
                     const report = renderMagicReport(shaped);
                     const duration = Date.now() - startTime;
                     const magicInputSize = Buffer.byteLength(args.input, "utf8");

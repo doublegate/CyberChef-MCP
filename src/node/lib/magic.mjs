@@ -52,6 +52,7 @@
 import MagicLib from "../../core/lib/Magic.mjs";
 import { isUTF8 } from "../../core/lib/ChrEnc.mjs";
 import { assertSafeRegexArg } from "./safe-regex.mjs";
+import { createInputError } from "../errors.mjs";
 
 /**
  * The crib argument definition, as `OperationConfig` declares it.
@@ -209,7 +210,27 @@ async function runMagic(input, options = {}) {
     // Screened BEFORE compilation, not after -- `new RegExp` on a catastrophic pattern is cheap,
     // and it is running it against each candidate that costs. See CRIB_ARG.
     assertSafeRegexArg(CRIB_ARG, crib);
-    const cribRegex = (crib && crib.length) ? new RegExp(crib, "i") : null;
+
+    // A malformed crib is the CALLER's mistake, so it has to arrive as INVALID_INPUT rather than
+    // as a bare SyntaxError that the error layer classifies as an operation failure. Reproduced
+    // before fixing: `crib: "(unclosed"` threw
+    // `SyntaxError: Invalid regular expression: /(unclosed/i: Unterminated group`, with no code on
+    // it -- so a caller was told the operation failed, not that its own argument was wrong.
+    //
+    // The engine message is quoted because it names the actual fault ("Unterminated group"), which
+    // is what the caller needs in order to fix the pattern. It is derived from the input rather
+    // than from anything secret.
+    let cribRegex = null;
+    if (crib && crib.length) {
+        try {
+            cribRegex = new RegExp(crib, "i");
+        } catch (e) {
+            throw createInputError(
+                `The crib is not a valid regular expression: ${e.message}`,
+                { argument: CRIB_ARG.name, patternLength: crib.length }
+            );
+        }
+    }
 
     const buffer = input instanceof ArrayBuffer ?
         input :

@@ -132,15 +132,39 @@ describe("magic report shaping", () => {
             .rejects.toThrow(/denial-of-service/i);
     });
 
-    it("passes intensive and extLang in the order speculativeExecution expects", async () => {
-        // The operation declares [depth, intensive, extLang, crib] but calls
-        // speculativeExecution(depth, extLang, intensive, ...). Swapping them throws no error and
-        // produces no warning -- it just brute-forces when asked for languages. Extensive language
-        // support widens the language table, so it is observable through the options echo.
-        const shaped = await runMagic("just some ordinary words here", { extLang: true });
-        expect(shaped.options.extLang).toBe(true);
-        expect(shaped.options.intensive).toBe(false);
+    it("reports a malformed crib as the caller's error, not the operation's", async () => {
+        // Without this, `new RegExp` threw a bare SyntaxError with no code on it, and the error
+        // layer classified a caller mistake as an operation failure -- so the response said the
+        // operation had failed rather than that the argument was wrong.
+        const failure = await runMagic(B64_TEXT, { crib: "(unclosed" }).catch(e => e);
+        expect(failure).toBeInstanceOf(Error);
+        expect(failure.code).toBe("INVALID_INPUT");
+        // The engine's own words name the actual fault, which is what a caller needs to fix it.
+        expect(failure.message).toMatch(/not a valid regular expression/i);
+        expect(failure.message).toMatch(/unterminated group/i);
     });
+
+    it("passes intensive and extLang in the order speculativeExecution expects", async () => {
+        // The operation declares its args as [depth, intensive, extLang, crib] but calls
+        // speculativeExecution(depth, extLang, intensive, ...). Swapping the two booleans throws
+        // no error and produces no warning -- it simply brute-forces when asked for languages.
+        //
+        // This asserts the EFFECT, not an echo. An earlier version of this test checked
+        // `shaped.options.intensive`, which is built from the requested options after the call and
+        // therefore passes just as happily when the arguments are swapped -- verified by mutation:
+        // the swap survived it. Single-byte XOR is recoverable ONLY by the brute-force pass that
+        // `intensive` enables, so it discriminates where the echo could not.
+        const plain = "The quick brown fox jumps over the lazy dog and keeps running";
+        const xored = Buffer.from(Buffer.from(plain, "utf8").map(b => b ^ 0x42));
+
+        const intensive = await runMagic(xored, { intensive: true });
+        expect(intensive.candidates.some(c => c.preview.includes("quick brown fox"))).toBe(true);
+
+        // The control: the same bytes with intensive off must NOT be cracked, which is what makes
+        // the assertion above evidence of anything.
+        const normal = await runMagic(xored, {});
+        expect(normal.candidates.some(c => c.preview.includes("quick brown fox"))).toBe(false);
+    }, 120_000);
 
     it("renders every optional signal a candidate can carry", () => {
         // Driven from a synthetic shape rather than a real bake: the optional fields appear
@@ -328,6 +352,27 @@ describe("magic through a real MCP client", () => {
         // both actually present, which is the half of the MCP rule that is easy to get wrong.
         const text = res.content.find(c => c.type === "text").text;
         expect(text).toContain(String(res.structuredContent.input.entropy));
+    }, BOOT_TIMEOUT_MS);
+
+    it("honours Magic's own arguments when they arrive over the wire", async () => {
+        // The dispatch branch destructures `recipeArgs` positionally, so an argument that is
+        // resolved into the wrong slot would be silently ignored rather than rejected. Driving it
+        // through a real client is the only way to exercise that resolution.
+        const matching = await client.callTool({
+            name: "cyberchef_magic",
+            arguments: { input: B64_TEXT, "crib_known_plaintext_string_or_regex": "quick brown" }
+        });
+        expect(matching.structuredContent.candidateCount).toBeGreaterThan(0);
+        expect(matching.structuredContent.options.crib).toBe("quick brown");
+
+        // The same call with a crib that cannot match must come back empty -- which is what proves
+        // the crib reached the engine rather than being dropped on the way.
+        const notMatching = await client.callTool({
+            name: "cyberchef_magic",
+            arguments: { input: B64_TEXT, "crib_known_plaintext_string_or_regex": "zzz-absent-zzz" }
+        });
+        expect(notMatching.structuredContent.candidateCount).toBe(0);
+        expect(notMatching.content.find(c => c.type === "text").text).toMatch(/crib/i);
     }, BOOT_TIMEOUT_MS);
 
     it("recommends recipes that bake actually accepts", async () => {
