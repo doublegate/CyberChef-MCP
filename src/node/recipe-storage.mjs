@@ -81,6 +81,8 @@ export class RecipeStorage {
         this.logger = getLogger();
         // Serialises saves within this process. See `save` for the interleaving it prevents.
         this.saveQueue = Promise.resolve();
+        // Serialises whole MUTATIONS -- read, modify and save as one step. See `withMutation`.
+        this.mutationQueue = Promise.resolve();
     }
 
     /**
@@ -385,6 +387,21 @@ export class RecipeStorage {
                 // Ignore
             }
 
+            // Drop the cache, because it no longer matches the disk.
+            //
+            // Every mutator changes the in-memory state BEFORE saving -- `create` pushes onto
+            // `this.cache.recipes`, `delete` splices it. When the save then fails, the caller is
+            // told the operation failed while the change sits in the cache, and the NEXT successful
+            // save commits it. Measured: a create whose save failed, followed by an unrelated
+            // successful create, put BOTH on disk:
+            //
+            //     expected [ 'doomed', 'after' ] to not include 'doomed'
+            //
+            // So a rejected operation was persisted anyway, a few milliseconds later, with nothing
+            // reporting it. Invalidating here makes the next read return to disk truth, which is
+            // the only state that is actually known to be correct after a failed write.
+            this.cache = null;
+
             this.logger.error({
                 error: error.message,
                 filePath: this.filePath
@@ -465,12 +482,86 @@ export class RecipeStorage {
     }
 
     /**
+     * Run one mutation with exclusive access to the store.
+     *
+     * SERIALISING THE SAVE WAS NOT ENOUGH, and this is the correction to that.
+     *
+     * Every mutator here is a read-modify-write: it takes the current state, changes it, and saves.
+     * Serialising only the save left the read and the modify outside the critical section, so two
+     * overlapping mutations could each capture state, then commit in an order that discards one of
+     * them. `clear()` and `create()` show it at its worst, because they disagree about the object
+     * they are working on -- `clear()` builds a fresh snapshot while `create()` pushes onto the
+     * shared `this.cache`:
+     *
+     *     before:  old-1, old-2
+     *     clear() and create("new") overlapping
+     *     after:   old-1, old-2, new      <- the cleared recipes are BACK
+     *
+     * Reproduced exactly as written above. A user asks for their recipes to be deleted, is told it
+     * succeeded, and they reappear -- which is worse than the loud generation error that serialising
+     * the save had just removed, because nothing reports it. Found in review, not by the suite.
+     *
+     * So the lock covers the whole operation. `save`'s own queue is kept: it still guards a direct
+     * `save()` (from `initialize`) and costs nothing when a mutation already holds this lock.
+     *
+     * @param {Function} fn - The mutation to run.
+     * @returns {Promise<*>} Whatever the mutation returns.
+     */
+    async withMutation(fn) {
+        // Chains through rejection as well as fulfilment: one failed mutation must not wedge every
+        // mutation after it.
+        const run = this.mutationQueue.then(fn, fn);
+        this.mutationQueue = run.then(() => {}, () => {});
+        return run;
+    }
+
+    /**
      * Create a new recipe.
      *
      * @param {Object} recipeData - Recipe data (without id, created, updated).
      * @returns {Promise<Object>} Created recipe with generated fields.
      */
     async create(recipeData) {
+        return this.withMutation(() => this.createLocked(recipeData));
+    }
+
+    /**
+     * Update an existing recipe.
+     *
+     * @param {string} id - Recipe id.
+     * @param {Object} updates - Fields to change.
+     * @returns {Promise<Object>} The updated recipe.
+     */
+    async update(id, updates) {
+        return this.withMutation(() => this.updateLocked(id, updates));
+    }
+
+    /**
+     * Delete a recipe.
+     *
+     * @param {string} id - Recipe id.
+     * @returns {Promise<boolean>} Whether a recipe was removed.
+     */
+    async delete(id) {
+        return this.withMutation(() => this.deleteLocked(id));
+    }
+
+    /**
+     * Remove the caller's recipes.
+     *
+     * @returns {Promise<void>}
+     */
+    async clear() {
+        return this.withMutation(() => this.clearLocked());
+    }
+
+    /**
+     * Create a new recipe. Never call directly -- go through `create`, which takes the lock.
+     *
+     * @param {Object} recipeData - Recipe data (without id, created, updated).
+     * @returns {Promise<Object>} Created recipe with generated fields.
+     */
+    async createLocked(recipeData) {
         const storage = this.cache || await this.load();
         const tenant = currentTenant();
 
@@ -540,7 +631,7 @@ export class RecipeStorage {
      * @param {Object} updates - Fields to update.
      * @returns {Promise<Object>} Updated recipe.
      */
-    async update(id, updates) {
+    async updateLocked(id, updates) {
         const storage = this.cache || await this.load();
         // Scoped to the caller's tenant, so another tenant's recipe is "not found" rather than
         // silently modified. Without this the id alone is authority to overwrite any recipe in
@@ -604,7 +695,7 @@ export class RecipeStorage {
      * @param {string} id - Recipe UUID.
      * @returns {Promise<boolean>} True if deleted, false if not found.
      */
-    async delete(id) {
+    async deleteLocked(id) {
         const storage = this.cache || await this.load();
         const initialLength = storage.recipes.length;
         const tenant = currentTenant();
@@ -671,7 +762,7 @@ export class RecipeStorage {
      *
      * @returns {Promise<void>}
      */
-    async clear() {
+    async clearLocked() {
         const tenant = currentTenant();
         // Clears only the caller's OWN recipes.
         //

@@ -548,14 +548,54 @@ describe("RecipeStorage", () => {
             expect(onDisk.recipes.map(r => r.name).sort()).toEqual([...names].sort());
         });
 
-        it("keeps saving after one save fails", async () => {
-            // The queue chains through rejection as well as fulfilment; a single failed save must
-            // not wedge every save after it.
+        it("does not resurrect recipes that an overlapping clear removed", async () => {
+            // Serialising only the SAVE was not enough, and this is the case that proved it.
+            // Every mutator is a read-modify-write; with only the save inside the critical
+            // section, clear() builds a fresh snapshot while create() pushes onto the shared
+            // cache, and whichever commits last wins. The user asks for their recipes to be
+            // deleted, is told it worked, and they come back -- silent, which is what makes it
+            // worse than the loud generation error that serialising the save removed.
             await storage.initialize();
-            await expect(storage.create({ name: "", operations: [{ op: "To Base64" }] }))
-                .rejects.toThrow();
+            await storage.create({ name: "old-1", operations: [{ op: "To Base64" }] });
+            await storage.create({ name: "old-2", operations: [{ op: "To Hex" }] });
+
+            await Promise.allSettled([
+                storage.clear(),
+                storage.create({ name: "new", operations: [{ op: "To Hex" }] })
+            ]);
+
+            const onDisk = JSON.parse(await fs.readFile(testFile, "utf8"));
+            const names = onDisk.recipes.map(r => r.name);
+            expect(names).not.toContain("old-1");
+            expect(names).not.toContain("old-2");
+        });
+
+        it("keeps saving after one save fails", async () => {
+            // The queues chain through rejection as well as fulfilment; one failed save must not
+            // wedge every save after it.
+            //
+            // The failure is injected at the SAVE. An earlier version of this test used an invalid
+            // recipe name, which RecipeSchema rejects before `save` is ever reached -- so it
+            // asserted the schema and proved nothing at all about the queue.
+            await storage.initialize();
+
+            // Injected at the FILESYSTEM, not by replacing saveNow. Stubbing the method skips
+            // the very error handling under test -- including the cache invalidation that stops a
+            // failed write being committed by the next successful one.
+            const renameSpy = vi.spyOn(fs, "rename")
+                .mockRejectedValueOnce(new Error("injected disk failure"));
+
+            await expect(storage.create({ name: "doomed", operations: [{ op: "To Base64" }] }))
+                .rejects.toThrow(/injected disk failure/);
+
+            expect(renameSpy).toHaveBeenCalled();
             const ok = await storage.create({ name: "after", operations: [{ op: "To Hex" }] });
             expect(ok.name).toBe("after");
+
+            // The survivor is on disk, and the one whose save failed is not.
+            const onDisk = JSON.parse(await fs.readFile(testFile, "utf8"));
+            expect(onDisk.recipes.map(r => r.name)).toContain("after");
+            expect(onDisk.recipes.map(r => r.name)).not.toContain("doomed");
         });
     });
 });
