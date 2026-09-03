@@ -29,7 +29,8 @@
 
 import { describe, it, expect } from "vitest";
 import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
+import { dirname, resolve, join } from "node:path";
+import { tmpdir } from "node:os";
 
 import { Client as LegacyClient } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport as LegacyStdio } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -52,7 +53,11 @@ const SPAWN = {
     args: [SERVER],
     // `index` is the default surface and is enough here: this suite is about the wire, and
     // stdio-client-contract.test.mjs is what exercises all 504 schemas.
-    env: { ...process.env, CYBERCHEF_TRANSPORT: "stdio", CYBERCHEF_LOG_LEVEL: "error" }
+    env: {
+        ...process.env, CYBERCHEF_TRANSPORT: "stdio", CYBERCHEF_LOG_LEVEL: "error",
+        // Its own recipe store; see stdio-client-contract for why.
+        CYBERCHEF_RECIPE_STORAGE: join(tmpdir(), `cyberchef-protocol-eras-${process.pid}.json`)
+    }
 };
 
 describe("protocol eras", () => {

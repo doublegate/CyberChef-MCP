@@ -133,8 +133,17 @@ jobs:
           # Run the container detached but interactive
           docker run -d -i --name test-mcp cyberchef-mcp:latest
 
-          # Send a listTools request and check for "cyberchef_bake" in the output
-          RESPONSE=$(echo '{"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}' | docker exec -i test-mcp node src/node/mcp-server.mjs)
+          # Send a listTools request and check for "cyberchef_bake" in the output.
+          #
+          # The exec'd process is a SECOND server inside the same container -- the detached one
+          # above is already running. Both default their recipe store to ./recipes.json, so the
+          # replica generation guard sees the file change underneath it and correctly fatals:
+          #
+          #   Recipe storage changed underneath this process: expected generation 0 but found 1.
+          #
+          # A race, so this passed for as long as the exec happened to win it. The guard's own
+          # advice is the fix: give the probe its own store.
+          RESPONSE=$(echo '{"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}' | docker exec -i -e CYBERCHEF_RECIPE_STORAGE=/tmp/probe-recipes.json test-mcp node src/node/mcp-server.mjs)
 
           echo "Response: $RESPONSE"
 

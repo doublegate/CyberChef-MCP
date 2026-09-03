@@ -14,7 +14,8 @@
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
+import { dirname, resolve, join } from "node:path";
+import { tmpdir } from "node:os";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import OperationConfig from "../../src/core/config/OperationConfig.json" with {type: "json"};
@@ -31,6 +32,9 @@ const BOOT_TIMEOUT_MS = 120_000;
  */
 async function connectWith(surface) {
     const env = { ...process.env };
+    // Its own recipe store; the default ./recipes.json is shared by every spawner and vitest
+    // runs test files in parallel.
+    env.CYBERCHEF_RECIPE_STORAGE = join(tmpdir(), `cyberchef-tool-surface-${process.pid}.json`);
     if (surface === undefined) delete env.CYBERCHEF_TOOL_SURFACE;
     else env.CYBERCHEF_TOOL_SURFACE = surface;
 
