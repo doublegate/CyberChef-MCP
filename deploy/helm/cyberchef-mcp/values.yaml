@@ -27,6 +27,19 @@ image:
   # Pinned rather than "latest". A chart that floats its tag cannot be rolled back to a known
   # state, and `latest` moves on every release.
   tag: "3.1.0"
+  # A TAG IS NOT A DIGEST. GHCR tags are mutable, so the line above is a promise about which bytes
+  # were pushed, not a guarantee about which bytes you get. Set this and it wins over `tag`:
+  #
+  #   docker buildx imagetools inspect ghcr.io/doublegate/cyberchef-mcp_v3:3.1.0 \
+  #     --format '{{.Manifest.Digest}}'
+  #   digest: "sha256:..."
+  #
+  # Empty by default, and it has to be: this chart ships in the commit that CREATES the release,
+  # so at authoring time the image it names does not exist yet. A digest carried over from a prior
+  # build would pin the WRONG bytes with more apparent authority than the tag. Pinning is the
+  # operator's step, once, against the release they chose -- the same reasoning the compose file
+  # records, now with a supported field instead of an instruction to edit the template.
+  digest: ""
 
 imagePullSecrets: []
 nameOverride: ""

@@ -62,7 +62,23 @@ spec:
         - name: {{ .Chart.Name }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
+          {{- /*
+            `digest` wins when set, and it is the integrity-preserving way to deploy this:
+            a GHCR tag is mutable, so `3.1.0` promises which bytes were pushed rather than
+            guaranteeing which bytes you get. It cannot be the packaged default -- the chart
+            ships in the commit that CREATES the release, so at authoring time the image it
+            names does not exist and any digest here would pin the wrong bytes with more
+            apparent authority than the tag. Resolve it once against the release you chose:
+
+              docker buildx imagetools inspect <repository>:<tag> --format Manifest.Digest
+
+            then set `image.digest` to the `sha256:...` it prints.
+          */}}
+          {{- if .Values.image.digest }}
+          image: "{{ .Values.image.repository }}@{{ .Values.image.digest }}"
+          {{- else }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          {{- end }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: http

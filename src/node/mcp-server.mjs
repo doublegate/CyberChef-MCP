@@ -928,7 +928,17 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
 };
 
 const handleCallToolInner = async (request, extra, ownerServer = server) => {
-    const { name, arguments: args } = request.params;
+    // `arguments` is OPTIONAL in the MCP schema, so a client may legally omit it entirely -- and
+    // forty `args.something` reads below assumed it never would. Omitting it produced a TypeError
+    // that surfaced to the caller as
+    // `OPERATION_FAILED: Cannot read properties of undefined (reading 'operations')`: an internal
+    // message leaked as a tool result, from the very guard added in this release to stop a tool
+    // answering unhelpfully.
+    //
+    // Defaulting here rather than at each of the forty sites, because the next one added would
+    // have the same hole. `null` never reaches this line: the SDK rejects it against the schema
+    // first, with -32602. Both inputs are pinned by tests.
+    const { name, arguments: args = {} } = request.params;
 
     // Start request tracking
     const requestId = logRequestStart(name, args);

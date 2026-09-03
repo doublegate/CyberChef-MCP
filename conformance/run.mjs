@@ -62,12 +62,25 @@ function freePort() {
     });
 }
 
-/** Wait until the MCP endpoint answers, or give up. @returns {Promise<void>} */
+/**
+ * Wait until the MCP endpoint answers, or give up.
+ *
+ * Each probe carries its own abort signal. Without one, a server that accepts the connection and
+ * then never answers leaves `fetch` pending forever and the loop never reaches its deadline check
+ * again -- the wait would hang rather than fail, which in CI means waiting out the job timeout
+ * with no useful message.
+ *
+ * @param {number} port - Port to probe.
+ * @param {number} [deadlineMs] - How long to keep trying.
+ * @returns {Promise<void>} Resolves once the endpoint answers.
+ */
 async function waitForServer(port, deadlineMs = 60_000) {
     const until = Date.now() + deadlineMs;
     while (Date.now() < until) {
         try {
-            await fetch(`http://127.0.0.1:${port}/mcp`, { method: "POST" });
+            await fetch(`http://127.0.0.1:${port}/mcp`, {
+                method: "POST", signal: AbortSignal.timeout(2_000)
+            });
             return;
         } catch {
             await new Promise(r => setTimeout(r, 200));
@@ -76,12 +89,32 @@ async function waitForServer(port, deadlineMs = 60_000) {
     throw new Error(`server did not accept connections on ${port} within ${deadlineMs}ms`);
 }
 
-/** @returns {Promise<number>} The child's exit code. */
-function run(command, args, options = {}) {
+/**
+ * Run a child to completion, or kill it and fail.
+ *
+ * The suite talks to a network endpoint, so a hung scenario is a real outcome rather than a
+ * hypothetical: without a deadline the gate would stall until the workflow's own timeout and
+ * report nothing about which era or scenario was stuck.
+ *
+ * @param {string} command - Executable.
+ * @param {string[]} args - Arguments.
+ * @param {Object} [options] - Spawn options; `timeoutMs` bounds the run.
+ * @returns {Promise<number>} The child's exit code.
+ */
+function run(command, args, { timeoutMs = 10 * 60_000, ...options } = {}) {
     return new Promise((ok, fail) => {
         const child = spawn(command, args, { stdio: "inherit", ...options });
-        child.on("error", fail);
-        child.on("exit", code => ok(code ?? 1));
+        const timer = setTimeout(() => {
+            child.kill("SIGKILL");
+            fail(new Error(`conformance run exceeded ${timeoutMs}ms and was killed`));
+        }, timeoutMs);
+        timer.unref?.();
+        const settle = fn => (...a) => {
+            clearTimeout(timer);
+            fn(...a);
+        };
+        child.on("error", settle(fail));
+        child.on("exit", settle(code => ok(code ?? 1)));
     });
 }
 

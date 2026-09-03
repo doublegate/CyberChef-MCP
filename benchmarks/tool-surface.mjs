@@ -37,8 +37,18 @@ import { dirname, resolve } from "node:path";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SERVER = resolve(ROOT, "src/node/mcp-server.mjs");
 
-/** Bytes of the JSON-RPC payload, which is what actually crosses the wire. */
-const wireBytes = value => Buffer.byteLength(JSON.stringify(value), "utf8");
+/**
+ * Bytes of the RESULT PAYLOAD -- the `result` object, not the framed JSON-RPC message.
+ *
+ * The name matters because the difference is the point of the measurement. A stdio message adds
+ * the envelope (`jsonrpc`, `id`) and a newline delimiter: a few dozen bytes, constant, against
+ * payloads from 20 KB to 391 KB. Excluding it keeps the comparison between surfaces exact and the
+ * ratios unaffected, and calling this "wire bytes" would have overstated what is counted.
+ *
+ * @param {*} value - The result payload.
+ * @returns {number} Its serialized size in bytes.
+ */
+const payloadBytes = value => Buffer.byteLength(JSON.stringify(value), "utf8");
 
 /**
  * Connect a real client to a server started with the given surface.
@@ -65,7 +75,7 @@ for (const surface of ["index", "curated", "all"]) {
         rows.push({
             surface,
             tools: tools.length,
-            bytes: wireBytes({ tools }),
+            bytes: payloadBytes({ tools }),
             ms: Date.now() - started
         });
     } finally {
@@ -74,7 +84,10 @@ for (const surface of ["index", "curated", "all"]) {
 }
 
 const pad = (s, n) => String(s).padStart(n);
-process.stdout.write("\ntools/list, measured through a real MCP client\n\n");
+process.stdout.write(
+    "\ntools/list result payloads, measured through a real MCP client.\n" +
+    "The JSON-RPC envelope and newline delimiter are excluded: constant, and a few dozen\n" +
+    "bytes against payloads of 20-391 KB.\n\n");
 process.stdout.write("  surface     tools      bytes       KB   listTools\n");
 for (const r of rows) {
     process.stdout.write(
@@ -89,7 +102,7 @@ try {
     const describe = await client.callTool({
         name: "cyberchef_describe_operation", arguments: { operations: "To Base64" }
     });
-    const detail = wireBytes(describe);
+    const detail = payloadBytes(describe);
     const index = rows.find(r => r.surface === "index").bytes;
     const all = rows.find(r => r.surface === "all").bytes;
     process.stdout.write(

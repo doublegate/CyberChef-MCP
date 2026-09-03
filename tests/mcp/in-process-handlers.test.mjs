@@ -377,6 +377,16 @@ describe("in-process handlers: the navigation hierarchy", () => {
                 name: "cyberchef_describe_operation", arguments: { operations: null }
             });
             expect(nulled.isError).toBe(true);
+
+            // ...and `arguments` omitted ENTIRELY, which the MCP schema permits. Review caught
+            // this: the guard read `args.operations` on an `args` that forty call sites assumed
+            // was always an object, so omitting it threw and leaked
+            // `OPERATION_FAILED: Cannot read properties of undefined` as the tool result -- a
+            // worse error than the one the guard was added to fix.
+            const absent = await client.callTool({ name: "cyberchef_describe_operation" });
+            expect(absent.isError).toBe(true);
+            expect(absent.content[0].text).toMatch(/requires `operations`/);
+            expect(absent.content[0].text).not.toMatch(/Cannot read properties/);
         } finally {
             await close();
         }
