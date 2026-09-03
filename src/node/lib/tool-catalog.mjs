@@ -5,15 +5,23 @@
  *
  * THE PROBLEM
  * -----------
- * `tools/list` is sent to the model on every request. Measured on this server:
+ * `tools/list` is sent to the model on every request. Measured on this server -- and these
+ * numbers now come from `npm run measure:surfaces`, which drives a real client and counts the
+ * exact bytes of the result, rather than from a comment:
  *
- *     all       524 tools   345 KB   ~86,000 tokens
- *     curated    99 tools    66 KB   ~16,600 tokens
+ *     all       531 tools   400,701 bytes   391 KB
+ *     curated   106 tools    83,543 bytes    82 KB
+ *     index      28 tools    20,297 bytes    20 KB
  *
- * Both pay up front for schemas the session may never use. `curated` is cheaper only because it
- * guesses which 79 operations matter, and it is wrong for anyone whose work is the other 425.
+ * Both presets pay up front for schemas the session may never use. `curated` is cheaper only
+ * because it guesses which operations matter, and it is wrong for anyone whose work is the rest.
  *
- * Measured after the change: the index is ~24 tools and ~2,500 tokens.
+ * Every figure in this header was wrong by v3.1.0 -- the index, the surface this whole design
+ * rests on, was documented at ~10 KB and measured at 20 KB. The argument held by a wide margin
+ * throughout, which is exactly why nobody noticed: a claim that stays directionally true is the
+ * hardest kind to keep numerically true. Hence the script, and hence bytes rather than tokens --
+ * no tokenizer has ever been in this repository, and every "~N tokens" figure it ever published
+ * was bytes divided by four.
  *
  * THE SHAPE OF THE FIX
  * --------------------
@@ -40,8 +48,9 @@
  * one schema instead of 504.
  *
  * The trade is honest and worth stating: reaching an operation costs an extra round trip the first
- * time. For a session doing real work that is one call against tens of thousands of saved tokens;
- * for a client that wants everything in one shot, `CYBERCHEF_TOOL_SURFACE=all` is still there.
+ * time. Measured, that trade is the index plus one operation schema -- 22,075 bytes against
+ * 400,701, or **18.2x cheaper** than `all`. For a client that wants everything in one shot,
+ * `CYBERCHEF_TOOL_SURFACE=all` is still there.
  *
  * @author DoubleGate
  * @license GPL-3.0-or-later
