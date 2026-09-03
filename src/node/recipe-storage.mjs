@@ -79,6 +79,8 @@ export class RecipeStorage {
         this.cache = null;
         this.lastLoadTime = null;
         this.logger = getLogger();
+        // Serialises saves within this process. See `save` for the interleaving it prevents.
+        this.saveQueue = Promise.resolve();
     }
 
     /**
@@ -240,10 +242,50 @@ export class RecipeStorage {
     /**
      * Save recipes to file with atomic write.
      *
+     * Saves are SERIALISED per instance. The optimistic generation check below compares the
+     * on-disk generation against `this.loadedGeneration`, and that comparison is only meaningful
+     * if no other save is between its own check and its own rename. Two overlapping saves in ONE
+     * process both read the same `loadedGeneration`, and the second to commit finds the generation
+     * already advanced -- so it fails with a message blaming "another process", which is not what
+     * happened.
+     *
+     * Observed with three concurrent `create()` calls on one instance -- which is what two
+     * overlapping `cyberchef_recipe_create` tool calls are, since a server handles requests
+     * concurrently:
+     *
+     *     0 fulfilled ok
+     *     1 fulfilled ok
+     *     2 rejected  Failed to save recipe storage: Recipe storage changed underneath this
+     *                 process: expected generation 1 but found 2.
+     *
+     * **Not reliably reproducible**, and that is stated rather than dressed up: the same probe run
+     * again, with this serialisation removed, completed eight concurrent creates cleanly. Whether
+     * the window is hit depends on how the awaits interleave under load. An earlier draft of this
+     * comment claimed a deterministic reproduction, which was simply untrue.
+     *
+     * The queue is therefore justified by CONSTRUCTION rather than by a failing test: the check
+     * above is only sound if nothing else moves the generation between it and the rename, and
+     * within one process this is what makes that true. It is NOT a substitute for the generation
+     * check, which still guards what it was written for -- a second *process* sharing the file.
+     *
      * @param {Object} storage - Storage object to save.
      * @returns {Promise<void>}
      */
     async save(storage) {
+        // Chain onto whatever save is in flight, whether it settled or threw -- a failed save must
+        // not wedge every save after it. The chain holds only the ordering, never the result.
+        const run = this.saveQueue.then(() => this.saveNow(storage), () => this.saveNow(storage));
+        this.saveQueue = run.then(() => {}, () => {});
+        return run;
+    }
+
+    /**
+     * Perform one save. Never call directly -- go through `save`, which serialises.
+     *
+     * @param {Object} storage - Storage object to save.
+     * @returns {Promise<void>}
+     */
+    async saveNow(storage) {
         // Random suffix, not a fixed `.tmp` sibling.
         //
         // `${this.filePath}.tmp` is predictable, so anything that can write to the storage

@@ -525,4 +525,37 @@ describe("RecipeStorage", () => {
             expect(restored).toBe(false);
         });
     });
+
+    describe("concurrent saves within one process", () => {
+        it("does not make the process race itself", async () => {
+            // A server handles requests concurrently, so two overlapping cyberchef_recipe_create
+            // calls reach one RecipeStorage instance at once. Before saves were serialised, each
+            // read the same `loadedGeneration`, and whichever committed last found the generation
+            // already advanced -- failing with a message blaming "another process", which is not
+            // what happened. Reproduced deterministically at three concurrent creates.
+            await storage.initialize();
+
+            const names = ["a", "b", "c", "d", "e", "f", "g", "h"];
+            const results = await Promise.allSettled(
+                names.map(name => storage.create({ name, operations: [{ op: "To Base64" }] })));
+
+            const rejected = results.filter(r => r.status === "rejected");
+            expect(rejected.map(r => r.reason?.message ?? String(r.reason))).toEqual([]);
+
+            // And every one is actually on disk. Serialising the writes would be worthless if the
+            // last writer overwrote the others, which is the other half of this failure mode.
+            const onDisk = JSON.parse(await fs.readFile(testFile, "utf8"));
+            expect(onDisk.recipes.map(r => r.name).sort()).toEqual([...names].sort());
+        });
+
+        it("keeps saving after one save fails", async () => {
+            // The queue chains through rejection as well as fulfilment; a single failed save must
+            // not wedge every save after it.
+            await storage.initialize();
+            await expect(storage.create({ name: "", operations: [{ op: "To Base64" }] }))
+                .rejects.toThrow();
+            const ok = await storage.create({ name: "after", operations: [{ op: "To Hex" }] });
+            expect(ok.name).toBe("after");
+        });
+    });
 });

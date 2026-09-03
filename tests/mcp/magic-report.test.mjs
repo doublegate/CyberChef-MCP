@@ -15,8 +15,7 @@
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { fileURLToPath } from "node:url";
-import { dirname, resolve, join } from "node:path";
-import { tmpdir } from "node:os";
+import { dirname, resolve } from "node:path";
 import { gzipSync } from "node:zlib";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -311,7 +310,6 @@ describe("magic through a real MCP client", () => {
         await client.connect(new StdioClientTransport({
             command: process.execPath,
             args: [SERVER],
-            // Its own recipe store, because the default is `./recipes.json` in the working
             // directory and vitest runs test FILES in parallel. Five suites spawn a server; every
             // one of them inheriting the same path means two servers initialise the same file at
             // once, and the generation guard added for replica safety correctly fatals one of
@@ -319,7 +317,6 @@ describe("magic through a real MCP client", () => {
             env: {
                 ...process.env,
                 CYBERCHEF_TOOL_SURFACE: "all",
-                CYBERCHEF_RECIPE_STORAGE: join(tmpdir(), `cyberchef-magic-report-${process.pid}.json`)
             }
         }));
     }, BOOT_TIMEOUT_MS);

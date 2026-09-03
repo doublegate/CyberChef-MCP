@@ -31,8 +31,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { dirname, resolve, join } from "node:path";
-import { tmpdir } from "node:os";
+import { dirname, resolve } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
@@ -63,9 +62,6 @@ describe("stdio contract, via the official MCP client", () => {
             env: {
                 ...process.env,
                 CYBERCHEF_TOOL_SURFACE: "all",
-                // Its own recipe store: the default is ./recipes.json and vitest runs test files
-                // in parallel, so shared spawners race the replica generation guard.
-                CYBERCHEF_RECIPE_STORAGE: join(tmpdir(), `cyberchef-stdio-contract-${process.pid}.json`)
             }
         }));
         ({ tools } = await client.listTools());

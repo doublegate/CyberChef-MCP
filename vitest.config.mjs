@@ -17,6 +17,12 @@ export default defineConfig({
         // Use Node environment (not jsdom)
         environment: "node",
 
+        // Gives each test file its own recipe store BEFORE its modules load, which is the only
+        // point at which that can be decided -- `recipe-storage.mjs` resolves the path once, into
+        // a module-scope const. Without it, 13 files shared `./recipes.json` and raced the replica
+        // generation guard under parallel execution. See the setup file for the measurement.
+        setupFiles: ["tests/mcp/setup/recipe-store-isolation.mjs"],
+
         // Enable globals for describe/it/expect
         globals: true,
 
