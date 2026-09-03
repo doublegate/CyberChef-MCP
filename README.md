@@ -829,7 +829,7 @@ For contributions to the core CyberChef operations, please credit the original [
 *   **Original CyberChef**: [GCHQ/CyberChef](https://github.com/gchq/CyberChef)
 *   **MCP Fork**: [doublegate/CyberChef-MCP](https://github.com/doublegate/CyberChef-MCP)
 *   **Container Registries**:
-    *   **Docker Hub** (Primary): [parobek/cyberchef-mcp](https://hub.docker.com/r/parobek/cyberchef-mcp) - With Docker Scout health scores and attestations. (This read `doublegate/cyberchef-mcp` until v3.0.0, which is a repository that does not exist -- the release workflow pushes to `${{ secrets.DOCKERHUB_USERNAME }}/cyberchef-mcp`, and every install snippet elsewhere in this file already said `parobek`.)
+    *   **Docker Hub** (Primary): [parobek/cyberchef-mcp](https://hub.docker.com/r/parobek/cyberchef-mcp) - With Docker Scout health scores and attestations
     *   **GHCR** (Secondary): [ghcr.io/doublegate/cyberchef-mcp_v3](https://github.com/doublegate/CyberChef-MCP/pkgs/container/cyberchef-mcp_v3) — v3.x. The package name carries the major, so v2.x stays at [`cyberchef-mcp_v2`](https://github.com/doublegate/CyberChef-MCP/pkgs/container/cyberchef-mcp_v2) and is not superseded in place.
     *   **GHCR (v1, frozen)**: [ghcr.io/doublegate/cyberchef-mcp_v1](https://github.com/doublegate/CyberChef-MCP/pkgs/container/cyberchef-mcp_v1)
         *   Remains pullable; receives security-only patches on the `v1.9.x` line until ~March 2027.

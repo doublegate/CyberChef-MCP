@@ -12,9 +12,9 @@ the useful part, and a reader who finds no trace of a plan assumes it was never 
 ## Why nothing moved on 2026-09-03
 
 The v3.0.0 corpus retirement intended to move the genuinely dead plans here. Measuring first
-changed the answer: **every one of the 62 planning documents is referenced from at least two files
-outside `docs/planning/`**, and the referrers are mostly `CHANGELOG.md`, `docs/releases/*.md` and
-`docs-site/`.
+changed the answer: **every one of the 62 planning documents is referenced from at least three
+files outside `docs/planning/`**, and the referrers are mostly `CHANGELOG.md`, `docs/releases/*.md`
+and `docs-site/`.
 
 Those are historical records and published URLs. Moving a file to satisfy a tidiness goal would
 either break them or require editing release notes to describe a layout that did not exist when
@@ -42,8 +42,12 @@ inside `docs/planning/`, that document becomes movable. Check before moving:
 
 ```bash
 FILE=docs/planning/future-releases/release-v2.9.x.md   # the document you want to move
-grep -rl --include='*.md' -F "$(basename "$FILE")" . \
-  | grep -v '^./docs/planning/' | grep -v '^./node_modules'
+grep -rl -F "$(basename "$FILE")" . \
+  | grep -v '^./docs/planning/' | grep -v '^./node_modules' | grep -v '^./.git/'
 ```
+
+Deliberately not `--include='*.md'`. A planning document can be named from a workflow, a script or
+a JSON manifest as easily as from prose, and a Markdown-only sweep would report a file movable
+while a build step still pointed at it.
 
 Empty output means it can move here.
