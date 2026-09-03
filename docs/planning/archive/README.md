@@ -41,6 +41,7 @@ If `docs-site/` stops mirroring the planning corpus, or a document's only remain
 inside `docs/planning/`, that document becomes movable. Check before moving:
 
 ```bash
+FILE=docs/planning/future-releases/release-v2.9.x.md   # the document you want to move
 grep -rl --include='*.md' -F "$(basename "$FILE")" . \
   | grep -v '^./docs/planning/' | grep -v '^./node_modules'
 ```

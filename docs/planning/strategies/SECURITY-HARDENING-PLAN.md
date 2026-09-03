@@ -4,7 +4,9 @@
 >
 > v2.0.0 took 272 open findings to zero and v2.1.1 dispositioned all 55 code-scanning alerts (8
 > fixed, 47 dismissed with written reasons). Open Dependabot and code-scanning alerts have been
-> **0** since. The live document is [`docs/security/audit.md`](../../security/audit.md).
+> **0** since. The current disposition of every alert is
+> [`docs/security/2026-08-31-open-alert-sweep.md`](../../security/2026-08-31-open-alert-sweep.md);
+> [`audit.md`](../../security/audit.md) is a December 2025 snapshot and says so at the top.
 >
 > The standing gap this plan does not cover is in
 > [`../v3/charters/v3.x-supply-chain.md`](../v3/charters/v3.x-supply-chain.md): tool metadata

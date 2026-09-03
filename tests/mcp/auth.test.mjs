@@ -27,6 +27,7 @@ import {
 } from "../../src/node/lib/auth.mjs";
 import { requiredScopes, authorise, visibleTools } from "../../src/node/lib/rbac.mjs";
 import { auditEnabled, OUTCOME } from "../../src/node/lib/audit.mjs";
+import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 
 describe("canonical resource URI", () => {
     it("normalises scheme and host, and drops a bare trailing slash", () => {
@@ -944,34 +945,38 @@ describe("per-tool authorisation at dispatch, against the real server", () => {
         return { status: res.status, text };
     };
 
-/** Open a session with the given token and list tools. @returns {Promise<string[]>} */
+/**
+     * List tools as the holder of `token`, through a REAL MCP client.
+     *
+     * Not hand-rolled JSON-RPC, and the distinction is this project's most expensive lesson:
+     * three releases shipped 524 tools with an empty `inputSchema` while a suite of raw
+     * JSON-RPC stayed green, because raw JSON-RPC validates nothing and the official client
+     * rejects that response outright. A filtered `tools/list` is exactly the kind of assertion
+     * that must survive a client that enforces the protocol.
+     *
+     * The first draft of this helper parsed the SSE framing by hand -- `.filter(startsWith
+     * "data:").pop()` -- which assumes the payload is the last event and breaks silently if the
+     * transport ever interleaves one. The transport already knows how to do that.
+     *
+     * `callTool` above deliberately stays on `fetch`: it asserts HTTP status codes (401/403) and
+     * `WWW-Authenticate` headers, which a client abstracts away.
+     *
+     * @param {string} token - Bearer token to present.
+     * @returns {Promise<string[]>} Tool names the caller is shown.
+     */
     const listToolNames = async (token) => {
-        const base = `http://127.0.0.1:${port}/mcp`;
-        const headers = {
-            "content-type": "application/json",
-            accept: "application/json, text/event-stream",
-            authorization: `Bearer ${token}`
-        };
-        const init = await fetch(base, {
-            method: "POST", headers,
-            body: JSON.stringify({
-                jsonrpc: "2.0", id: 1, method: "initialize",
-                params: {
-                    protocolVersion: "2025-11-25", capabilities: {},
-                    clientInfo: { name: "rbac-list-test", version: "0.0.0" }
-                }
-            })
-        });
-        const sid = init.headers.get("mcp-session-id");
-        const res = await fetch(base, {
-            method: "POST",
-            headers: { ...headers, "mcp-session-id": sid },
-            body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} })
-        });
-        const text = await res.text();
-        // Streamable HTTP answers as SSE; the JSON-RPC payload is the last `data:` line.
-        const line = text.split("\n").filter(l => l.startsWith("data:")).pop();
-        return JSON.parse(line.slice(5)).result.tools.map(t => t.name);
+        const client = new Client(
+            { name: "rbac-list-test", version: "0.0.0" }, { capabilities: {} });
+        const transport = new StreamableHTTPClientTransport(
+            new URL(`http://127.0.0.1:${port}/mcp`),
+            { requestInit: { headers: { authorization: `Bearer ${token}` } } });
+        await client.connect(transport);
+        try {
+            const { tools } = await client.listTools();
+            return tools.map(t => t.name);
+        } finally {
+            await client.close();
+        }
     };
 
     it("does not list a tool the token cannot call", async () => {

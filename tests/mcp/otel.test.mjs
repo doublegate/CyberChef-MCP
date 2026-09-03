@@ -470,9 +470,25 @@ describe("trace context from the caller", () => {
     });
 
     it("carries baggage and tracestate when the operator opts in", () => {
-        // The opt-in path. Both are passed to the propagator rather than parsed here -- only
+        // The opt-in path. Both are passed to the PROPAGATOR rather than parsed here -- only
         // `traceparent` has a manual fallback, because it is the one the parent depends on.
+        //
+        // So the assertion has to be on the carrier the propagator was handed. Asserting the
+        // resulting traceId instead proves nothing: with no propagator registered, the manual
+        // fallback parses `traceparent` and returns the same id whether or not the other two
+        // fields were ever copied across. That earlier version of this test passed with the
+        // `tracestate` and `baggage` lines of `parentContextFrom` deleted.
+        const seen = [];
+        const propagator = {
+            inject() {},
+            fields: () => ["traceparent", "tracestate", "baggage"],
+            extract(ctx, carrier) {
+                seen.push({ ...carrier });
+                return ctx;
+            }
+        };
         const saved = process.env.CYBERCHEF_OTEL_BAGGAGE;
+        propagation.setGlobalPropagator(propagator);
         try {
             process.env.CYBERCHEF_OTEL_BAGGAGE = "true";
             const sc = parentOf({
@@ -480,8 +496,46 @@ describe("trace context from the caller", () => {
                 tracestate: "vendor=opaque",
                 baggage: "deployment=blue"
             });
+
+            expect(seen).toHaveLength(1);
+            expect(seen[0].traceparent).toBe(VALID);
+            expect(seen[0].tracestate).toBe("vendor=opaque");
+            expect(seen[0].baggage).toBe("deployment=blue");
+            // The propagator here returns the context unchanged, so the manual fallback still
+            // yields the parent -- which is the behaviour a propagator that does not understand
+            // the header should get.
             expect(sc.traceId).toBe("4bf92f3577b34da6a3ce929d0e0e4736");
         } finally {
+            propagation.disable();
+            if (saved === undefined) delete process.env.CYBERCHEF_OTEL_BAGGAGE;
+            else process.env.CYBERCHEF_OTEL_BAGGAGE = saved;
+        }
+    });
+
+    it("withholds baggage unless the operator opts in, and never withholds tracestate", () => {
+        // Baggage is opt-in because it is arbitrary caller-supplied key/value data that would
+        // otherwise ride into every span; `tracestate` is part of the trace context itself and is
+        // always forwarded. Without this case the opt-in could be deleted and the suite stay
+        // green -- the test above only exercises the enabled branch.
+        const seen = [];
+        const propagator = {
+            inject() {},
+            fields: () => ["traceparent", "tracestate", "baggage"],
+            extract(ctx, carrier) {
+                seen.push({ ...carrier });
+                return ctx;
+            }
+        };
+        const saved = process.env.CYBERCHEF_OTEL_BAGGAGE;
+        propagation.setGlobalPropagator(propagator);
+        try {
+            delete process.env.CYBERCHEF_OTEL_BAGGAGE;
+            parentOf({ traceparent: VALID, tracestate: "vendor=opaque", baggage: "secret=1" });
+
+            expect(seen[0].tracestate).toBe("vendor=opaque");
+            expect(seen[0].baggage).toBeUndefined();
+        } finally {
+            propagation.disable();
             if (saved === undefined) delete process.env.CYBERCHEF_OTEL_BAGGAGE;
             else process.env.CYBERCHEF_OTEL_BAGGAGE = saved;
         }

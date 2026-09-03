@@ -81,21 +81,28 @@ const LOCATIONS = [
     },
     {
         file: "deploy/helm/cyberchef-mcp/values.yaml",
-        find: text => [
-            ...[...text.matchAll(/^\s*tag:\s*"?([0-9]+\.[0-9]+\.[0-9]+)"?/gm)]
-                .map(m => ({ what: "image.tag", value: m[1] })),
-            // The repository name carries the major, and the tag alone cannot catch that.
-            // `image.repository` + `image.tag` are two halves of one reference: at v3.0.0 the
-            // tag moved and the repository did not, which resolves to
-            // `cyberchef-mcp_v2:3.0.0` -- an image that will never be pushed, in the chart
-            // this project publishes. A green tag check beside a stale repository is worse
-            // than no check, because it reads as verified.
-            ...[...text.matchAll(/^\s*repository:.*cyberchef-mcp_v([0-9]+)/gm)]
-                .map(m => ({ what: "image.repository major", value: `${m[1]}.x.x`,
-                    compare: `${expectedMajor}.x.x` }))
-        ],
+        find: text => [...text.matchAll(/^\s*tag:\s*"?([0-9]+\.[0-9]+\.[0-9]+)"?/gm)]
+            .map(m => ({ what: "image.tag", value: m[1] })),
         // The chart defaults `tag` to the chart's appVersion, so an explicit tag is optional.
         optional: true
+    },
+    {
+        // A SEPARATE, REQUIRED location, deliberately not folded into the one above.
+        //
+        // The repository name carries the major, and the tag alone cannot catch that:
+        // `image.repository` and `image.tag` are two halves of one reference, and at v3.0.0 the
+        // tag moved while the repository did not, resolving to `cyberchef-mcp_v2:3.0.0` -- an
+        // image that will never be pushed, in the chart this project publishes. A green tag check
+        // beside a stale repository is worse than no check, because it reads as verified.
+        //
+        // Folding it into the optional entry above would have reproduced that in a new way: the
+        // two share one `optional`, so deleting the repository line would leave the tag matching
+        // and the location silently unverified. `optional` is about a value the chart may legally
+        // omit; the repository is not one.
+        file: "deploy/helm/cyberchef-mcp/values.yaml",
+        find: text => [...text.matchAll(/^\s*repository:.*cyberchef-mcp_v([0-9]+)/gm)]
+            .map(m => ({ what: "image.repository major", value: `${m[1]}.x.x`,
+                compare: `${expectedMajor}.x.x` }))
     },
     {
         // The MCP registry record. Not published from CI, which is exactly why it drifts: it sat
@@ -104,14 +111,26 @@ const LOCATIONS = [
         find: text => {
             const doc = JSON.parse(text);
             return [
-                { what: "version", value: doc.version },
-                ...(doc.packages ?? []).flatMap((pkg, i) => [
-                    { what: `packages[${i}].version`, value: pkg.version },
-                    ...(/cyberchef-mcp_v([0-9]+)/.exec(pkg.identifier ?? "") ?? []).slice(1)
-                        .map(major => ({ what: `packages[${i}].identifier major`,
-                            value: `${major}.x.x`, compare: `${expectedMajor}.x.x` }))
-                ])
-            ].filter(o => o.value !== undefined);
+                { what: "version", value: doc.version ?? "(absent)" },
+                ...(doc.packages ?? []).flatMap((pkg, i) => {
+                    // An OCI identifier carries the major; an npm one does not, and both are
+                    // legitimate entries here. Match on the registry rather than on whether the
+                    // regex happened to fire -- deriving the occurrence FROM the match meant a
+                    // malformed identifier produced no occurrence at all and passed silently,
+                    // which is the same "stopped matching" failure this file exists to prevent.
+                    const oci = pkg.registryType === "oci";
+                    const major = /cyberchef-mcp_v([0-9]+)/.exec(pkg.identifier ?? "")?.[1];
+                    return [
+                        { what: `packages[${i}].version`, value: pkg.version ?? "(absent)" },
+                        ...(oci ? [{
+                            what: `packages[${i}].identifier major`,
+                            value: major === undefined ?
+                                `(no major in "${pkg.identifier ?? ""}")` : `${major}.x.x`,
+                            compare: `${expectedMajor}.x.x`
+                        }] : [])
+                    ];
+                })
+            ];
         }
     },
     {

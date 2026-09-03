@@ -100,9 +100,13 @@ export function visibleTools(tools, granted) {
  *
  * WHY THESE ARE SPECIAL
  * ---------------------
- * All three are annotated `openWorldHint: true`, because a recipe *may* contain `HTTP request`.
- * `requiredScopes` checks that hint first, so all three demanded `cyberchef:network` for every
- * call -- including a recipe that never leaves the process.
+ * Three tools carry a recipe -- `cyberchef_bake`, `cyberchef_batch` and
+ * `cyberchef_recipe_execute` -- and all three are annotated `openWorldHint: true`, because a
+ * recipe *may* contain `HTTP request`. `requiredScopes` checks that hint first, so all three
+ * demanded `cyberchef:network` for every call, including a recipe that never leaves the process.
+ *
+ * Only two of them are in this set. `cyberchef_recipe_execute` is excluded for a reason worth
+ * reading before adding it: see the note below the declaration.
  *
  * That produced an incoherence worth stating plainly, because it is the argument for this code
  * existing. Measured across the catalogue:
@@ -151,9 +155,27 @@ export const RECIPE_SCOPED_TOOLS = new Set([
  * Derived per operation from the same annotations the individual operation tools carry, so
  * `bake([{op: "To Base64"}])` costs exactly what `cyberchef_to_base64` costs.
  *
+ * THE SCOPES ARE NOT A TOTAL ORDER, so this returns a SET rather than a maximum.
+ *
+ * `IMPLIES` in `auth.mjs` says write -> read and network -> read. It does NOT say network ->
+ * write: reaching the internet and mutating durable state are different authorities, and
+ * `requiredScopes` says so in its own comment -- "an operation that reaches the internet is not
+ * adequately described as write". So a recipe mixing a networked operation with a mutating one
+ * needs BOTH, and collapsing it to a single "strongest" scope would let a network-only token run
+ * the mutating half. `satisfies` is an `every`, so returning both is an AND.
+ *
+ * This is latent rather than live today -- measured across the catalogue, **zero** of the 504
+ * operations are annotated non-read-only, so the mixed case cannot currently arise. It is written
+ * correctly anyway because the annotations come from upstream's operation set, which grows in most
+ * releases, and a silent authorisation weakening that appears when someone adds an operation is
+ * exactly the kind of defect nobody goes looking for.
+ *
+ * `read` is dropped when a stronger scope is present, since both stronger scopes imply it and
+ * naming it as well would only make the refusal message noisier.
+ *
  * @param {string[]} operationNames - Canonical operation names in the recipe.
  * @param {Function} annotationsFor - `annotationsForOperation`, injected to avoid a module cycle.
- * @returns {string[]} The scopes required, strongest first.
+ * @returns {string[]} Every scope required, strongest first.
  */
 export function requiredScopesForRecipe(operationNames, annotationsFor) {
     const needed = new Set();
@@ -164,8 +186,10 @@ export function requiredScopesForRecipe(operationNames, annotationsFor) {
     // it the floor keeps this function from being the thing that rejects it, which would report a
     // permission problem for what is actually a malformed request.
     if (needed.size === 0) return [SCOPES.READ];
-    // Strongest wins: a recipe with one networked operation needs network, whatever else is in it.
-    if (needed.has(SCOPES.NETWORK)) return [SCOPES.NETWORK];
-    if (needed.has(SCOPES.WRITE)) return [SCOPES.WRITE];
-    return [SCOPES.READ];
+
+    const required = [];
+    if (needed.has(SCOPES.NETWORK)) required.push(SCOPES.NETWORK);
+    if (needed.has(SCOPES.WRITE)) required.push(SCOPES.WRITE);
+    if (required.length === 0) required.push(SCOPES.READ);
+    return required;
 }

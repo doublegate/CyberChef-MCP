@@ -849,7 +849,9 @@ const handleListTools = async () => {
  * The scopes this specific call needs, when they come from a recipe rather than a tool name.
  *
  * Returns `undefined` for everything else, which leaves `authorise` on its annotation-derived
- * path -- so this can only ever refine the three tools it knows about, never widen the check.
+ * path -- so this can only ever refine the two tools in `RECIPE_SCOPED_TOOLS`, never widen the
+ * check. `cyberchef_recipe_execute` also carries a recipe and is deliberately not one of them;
+ * `rbac.mjs` records why.
  *
  * @param {string} name - The tool being called.
  * @param {Object} args - The call arguments.

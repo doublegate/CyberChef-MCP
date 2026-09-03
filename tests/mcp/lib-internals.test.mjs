@@ -27,7 +27,7 @@ import {
     installWasmFetch, isWasmFetchInstalled, _servableWasmPathForTest
 } from "../../src/node/lib/wasm-fetch.mjs";
 import { serverCacheHints } from "../../src/node/lib/cache-hints.mjs";
-import { requiredScopesForRecipe } from "../../src/node/lib/rbac.mjs";
+import { requiredScopesForRecipe, authorise } from "../../src/node/lib/rbac.mjs";
 import { readResource } from "../../src/node/lib/resources.mjs";
 
 describe("dish-output: presenting a baked result", () => {
@@ -848,6 +848,26 @@ describe("recipe-derived scopes", () => {
         // One networked operation makes the whole recipe networked, whatever else is in it.
         expect(requiredScopesForRecipe(["To Base64", "HTTP request"], ann))
             .toEqual(["cyberchef:network"]);
+    });
+
+    it("keeps BOTH scopes for a recipe that is networked and mutating", () => {
+        // The scopes are not a total order. `IMPLIES` says network -> read; it does NOT say
+        // network -> write. Collapsing a mixed recipe to its "strongest" scope would let a
+        // network-only token run the mutating half.
+        expect(requiredScopesForRecipe(["Mutate", "HTTP request"], ann))
+            .toEqual(["cyberchef:network", "cyberchef:write"]);
+    });
+
+    it("refuses a network-only token a recipe that also mutates", () => {
+        // The property the previous test protects, stated at the layer that enforces it. This is
+        // latent today -- zero of the 504 operations are annotated non-read-only -- so the guard
+        // is against an operation set that grows from upstream, not against a live hole.
+        const required = requiredScopesForRecipe(["Mutate", "HTTP request"], ann);
+
+        expect(authorise({ granted: ["cyberchef:network"], required }).allowed).toBe(false);
+        expect(authorise({
+            granted: ["cyberchef:network", "cyberchef:write"], required
+        }).allowed).toBe(true);
     });
 });
 

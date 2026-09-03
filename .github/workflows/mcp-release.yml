@@ -406,22 +406,28 @@ jobs:
       #
       # A dated fuse like this is unobservable until the one tag that trips it, which is why it is
       # written as the exclusion it always meant and cannot re-arm at v4.
+      #
+      # `ref_type == 'tag'` is the other half. `workflow_dispatch` runs on a BRANCH, so
+      # `github.ref_name` is `master` -- which is not a v1 tag and therefore passed the exclusion
+      # above. The publish step would then compute VERSION=master, disagree with package.json and
+      # fail the run, turning every manual dispatch red for a step that had nothing to publish.
+      # The release-creation step at line 253 already guards this way; these now match it.
       - name: Set up Node for npm publish
-        if: "!startsWith(github.ref_name, 'v1.')"
+        if: "github.ref_type == 'tag' && !startsWith(github.ref_name, 'v1.')"
         uses: actions/setup-node@v5
         with:
           node-version: '26'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies for packaging
-        if: "!startsWith(github.ref_name, 'v1.')"
+        if: "github.ref_type == 'tag' && !startsWith(github.ref_name, 'v1.')"
         # Not --ignore-scripts: `prepack` runs `grunt configTests`, which needs the postinstall
         # dependency patching to have happened, and the generated OperationConfig.json and
         # index.mjs are shipped in the tarball.
         run: npm ci
 
       - name: Publish to npm
-        if: "!startsWith(github.ref_name, 'v1.')"
+        if: "github.ref_type == 'tag' && !startsWith(github.ref_name, 'v1.')"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           TAG_NAME: ${{ github.ref_name }}

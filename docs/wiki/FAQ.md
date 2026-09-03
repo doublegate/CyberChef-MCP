@@ -50,10 +50,10 @@ payload — and produced 19 names that would collide with other servers, includi
 
 Yes — clone, `npm install`, `npx grunt configTests`, `npm run mcp`. See **[Installation](Installation)**.
 
-Publishing to npm is *prepared* as of v2.3.0 — the install script that blocked it is gone, and a
-`--ignore-scripts` install of the packed tarball starts and serves — but the package is **not yet
-on the registry**, so `npx cyberchef-mcp` does not work today. `server.json` carries no npm record
-for the same reason.
+`npx cyberchef-mcp` also works: the package has been on the registry since **2.5.0**. This answer
+said the opposite until v3.0.0 — publishing was *prepared* in v2.3.0 and the first release that
+actually published was v2.5.0, after which nothing re-checked the claim. `server.json` carries the
+npm record as of v3.0.0.
 
 ## Which protocol revisions does it speak?
 
