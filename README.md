@@ -165,7 +165,7 @@ For environments without direct GHCR access, download the pre-built Docker image
 2.  **Load the image into Docker:**
 
     ```bash
-    docker load < cyberchef-mcp-v2.10.0-docker-image.tar.gz
+    docker load < cyberchef-mcp-v3.0.0-docker-image.tar.gz
     ```
 
 3.  **Tag for easier usage:**

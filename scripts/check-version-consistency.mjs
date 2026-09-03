@@ -143,6 +143,15 @@ const LOCATIONS = [
         file: "README.md",
         find: text => [...text.matchAll(/releases\/download\/v([0-9]+\.[0-9]+\.[0-9]+)\//g)]
             .map((m, i) => ({ what: `release asset URL ${i + 1}`, value: m[1] }))
+    },
+    {
+        // The asset FILENAME, which is a separate occurrence from the URL above and was missed
+        // by it: the download URL said v3.0.0 while the `docker load` line two steps later still
+        // named the v2.10.0 tarball, so a reader following the instructions in order downloaded
+        // one file and loaded another.
+        file: "README.md",
+        find: text => [...text.matchAll(/cyberchef-mcp-v([0-9]+\.[0-9]+\.[0-9]+)-docker-image\.tar\.gz/g)]
+            .map((m, i) => ({ what: `release asset filename ${i + 1}`, value: m[1] }))
     }
 ];
 

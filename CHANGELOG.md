@@ -7,6 +7,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-09-03
+
+MCP revision **2026-07-28** conformance, and the breaking cleanups conformance forces.
+
+The planned v3.0.0 could not be executed: all six of its December 2025 breaking changes were
+already done, withdrawn, or superseded. The scope was re-derived by reading the specification
+changelog against the running server. Full detail in
+[the release notes](docs/releases/v3.0.0.md) and
+[the findings log](docs/internal/v3.0.0-findings-log.md).
+
+### Changed
+
+- **BREAKING -- the container image is now `ghcr.io/doublegate/cyberchef-mcp_v3`.** The GHCR
+  package name carries the major, so a major release renames the image; `_v2` stays pullable and is
+  not superseded in place. Docker Hub is unaffected. 40 files pointed at `_v2`, including the
+  published Helm chart, which paired an un-bumped `repository` with a bumped `tag` and so resolved
+  to an image that will never be pushed.
+- **BREAKING -- a missing or malformed resource URI answers `-32602`, not `-32603`.** `ErrorCodes`
+  are strings and the SDK dispatcher keeps a thrown code only when it is a safe integer, so every
+  `resources/read` failure answered Internal Error with no `data`. A caller could not distinguish a
+  bad URI from a broken server. Resource-not-found now carries `data.uri`; an unsupported scheme
+  carries `data.supported`.
+- **BREAKING -- `tools/list` is filtered by the caller's scopes** when authorization is enabled
+  (off by default). A read-scoped token is no longer shown write or network tools. Dispatch already
+  refused those calls; what changes is that the model is no longer told about them.
+- **BREAKING -- `cyberchef_bake` and `cyberchef_batch` are priced by the recipe they carry**, not
+  by an `openWorldHint` that assumed every recipe might reach the network. 502 of 504 operations
+  need only `cyberchef:read`, so a local recipe through `bake` cost `network` while the same
+  operation as its own tool cost `read`. Strongest wins, so one networked operation still costs
+  `network`. `cyberchef_recipe_execute` is deliberately excluded -- resolving its id would move the
+  authorization check after a storage read.
+- **List results carry real cache TTLs.** The SDK already emitted `ttlMs`/`cacheScope` and defaulted
+  them to `{0, private}` -- conformant, and telling every client to cache nothing. `tools/list` is
+  10 minutes (private, 5 minutes, when auth makes it caller-dependent), `prompts/list` and
+  `resources/templates/list` an hour, `server/discover` 10 minutes. `resources/list` and
+  `resources/read` stay at zero: saved recipes change on any caller's write, and no `listChanged`
+  capability is declared, so the TTL is a client's only invalidation signal.
+- **`tools/list` returns a deterministic order** -- meta, registry, operations, each sorted by code
+  unit. The spec says SHOULD, for client and prompt caching.
+- **The planning corpus was retired.** 26 superseded documents carry dated banners naming what
+  replaced them; `ROADMAP.md`'s header, gantt, release table, v3.0.0 breaking-changes section and
+  beyond-v3.0.0 vision are corrected against what shipped. Planning for v3.0.0 onward is in
+  `docs/planning/v3/`: one deep plan, one-page charters, and a mandatory re-measurement gate.
+
+### Added
+
+- **Server spans join the caller's trace.** A `traceparent` in `_meta` becomes the span's parent
+  instead of the server starting a root; all-zero trace and span ids are rejected rather than
+  joined.
+- **`npm run check:versions` asserts the package major**, not only the version, in
+  `docker-compose.yml`, `values.yaml` and `server.json`. Its own compose pattern matched
+  `cyberchef-mcp_v2` literally, which made the gate itself expire at this release.
+- **`server.json` is in the version gate.** It had been stale at `2.4.1` for six releases because
+  nothing was looking at it.
+
+### Fixed
+
+- **`npm publish` would have silently skipped this tag.** Three steps in `mcp-release.yml` were
+  guarded `if: startsWith(github.ref_name, 'v2.')` -- written to exclude the v1.9.x line, but
+  phrased as an allowlist of the then-current major, so it excluded every major after it too. A
+  skipped `if:` is a green step, so this was unobservable until the one tag that trips it. Now
+  written as the exclusion it always meant, and simulated across majors before commit.
+- **`rbac.visibleTools()` was dead code.** Shipped in v2.5.0 with a passing unit test, and called
+  from nowhere for five releases. Tested-but-unwired is worse than absent: the green test says the
+  capability is there.
+
 ## [2.10.0] - 2026-09-03
 
 The configuration file this project has told users to write since v1.8.0 now exists.
