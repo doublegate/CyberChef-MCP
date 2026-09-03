@@ -66,6 +66,12 @@ recipes.json.backup
 recipes.json.bak
 recipes.json.*.tmp
 
+# The local configuration file (v2.10.0). It is a DEPLOYMENT's settings, not the project's, and it
+# can carry an auth issuer, a JWKS URI and an operation allowlist -- committing one would publish
+# one site's posture and silently impose it on everyone who checks the repository out, since the
+# server reads ./cyberchef.config.json by default.
+cyberchef.config.json
+
 # Reference checkouts for the external-project integration work (docs/planning/ext-proj-int/).
 # `ref-proj/CyberChef` is a tracked submodule and stays visible -- see the note below; the other
 # clones are local working copies of third-party repositories and are nobody else's business.

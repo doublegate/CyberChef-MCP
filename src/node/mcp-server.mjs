@@ -15,6 +15,10 @@
 // `help` is NOT imported eagerly. src/node/index.mjs pulls all 505 operation implementations
 // and costs ~1150 ms -- 88% of this server's startup -- for a function used by exactly one
 // tool. See lib/node-api.mjs for the measurement.
+// FIRST, and it must stay first. Settings are read at module load into constants, so
+// `cyberchef.config.json` has to reach `process.env` before any module that reads one is
+// evaluated. ES imports run depth-first in source order, which is the entire mechanism.
+import { configFileResult } from "./lib/bootstrap-config.mjs";
 import { loadNodeApi } from "./lib/node-api.mjs";
 import { Server } from "@modelcontextprotocol/server";
 import { z } from "zod";
@@ -1783,6 +1787,16 @@ async function runServer() {
     // v1.8.0 configuration
     logger.info(`V2 compatibility mode: ${V2_COMPATIBILITY_MODE ? "enabled" : "disabled"}`);
     logger.info(`Deprecation warnings: ${SUPPRESS_DEPRECATIONS ? "suppressed" : "enabled"}`);
+    // Which settings came from a file, and which the environment overrode. Reported because the
+    // defect this replaced was a configuration file being applied to nothing with no way to tell:
+    // "it loaded" has to be visible, and so does "your file said X and the environment said Y".
+    if (configFileResult.path) {
+        logger.info(`Config file: ${configFileResult.path} ` +
+            `(${configFileResult.applied.length} setting${configFileResult.applied.length === 1 ? "" : "s"} applied` +
+            `${configFileResult.deferredToEnv.length ?
+                `, ${configFileResult.deferredToEnv.length} overridden by environment: ${configFileResult.deferredToEnv.join(", ")}` :
+                ""})`);
+    }
     const allOps = Object.keys(OperationConfig);
     logger.info(describeSurface(allOps.filter(isExposed).length, allOps.length));
     logger.info("=====================================");
