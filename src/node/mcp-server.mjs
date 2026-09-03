@@ -30,6 +30,15 @@ import { currentAuth, insufficientScopeChallenge, loadAuthConfig } from "./lib/a
 import {
     authorise, visibleTools, requiredScopesForRecipe, RECIPE_SCOPED_TOOLS
 } from "./lib/rbac.mjs";
+import { serverCacheHints } from "./lib/cache-hints.mjs";
+
+/**
+ * Cache hints for the list results, resolved once.
+ *
+ * Auth is a process-wide setting, so whether `tools/list` is shareable is decidable here rather
+ * than per request. Validated by the SDK at construction, so a bad value fails startup.
+ */
+const CACHE_HINTS = serverCacheHints(loadAuthConfig().enabled);
 import { audit, OUTCOME } from "./lib/audit.mjs";
 import { currentTenant, callerKey } from "./lib/tenancy.mjs";
 import { listPrompts, getPrompt } from "./lib/prompts.mjs";
@@ -326,7 +335,7 @@ const server = new Server(
         name: "cyberchef-mcp",
         version: VERSION,
     },
-    { capabilities: SERVER_CAPABILITIES }
+    { capabilities: SERVER_CAPABILITIES, cacheHints: CACHE_HINTS }
 );
 
 
@@ -1689,7 +1698,7 @@ function createMcpServer() {
             name: "cyberchef-mcp",
             version: VERSION,
         },
-        { capabilities: SERVER_CAPABILITIES }
+        { capabilities: SERVER_CAPABILITIES, cacheHints: CACHE_HINTS }
     );
     registerHandlers(instance);
     return instance;

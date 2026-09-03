@@ -26,6 +26,9 @@ import { validateInputSize, toolArgName, assertKnownArgs } from "../../src/node/
 import {
     installWasmFetch, isWasmFetchInstalled, _servableWasmPathForTest
 } from "../../src/node/lib/wasm-fetch.mjs";
+import { serverCacheHints } from "../../src/node/lib/cache-hints.mjs";
+import { requiredScopesForRecipe } from "../../src/node/lib/rbac.mjs";
+import { readResource } from "../../src/node/lib/resources.mjs";
 
 describe("dish-output: presenting a baked result", () => {
     it("passes a string value through untouched", () => {
@@ -776,5 +779,89 @@ describe("LRUCache: the key must identify the input, not resemble it", () => {
         const cache = new LRUCache();
         expect(cache.getCacheKey("To Hex", "a".repeat(1500), []))
             .not.toBe(cache.getCacheKey("To Hex", "a".repeat(1501), []));
+    });
+});
+
+describe("cache hints", () => {
+    it("shortens and unshares tools/list when auth is on", () => {
+        // With scope filtering the answer varies by token, so it stops being shareable. Five
+        // minutes is bounded by a typical access-token lifetime, not by how often the surface
+        // changes -- a re-scoped token has to start seeing its new tools promptly.
+        const off = serverCacheHints(false);
+        const on = serverCacheHints(true);
+
+        expect(off["tools/list"]).toEqual({ ttlMs: 600_000, cacheScope: "public" });
+        expect(on["tools/list"]).toEqual({ ttlMs: 300_000, cacheScope: "private" });
+    });
+
+    it("tells clients not to cache the results that can change under them", () => {
+        // Saved recipes change on any caller's write and are tenant-partitioned, and this server
+        // emits no list-changed notification -- so the TTL is the only invalidation signal there
+        // is, and any non-zero value would serve a stale list with no way to know.
+        for (const enabled of [false, true]) {
+            const hints = serverCacheHints(enabled);
+            expect(hints["resources/list"]).toEqual({ ttlMs: 0, cacheScope: "private" });
+            expect(hints["resources/read"]).toEqual({ ttlMs: 0, cacheScope: "private" });
+        }
+    });
+
+    it("covers exactly the methods the spec makes cacheable", () => {
+        // A method missing here silently inherits the SDK's conservative default, which is a
+        // correctness question rather than a formatting one: it tells clients to cache nothing.
+        expect(Object.keys(serverCacheHints(false)).sort()).toEqual([
+            "prompts/list", "resources/list", "resources/read",
+            "resources/templates/list", "server/discover", "tools/list"
+        ]);
+    });
+
+    it("emits only values the SDK will accept", () => {
+        // assertValidCacheHint throws a RangeError at CONSTRUCTION, so a bad value here fails
+        // startup rather than encode. Pinning the contract keeps that failure impossible.
+        for (const enabled of [false, true]) {
+            for (const hint of Object.values(serverCacheHints(enabled))) {
+                expect(Number.isSafeInteger(hint.ttlMs)).toBe(true);
+                expect(hint.ttlMs).toBeGreaterThanOrEqual(0);
+                expect(["public", "private"]).toContain(hint.cacheScope);
+            }
+        }
+    });
+});
+
+describe("recipe-derived scopes", () => {
+    const ann = name => ({
+        "To Base64": { readOnlyHint: true },
+        "HTTP request": { readOnlyHint: false, openWorldHint: true },
+        "Mutate": { readOnlyHint: false }
+    })[name];
+
+    it("charges the floor for an empty or unrecognised recipe", () => {
+        // Deliberately not a refusal. A malformed recipe is the engine's to reject; reporting it
+        // as a permission problem would send the caller to fix the wrong thing.
+        expect(requiredScopesForRecipe([], ann)).toEqual(["cyberchef:read"]);
+        expect(requiredScopesForRecipe(undefined, ann)).toEqual(["cyberchef:read"]);
+    });
+
+    it("takes the strongest scope any operation in the recipe needs", () => {
+        expect(requiredScopesForRecipe(["To Base64"], ann)).toEqual(["cyberchef:read"]);
+        expect(requiredScopesForRecipe(["Mutate"], ann)).toEqual(["cyberchef:write"]);
+        expect(requiredScopesForRecipe(["To Base64", "Mutate"], ann)).toEqual(["cyberchef:write"]);
+        // One networked operation makes the whole recipe networked, whatever else is in it.
+        expect(requiredScopesForRecipe(["To Base64", "HTTP request"], ann))
+            .toEqual(["cyberchef:network"]);
+    });
+});
+
+describe("resource errors", () => {
+    it("passes through a failure that is not a missing recipe", async () => {
+        // Only INVALID_INPUT means "no such recipe". A storage failure is not a 404 and must not
+        // be reported as one -- the caller would retry a different id forever.
+        const boom = new Error("disk on fire");
+        boom.code = "OPERATION_FAILED";
+        const manager = { getRecipe: async () => {
+            throw boom;
+        } };
+
+        await expect(readResource(manager, "recipe://11111111-1111-4111-8111-111111111111"))
+            .rejects.toThrow(/disk on fire/);
     });
 });

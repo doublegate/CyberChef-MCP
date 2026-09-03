@@ -58,6 +58,51 @@ const SPAWN = {
 };
 
 describe("protocol eras", () => {
+    it("gives the modern era cache hints on every list result", async () => {
+        // SEP-2549. The SDK fills these from the `cacheHints` constructor option; the values are
+        // this server's judgement about how long each answer stays true.
+        const client = new ModernClient(
+            { name: "cache-hint-probe", version: "0.0.0" },
+            { capabilities: {}, versionNegotiation: { mode: { pin: MODERN } } }
+        );
+        await client.connect(new ModernStdio(SPAWN));
+        try {
+            const tools = await client.listTools();
+            expect(tools.ttlMs).toBe(600_000);
+            // Shareable only because auth is off in this fixture: under scope filtering the answer
+            // varies by token and the hint becomes private. See lib/cache-hints.mjs.
+            expect(tools.cacheScope).toBe("public");
+
+            const prompts = await client.listPrompts();
+            expect(prompts.ttlMs).toBe(3_600_000);
+
+            // The volatile one. Saved recipes change on any caller's write and are partitioned by
+            // tenant, and this server emits no list-changed notification -- so there is no
+            // invalidation signal other than the TTL, and the only honest TTL is zero.
+            const resources = await client.listResources();
+            expect(resources.ttlMs).toBe(0);
+            expect(resources.cacheScope).toBe("private");
+        } finally {
+            await client.close();
+        }
+    }, BOOT_TIMEOUT_MS);
+
+    it("does NOT put cache hints on the 2025 wire", async () => {
+        // The reason these go through the constructor option rather than being returned by the
+        // handlers: the legacy codec passes a result through unchanged, so a handler-returned
+        // ttlMs would reach every deployed v1-SDK client as an unrecognised field.
+        const client = new LegacyClient({ name: "legacy-cache-probe", version: "0.0.0" },
+            { capabilities: {} });
+        await client.connect(new LegacyStdio(SPAWN));
+        try {
+            const tools = await client.listTools();
+            expect(tools.ttlMs).toBeUndefined();
+            expect(tools.cacheScope).toBeUndefined();
+        } finally {
+            await client.close();
+        }
+    }, BOOT_TIMEOUT_MS);
+
     it("serves the modern era to a client that pins 2026-07-28", async () => {
         const client = new ModernClient(
             { name: "modern-probe", version: "0.0.0" },
