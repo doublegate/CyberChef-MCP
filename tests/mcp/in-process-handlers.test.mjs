@@ -349,6 +349,38 @@ describe("in-process handlers: the navigation hierarchy", () => {
             await close();
         }
     });
+
+    it("names the missing argument instead of describing nothing", async () => {
+        // ADDED IN v3.1.0. `operations` is required and nothing enforced it, so a call using the
+        // singular `operation` -- the tool's own name, and the spelling this repository's prose
+        // uses -- reached `describeOperations(undefined)` and answered "No such operation" for an
+        // operation named `""`, with `isError` unset. Findings log F-05.
+        //
+        // There is a sibling of this test in `tool-surface.test.mjs` that drives a SPAWNED server
+        // through a real client. It proves the behaviour and contributes NO coverage: v8 does not
+        // instrument the child process, so the guard read as four uncovered lines until this
+        // in-process case existed. Both are kept -- the spawned one proves it over the wire, this
+        // one measures it -- and the asymmetry is worth knowing before chasing a patch-coverage
+        // failure for code a passing test already exercises.
+        const { client, close } = await connected();
+        try {
+            const wrong = await client.callTool({
+                name: "cyberchef_describe_operation", arguments: { operation: "To Base64" }
+            });
+
+            expect(wrong.isError).toBe(true);
+            expect(wrong.content[0].text).toMatch(/requires `operations`/);
+            expect(wrong.content[0].text).not.toMatch(/No such operation/);
+
+            // Null is the other way to arrive with nothing, and it takes the same branch.
+            const nulled = await client.callTool({
+                name: "cyberchef_describe_operation", arguments: { operations: null }
+            });
+            expect(nulled.isError).toBe(true);
+        } finally {
+            await close();
+        }
+    });
 });
 
 describe("in-process handlers: recipe management", () => {
