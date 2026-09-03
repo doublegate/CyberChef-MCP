@@ -256,6 +256,26 @@ describe("resources", () => {
 });
 
 describe("capabilities", () => {
+    it("does not advertise tasks, extensions or logging", async () => {
+        // A tripwire, not pedantry. `@modelcontextprotocol/server` is pinned `^2.0.0`, so a 2.x
+        // minor that began auto-declaring any of these would ship silently and promise handlers
+        // this server does not have -- a client would call something that answers "method not
+        // found", which is worse than not advertising it.
+        //
+        // tasks was assessed for v3.0.0 and declined: streaming plus progress notifications
+        // already cover long operations, and the extension needs state outliving the request,
+        // which this server deliberately has none of. Logging, Roots and Sampling are all
+        // deprecated by 2026-07-28 and were never declared here.
+        const { client, close } = await connected();
+        try {
+            const caps = client.getServerCapabilities();
+            expect(caps.tasks).toBeUndefined();
+            expect(caps.extensions).toBeUndefined();
+            expect(caps.logging).toBeUndefined();
+        } finally {
+            await close();
+        }
+    });
     it("advertises exactly the surfaces it serves", async () => {
         const { client, close } = await connected();
         try {

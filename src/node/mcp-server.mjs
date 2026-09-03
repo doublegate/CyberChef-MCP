@@ -243,7 +243,7 @@ import {
     executeWithStreamingProgress
 } from "./streaming.mjs";
 import { createTransport, getTransportType } from "./transports.mjs";
-import { withServerSpan, ATTR } from "./lib/otel.mjs";
+import { withServerSpan, ATTR, parentContextFrom } from "./lib/otel.mjs";
 import {
     initWorkerPool,
     shouldUseWorker,
@@ -329,6 +329,34 @@ const SERVER_CAPABILITIES = {
     prompts: {},
     resources: {}
 };
+
+/*
+ * WHY `tasks` AND `extensions` ARE NOT HERE (assessed for v3.0.0, decided against)
+ *
+ * 2026-07-28 moves long-running work into an official extension,
+ * `io.modelcontextprotocol/tasks` -- `tasks/get` polling, `tasks/update` for client input -- and
+ * adds an `extensions` field to `ServerCapabilities`. Both were considered and neither is declared.
+ *
+ * 1. The problem is already solved differently here. `streaming.mjs` plus progress notifications
+ *    cover long operations, and the worker pool keeps them off the event loop. CyberChef
+ *    operations run in seconds; a polling model buys nothing for work that finishes before a
+ *    client could poll twice.
+ *
+ * 2. There is nowhere to put the state. Tasks need state outliving the request, and this server
+ *    deliberately has none: HTTP builds a Server per session and stdio pins one per connection.
+ *    Adding a process-wide store re-opens the cross-client isolation issue #36 was filed for and
+ *    the tenant partitioning in recipe-storage.
+ *
+ * 3. The rule immediately above forbids it. A capability listed here MUST have a handler, and
+ *    tasks is a subsystem -- a store, a retention policy, three methods -- not a declaration.
+ *
+ * An empty `extensions: {}` is likewise omitted rather than added for completeness: it advertises
+ * nothing and would read to the next person as an intent that does not exist.
+ *
+ * `tests/mcp/prompts-resources.test.mjs` asserts both are absent. That is a tripwire, not
+ * pedantry: `@modelcontextprotocol/server` is pinned `^2.0.0`, and a 2.x minor that began
+ * auto-declaring either would otherwise ship silently and promise handlers that are not here.
+ */
 
 const server = new Server(
     {
@@ -888,7 +916,12 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
         // does not opt in.
         attributes: typeof request?.params?.arguments?.input === "string" ?
             { [ATTR.INPUT_BYTES]: Buffer.byteLength(request.params.arguments.input, "utf8") } :
-            {}
+            {},
+        // The caller's trace, when they sent one. Without this every span here is a ROOT --
+        // correct in isolation and useless for answering "what did that agent's call actually
+        // do", because the client's span and the server's span sit in two unconnected trees.
+        // Reads `_meta` only; `params.arguments` is never touched.
+        parent: parentContextFrom(request?.params?._meta)
     }, () => handleCallToolInner(request, extra, ownerServer));
 };
 

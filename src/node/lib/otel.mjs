@@ -52,7 +52,9 @@
  * @license GPL-3.0-or-later
  */
 
-import { trace, metrics, SpanStatusCode, SpanKind, context } from "@opentelemetry/api";
+import {
+    trace, metrics, SpanStatusCode, SpanKind, context, propagation
+} from "@opentelemetry/api";
 import { VERSION } from "./config.mjs";
 
 /** Instrumentation scope, as it will appear in a backend. */
@@ -127,7 +129,7 @@ function getDurationHistogram() {
  * @param {Function} fn - The work. Receives the span.
  * @returns {Promise<*>} Whatever `fn` returns.
  */
-export async function withServerSpan({ method, tool, transport, attributes = {} }, fn) {
+export async function withServerSpan({ method, tool, transport, attributes = {}, parent }, fn) {
     const name = tool ? `${method} ${tool}` : method;
     const span = getTracer().startSpan(name, {
         kind: SpanKind.SERVER,
@@ -137,7 +139,9 @@ export async function withServerSpan({ method, tool, transport, attributes = {} 
             ...(transport ? { [ATTR.TRANSPORT]: transport } : {}),
             ...attributes
         }
-    });
+    // Third argument, so an absent `parent` is exactly today's behaviour: `startSpan` falls back
+    // to `context.active()`. Every existing call site is unaffected.
+    }, parent);
 
     const started = process.hrtime.bigint();
     let errorType;
@@ -260,4 +264,63 @@ export function _resetOtelForTest() {
     tracer = null;
     meter = null;
     durationHistogram = null;
+}
+
+/**
+ * W3C `traceparent`, strictly.
+ *
+ * `00-<32 hex trace id>-<16 hex span id>-<2 hex flags>`, with all-zero ids rejected because the
+ * spec defines them as the INVALID sentinel. Accepting one would parent every span onto a trace
+ * that cannot exist, which is worse than not parenting at all -- the spans would be silently
+ * unreachable rather than obviously root.
+ */
+const TRACEPARENT = /^00-(?!0{32})([0-9a-f]{32})-(?!0{16})([0-9a-f]{16})-([0-9a-f]{2})$/;
+
+/**
+ * The caller's trace, from a request's `_meta`, or undefined.
+ *
+ * 2026-07-28 documents `traceparent`, `tracestate` and `baggage` as `_meta` keys, so a client can
+ * hand a server its trace and see one span tree instead of two. Without this, every span this
+ * server emits is a ROOT -- correct in isolation, useless for answering "what did that call do".
+ *
+ * WHY THERE IS A MANUAL PARSE BELOW
+ * --------------------------------
+ * `propagation.extract` is tried first and is the right path, but this module depends on the
+ * OpenTelemetry **API only** -- deliberately, at 1 package against the SDK's 71. The API's global
+ * propagator is a no-op until something registers one, and registering one is the operator's job.
+ * So on a server whose operator wired an exporter but no propagator, `extract` returns a context
+ * with no span, and the trace silently fails to join. The fallback parses the header itself, which
+ * is 40 characters of well-specified string.
+ *
+ * `baggage` is NOT extracted unless `CYBERCHEF_OTEL_BAGGAGE=true`. It is caller-controlled
+ * key/value data that some SDK configurations promote onto span attributes, and this module's
+ * standing rule is that caller content does not reach a telemetry backend. Trace and span ids are
+ * opaque identifiers and carry none.
+ *
+ * @param {Object} [meta] - The request's `_meta`.
+ * @returns {Object|undefined} A context to parent onto, or undefined to start a root span.
+ */
+export function parentContextFrom(meta) {
+    const traceparent = meta?.traceparent;
+    if (typeof traceparent !== "string") return undefined;
+
+    const carrier = { traceparent };
+    if (typeof meta.tracestate === "string") carrier.tracestate = meta.tracestate;
+    if (process.env.CYBERCHEF_OTEL_BAGGAGE === "true" && typeof meta.baggage === "string") {
+        carrier.baggage = meta.baggage;
+    }
+
+    const extracted = propagation.extract(context.active(), carrier);
+    if (trace.getSpanContext(extracted)) return extracted;
+
+    // No propagator registered. Parse it ourselves rather than lose the parent.
+    const match = TRACEPARENT.exec(traceparent);
+    if (!match) return undefined;
+    const [, traceId, spanId, flags] = match;
+    return trace.setSpanContext(context.active(), {
+        traceId,
+        spanId,
+        traceFlags: parseInt(flags, 16),
+        isRemote: true
+    });
 }
