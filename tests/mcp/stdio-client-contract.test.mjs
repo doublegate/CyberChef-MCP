@@ -77,6 +77,32 @@ describe("stdio contract, via the official MCP client", () => {
         expect(tools.length).toBeGreaterThan(500);
     });
 
+it("returns tools in the same order every time", async () => {
+        // The 2026-07-28 spec asks for deterministic order so a client can cache the list and so
+        // an unchanged prefix keeps hitting an LLM's prompt cache. Byte equality of the whole
+        // payload is what a client actually caches on, so that is what is asserted.
+        const first = await client.listTools();
+        const second = await client.listTools();
+        expect(JSON.stringify(second.tools)).toBe(JSON.stringify(first.tools));
+    });
+
+    it("sorts within each tier, and keeps the navigation tier first", async () => {
+        // Three tiers -- meta, registry, operation -- each sorted, then concatenated. A single
+        // flat sort would bury cyberchef_bake among 504 alphabetically-earlier operation names,
+        // which is the opposite of what the index surface is for. Tier order is part of the
+        // contract, so both halves are pinned.
+        const { tools } = await client.listTools();
+        const names = tools.map(t => t.name);
+
+        expect(names[0]).toBe("cyberchef_bake");
+
+        // Every tier is individually non-decreasing. Tier boundaries are found by the sort
+        // resetting, which is exactly the property being asserted, so count them instead: three
+        // tiers means at most two descents across the whole list.
+        const descents = names.filter((n, i) => i > 0 && names[i - 1] > n).length;
+        expect(descents).toBeLessThanOrEqual(2);
+    });
+
     it("gives EVERY tool a non-empty object input schema", () => {
         // The regression, stated as the thing that was actually wrong. Before the fix this found
         // all 524; an assertion on "some tool" would have passed against a totally broken server.

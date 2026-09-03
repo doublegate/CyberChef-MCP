@@ -729,8 +729,9 @@ const handleListTools = async () => {
     // default payload, and there are a handful of these. They carry their own annotations,
     // because what is read-only or open-world about them is a property of the tool rather than of
     // its name.
+    const registryTools = [];
     for (const tool of toolRegistry.list()) {
-        tools.push({
+        registryTools.push({
             name: ToolRegistry.exposedName(tool.name),
             description: tool.description,
             inputSchema: toInputSchema(tool.inputSchema),
@@ -739,6 +740,7 @@ const handleListTools = async () => {
         });
     }
 
+    const operationTools = [];
     Object.keys(OperationConfig).forEach(opName => {
         // The default surface is `index`, which pre-loads no ordinary operation tools at all;
         // `curated` and `all` pre-load progressively more, and CYBERCHEF_TOOL_ALLOWLIST overrides
@@ -752,7 +754,7 @@ const handleListTools = async () => {
 
         try {
             const argsSchema = mapArgsToZod(op.args || [], opName);
-            tools.push({
+            operationTools.push({
                 name: toolName,
                 description: summariseDescription(op.description) || opName,
                 inputSchema: toInputSchema(z.object(argsSchema)),
@@ -774,8 +776,32 @@ const handleListTools = async () => {
         }
     });
 
-    return { tools };
+    // Deterministic order, which the 2026-07-28 spec asks for so clients can cache a list and so
+    // an unchanged prefix keeps hitting an LLM's prompt cache.
+    //
+    // THREE TIERS, EACH SORTED, THEN CONCATENATED -- not one flat sort. The front of the list is
+    // what a model reads first, and the meta-tools are the navigation surface: on the default
+    // `index` surface they are nearly the whole list, and burying `cyberchef_bake` among 504
+    // alphabetically-earlier operation names would make the catalogue harder to enter, not easier.
+    // Tier order is itself part of the contract.
+    //
+    // `byName` compares CODE UNITS, deliberately not `localeCompare`: that is locale- and
+    // ICU-dependent, so the same server would order its tools differently on two hosts -- which is
+    // precisely the non-determinism this is meant to remove.
+    return { tools: [...tools.sort(byName), ...registryTools.sort(byName), ...operationTools.sort(byName)] };
 };
+
+/**
+ * Order two tools by name, by code unit.
+ *
+ * @param {Object} a - A tool.
+ * @param {Object} b - Another tool.
+ * @returns {number} Negative, zero or positive.
+ */
+function byName(a, b) {
+    if (a.name === b.name) return 0;
+    return a.name < b.name ? -1 : 1;
+}
 
 /**
  * `tools/call`, wrapped in an OpenTelemetry server span.

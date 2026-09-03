@@ -26,7 +26,8 @@
  * @license GPL-3.0-or-later
  */
 
-import { createInputError } from "../errors.mjs";
+import { ProtocolError, ProtocolErrorCode, ResourceNotFoundError } from "@modelcontextprotocol/server";
+import { ErrorCodes } from "../errors.mjs";
 
 /** The scheme this server serves. */
 const SCHEME = "recipe://";
@@ -84,13 +85,31 @@ export async function listResources(manager) {
  * @throws {Error} If the URI is not a recipe URI, or names no recipe.
  */
 export async function readResource(manager, uri) {
+    // WHY THESE THROW SDK ERRORS AND NOT `createInputError`
+    //
+    // `CyberChefMCPError.code` is a STRING (`"INVALID_INPUT"`). The SDK dispatcher keeps a thrown
+    // error's code only when it is a safe integer and otherwise substitutes Internal Error, so
+    // every failure here answered **-32603 Internal Error, with no `data`**. Measured through a
+    // real client before fixing:
+    //
+    //     recipe://00000000-0000-4000-8000-000000000000   code=-32603 data=undefined
+    //     file:///etc/passwd                              code=-32603 data=undefined
+    //
+    // A caller could not tell "that resource does not exist" from "the server broke", and the
+    // 2026-07-28 spec is explicit that resource-not-found is -32602 (Invalid Params).
+    //
+    // The comment that used to sit here said context had to go in the MESSAGE because the SDK
+    // carried `message` alone "with `data` null". That was true of the SDK this code was written
+    // against; the modern codec carries `data`, so the workaround outlived its reason. Messages
+    // stay self-sufficient anyway -- that costs nothing and survives the next SDK change.
+    //
+    // `ErrorCodes` are still correct everywhere else: they are CONTENT codes for `isError: true`
+    // tool results, which is a different channel from a JSON-RPC error.
     if (typeof uri !== "string" || !uri.startsWith(SCHEME)) {
-        // The scheme goes in the MESSAGE, not only in the context: the SDK turns a throw from a
-        // resource handler into a JSON-RPC error carrying `message` alone, with `data` null, so
-        // context reaches this server's logs and never reaches the caller.
-        throw createInputError(
-            `Unsupported resource URI: ${uri}. This server serves ${SCHEME}<id>.`, {
-                uri,
+        throw new ProtocolError(
+            ProtocolErrorCode.InvalidParams,
+            `Unsupported resource URI: ${uri}. This server serves ${SCHEME}<id>.`,
+            {
                 supported: `${SCHEME}<id>`,
                 hint: "cyberchef_recipe_list reports the ids this server serves."
             });
@@ -98,12 +117,24 @@ export async function readResource(manager, uri) {
 
     const id = uri.slice(SCHEME.length);
     if (!id) {
-        throw createInputError(`No recipe id in URI: ${uri}`, { uri, supported: `${SCHEME}<id>` });
+        throw new ProtocolError(
+            ProtocolErrorCode.InvalidParams,
+            `No recipe id in URI: ${uri}`,
+            { supported: `${SCHEME}<id>` });
     }
 
-    // `getRecipe` throws a structured "Recipe not found" for an unknown id, which is the right
-    // error and needs no translation here.
-    const recipe = await manager.getRecipe(id);
+    // A MISSING resource is not a malformed request, and the two are distinguishable to a caller
+    // only by `data.uri` -- which is the shape the SDK documents clients to recognise
+    // resource-not-found by. `getRecipe` throws the string-coded error, which is right for
+    // `cyberchef_recipe_get` (a tool result) and wrong on the wire, so it is translated HERE
+    // rather than changed at the source.
+    let recipe;
+    try {
+        recipe = await manager.getRecipe(id);
+    } catch (error) {
+        if (error?.code === ErrorCodes.INVALID_INPUT) throw new ResourceNotFoundError(uri);
+        throw error;
+    }
 
     return {
         contents: [{
