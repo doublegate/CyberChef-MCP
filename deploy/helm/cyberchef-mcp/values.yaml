@@ -26,7 +26,7 @@ image:
   pullPolicy: IfNotPresent
   # Pinned rather than "latest". A chart that floats its tag cannot be rolled back to a known
   # state, and `latest` moves on every release.
-  tag: "2.8.1"
+  tag: "2.10.0"
 
 imagePullSecrets: []
 nameOverride: ""
@@ -127,6 +127,32 @@ drain:
   delaySeconds: 5
   timeoutSeconds: 20
 terminationGracePeriodSeconds: 45
+
+# The server configuration file, rendered into a ConfigMap and mounted at
+# /app/cyberchef.config.json. Empty means no file, and the server behaves exactly as it did
+# before v2.10.0 -- everything through environment variables.
+#
+# Sections and settings: docs/guides/configuration.md. An unknown section or setting STOPS the
+# server with a message naming it, which is the reason to prefer this over a pile of extraEnv
+# strings: a misspelt environment variable is silently ignored, and a misspelt key here is not.
+#
+# NOTE ON PRECEDENCE. Environment beats file, and this chart sets CYBERCHEF_TRANSPORT,
+# CYBERCHEF_HTTP_HOST, CYBERCHEF_HTTP_PORT and CYBERCHEF_HTTP_PATH itself because the pod cannot
+# serve without them. Putting server.transport or http.port here will NOT take effect; the startup
+# log names every setting the environment overrode. Use service.port and the chart values instead.
+#
+# Changing this rolls the pods: the file is read once at startup, so a checksum annotation forces
+# a restart rather than letting a successful helm upgrade leave the old settings running.
+#
+# config:
+#   security:
+#     offline: true
+#     maxRegexLength: 500
+#   tools:
+#     surface: curated
+#   cache:
+#     maxSize: 52428800
+config: {}
 
 persistence:
   # Saved recipes. Off by default: with no volume, recipes live in the container filesystem and

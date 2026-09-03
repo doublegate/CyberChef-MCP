@@ -1,0 +1,27 @@
+{{- if .Values.config }}
+{{/*
+  The server's own configuration file, rendered from `.Values.config`.
+
+  WHY A FILE RATHER THAN MORE ENV VARS
+  There are 64 settings. Expressing a non-trivial deployment through `extraEnv` means 64 possible
+  string entries with nothing validating them: a misspelt variable name is indistinguishable from
+  an unset one, so it is silently ignored. In the file, an unknown key stops the server with a
+  message naming it -- which is the whole point of the file existing (see docs/guides/configuration.md).
+
+  PRECEDENCE, WHICH MATTERS HERE
+  Environment beats file. This chart sets CYBERCHEF_TRANSPORT, CYBERCHEF_HTTP_HOST,
+  CYBERCHEF_HTTP_PORT and CYBERCHEF_HTTP_PATH as env vars because the pod cannot work without them,
+  so putting `server.transport` or `http.port` in `.Values.config` will NOT take effect -- the
+  chart's own env wins, and the startup log will say so by name. Set those through `service.port`
+  and the chart's own values instead.
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "cyberchef-mcp.fullname" . }}-config
+  labels:
+    {{- include "cyberchef-mcp.labels" . | nindent 4 }}
+data:
+  cyberchef.config.json: |
+    {{- toJson .Values.config | nindent 4 }}
+{{- end }}

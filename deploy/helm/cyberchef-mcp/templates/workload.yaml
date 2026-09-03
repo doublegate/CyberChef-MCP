@@ -26,13 +26,20 @@ spec:
   template:
     metadata:
       {{- $scrape := include "cyberchef-mcp.scrapeAnnotations" . }}
-      {{- if or .Values.podAnnotations (trim $scrape) }}
+      {{- if or .Values.podAnnotations (trim $scrape) .Values.config }}
       annotations:
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
         {{- with trim $scrape }}
         {{- nindent 8 . }}
+        {{- end }}
+        {{- if .Values.config }}
+        # Rolls the pods when the configuration changes. A ConfigMap edit does not restart
+        # anything on its own, and the server reads its file once at startup -- so without this,
+        # `helm upgrade` would report success and the running pods would keep the old settings
+        # until something unrelated happened to restart them.
+        checksum/config: {{ toJson .Values.config | sha256sum }}
         {{- end }}
       {{- end }}
       labels:
@@ -84,6 +91,14 @@ spec:
             # readOnlyRootFilesystem is on, so anything the process writes needs a volume.
             - name: tmp
               mountPath: /tmp
+            {{- if .Values.config }}
+            # subPath so the mount adds one file rather than replacing /app, and readOnly because
+            # the server only ever reads it.
+            - name: config
+              mountPath: /app/cyberchef.config.json
+              subPath: cyberchef.config.json
+              readOnly: true
+            {{- end }}
             {{- if .Values.persistence.enabled }}
             - name: recipes
               mountPath: {{ .Values.persistence.mountPath }}
@@ -91,6 +106,11 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
+        {{- if .Values.config }}
+        - name: config
+          configMap:
+            name: {{ include "cyberchef-mcp.fullname" . }}-config
+        {{- end }}
         {{- if and .Values.persistence.enabled (not .Values.persistence.perReplica) }}
         # A single shared claim. Only correct with ONE replica: sharing recipe storage between
         # replicas makes them conflict, and the server refuses the stale write rather than losing
