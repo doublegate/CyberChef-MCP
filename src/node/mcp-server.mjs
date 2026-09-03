@@ -27,12 +27,14 @@ import OperationConfig from "../core/config/OperationConfig.json" with {type: "j
 import { toContentBlocks } from "./lib/content-blocks.mjs";
 import { annotationsForOperation, annotationsForMetaTool } from "./lib/tool-annotations.mjs";
 import { currentAuth, insufficientScopeChallenge, loadAuthConfig } from "./lib/auth.mjs";
-import { authorise } from "./lib/rbac.mjs";
+import {
+    authorise, visibleTools, requiredScopesForRecipe, RECIPE_SCOPED_TOOLS
+} from "./lib/rbac.mjs";
 import { audit, OUTCOME } from "./lib/audit.mjs";
 import { currentTenant, callerKey } from "./lib/tenancy.mjs";
 import { listPrompts, getPrompt } from "./lib/prompts.mjs";
 import { listResources, readResource, listResourceTemplates } from "./lib/resources.mjs";
-import { bakeOnCore } from "./lib/core-recipe.mjs";
+import { bakeOnCore, toCoreRecipe } from "./lib/core-recipe.mjs";
 import { assertOfflineAllowed } from "./lib/offline.mjs";
 import { runMagic, renderMagicReport } from "./lib/magic.mjs";
 import { isExposed, describeSurface } from "./lib/tool-surface.mjs";
@@ -788,8 +790,50 @@ const handleListTools = async () => {
     // `byName` compares CODE UNITS, deliberately not `localeCompare`: that is locale- and
     // ICU-dependent, so the same server would order its tools differently on two hosts -- which is
     // precisely the non-determinism this is meant to remove.
-    return { tools: [...tools.sort(byName), ...registryTools.sort(byName), ...operationTools.sort(byName)] };
+    const ordered = [...tools.sort(byName), ...registryTools.sort(byName), ...operationTools.sort(byName)];
+
+    // Scope filtering, finally wired.
+    //
+    // `visibleTools` has existed since v2.5.0 with a unit test asserting it works, and nothing
+    // called it -- so a token was listed tools it would be refused at dispatch. Tested-but-unwired
+    // is a worse state than absent: the green test says the capability is there.
+    //
+    // BUILD, then SORT, then FILTER. `isExposed` above is a SURFACE decision (which schemas are
+    // worth pre-loading); this is an AUTHORISATION decision on the finished list, where the
+    // annotations are already attached. The two are orthogonal and stay that way.
+    //
+    // `currentAuth()` is null on stdio and whenever authorization is disabled -- the default -- so
+    // this changes nothing for a deployment that has not asked for scopes.
+    const caller = currentAuth();
+    return { tools: caller ? visibleTools(ordered, caller.scopes) : ordered };
 };
+
+/**
+ * The scopes this specific call needs, when they come from a recipe rather than a tool name.
+ *
+ * Returns `undefined` for everything else, which leaves `authorise` on its annotation-derived
+ * path -- so this can only ever refine the three tools it knows about, never widen the check.
+ *
+ * @param {string} name - The tool being called.
+ * @param {Object} args - The call arguments.
+ * @returns {string[]|undefined} Required scopes, or undefined to use the annotations.
+ */
+function recipeScopesFor(name, args) {
+    if (!RECIPE_SCOPED_TOOLS.has(name)) return undefined;
+
+    let operationNames = [];
+    if (name === "cyberchef_bake") {
+        operationNames = toCoreRecipe(args?.recipe).map(step => step.op);
+    } else if (name === "cyberchef_batch") {
+        // A batch names TOOLS, not operations, so each is resolved through the same map dispatch
+        // uses. An unresolvable name contributes nothing here and is rejected later by the
+        // dispatcher -- scope checking is not the right place to report a bad tool name.
+        operationNames = (args?.operations ?? [])
+            .map(o => OPERATION_BY_TOOL_NAME.get(o?.tool))
+            .filter(Boolean);
+    }
+    return requiredScopesForRecipe(operationNames, annotationsForOperation);
+}
 
 /**
  * Order two tools by name, by code unit.
@@ -867,7 +911,16 @@ const handleCallToolInner = async (request, extra, ownerServer = server) => {
         const caller = currentAuth();
         if (caller) {
             const annotations = annotationsForToolName(name);
-            const decision = authorise({ granted: caller.scopes, annotations });
+            // A recipe-carrying tool is priced by the recipe it carries, not by its own name, so
+            // `bake([To Base64])` costs exactly what `cyberchef_to_base64` costs -- `read` -- and
+            // `bake([HTTP request])` costs `network`. Without this the same work was priced
+            // differently depending on which door it came through, and the cheaper door was the
+            // one exposing 504 separate tools. Same granularity the offline guard settled on.
+            const decision = authorise({
+                granted: caller.scopes,
+                annotations,
+                required: recipeScopesFor(name, args)
+            });
             if (!decision.allowed) {
                 audit({
                     outcome: OUTCOME.DENIED, tool: name, subject: caller.subject,

@@ -944,20 +944,92 @@ describe("per-tool authorisation at dispatch, against the real server", () => {
         return { status: res.status, text };
     };
 
+/** Open a session with the given token and list tools. @returns {Promise<string[]>} */
+    const listToolNames = async (token) => {
+        const base = `http://127.0.0.1:${port}/mcp`;
+        const headers = {
+            "content-type": "application/json",
+            accept: "application/json, text/event-stream",
+            authorization: `Bearer ${token}`
+        };
+        const init = await fetch(base, {
+            method: "POST", headers,
+            body: JSON.stringify({
+                jsonrpc: "2.0", id: 1, method: "initialize",
+                params: {
+                    protocolVersion: "2025-11-25", capabilities: {},
+                    clientInfo: { name: "rbac-list-test", version: "0.0.0" }
+                }
+            })
+        });
+        const sid = init.headers.get("mcp-session-id");
+        const res = await fetch(base, {
+            method: "POST",
+            headers: { ...headers, "mcp-session-id": sid },
+            body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} })
+        });
+        const text = await res.text();
+        // Streamable HTTP answers as SSE; the JSON-RPC payload is the last `data:` line.
+        const line = text.split("\n").filter(l => l.startsWith("data:")).pop();
+        return JSON.parse(line.slice(5)).result.tools.map(t => t.name);
+    };
+
+    it("does not list a tool the token cannot call", async () => {
+        // `visibleTools` was written in v2.5.0 with a unit test asserting it works, and nothing
+        // called it -- so every token was listed the full surface and learned what it could not
+        // do only by being refused. Tested-but-unwired is worse than absent: the green test says
+        // the capability is there.
+        const names = await listToolNames(mint(SCOPES.READ));
+
+        // A read token may not create recipes, so it is not told it can.
+        expect(names).not.toContain("cyberchef_recipe_create");
+        // ...but it IS told about the navigation tools, and about bake, which it can use with a
+        // local recipe. Listing at the floor is what makes those two facts consistent.
+        expect(names).toContain("cyberchef_search");
+        expect(names).toContain("cyberchef_bake");
+    }, 120000);
+
+    it("lists more to a token carrying more", async () => {
+        const read = await listToolNames(mint(SCOPES.READ));
+        const write = await listToolNames(mint(`${SCOPES.READ} ${SCOPES.WRITE}`));
+
+        expect(write.length).toBeGreaterThan(read.length);
+        expect(write).toContain("cyberchef_recipe_create");
+        // Monotonic: more scope never removes a tool.
+        expect(read.every(n => write.includes(n))).toBe(true);
+    }, 120000);
+
     it("lets a read-scoped token run a pure operation", async () => {
         const out = await callTool(mint(SCOPES.READ), "cyberchef_to_base64", { input: "hi" });
         expect(out.status).toBe(200);
         expect(out.text).toContain("aGk=");
     }, 120000);
 
-    it("REFUSES a read-scoped token a tool that needs write", async () => {
-        // `cyberchef_bake` runs a caller-supplied recipe, which may contain any operation, so it
-        // is not read-only. This is the check that makes the scope mean something at the tool
-        // level rather than only at the door.
+    it("prices cyberchef_bake by its recipe, not by its name", async () => {
+        // CHANGED IN v3.0.0, and the test above is why. That one asserts a read token may run
+        // `To Base64` through `cyberchef_to_base64`; this one used to assert the same token was
+        // REFUSED the same operation through `cyberchef_bake`. The same work, priced differently
+        // by which door it came through -- and the cheaper door was the one exposing 504 separate
+        // tools, so the expensive one bought nothing.
+        //
+        // `cyberchef_bake` is annotated `openWorldHint: true` because a recipe *may* reach the
+        // network. That is the right annotation for approval prompts and the wrong basis for a
+        // scope, which is now derived from the recipe actually submitted -- the granularity the
+        // offline guard settled on in v2.8.0.
         const out = await callTool(mint(SCOPES.READ), "cyberchef_bake",
             { input: "hi", recipe: [{ op: "To Base64" }] });
+        expect(out.status).toBe(200);
+        expect(out.text).toContain("aGk=");
+    }, 120000);
+
+    it("still REFUSES a read-scoped token a recipe that reaches the network", async () => {
+        // The half that must not regress. Pricing by recipe is only defensible if a recipe
+        // carrying one of the two networked operations still costs `cyberchef:network` -- and
+        // strongest-wins, so it does not matter what else is in the recipe.
+        const out = await callTool(mint(SCOPES.READ), "cyberchef_bake",
+            { input: "hi", recipe: [{ op: "To Base64" }, { op: "HTTP request" }] });
         expect(out.text).toMatch(/requires scope/);
-        expect(out.text).toMatch(/cyberchef:write|cyberchef:network/);
+        expect(out.text).toMatch(/cyberchef:network/);
     }, 120000);
 
     it("carries the challenge in the error, for a transport without headers", async () => {

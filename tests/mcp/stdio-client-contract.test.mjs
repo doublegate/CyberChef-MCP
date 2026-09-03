@@ -77,7 +77,7 @@ describe("stdio contract, via the official MCP client", () => {
         expect(tools.length).toBeGreaterThan(500);
     });
 
-it("returns tools in the same order every time", async () => {
+    it("returns tools in the same order every time", async () => {
         // The 2026-07-28 spec asks for deterministic order so a client can cache the list and so
         // an unchanged prefix keeps hitting an LLM's prompt cache. Byte equality of the whole
         // payload is what a client actually caches on, so that is what is asserted.
