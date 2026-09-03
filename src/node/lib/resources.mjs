@@ -105,11 +105,23 @@ export async function readResource(manager, uri) {
     //
     // `ErrorCodes` are still correct everywhere else: they are CONTENT codes for `isError: true`
     // tool results, which is a different channel from a JSON-RPC error.
+    //
+    // EVERY branch carries `data.uri`, including these two. SEP-2164 makes the requested URI a
+    // SHOULD on the error data for any resource failure, and v3.0.0 shipped it on the
+    // missing-recipe path only -- deliberately, because its findings log wanted the two -32602s
+    // "distinguishable by whether `data.uri` is present". That distinction survives without the
+    // omission: `data.supported` is present on exactly these malformed-URI branches and absent on
+    // the missing-recipe one, so a caller can still tell them apart, and the SHOULD is met.
+    //
+    // Found by `@modelcontextprotocol/conformance`'s `sep-2164-resource-not-found` scenario, not
+    // by any of the 1,426 tests in this repository -- which could not have found it, because they
+    // assert the shape this server was written to produce. See v3.1.0 findings log F-03.
     if (typeof uri !== "string" || !uri.startsWith(SCHEME)) {
         throw new ProtocolError(
             ProtocolErrorCode.InvalidParams,
             `Unsupported resource URI: ${uri}. This server serves ${SCHEME}<id>.`,
             {
+                uri,
                 supported: `${SCHEME}<id>`,
                 hint: "cyberchef_recipe_list reports the ids this server serves."
             });
@@ -120,7 +132,7 @@ export async function readResource(manager, uri) {
         throw new ProtocolError(
             ProtocolErrorCode.InvalidParams,
             `No recipe id in URI: ${uri}`,
-            { supported: `${SCHEME}<id>` });
+            { uri, supported: `${SCHEME}<id>` });
     }
 
     // A MISSING resource is not a malformed request, and the two are distinguishable to a caller
