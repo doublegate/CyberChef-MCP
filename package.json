@@ -1,6 +1,6 @@
 {
   "name": "cyberchef-mcp",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "MCP server exposing CyberChef's 504 data-transformation operations -- encryption, encoding, compression, forensics -- as tools for AI assistants.",
   "author": "n1474335 <n1474335@gmail.com>",
   "homepage": "https://github.com/doublegate/CyberChef-MCP#readme",
@@ -65,6 +65,7 @@
     "@codemirror/view": "^6.43.9",
     "@eslint/js": "^10.0.1",
     "@modelcontextprotocol/client": "^2.0.0",
+    "@modelcontextprotocol/conformance": "0.2.0-alpha.11",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@vitest/coverage-v8": "^4.0.15",
     "autoprefixer": "^10.5.4",
@@ -238,7 +239,9 @@
     "setheapsize": "export NODE_OPTIONS=--max_old_space_size=2048",
     "mcp": "node src/node/mcp-server.mjs",
     "prepack": "npx grunt configTests",
-    "check:versions": "node scripts/check-version-consistency.mjs"
+    "check:versions": "node scripts/check-version-consistency.mjs",
+    "conformance": "node conformance/run.mjs",
+    "measure:surfaces": "node benchmarks/tool-surface.mjs"
   },
   "overrides": {
     "ws": ">=5.2.4",

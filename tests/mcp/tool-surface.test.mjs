@@ -175,6 +175,28 @@ describe("tool surface: index (the default)", () => {
         expect(operations[0].operation).toBe("Gzip");
         expect(operations[1].error).toMatch(/No such operation/);
     }, BOOT_TIMEOUT_MS);
+
+    it("says which argument is missing instead of describing nothing", async () => {
+        // ADDED IN v3.1.0. `operations` is required by the schema and nothing enforced it, so a
+        // call that omitted it -- or used the singular `operation`, which is what a model guesses
+        // and what this repository's own prose uses -- got:
+        //
+        //     {"operations":[{"operation":"","error":"No such operation. Use cyberchef_search…"}]}
+        //
+        // Told that the operation it never named does not exist, and pointed at a search tool it
+        // does not need. Found by the first run of `npm run measure:surfaces`, which recorded a
+        // 197-byte operation "schema" that was this error. See v3.1.0 findings log F-05.
+        const wrong = await client.callTool({
+            name: "cyberchef_describe_operation", arguments: { operation: "To Base64" }
+        });
+
+        expect(wrong.isError).toBe(true);
+        const text = wrong.content[0].text;
+        expect(text).toMatch(/requires `operations`/);
+        // The error names the argument the caller DID send, so the fix is one edit away.
+        expect(text).toContain("operation");
+        expect(text).not.toMatch(/No such operation/);
+    }, BOOT_TIMEOUT_MS);
 });
 
 describe("index hierarchy: EVERY operation is reachable", () => {

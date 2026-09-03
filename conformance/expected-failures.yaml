@@ -1,0 +1,106 @@
+# Scenarios from `@modelcontextprotocol/conformance` that this server does not, and should not,
+# pass. Every entry is a reason, not a suppression: the suite fails the run if an entry here starts
+# passing ("stale baseline"), so a wrong reason here becomes a failing build rather than a silence.
+#
+# Nothing in this file is a defect being deferred. The one real defect the suite found -- the
+# SEP-2164 `data.uri` SHOULD -- was fixed rather than baselined; see v3.1.0 findings log F-03.
+#
+# Format: `<scenario>` for a whole scenario, `<scenario>:<check-id>` for one check. No space after
+# the colon.
+
+server:
+  # ---------------------------------------------------------------------------------------------
+  # 1. The scenario calls a fixture that only the SDK's own reference server ships.
+  #
+  # These name `test_simple_prompt`, `test://static-text`, a tool that returns an image, and so on.
+  # They test the harness's fixtures, so no server with its own surface can pass them. This is the
+  # largest group and the least interesting: it is a property of the harness, not of this server.
+  # ---------------------------------------------------------------------------------------------
+  - prompts-get-simple                    # wants prompt `test_simple_prompt`
+  - prompts-get-with-args                 # wants prompt `test_prompt_with_arguments`
+  - prompts-get-embedded-resource         # wants prompt `test_prompt_with_embedded_resource`
+  - prompts-get-with-image                # wants prompt `test_prompt_with_image`
+  - resources-read-text                   # wants `test://static-text`
+  - resources-read-binary                 # wants `test://static-binary`
+  - resources-templates-read               # wants `test://template/123/data`
+  - tools-call-image                      # wants a tool whose result is image content
+  - tools-call-audio                      # wants a tool whose result is audio content
+  - tools-call-embedded-resource          # wants a tool whose result embeds a resource
+  - tools-call-mixed-content              # wants a tool returning several content types at once
+  - tools-call-with-progress              # wants a tool that emits progress notifications
+  - json-schema-2020-12                   # wants a tool named `json_schema_2020_12_tool`
+  - http-custom-header-server-validation  # wants tools carrying `x-mcp-header` annotations
+  # `test_missing_capability` is a diagnostic tool the reference server exposes. Without it the
+  # harness calls a name this server does not have, receives the ordinary "operation not found"
+  # tool result, and reads that as the server having executed it.
+  - server-stateless:sep-2575-server-rejects-undeclared-capability
+  - server-stateless:sep-2575-missing-capability-http-400
+  # Every other check in `server-stateless` passes -- 26 of 28, including server/discover,
+  # capabilities-matching-handlers, `_meta` validation and the unsupported-version error.
+
+  # ---------------------------------------------------------------------------------------------
+  # 2. A capability this server deliberately does not declare.
+  #
+  # `completions` is not in SERVER_CAPABILITIES, and the capability gates the method, so -32601 is
+  # the correct answer. The server's own rule is that a declared capability MUST have a handler;
+  # the converse -- an undeclared method answering "method not found" -- is what conformance
+  # requires. The scenario tests the method unconditionally.
+  # ---------------------------------------------------------------------------------------------
+  - completion-complete
+  # `logging` likewise. This scenario exists only in the 2025 sets -- 2026-07-28 deprecates the
+  # logging utility outright, which v3.0.0 verified (findings log F-09: `logging/setLevel` appears
+  # in zero files). Listed so the legacy era can be gated with the same baseline.
+  - logging-set-level
+
+  # ---------------------------------------------------------------------------------------------
+  # 3. SEP-2322 input-required results: never produced, because nothing here needs client input.
+  #
+  # An InputRequiredResult is how a server pauses mid-request to ask the client for elicitation,
+  # sampling or roots. Every operation this server exposes is a pure function of its arguments --
+  # 504 data transformations plus four analyses -- so there is no point at which it has a question
+  # for the caller. A server that never asks trivially complies; these scenarios need a fixture
+  # tool built to ask.
+  #
+  # Same reasoning as the tasks/extensions decision in v3.0.0 (findings log F-08): the capability
+  # is assessed and declined with a reason, not overlooked.
+  # ---------------------------------------------------------------------------------------------
+  - input-required-result-basic-elicitation
+  - input-required-result-basic-sampling
+  - input-required-result-basic-list-roots
+  - input-required-result-request-state
+  - input-required-result-multiple-input-requests
+  - input-required-result-multi-round
+  - input-required-result-non-tool-request
+  - input-required-result-result-type
+  - input-required-result-tampered-state
+  - input-required-result-capability-check
+  # These two report WARNING rather than FAILURE, and the harness's own two views disagree about
+  # what that means: the printed summary counts a warning as passed, while the baseline check
+  # counts it as a failure. They are listed here because the baseline is the half that gates.
+  # Substance is the same as the group above -- a server that never issues an InputRequiredResult
+  # has no InputResponses to validate.
+  - input-required-result-validate-input
+  - input-required-result-missing-input-response
+
+  # ---------------------------------------------------------------------------------------------
+  # 4. 2025-era only. These scenarios exist in the legacy sets and are covered by the same reasons
+  #    as the groups above; they are listed separately so it stays obvious that the legacy run is
+  #    gated too, and by what.
+  # ---------------------------------------------------------------------------------------------
+  # Capability not declared -- same reason as `completion-complete` and `logging-set-level`.
+  - resources-subscribe
+  - resources-unsubscribe
+  - tools-call-with-logging               # also needs the `logging` capability
+  # Need a fixture tool that asks the client for sampling or elicitation mid-call. Nothing here
+  # asks: every operation is a pure function of its arguments. Same reasoning as SEP-2322 above.
+  - tools-call-sampling
+  - tools-call-elicitation
+  - elicitation-sep1034-defaults
+  - elicitation-sep1330-enums
+  # `server-sse-polling` asserts one of TWO behaviours the 2025 spec permits. It expects the tool
+  # response to arrive on the GET stream; this server answers on the POST stream, which is legal.
+  # Verified by hand that the legacy GET stream itself works -- with a session id it returns 200
+  # and `text/event-stream`, so this is a routing preference and not a missing endpoint. Its two
+  # further complaints (no SSE priming event, no `retry` field) are SHOULDs owned by the SDK
+  # transport, not by anything in this repository.
+  - server-sse-polling

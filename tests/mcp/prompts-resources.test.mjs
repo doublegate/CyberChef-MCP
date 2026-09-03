@@ -172,16 +172,29 @@ describe("resources", () => {
         }
     });
 
-    it("distinguishes a malformed URI from a missing one", async () => {
-        // Both are -32602. Only the missing one carries `data.uri`; a client that keys off it
-        // must not be told an unsupported scheme is a resource that merely does not exist yet.
+    it("distinguishes a malformed URI from a missing one, and carries the URI in both", async () => {
+        // CHANGED IN v3.1.0. Both are -32602 and BOTH now carry `data.uri`: SEP-2164 makes the
+        // requested URI a SHOULD on the error data for any resource failure, and
+        // `@modelcontextprotocol/conformance` reported v3.0.0 omitting it here as a warning.
+        //
+        // The distinction v3.0.0 wanted survives the fix. It keyed off `data.uri` being absent;
+        // it now keys off `data.supported` being PRESENT, which is true on exactly the malformed
+        // branches and false on the missing-recipe one. Same information, and the SHOULD is met.
         const { client, close } = await connected();
         try {
-            const failure = await client.readResource({ uri: "file:///etc/passwd" }).catch(e => e);
+            const bad = "file:///etc/passwd";
+            const failure = await client.readResource({ uri: bad }).catch(e => e);
 
             expect(failure.code).toBe(-32602);
-            expect(failure.data.uri).toBeUndefined();
+            expect(failure.data.uri).toBe(bad);
             expect(failure.data.supported).toBe("recipe://<id>");
+
+            // ...and the missing-recipe branch still has no `supported`, which is what keeps the
+            // two distinguishable now that both carry a URI.
+            const missing = await client
+                .readResource({ uri: "recipe://00000000-0000-4000-8000-000000000000" })
+                .catch(e => e);
+            expect(missing.data.supported).toBeUndefined();
         } finally {
             await close();
         }

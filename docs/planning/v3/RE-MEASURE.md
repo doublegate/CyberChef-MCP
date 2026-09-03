@@ -15,8 +15,9 @@ server, and every one found the plan wrong:
 | v2.9.0 | Four of the plan's seven features already existed |
 | v2.10.0 | There was no v2.10.0 in the plan, and the release it *did* name was empty |
 | v3.0.0 | All six planned breaking changes were done, withdrawn, or superseded |
+| v3.1.0 | The charter's own kill criterion fired: the harness it proposed building already existed |
 
-Six for six. The plans were not careless — they were written in December 2025 and describe a server
+Seven for seven. The plans were not careless — they were written in December 2025 and describe a server
 that has since been built differently. **A plan is a hypothesis with an expiry date.**
 
 The corpus that produced those plans runs to 62 files and ~36,700 lines. This directory is
@@ -32,11 +33,16 @@ Before writing any code for a charter:
 2. **Read the dependency's source, not its changelog.** v3.0.0 planned to implement cache fields
    the SDK already filled, and planned an error-code renumbering the SDK already did — while
    missing the real defect, which was in this repository.
-3. **Write F-01 first**, in `docs/internal/vX.Y.Z-findings-log.md`, stating what the charter got
+3. **Search the ecosystem for the thing you are about to build**, by name, on the registry. This
+   step was added after v3.1.0, because its absence is what let v3.0.0 ship a conformance release
+   verified only by its own tests four weeks after an official conformance suite covering the exact
+   SEPs it implemented was published. `npm search`, the SDK's own org, and the spec repository are
+   fifteen minutes; hand-building a suite is not.
+4. **Write F-01 first**, in `docs/internal/vX.Y.Z-findings-log.md`, stating what the charter got
    wrong. If it got nothing wrong, say that too — it has not happened yet.
-4. **Re-scope from the measurement**, and record the scope decision including the version number
+5. **Re-scope from the measurement**, and record the scope decision including the version number
    and why it is correct under SemVer.
-5. **If the charter is empty, say so and pick different work.** v2.9.0 and v2.10.0 both did this.
+6. **If the charter is empty, say so and pick different work.** v2.9.0 and v2.10.0 both did this.
    An empty release executed anyway is worse than a re-scoped one.
 
 ## Kill criteria

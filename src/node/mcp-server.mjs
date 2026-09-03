@@ -928,7 +928,17 @@ const handleCallTool = async (request, extra, ownerServer = server) => {
 };
 
 const handleCallToolInner = async (request, extra, ownerServer = server) => {
-    const { name, arguments: args } = request.params;
+    // `arguments` is OPTIONAL in the MCP schema, so a client may legally omit it entirely -- and
+    // forty `args.something` reads below assumed it never would. Omitting it produced a TypeError
+    // that surfaced to the caller as
+    // `OPERATION_FAILED: Cannot read properties of undefined (reading 'operations')`: an internal
+    // message leaked as a tool result, from the very guard added in this release to stop a tool
+    // answering unhelpfully.
+    //
+    // Defaulting here rather than at each of the forty sites, because the next one added would
+    // have the same hole. `null` never reaches this line: the SDK rejects it against the schema
+    // first, with -32602. Both inputs are pinned by tests.
+    const { name, arguments: args = {} } = request.params;
 
     // Start request tracking
     const requestId = logRequestStart(name, args);
@@ -1158,6 +1168,31 @@ const handleCallToolInner = async (request, extra, ownerServer = server) => {
         }
 
         if (name === "cyberchef_describe_operation") {
+            // `operations` is REQUIRED in the schema, and nothing enforced it. A call that omitted
+            // it -- or used the singular `operation`, which is the name a model guesses, and the
+            // name this very file uses in prose two hundred lines above -- reached
+            // `describeOperations(undefined)`, which stringifies to `""` and answers:
+            //
+            //     {"operations":[{"operation":"","error":"No such operation. Use cyberchef_search
+            //      to find the exact name."}]}
+            //
+            // Every part of that is unhelpful. The caller is told the operation it did not name
+            // does not exist, is pointed at a search tool it does not need, and is not told which
+            // argument was missing. v2.2.0 made unknown arguments an error rather than a silent
+            // default; this is the same defect from the other side -- a missing REQUIRED argument
+            // silently defaulted -- and it was found by writing the surface benchmark, whose first
+            // run measured a 197-byte "schema" that was this error. See v3.1.0 findings log F-05.
+            //
+            // The neighbouring `cyberchef_list_operations` already answers this shape correctly;
+            // this now matches it.
+            if (args.operations === undefined || args.operations === null) {
+                const error = createInputError(
+                    "cyberchef_describe_operation requires `operations`: one operation name, or " +
+                    "an array of them.",
+                    { expected: "operations", received: Object.keys(args ?? {}) });
+                logRequestError(requestId, error, { tool: name });
+                return error.toMCPError();
+            }
             const output = JSON.stringify(
                 describeOperations(args.operations, toolArgName), null, 2);
             logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
