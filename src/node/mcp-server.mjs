@@ -695,6 +695,30 @@ const toolRegistry = buildRegistry({
 });
 
 /**
+ * Every registry tool's exposed name.
+ *
+ * Held so `cyberchef_describe_operation` can tell a caller that a name it recognises from
+ * `tools/list` is a registry tool rather than answering "no such operation" and pointing them at a
+ * search that reads `OperationConfig` and will not find it either.
+ */
+const REGISTRY_EXPOSED_NAMES = new Set(
+    toolRegistry.list().map(tool => ToolRegistry.exposedName(tool.name)));
+
+/**
+ * The registry tools in the shape `summariseSearch` needs.
+ *
+ * `help()` searches `OperationConfig`, which registry tools are deliberately not in -- so without
+ * this, searching for "vigenere" returned the two operations that require a key and not the tool
+ * that recovers one.
+ */
+const REGISTRY_SEARCH_INDEX = toolRegistry.list().map(tool => ({
+    name: tool.name,
+    exposedName: ToolRegistry.exposedName(tool.name),
+    title: tool.title,
+    description: tool.description
+}));
+
+/**
  * Sanitized operation tool name -> the `OperationConfig` key it came from.
  *
  * Built once. The mapping is derived from `OperationConfig`, which is a generated file loaded at
@@ -1058,7 +1082,7 @@ const handleCallToolInner = async (request, extra, ownerServer = server) => {
             const { help } = await loadNodeApi();
             const results = help(args.query);
             const output = JSON.stringify(
-                args.detailed ? results : summariseSearch(args.query, results), null, 2);
+                args.detailed ? results : summariseSearch(args.query, results, REGISTRY_SEARCH_INDEX), null, 2);
             logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
 
             return {
@@ -1216,7 +1240,7 @@ const handleCallToolInner = async (request, extra, ownerServer = server) => {
                 return error.toMCPError();
             }
             const output = JSON.stringify(
-                describeOperations(args.operations, toolArgName), null, 2);
+                describeOperations(args.operations, toolArgName, REGISTRY_EXPOSED_NAMES), null, 2);
             logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
             return { content: [{ type: "text", text: output }] };
         }

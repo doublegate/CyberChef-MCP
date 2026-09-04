@@ -58,6 +58,13 @@ reading the reference projects as code instead of as documentation. Details in
   candidate bytes per column by chi-squared against English, with runners-up and margins, instead
   of taking an argmax and XORing with a hardcoded `0x20` — 28 exact keys against the old method's
   23, over 43 cases. The old method remains behind an explicit `assumed_common_byte`.
+- **`cyberchef_search` finds registry tools, and `cyberchef_describe_operation` recognises them.**
+  `help()` searches `OperationConfig`, which registry tools are deliberately not in, so searching
+  "playfair" returned zero matches and "try a shorter keyword" for a capability sitting in
+  `tools/list` the whole time. Search now returns an `analysis_tools` section alongside
+  `operations`; `describe_operation` names a registry tool as one and says its schema is already
+  loaded, instead of "No such operation, use cyberchef_search" — which pointed at a search that
+  could not find it either.
 - **The default `tools/list` index grew from 28 tools / 20,297 bytes to 40 / 40,637.** Registry
   tools have no navigation path, so one that is not listed cannot be called at all; listing must
   never be stricter than dispatch. `curated` is 118 / 103,883 and `all` is 543 / 421,041. Trimming
