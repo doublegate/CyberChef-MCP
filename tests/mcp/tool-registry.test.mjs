@@ -213,6 +213,49 @@ describe("xor_key_length", () => {
             .rejects.toThrow(/Too little data/);
     }, 30000);
 
+    it("reports what each of the three estimators concluded", async () => {
+        const out = await tool.run(
+            tool.inputSchema.parse({ input: encrypt("hunter"), "input_format": "Hex", "preview_bytes": 0 }),
+            { bake });
+
+        // The three are chosen for uncorrelated failure modes, not for individual accuracy -- the
+        // index of coincidence is defeated by periodic plaintext, autocorrelation by short input,
+        // Kasiski by too few repeats. So the disagreement is the output, not an embarrassment to
+        // be averaged away: a caller deciding what to try next needs to know they disagreed.
+        expect(out.estimates).toHaveProperty("index_of_coincidence");
+        expect(out.estimates).toHaveProperty("autocorrelation");
+        expect(out.estimates).toHaveProperty("kasiski");
+        expect(out.estimates.agreement).toBeTruthy();
+    }, 30000);
+
+    it("scores every candidate key byte rather than taking a column argmax", async () => {
+        const out = await tool.run(
+            tool.inputSchema.parse({ input: encrypt("hunter"), "input_format": "Hex", "preview_bytes": 0 }),
+            { bake });
+
+        expect(out.key_guess.method).toMatch(/chi-squared/);
+        expect(out.key_guess.columns).toHaveLength(out.key_length);
+        for (const column of out.key_guess.columns) {
+            // Runners-up are the point of scoring: practicalcryptography's own worked example of
+            // the argmax method recovers `CIAHERS` for the key `CIPHERS`, because two candidates
+            // scored closely on one column and the wrong one scored slightly lower. A caller can
+            // only notice that if the margin is reported.
+            expect(column.alternatives.length).toBeGreaterThan(0);
+            expect(column.margin).toBeGreaterThanOrEqual(1);
+        }
+    }, 30000);
+
+    it("still offers the old argmax method behind an explicit assumption", async () => {
+        const out = await tool.run(
+            tool.inputSchema.parse({
+                input: encrypt("K"), "input_format": "Hex", "preview_bytes": 0,
+                "assumed_common_byte": 32
+            }), { bake });
+
+        expect(out.key_guess.method).toMatch(/0x20/);
+        expect(out.key_guess.printable).toBe("K");
+    }, 30000);
+
     it("accepts raw and base64 as well as hex", async () => {
         const hexCt = encrypt("hunter");
         const raw = Buffer.from(hexCt, "hex").toString("latin1");
