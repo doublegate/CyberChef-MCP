@@ -1,0 +1,274 @@
+/**
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * Where in this file is the entropy high, and what does that actually license you to conclude?
+ *
+ * CyberChef's `Entropy` operation has a "Curve" mode, and it is close to this without being it: the
+ * bin size is hardcoded at 256 bytes, there is no threshold, and the output is a chart rather than
+ * a list of regions. So it can show you that something is dense; it cannot tell you where the dense
+ * part starts and stops, which is the question a carve or a key hunt actually asks.
+ *
+ * **The 7.0 threshold is folklore and this tool does not use it alone.** The sourced rule is Lyda
+ * and Hamrock's (IEEE S&P 2007), and it is a CONJUNCTION of two numbers, not one: mean file entropy
+ * above 6.677 AND highest-block entropy above 7.199, over 256-byte blocks. The detail almost always
+ * dropped is that only blocks with at least half their bytes non-zero are counted, because
+ * alignment padding otherwise drags the score down. Their own table: plain text 4.347/4.715, native
+ * executables 5.099/6.227, packed 6.801/7.233, encrypted 7.175/7.303.
+ *
+ * And the threshold is weak as an inference regardless. Mantovani et al. (NDSS 2020) found over 30%
+ * of 50,000 low-entropy Windows malware samples were nonetheless runtime-packed, and calibrated
+ * what the number means: real x86 `.text` measures 6.2 +/- 0.3, XOR with a two-byte key gives
+ * 6.7 +/- 0.3, and 7.0 "is obtained on average by xor-ing the code with a key of 3 bytes". So
+ * "entropy above 7" means "has been XORed with a key of three bytes or more", which is a very low
+ * bar to clear and not a finding on its own.
+ *
+ * Hence the second axis. Chi-squared and serial correlation separate COMPRESSED data from properly
+ * encrypted data, which entropy alone cannot: both are near 8 bits per byte, and only one of them
+ * has structure left.
+ *
+ * @author DoubleGate
+ * @license GPL-3.0-or-later
+ */
+
+import { z } from "zod";
+import { createInputError } from "../errors.mjs";
+
+/** Largest input accepted, in bytes. The scan is O(n), but the region list is what a caller reads. */
+const MAX_BYTES = 8388608;
+
+/** Lyda and Hamrock's two thresholds, and their block size. */
+const BINTROPY_MEAN = 6.677;
+const BINTROPY_PEAK = 7.199;
+const BINTROPY_BLOCK = 256;
+
+/**
+ * Shannon entropy of a byte range, in bits per byte.
+ *
+ * @param {Uint8Array} bytes - The data.
+ * @param {number} start - First offset.
+ * @param {number} end - One past the last offset.
+ * @returns {number} Entropy, 0 to 8.
+ */
+function entropy(bytes, start, end) {
+    const counts = new Uint32Array(256);
+    for (let i = start; i < end; i++) counts[bytes[i]]++;
+    const n = end - start;
+    let h = 0;
+    for (const count of counts) {
+        if (!count) continue;
+        const p = count / n;
+        h -= p * Math.log2(p);
+    }
+    return h;
+}
+
+/**
+ * Chi-squared of the byte distribution against uniform, and the serial correlation coefficient.
+ *
+ * These are the second axis, and their job is to separate compressed from encrypted. Both sit near
+ * 8 bits of entropy per byte; only compressed data still has structure, and it shows up here as a
+ * chi-squared far from the 255 degrees of freedom a uniform source would give.
+ *
+ * @param {Uint8Array} bytes - The data.
+ * @returns {{chiSquared: number, serialCorrelation: number}} Both statistics.
+ */
+function uniformityStats(bytes) {
+    const counts = new Uint32Array(256);
+    for (const b of bytes) counts[b]++;
+    const expected = bytes.length / 256;
+    let chi = 0;
+    for (const count of counts) {
+        const delta = count - expected;
+        chi += delta * delta / expected;
+    }
+
+    // Serial correlation over the byte sequence, wrapping at the end as `ent` does.
+    let t1 = 0;
+    let t2 = 0;
+    let t3 = 0;
+    for (let i = 0; i < bytes.length; i++) {
+        const next = bytes[(i + 1) % bytes.length];
+        t1 += bytes[i] * next;
+        t2 += bytes[i];
+        t3 += bytes[i] * bytes[i];
+    }
+    const n = bytes.length;
+    const numerator = n * t1 - t2 * t2;
+    const denominator = n * t3 - t2 * t2;
+    return {
+        chiSquared: chi,
+        serialCorrelation: denominator === 0 ? 0 : numerator / denominator
+    };
+}
+
+/**
+ * Decode an input according to its declared format.
+ *
+ * @param {string} value - The text.
+ * @param {string} format - Raw, Hex or Base64.
+ * @returns {Uint8Array} The bytes.
+ */
+function decode(value, format) {
+    if (format === "Raw") return Uint8Array.from(value, ch => ch.charCodeAt(0) & 0xff);
+    const cleaned = format === "Hex" ? value.replace(/[\s,:]/g, "") : value.trim();
+    if (format === "Hex" && (cleaned.length % 2 || !/^[0-9a-f]*$/i.test(cleaned))) {
+        throw createInputError("The input is not valid hex.", { received: value.slice(0, 60) });
+    }
+    return new Uint8Array(Buffer.from(cleaned, format === "Hex" ? "hex" : "base64"));
+}
+
+export default {
+    name: "entropy_scan",
+    title: "Entropy scan",
+    category: "Analysis",
+    description:
+        "Find WHERE a file's entropy is high, not just whether it is. CyberChef's `Entropy` curve " +
+        "has a hardcoded 256-byte bin, no threshold and no region output, so it can show density " +
+        "but cannot say where the dense part starts and stops. Returns contiguous regions above a " +
+        "threshold with their offsets, applies Lyda and Hamrock's packed-binary rule (which is a " +
+        "CONJUNCTION of mean > 6.677 and peak > 7.199, not the single 7.0 usually quoted), and " +
+        "adds chi-squared and serial correlation as a second axis — because compressed and " +
+        "encrypted data are both near 8 bits per byte and only one of them still has structure. " +
+        "Reports what a high number does and does not establish: NDSS 2020 measured over 30% of " +
+        "low-entropy malware as packed anyway, and calibrated 7.0 as roughly what XOR with a " +
+        "three-byte key produces.",
+    annotations: {
+        title: "Entropy scan",
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+    },
+    inputSchema: z.object({
+        input: z.string().min(1).max(MAX_BYTES * 2).describe("The data."),
+        "input_format": z.enum(["Raw", "Hex", "Base64"]).default("Raw")
+            .describe("How `input` is encoded."),
+        "window_bytes": z.number().int().min(16).max(65536).default(256)
+            .describe(
+                "Window size for the sliding scan. 256 is the sourced figure — Lyda and Hamrock " +
+                "chose it over 512 because the larger window 'tended to reduce the subjects' " +
+                "entropy scores when encryption existed only in small areas'."),
+        "step_bytes": z.number().int().min(1).max(65536).optional()
+            .describe("Distance between windows. Defaults to the window size, i.e. no overlap."),
+        threshold: z.number().min(0).max(8).default(7.0)
+            .describe(
+                "Bits per byte above which a window counts as high-entropy. 7.0 is conventional " +
+                "and weak; see the report's own caveat on what it means."),
+        "max_regions": z.number().int().min(1).max(256).default(32)
+            .describe("How many regions to return.")
+    }),
+
+    /**
+     * @param {Object} args - Validated arguments.
+     * @returns {Promise<Object>} The regions, the two-threshold verdict, and the second axis.
+     */
+    async run(args) {
+        const bytes = decode(args.input, args.input_format);
+        if (bytes.length === 0) throw createInputError("The input decoded to nothing.", {});
+        const window = args.window_bytes;
+        const step = args.step_bytes ?? window;
+        if (bytes.length < window) {
+            throw createInputError(
+                `The input is ${bytes.length} bytes and the window is ${window}. A window larger ` +
+                "than the data measures the whole thing once, which is what the Entropy operation " +
+                "already does.",
+                { bytes: bytes.length, window });
+        }
+
+        const windows = [];
+        for (let offset = 0; offset + window <= bytes.length; offset += step) {
+            windows.push({ offset, entropy: entropy(bytes, offset, offset + window) });
+        }
+
+        // Contiguous runs above the threshold, merged. Adjacent windows are one region: reporting
+        // fourteen consecutive 256-byte hits as fourteen findings buries the one fact that matters,
+        // which is that there is a 3.5 KB blob starting at a particular offset.
+        const regions = [];
+        for (const w of windows) {
+            const last = regions[regions.length - 1];
+            if (w.entropy >= args.threshold) {
+                if (last && last.end === w.offset) {
+                    last.end = w.offset + window;
+                    last.peak = Math.max(last.peak, w.entropy);
+                    last.windows++;
+                    last.total += w.entropy;
+                } else {
+                    regions.push({
+                        start: w.offset, end: w.offset + window,
+                        peak: w.entropy, total: w.entropy, windows: 1
+                    });
+                }
+            }
+        }
+
+        // Lyda and Hamrock's rule, on their own block size regardless of the scan window. Only
+        // blocks at least half non-zero count -- alignment padding otherwise drags the mean down,
+        // and that omission is why the rule is so often reported as not working.
+        const blocks = [];
+        for (let offset = 0; offset + BINTROPY_BLOCK <= bytes.length; offset += BINTROPY_BLOCK) {
+            let nonZero = 0;
+            for (let i = offset; i < offset + BINTROPY_BLOCK; i++) if (bytes[i]) nonZero++;
+            if (nonZero * 2 >= BINTROPY_BLOCK) {
+                blocks.push(entropy(bytes, offset, offset + BINTROPY_BLOCK));
+            }
+        }
+        const bintropyMean = blocks.length ? blocks.reduce((a, b) => a + b, 0) / blocks.length : null;
+        const bintropyPeak = blocks.length ? Math.max(...blocks) : null;
+        const packed = bintropyMean !== null &&
+            bintropyMean > BINTROPY_MEAN && bintropyPeak > BINTROPY_PEAK;
+
+        const stats = uniformityStats(bytes);
+        const overall = entropy(bytes, 0, bytes.length);
+
+        return {
+            bytes: bytes.length,
+            "overall_entropy": Number(overall.toFixed(3)),
+            "window_bytes": window,
+            "step_bytes": step,
+            "windows_measured": windows.length,
+            regions: regions
+                .sort((a, b) => b.peak - a.peak)
+                .slice(0, args.max_regions)
+                .map(r => ({
+                    start: r.start,
+                    end: Math.min(r.end, bytes.length),
+                    length: Math.min(r.end, bytes.length) - r.start,
+                    "peak_entropy": Number(r.peak.toFixed(3)),
+                    "mean_entropy": Number((r.total / r.windows).toFixed(3))
+                })),
+            "packed_test": {
+                rule: "Lyda & Hamrock: mean > 6.677 AND peak > 7.199 over 256-byte blocks that are " +
+                    "at least half non-zero",
+                "blocks_counted": blocks.length,
+                "mean_entropy": bintropyMean === null ? null : Number(bintropyMean.toFixed(3)),
+                "peak_entropy": bintropyPeak === null ? null : Number(bintropyPeak.toFixed(3)),
+                verdict: blocks.length === 0 ?
+                    "Not applicable: no 256-byte block was even half non-zero." :
+                    packed ? "Both thresholds cleared." : "At least one threshold not cleared.",
+                reference: "Their table: plain text 4.347/4.715, native executables 5.099/6.227, " +
+                    "packed 6.801/7.233, encrypted 7.175/7.303."
+            },
+            "second_axis": {
+                "chi_squared": Number(stats.chiSquared.toFixed(1)),
+                "expected_if_uniform": 255,
+                "serial_correlation": Number(stats.serialCorrelation.toFixed(4)),
+                reading: stats.chiSquared > 1000 ?
+                    "Chi-squared is far from uniform. High entropy here is COMPRESSION or " +
+                    "structured data, not encryption — the bytes are dense but not evenly spread." :
+                    "Chi-squared is near uniform, which is consistent with encrypted or " +
+                    "well-compressed data. It does not distinguish the two."
+            },
+            assessment: regions.length === 0 ?
+                `Nothing reached ${args.threshold} bits per byte in a ${window}-byte window. ` +
+                "For a large file that is a real negative; for a small one it may only mean the " +
+                "window is larger than the interesting part." :
+                `${regions.length} region(s) above ${args.threshold} bits per byte. Read that ` +
+                "carefully: 7.0 is folklore, not a sourced threshold, and NDSS 2020 calibrated it " +
+                "as roughly what XOR with a THREE-BYTE KEY produces — a very low bar. The same " +
+                "study found over 30% of low-entropy malware packed anyway, so a clean scan is not " +
+                "evidence of absence either.",
+            next: "Carve a region with cyberchef_bake and `Drop bytes` / `Take bytes`, then try " +
+                "cyberchef_magic or xor_key_length on it."
+        };
+    }
+};
