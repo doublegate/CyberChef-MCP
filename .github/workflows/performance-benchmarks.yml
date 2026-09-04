@@ -1,5 +1,9 @@
 name: Performance Benchmarks
 
+# The path filter includes THIS FILE, and that was missing until v3.8.0. Without it, a change to
+# the benchmark workflow does not trigger the benchmark workflow -- so the one kind of edit whose
+# correctness this workflow is the only judge of was the one kind it never ran on. It was found by
+# adding a job here and noticing the PR had no benchmark check to look at.
 on:
   push:
     branches: [master]
@@ -8,6 +12,7 @@ on:
       - 'src/node/index.mjs'
       - 'src/core/**'
       - 'benchmarks/**'
+      - '.github/workflows/performance-benchmarks.yml'
   pull_request:
     branches: [master]
     paths:
@@ -15,6 +20,7 @@ on:
       - 'src/node/index.mjs'
       - 'src/core/**'
       - 'benchmarks/**'
+      - '.github/workflows/performance-benchmarks.yml'
   workflow_dispatch:
 
 # Default for every job: read only. The write scope needed to post a comment is granted to the
