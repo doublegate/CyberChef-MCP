@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-09-04
+
+Every gate now does what it says it does, and the one documented claim that was a security claim
+has been corrected. Details in [the release notes](docs/releases/v3.2.0.md) and
+[the findings log](docs/internal/v3.2.0-findings-log.md); the pre-release capture the work was
+measured against is [`docs/internal/measurements/v3.1.0-baseline.md`](docs/internal/measurements/v3.1.0-baseline.md).
+
+### Fixed
+
+- **The image is not shell-free, and two documents said it was.** README made it the security
+  argument -- *"no shell, no package manager"*. Measuring the published image found `/usr/bin/sh`,
+  `ash`, `busybox` v1.38.0 and `npm`; `apk`, `wget` and `curl` genuinely are absent. The base is
+  `cgr.dev/chainguard/node:latest`, a Wolfi image, not the distroless variant the docs named.
+  **Nothing about the image changed -- the documentation now describes it.** If your threat model
+  assumed no shell, revisit it.
+- **Three stale numbers in live documents**: image on disk 726 MB -> **453 MB**, gzipped release
+  tarball ~196 MB -> **141 MB**, production packages 432 -> **402 or 384** depending on the
+  counting method. The last is the instructive one: all three are defensible answers to different
+  questions, and the defect is a document quoting a number without its method.
+- **Three documents said 505 operations** where `OperationConfig` has 504 -- including the
+  prometheusrule alert description an operator reads while diagnosing a restart loop.
+
+### Added
+
+- **A benchmark regression gate that can fail.** `performance-benchmarks.yml` said in its own PR
+  comment that it *"cannot fail on a regression"*. `benchmarks/baseline.json` is now committed and
+  `npm run benchmark:check` compares median throughput against it, failing on a regression **and**
+  on a baselined task disappearing from the run. The 25% tolerance was measured: worst per-task
+  spread 9.8% across four runs, median 4.3%.
+- **`helm-chart.yml`.** Nothing in CI linted or rendered the published chart, and v3.1.0's
+  `image.digest` branch was verified by hand. Now `helm lint --strict` plus four rendered values
+  paths, asserting both that a digest wins over the tag and that the default still renders the tag.
+- **`tests/mcp/metadata-integrity.test.mjs`.** 7,408 model-visible strings screened for TAG-block,
+  control, bidi and zero-width characters -- text a diff review cannot render, on a path that runs
+  from an upstream commit to instruction a model reads. A **blocking** step in `upstream-sync.yml`.
+- **`npm run measure:results`**, and `benchmarks/README.md` documenting every measurement command
+  and the variance study behind the tolerance.
+
+### Changed
+
+- **`cyberchef_search` summarises by default: 27,060 -> 3,087 bytes for "base64" (-88.6%).** It
+  returned the full `OperationConfig` entry per match, which is more than
+  `cyberchef_describe_operation` returns for the same operations -- the discovery tool paying the
+  detail tool's cost for operations the caller had not chosen. `detailed: true` restores the
+  previous payload. **If you parse search results, the default shape changed**; the opt-in flag is
+  there so it need not.
+- **Trivy gates on `CRITICAL,HIGH` again**, in both workflows. Their `TODO(PR 7)` condition --
+  *restore once the dependency backlog is cleared to zero* -- was met in v2.1.1, eight releases
+  ago. Measured 0/0 on the published v3.1.0 image before restoring. There are now zero actionable
+  TODOs in fork-owned code.
+- **`check:versions` covers derived counts**, reading the operation count from the generated config
+  rather than hardcoding it.
+- **Colliding benchmark task names.** `SHA2` was registered twice, for 256 and 512, and both
+  emitted tasks called `SHA2 (1KB)` -- which is what made the first variance study report 84%
+  spreads. Now `SHA2-256` and `SHA2-512`.
+
 ## [3.1.0] - 2026-09-03
 
 Measured, not asserted: the official MCP conformance suite now runs in CI as an external oracle.
