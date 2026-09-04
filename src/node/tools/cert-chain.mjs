@@ -282,8 +282,18 @@ export default {
         }
         if (described.some(entry => entry.expired)) problems.push("A certificate in the chain has expired.");
         if (described.some(entry => entry.not_yet_valid)) problems.push("A certificate is not yet valid.");
+
+        // NOTES ARE NOT PROBLEMS, and conflating them made this tool contradict itself in a single
+        // response. A missing root went into `problems` while its own text said "that is NORMAL",
+        // and `self_consistent` was `problems.length === 0` -- so the commonest real input in the
+        // world, a server's leaf + intermediate `fullchain.pem`, came back `self_consistent: false`
+        // beside an assessment saying a missing root is not a defect. A reader who believes the
+        // flag distrusts a good bundle; a reader who believes the prose learns to ignore the flag.
+        // Neither is acceptable, so the two categories are now separate fields and `self_consistent`
+        // keys off defects alone.
+        const notes = [];
         if (!rootIsSelfSigned && order.length > 0) {
-            problems.push(
+            notes.push(
                 "The chain does not end at a self-signed certificate, so the root is not in this " +
                 "bundle. That is NORMAL for a server's `fullchain.pem` — the root lives in the " +
                 "client's trust store — and it means this tool cannot tell you the chain is " +
@@ -317,14 +327,18 @@ export default {
                     described[0].not_after)
             } : {}),
             "evaluated_at": now.toISOString(),
+            ...(notes.length ? { notes } : {}),
+            // Defects only. See the note above `notes` for why this is not `problems.length +
+            // notes.length`.
             "self_consistent": problems.length === 0,
             ...(problems.length ? { problems } : {}),
             assessment: problems.length === 0 ?
                 "Every link verifies cryptographically and every certificate is within its validity " +
-                "window. This says the chain is internally consistent — it does NOT say it is " +
+                "window" + (notes.length ? ", and nothing in `notes` is a defect" : "") +
+                ". This says the chain is internally consistent — it does NOT say it is " +
                 "trusted, which depends on whether the root is in the verifier's trust store." :
-                "See `problems`. Note that a missing root is expected in a server bundle and is " +
-                "not a defect; a link that does not verify is."
+                "See `problems` for what is wrong. Anything in `notes` is an observation rather " +
+                "than a fault and is not counted against `self_consistent`."
         };
     }
 };

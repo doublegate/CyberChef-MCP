@@ -43,6 +43,17 @@ Details in [the release notes](docs/releases/v3.8.0.md) and
   fails"; that branch is unreachable — `checkIssued` verifies cryptographically, measured against a
   purpose-built imposter — and the claim was removed rather than left standing.
 
+- **`cert_chain` reported `self_consistent: false` for an ordinary `fullchain.pem`**, beside its own
+  assessment saying a missing root is not a defect — it contradicted itself in a single response,
+  because the missing-root note was pushed into `problems` and `self_consistent` counted them. Notes
+  and problems are now separate fields. The tests had encoded the defect rather than catching it.
+- **Half-updated tool-surface figures.** Adding one registry tool moved every surface; the byte
+  counts were re-measured everywhere and the tool counts were not, leaving `README.md` saying "545
+  tools" and "all 544" three sentences apart, and a round-trip claim of 42,415 bytes against an index
+  documented at 44,406 — impossible on its face. `check:versions` covers *operation* counts and never
+  covered *surface* counts, so a partial update reported itself complete. New
+  `tests/mcp/tool-surface-figures.test.mjs` gates cross-document agreement and the round-trip
+  arithmetic; verified by reintroducing both real defects.
 - **The benchmark workflow did not trigger on changes to itself.** Its path filter listed the code
   the benchmarks measure and not the workflow that measures it, so the one class of edit whose
   correctness it is the only judge of was the class it never ran on. Found by consequence: this

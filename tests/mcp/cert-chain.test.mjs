@@ -126,12 +126,36 @@ describe("cert_chain", () => {
         expect(out.expiring_soon.map(entry => entry.subject)).toContain("CN=example.test");
     });
 
-    it("says a missing root is expected rather than calling it a defect", async () => {
-        // A server's fullchain.pem legitimately omits the root. Reporting that as a failure would
-        // train a reader to ignore this tool's output.
+    it("treats a missing root as a note, not a problem, and stays self_consistent", async () => {
+        // A server's fullchain.pem legitimately omits the root, and this is the commonest real
+        // input the tool will ever see.
+        //
+        // This test used to assert the missing-root text appeared in `problems`, which is exactly
+        // the defect a reviewer caught: `self_consistent` is `problems.length === 0`, so a perfectly
+        // good fullchain.pem came back `self_consistent: false` beside an assessment saying a
+        // missing root is not a defect. The tool contradicted itself in one response. Notes and
+        // problems are now separate fields, and this pins BOTH halves so they cannot drift back
+        // together.
         const out = await tool.run({ input: LEAF + INTER, "as_of": WITHIN });
-        expect(out.problems.join(" ")).toContain("NORMAL");
-        expect(out.assessment).toContain("not a defect");
+
+        expect(out.notes.join(" ")).toContain("NORMAL");
+        // `problems` is omitted entirely when there are none, rather than sent as an empty array.
+        expect(out.problems).toBeUndefined();
+        expect(out.self_consistent).toBe(true);
+        expect(out.assessment).toContain("nothing in `notes` is a defect");
+    });
+
+    it("keeps a real defect a problem even when a note is also present", async () => {
+        // The other direction: a bundle missing its root AND missing its intermediate must not be
+        // rescued into self_consistent by the note/problem split.
+        const out = await tool.run({ input: LEAF, "as_of": WITHIN });
+
+        expect(out.notes.join(" ")).toContain("NORMAL");
+        expect(out.self_consistent).toBe(true);
+
+        const withOrphan = await tool.run({ input: LEAF + ROOT, "as_of": WITHIN });
+        expect(withOrphan.problems.length).toBeGreaterThan(0);
+        expect(withOrphan.self_consistent).toBe(false);
     });
 
     it("refuses input with no PEM blocks, and says how to convert DER", async () => {
