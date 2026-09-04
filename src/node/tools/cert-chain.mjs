@@ -110,12 +110,20 @@ export default {
     name: "cert_chain",
     title: "Order and validate an X.509 certificate chain",
     category: "Analysis",
+    // The phrase "an issuer whose name matches but whose signature does not" stood here until
+    // review caught it. That branch is unreachable -- `checkIssued` verifies cryptographically, so
+    // such a certificate never becomes a link and cannot be reported as a broken one -- and this
+    // string is MODEL-VISIBLE, which makes it worse than the stale comment that accompanied it: it
+    // advertised a finding the tool cannot produce. What is actually detectable is the substitution
+    // shape, and that is what it now says.
     description:
         "Order a PEM bundle of X.509 certificates into a chain and report where it breaks: wrong " +
-        "order, a missing intermediate, an expired link, or an issuer whose name matches but whose " +
-        "signature does not. Every link is verified CRYPTOGRAPHICALLY, not by comparing issuer and " +
-        "subject strings — anyone can mint a certificate whose issuer field says what they like. " +
-        "The three X.509 operations each parse ONE certificate and nothing relates two.",
+        "order, a missing intermediate, an expired link, or a certificate carrying the name of an " +
+        "issuer the chain is looking for that issued nothing in the bundle — the shape of a " +
+        "substituted certificate. Every link is verified CRYPTOGRAPHICALLY, not by comparing " +
+        "issuer and subject strings — anyone can mint a certificate whose issuer field says what " +
+        "they like, and such a certificate simply never becomes a link. The three X.509 " +
+        "operations each parse ONE certificate and nothing relates two.",
     annotations: {
         title: "Order and validate an X.509 certificate chain",
         readOnlyHint: true,
@@ -293,10 +301,16 @@ export default {
         // keys off defects alone.
         const notes = [];
         if (!rootIsSelfSigned && order.length > 0) {
+            // Says only what the condition establishes. `!rootIsSelfSigned` means the issuer of
+            // the TOP certificate is not in the bundle; it does not establish that the absent
+            // certificate is the root. For a bare leaf it is the intermediate that is missing, and
+            // the earlier wording asserted "the root is not in this bundle" in that case too.
             notes.push(
-                "The chain does not end at a self-signed certificate, so the root is not in this " +
-                "bundle. That is NORMAL for a server's `fullchain.pem` — the root lives in the " +
-                "client's trust store — and it means this tool cannot tell you the chain is " +
+                "The chain does not end at a self-signed certificate, so the issuer above the top " +
+                "certificate is not in this bundle. Most often that is the root, which is NORMAL " +
+                "for a server's `fullchain.pem` — the root lives in the client's trust store. It " +
+                "can also mean an intermediate is missing, which this tool cannot distinguish " +
+                "from the outside. Either way it means this tool cannot tell you the chain is " +
                 "trusted, only that it is internally consistent.");
         }
 

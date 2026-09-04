@@ -146,14 +146,20 @@ describe("cert_chain", () => {
     });
 
     it("keeps a real defect a problem even when a note is also present", async () => {
-        // The other direction: a bundle missing its root AND missing its intermediate must not be
-        // rescued into self_consistent by the note/problem split.
-        const out = await tool.run({ input: LEAF, "as_of": WITHIN });
+        // A bare leaf carries a note (its issuer is not in the bundle) and no DEFECT: there is
+        // nothing here that fails to verify, nothing expired, and no certificate that does not
+        // belong. A one-certificate bundle is internally consistent in the only sense this tool
+        // claims to measure, so it stays self_consistent.
+        const bare = await tool.run({ input: LEAF, "as_of": WITHIN });
+        expect(bare.notes.join(" ")).toContain("NORMAL");
+        expect(bare.self_consistent).toBe(true);
 
-        expect(out.notes.join(" ")).toContain("NORMAL");
-        expect(out.self_consistent).toBe(true);
-
+        // The direction that matters for the note/problem split: adding an unrelated certificate
+        // introduces a real defect, and the note must not rescue it into self_consistent. Both the
+        // note and the problem are present here, which is the case that would regress if the two
+        // fields were ever folded back together.
         const withOrphan = await tool.run({ input: LEAF + ROOT, "as_of": WITHIN });
+        expect(withOrphan.notes.join(" ")).toContain("NORMAL");
         expect(withOrphan.problems.length).toBeGreaterThan(0);
         expect(withOrphan.self_consistent).toBe(false);
     });

@@ -47,6 +47,12 @@ Details in [the release notes](docs/releases/v3.8.0.md) and
   assessment saying a missing root is not a defect — it contradicted itself in a single response,
   because the missing-root note was pushed into `problems` and `self_consistent` counted them. Notes
   and problems are now separate fields. The tests had encoded the defect rather than catching it.
+- **`cert_chain`'s model-visible description advertised a finding the tool cannot make** — "an
+  issuer whose name matches but whose signature does not", the branch this same release established
+  as unreachable and removed from the implementation and the header comment. A stale comment misleads
+  a reader; a stale description misleads the caller, which is the model choosing the tool. The
+  missing-root note also claimed a root when the condition only establishes that the issuer above the
+  top certificate is absent — for a bare leaf that is the intermediate.
 - **Half-updated tool-surface figures.** Adding one registry tool moved every surface; the byte
   counts were re-measured everywhere and the tool counts were not, leaving `README.md` saying "545
   tools" and "all 544" three sentences apart, and a round-trip claim of 42,415 bytes against an index
