@@ -109,29 +109,73 @@ function truncateHash(hash, hashBits, n) {
 }
 
 /**
- * Recover `k` and `d` from one pair of signatures sharing an `r`.
+ * Recover the candidate `(k, d)` pairs from two signatures sharing an `r`.
+ *
+ * Returns up to TWO candidates, and that is a property of the mathematics rather than a hedge.
+ * See the block comment inside for why the pair alone cannot choose between them.
  *
  * @param {Object} a - The first signature, with `r`, `s`, `z` as bigints.
  * @param {Object} b - The second.
  * @param {bigint} n - The curve order.
- * @returns {{k: bigint, d: bigint}|null} The recovered values, or null when the pair degenerates.
+ * @returns {Array<{k: bigint, d: bigint, assumption: string}>} The candidates, most likely first.
  */
 function recoverFromPair(a, b, n) {
-    const sDiff = ((a.s - b.s) % n + n) % n;
-    // s1 == s2 with r1 == r2 means the two signatures are over the same hash: the same signature
-    // twice, or a duplicate in the input. There is no information in it and `1/0` does not exist.
-    if (sDiff === 0n) return null;
     const zDiff = ((a.z - b.z) % n + n) % n;
-    const sInv = modInverse(sDiff, n);
-    if (sInv === null) return null;
-    const k = (zDiff * sInv) % n;
     const rInv = modInverse(a.r, n);
-    if (rInv === null) return null;
-    const d = ((((a.s * k - a.z) % n) + n) % n * rInv) % n;
-    // d = 0 is not a private key; it means the algebra degenerated rather than that the key is
-    // zero, and returning it would be a confident wrong answer.
-    if (d === 0n || k === 0n) return null;
-    return { k, d };
+    if (rInv === null) return [];
+
+    // TWO denominators, because a shared `r` does not imply a shared `k`.
+    //
+    // `r` is the x-coordinate of `kG`, and `-kG` has the same x-coordinate — so a signature made
+    // with the nonce `n - k` carries the same `r` and a negated `s`. That is not a curiosity: it is
+    // what **low-S normalisation** produces. BIP-62, and every Bitcoin implementation since,
+    // rewrites `s` to `n - s` whenever `s > n/2`, so of two signatures that genuinely reused a
+    // nonce, one may have been normalised and the other not. Then:
+    //
+    //     shared nonce      k = (z1 - z2) / (s1 - s2)
+    //     negated nonce     k = (z1 - z2) / (s1 + s2)
+    //
+    // BOTH are returned, and this is the part worth being careful about, because the obvious next
+    // step does not work.
+    //
+    // The obvious step is to verify each candidate by checking that it reproduces the signatures
+    // it came from. **That check is vacuous, and it was written and measured before this comment
+    // replaced it.** Given any denominator `D`, setting `k = (z1-z2)/D` and
+    // `d = (s1 k - z1)/r` makes `s1 = k^-1 (z1 + r d)` true *by construction* — and the second
+    // equation follows from the first:
+    //
+    //     k D = z1 - z2  and  k s1 = z1 + r d   =>   k (s1 - D) = z2 + r d
+    //
+    // so `k^-1 (z2 + r d)` equals `s2` exactly, for the WRONG denominator as much as the right
+    // one. Verified numerically: both candidates pass, so the check discriminated nothing while
+    // looking like it did.
+    //
+    // The pair genuinely does not determine which candidate is the key. Choosing needs a third
+    // constraint — the public key — and testing a candidate against a public point needs the group
+    // law, which would put an elliptic-curve implementation into a tool that otherwise needs one
+    // integer per curve. So both are reported, labelled with the assumption each rests on, and the
+    // caller is told how to choose. An answer that says "one of these two, and here is how to tell"
+    // is worth more than one that picks and is silently wrong half the time.
+    const candidates = [];
+    const denominators = [
+        [((a.s - b.s) % n + n) % n, "shared nonce (the usual case)"],
+        [(a.s + b.s) % n, "negated nonce — one signature low-S normalised, e.g. BIP-62"]
+    ];
+    for (const [denominator, assumption] of denominators) {
+        // Zero means the two signatures carry no information relative to each other: identical, or
+        // exact negations. `1/0` does not exist and there is nothing to recover either way.
+        if (denominator === 0n) continue;
+        const sInv = modInverse(denominator, n);
+        if (sInv === null) continue;
+        const k = (zDiff * sInv) % n;
+        if (k === 0n) continue;
+        const d = ((((a.s * k - a.z) % n) + n) % n * rInv) % n;
+        // d = 0 is not a private key; it means the algebra degenerated rather than that the key is
+        // zero, and returning it would be a confident wrong answer.
+        if (d === 0n) continue;
+        candidates.push({ k, d, assumption });
+    }
+    return candidates;
 }
 
 export default {
@@ -140,7 +184,7 @@ export default {
     category: "Analysis",
     description:
         "Recover an ECDSA private key from two signatures that reused a nonce, detected by a " +
-        "shared `r`. Exact algebra, not a search: k = (z1-z2)/(s1-s2), d = (s1·k - z1)/r. The " +
+        "shared `r`. Exact algebra, not a search: k = (z1-z2)/(s1±s2), d = (s1·k - z1)/r. Returns up to TWO candidates, because a shared `r` means the nonce was k or n-k and the pair cannot choose between them without the public key -- low-S normalisation makes that common. The " +
         "four ECDSA operations all work on ONE signature and nothing compares two, which is where " +
         "ECDSA actually fails — the PS3 firmware key and the 2013 Android Bitcoin thefts were both " +
         "this. Does NOT attack merely biased nonces; that needs a lattice and is not implemented.",
@@ -232,18 +276,28 @@ export default {
         const degenerate = [];
         for (const group of byR.values()) {
             if (group.length < 2) continue;
+            // EVERY pair in the group, not adjacent ones only. With three signatures sharing an
+            // `r`, a degenerate pair at (0,1) -- a duplicate, say -- would otherwise hide a
+            // recoverable pair at (0,2), and the schema promises "every pair sharing an `r` is
+            // reported". The group is bounded by MAX_SIGNATURES and a shared `r` is rare, so the
+            // quadratic term is over a handful of entries rather than over the input.
             for (let i = 0; i < group.length - 1; i++) {
-                const found = recoverFromPair(group[i], group[i + 1], n);
-                if (found) {
-                    recoveries.push({
-                        "private_key_hex": found.d.toString(16).padStart(n.toString(16).length, "0"),
-                        "private_key_decimal": found.d.toString(),
-                        "nonce_hex": found.k.toString(16),
-                        "from": [group[i].label, group[i + 1].label],
-                        "shared_r": `0x${group[i].r.toString(16)}`
-                    });
-                } else {
-                    degenerate.push([group[i].label, group[i + 1].label]);
+                for (let j = i + 1; j < group.length; j++) {
+                    const found = recoverFromPair(group[i], group[j], n);
+                    if (found.length === 0) {
+                        degenerate.push([group[i].label, group[j].label]);
+                        continue;
+                    }
+                    for (const candidate of found) {
+                        recoveries.push({
+                            "private_key_hex": candidate.d.toString(16).padStart(n.toString(16).length, "0"),
+                            "private_key_decimal": candidate.d.toString(),
+                            "nonce_hex": candidate.k.toString(16),
+                            assumption: candidate.assumption,
+                            "from": [group[i].label, group[j].label],
+                            "shared_r": `0x${group[i].r.toString(16)}`
+                        });
+                    }
                 }
             }
         }
@@ -261,9 +315,11 @@ export default {
                 ...(degenerate.length > 0 ? {
                     "degenerate_pairs": degenerate,
                     "degenerate_note":
-                        "These pairs share an r but have equal s, which means they are signatures " +
-                        "over the same hash — the same signature listed twice, not a reused nonce " +
-                        "across two messages."
+                        "These pairs share an r but yielded nothing. Either they are the same " +
+                        "signature listed twice, or they are exact negations of one another, or " +
+                        "the recovered key failed verification against the signatures it came " +
+                        "from — which means the hashes given are not the ones that were signed, " +
+                        "or the curve is wrong."
                 } : {}),
                 assessment: byR.size === parsed.length ?
                     "Every signature has a distinct r, so no nonce was reused. That is the normal " +
@@ -283,14 +339,33 @@ export default {
             recovered: true,
             "distinct_keys": distinct.length,
             recoveries,
+            // Reported in the success case too, not only when nothing came out. A group of three
+            // where one pair is a duplicate and another recovers would otherwise drop the
+            // duplicate silently, and "every pair sharing an r is reported" is what the schema
+            // promises.
+            ...(degenerate.length > 0 ? {
+                "degenerate_pairs": degenerate,
+                "degenerate_note":
+                    "These pairs share an r but carry no information relative to each other: the " +
+                    "same signature listed twice, or exact negations of one another."
+            } : {}),
+            "how_to_choose": distinct.length > 1 ?
+                "MORE THAN ONE CANDIDATE, and the pair of signatures cannot choose between them. " +
+                "A shared r means the nonce was either k or n-k -- `-kG` has the same " +
+                "x-coordinate as `kG` -- and each possibility yields a different key. Both " +
+                "reproduce the signatures they came from *by construction*, so no check against " +
+                "these two signatures can discriminate; it needs the public key. Test each " +
+                "candidate by signing something with it and verifying against the public key you " +
+                "already have. The `assumption` field says what each rests on, and the first is " +
+                "the usual case." :
+                "One candidate.",
             assessment:
-                `Exact recovery from a reused nonce. The key is derived by two modular inversions, ` +
-                `not searched for, so it is correct if the inputs are: a wrong curve or a hash ` +
-                `that was not the one signed produces a plausible number that verifies against ` +
-                `nothing. Check it by signing something and verifying with the public key you ` +
-                `already have.`,
+                "Exact algebra, not a search: each candidate is derived by two modular inversions " +
+                "and is correct if the inputs are. A wrong curve, or a hash that was not the one " +
+                "actually signed, produces a plausible number that verifies against nothing -- so " +
+                "confirm against the public key before acting on it.",
             next: "Verify with cyberchef_bake: " +
-                "[{\"op\":\"ECDSA Sign\",\"args\":{...}}] using the recovered key, then " +
+                "[{\"op\":\"ECDSA Sign\",\"args\":{...}}] using a recovered key, then " +
                 "[{\"op\":\"ECDSA Verify\"}] against the known public key."
         };
     }

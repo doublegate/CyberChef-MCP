@@ -119,6 +119,12 @@ jobs:
           echo "changed=true" >> "$GITHUB_OUTPUT"
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Fetch the target branch FIRST. `--force-with-lease` compares against the local
+          # remote-tracking ref, and `actions/checkout` fetches only the default branch -- so on
+          # every run after the first, when the branch already exists, the push would be rejected
+          # with `stale info` for want of a lease value rather than for any real conflict. The
+          # `|| true` covers the first run, where the branch does not exist yet.
+          git fetch origin chore/benchmark-baseline || true
           git checkout -b chore/benchmark-baseline
           git add benchmarks/baseline.json
           git commit -m "chore(benchmarks): recapture the baseline on the runner" -m "$REASON" -m \
@@ -148,7 +154,8 @@ jobs:
             echo "gate switched off, and it looks identical to one moved for a good reason — which is"
             echo "why this stops at a branch rather than pushing to master."
             echo
-            echo "Once a runner-captured baseline is in place, the tolerance in \`baseline.json\`"
-            echo "should come down from the 50% stopgap to what the runner's own variance supports."
+            echo "The tolerance in \`baseline.json\` came down from the 50% stopgap to 20% in"
+            echo "v3.4.0, on a cross-instance study of three runner captures. Revisit it on"
+            echo "evidence from several monthly cycles, not on any single capture."
             echo "See \`docs/internal/v3.4.0-findings-log.md\` F-01 and F-02."
           } >> "$GITHUB_STEP_SUMMARY"

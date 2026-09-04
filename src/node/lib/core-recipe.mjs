@@ -276,9 +276,19 @@ export async function bakeOnCore(input, recipeConfig) {
             // Base64 for a member that is not text, rather than mojibake. The same choice the
             // content-block layer makes for a binary result, applied per member.
             //
+            // UTF-8, not ASCII. An ASCII-only test called `résumé.txt` binary and handed the
+            // caller base64 of perfectly readable text -- most of the world's text has a byte
+            // above 0x7f in it somewhere, so an ASCII rule makes this branch wrong for most
+            // non-English archives. Found in review on PR #118.
+            //
+            // Two parts, and the order matters. First a scan for C0 control bytes other than tab,
+            // LF and CR: those do not appear in text and their presence is what actually
+            // distinguishes a binary member. Then a strict UTF-8 decode, because "no control
+            // bytes" alone would accept arbitrary high bytes and reintroduce the mojibake.
+            //
             // A plain loop rather than `bytes.every(...)`, and the WHOLE buffer rather than a
-            // prefix. Measured on 16 MB of printable bytes -- the worst case, since a non-printable
-            // byte exits immediately either way:
+            // prefix. Measured on 16 MB of printable bytes -- the worst case, since a control byte
+            // exits immediately either way:
             //
             //     bytes.every(callback)   112 ms
             //     this loop                19 ms
@@ -291,13 +301,24 @@ export async function bakeOnCore(input, recipeConfig) {
             let printable = bytes.length > 0;
             for (let i = 0; i < bytes.length; i++) {
                 const b = bytes[i];
-                if (b !== 9 && b !== 10 && b !== 13 && (b < 32 || b >= 127)) {
+                if (b < 32 && b !== 9 && b !== 10 && b !== 13) {
                     printable = false;
                     break;
                 }
             }
+            let text = null;
+            if (printable) {
+                // `fatal: true` is the whole point: the default decoder replaces an invalid
+                // sequence with U+FFFD and returns a string that looks fine, which is exactly the
+                // silent corruption being avoided. Throwing means "this is not text".
+                try {
+                    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+                } catch {
+                    printable = false;
+                }
+            }
             const header = `=== ${file.name} (${bytes.length} bytes${printable ? "" : ", base64"}) ===`;
-            return `${header}\n${printable ? bytes.toString("utf8") : bytes.toString("base64")}`;
+            return `${header}\n${printable ? text : bytes.toString("base64")}`;
         }).join("\n");
         return {
             value: rendered,

@@ -67,8 +67,31 @@ const MAX_LENGTH = { name: 200, description: 100, version: 255 };
 /** `Server.properties.name.pattern`, from the schema. */
 const NAME_PATTERN = /^[a-zA-Z0-9.-]+\/[a-zA-Z0-9._-]+$/;
 
-/** `Package.required`, from the schema. Snake_case in 2025-07-09; camelCase from 2025-09-29. */
-const PACKAGE_REQUIRED = ["registryType", "identifier", "version", "transport"];
+/**
+ * `Package.required` and each field's type, from the schema.
+ *
+ * Types, not just presence. Presence alone let `"transport": "stdio"` pass -- a string where the
+ * schema requires an object -- which is a `server.json` the registry rejects and this gate called
+ * valid. Found in review on PR #118.
+ *
+ * Snake_case in 2025-07-09; camelCase from 2025-09-29.
+ */
+const PACKAGE_REQUIRED = {
+    "registryType": "string",
+    identifier: "string",
+    version: "string",
+    transport: "object"
+};
+
+/**
+ * The transport shapes, from the schema's `StdioTransport` / `StreamableHttpTransport` /
+ * `SseTransport` definitions: each `type` and the fields that type additionally requires.
+ */
+const TRANSPORTS = {
+    stdio: [],
+    "streamable-http": ["url"],
+    sse: ["url"]
+};
 
 /**
  * Fields the 2025-07-09 schema used for the same data.
@@ -92,13 +115,19 @@ const checked = [];
 /**
  * Record one assertion's outcome.
  *
+ * Returns whether it held, so a caller can skip a check that depends on this one having passed --
+ * a length check against a non-string, say, which would otherwise report a second, confusing
+ * failure about the same field.
+ *
  * @param {boolean} ok - Whether it held.
  * @param {string} what - What was checked.
  * @param {string} detail - The value seen, for the report.
+ * @returns {boolean} `ok`.
  */
 function assert(ok, what, detail) {
     checked.push(`${ok ? "ok " : "BAD"}  ${what}: ${detail}`);
     if (!ok) problems.push(`${what}: ${detail}`);
+    return ok;
 }
 
 const raw = readFileSync(join(ROOT, "server.json"), "utf8");
@@ -130,7 +159,11 @@ for (const field of REQUIRED) {
 }
 
 for (const [field, limit] of Object.entries(MAX_LENGTH)) {
-    if (typeof doc[field] !== "string") continue;
+    // The type check is not decoration. This used to `continue` on a non-string, so
+    // `"version": 3.4` skipped its own length check silently and the run still said "validates".
+    // A check that quietly opts out of checking is the shape of defect this whole script exists
+    // for.
+    if (!assert(typeof doc[field] === "string", `${field} is a string`, typeof doc[field])) continue;
     assert(doc[field].length <= limit, `${field} length (limit ${limit})`, String(doc[field].length));
 }
 
@@ -142,9 +175,25 @@ assert(Array.isArray(doc.packages) && doc.packages.length > 0,
     "packages is a non-empty array", Array.isArray(doc.packages) ? `${doc.packages.length} entries` : "not an array");
 
 for (const [index, pkg] of (doc.packages ?? []).entries()) {
-    for (const field of PACKAGE_REQUIRED) {
-        assert(pkg[field] !== undefined, `packages[${index}].${field}`,
-            pkg[field] === undefined ? "missing" : JSON.stringify(pkg[field]));
+    for (const [field, wanted] of Object.entries(PACKAGE_REQUIRED)) {
+        const seen = pkg[field] === undefined ? "missing" :
+            (Array.isArray(pkg[field]) ? "array" : typeof pkg[field]);
+        assert(seen === wanted, `packages[${index}].${field} (${wanted})`,
+            seen === wanted ? JSON.stringify(pkg[field]) : seen);
+    }
+    // The transport's own shape. `{"type": "stdio"}` and `{"type": "sse", "url": ...}` are
+    // different schemas, and a transport naming a type the spec does not define is a package no
+    // client can launch.
+    if (pkg.transport && typeof pkg.transport === "object" && !Array.isArray(pkg.transport)) {
+        const kind = pkg.transport.type;
+        if (assert(Object.prototype.hasOwnProperty.call(TRANSPORTS, kind),
+            `packages[${index}].transport.type`, String(kind))) {
+            for (const field of TRANSPORTS[kind]) {
+                assert(typeof pkg.transport[field] === "string",
+                    `packages[${index}].transport.${field} (required for "${kind}")`,
+                    pkg.transport[field] === undefined ? "missing" : typeof pkg.transport[field]);
+            }
+        }
     }
     for (const [old, current] of Object.entries(SUPERSEDED_SPELLINGS)) {
         if (pkg[old] !== undefined) {

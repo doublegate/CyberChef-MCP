@@ -2,7 +2,7 @@
 
 ## Why do I only see 41 tools when you say there are 504 operations?
 
-Because `tools/list` goes to the model on **every** request, and sending all 543 costs about
+Because `tools/list` goes to the model on **every** request, and sending all 544 costs about
 423,305 bytes before anyone types anything. The default is an index: 41 tools, 42,901 bytes.
 
 **Nothing becomes unreachable.** `cyberchef_bake` runs any of the 504 by name, and

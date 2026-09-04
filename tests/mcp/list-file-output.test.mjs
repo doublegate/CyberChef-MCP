@@ -309,6 +309,39 @@ describe("the List<File> rendering itself, in-process", () => {
         expect(text).toContain(`=== bell.bin (${control.length} bytes, base64) ===`);
     });
 
+    it("treats valid UTF-8 as text, not as binary", async () => {
+        // An ASCII-only rule called `résumé` binary and handed the caller base64 of perfectly
+        // readable text. Most of the world's text has a byte above 0x7f somewhere, so an ASCII
+        // rule makes this branch wrong for most non-English archives. Found in review on PR #118.
+        const { bakeOnCore } = await import("../../src/node/lib/core-recipe.mjs");
+        const accented = Buffer.from("résumé — naïve café\n", "utf8");
+        const archive = buildZipWith([{ name: "cv.txt", data: accented }]);
+        const text = String(await bakeOnCore(archive.toString("base64"), [
+            { op: "From Base64" }, { op: "Unzip" }
+        ]));
+
+        expect(text).toContain(`=== cv.txt (${accented.length} bytes) ===`);
+        expect(text).toContain("résumé — naïve café");
+        expect(text).not.toContain("base64");
+    });
+
+    it("still calls invalid UTF-8 binary, rather than decoding it to replacement characters",
+        async () => {
+            // The other half. `fatal: true` on the decoder is what makes this work: the default
+            // replaces an invalid sequence with U+FFFD and returns a string that looks fine, which
+            // is the silent corruption the base64 fallback exists to prevent.
+            const { bakeOnCore } = await import("../../src/node/lib/core-recipe.mjs");
+            const invalid = Buffer.from([0x41, 0xc3, 0x28, 0x42]);   // 0xc3 0x28 is not valid UTF-8
+            const archive = buildZipWith([{ name: "bad.txt", data: invalid }]);
+            const text = String(await bakeOnCore(archive.toString("base64"), [
+                { op: "From Base64" }, { op: "Unzip" }
+            ]));
+
+            expect(text).toContain(`=== bad.txt (${invalid.length} bytes, base64) ===`);
+            expect(text).toContain(invalid.toString("base64"));
+            expect(text).not.toContain("\uFFFD");
+        });
+
     it("leaves a non-List<File> result alone", async () => {
         // The block is keyed on the dish type, so an ordinary string result must not enter it.
         const { bakeOnCore } = await import("../../src/node/lib/core-recipe.mjs");

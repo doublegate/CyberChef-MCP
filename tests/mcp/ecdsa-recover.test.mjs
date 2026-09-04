@@ -103,11 +103,15 @@ describe("ecdsa_recover", () => {
         });
 
         expect(out.recovered).toBe(true);
-        expect(out.distinct_keys).toBe(1);
+        // The true key is the FIRST candidate, under the ordinary shared-nonce assumption.
         expect(BigInt(`0x${out.recoveries[0].private_key_hex}`)).toBe(D);
-        expect(BigInt(out.recoveries[0].nonce_hex.startsWith("0x") ?
-            out.recoveries[0].nonce_hex : `0x${out.recoveries[0].nonce_hex}`)).toBe(K);
+        expect(BigInt(`0x${out.recoveries[0].nonce_hex}`)).toBe(K);
+        expect(out.recoveries[0].assumption).toContain("shared nonce");
         expect(out.recoveries[0].from).toEqual(["first", "second"]);
+        // And the second candidate is the negated-nonce reading of the same pair, which the two
+        // signatures cannot rule out. Both are reported for that reason.
+        expect(out.recoveries[1].assumption).toContain("negated nonce");
+        expect(out.how_to_choose).toContain("MORE THAN ONE CANDIDATE");
     });
 
     it("says nothing was found when every nonce is distinct, and says what that does not prove",
@@ -132,7 +136,71 @@ describe("ecdsa_recover", () => {
         // and the tempting bug is to return whatever the arithmetic produced anyway.
         expect(out.recovered).toBe(false);
         expect(out.degenerate_pairs).toHaveLength(1);
-        expect(out.degenerate_note).toContain("same hash");
+        expect(out.degenerate_note).toContain("same signature listed twice");
+    });
+
+    it("recovers when one signature was low-S normalised, negating the nonce", async () => {
+        // `-kG` has the same x-coordinate as `kG`, so a signature made with the nonce `n - k`
+        // carries the same `r` and a negated `s`. That is not a curiosity: BIP-62 low-S
+        // normalisation rewrites `s` to `n - s` whenever `s > n/2`, so of two signatures that
+        // genuinely reused a nonce, one may have been normalised and the other not.
+        //
+        // `s1 - s2` then recovers a wrong key with nothing looking wrong. Found in review on
+        // PR #118.
+        const a = sign(D, K, Z1);
+        const b = sign(D, K, Z2);
+        const negated = { ...b, s: `0x${mod(-BigInt(b.s), N).toString(16)}` };
+        expect(negated.r).toBe(a.r);
+
+        const out = await tool.run({ curve: "secp256k1", signatures: [a, negated] });
+
+        expect(out.recovered).toBe(true);
+        // The true key is among the candidates -- as the SECOND one here, since this pair is the
+        // negated-nonce case. Before PR #118's review only the first denominator was tried, so
+        // this key was not returned at all and the one that was returned was wrong.
+        const keys = out.recoveries.map(entry => BigInt(`0x${entry.private_key_hex}`));
+        expect(keys).toContain(D);
+        expect(out.recoveries.find(e => BigInt(`0x${e.private_key_hex}`) === D).assumption)
+            .toContain("negated nonce");
+    });
+
+    it("says plainly that the two candidates cannot be told apart from the pair alone", async () => {
+        // The honesty requirement, and it is load-bearing. Verifying a candidate against the
+        // signatures it came from is VACUOUS: given any denominator, `k = (z1-z2)/D` and
+        // `d = (s1 k - z1)/r` make both signature equations true by construction. So the tool must
+        // not claim a verification it cannot perform -- choosing needs the public key, which needs
+        // the group law, which this tool deliberately does not carry.
+        const out = await tool.run({
+            curve: "secp256k1",
+            signatures: [sign(D, K, Z1), sign(D, K, Z2)]
+        });
+
+        expect(out.recoveries).toHaveLength(2);
+        expect(out.how_to_choose).toContain("public key");
+        expect(out.how_to_choose).toContain("by construction");
+        // Both carry the assumption they rest on, so neither is presented as established.
+        for (const entry of out.recoveries) expect(entry.assumption).toBeTruthy();
+    });
+
+    it("checks every pair in an r group, not only adjacent ones", async () => {
+        // With three signatures sharing an r, a degenerate pair at (0,1) must not hide a
+        // recoverable pair at (0,2). The old loop compared adjacent entries only.
+        const a = sign(D, K, Z1);
+        const c = sign(D, K, Z2);
+        const out = await tool.run({
+            curve: "secp256k1",
+            signatures: [
+                { ...a, label: "first" },
+                { ...a, label: "duplicate-of-first" },
+                { ...c, label: "third" }
+            ]
+        });
+
+        expect(out.recovered).toBe(true);
+        // (0,1) is the duplicate and yields nothing; (0,2) and (1,2) recover. The old loop
+        // compared adjacent entries only, so a degenerate pair could mask a recoverable one.
+        expect(out.recoveries.map(e => BigInt(`0x${e.private_key_hex}`))).toContain(D);
+        expect(out.degenerate_pairs).toContainEqual(["first", "duplicate-of-first"]);
     });
 
     it("truncates a hash wider than the curve, per FIPS 186-4", async () => {
@@ -153,7 +221,7 @@ describe("ecdsa_recover", () => {
         });
 
         expect(out.recovered).toBe(true);
-        expect(BigInt(`0x${out.recoveries[0].private_key_hex}`)).toBe(D);
+        expect(out.recoveries.map(e => BigInt(`0x${e.private_key_hex}`))).toContain(D);
     });
 
     it("measures a hash written with separators by its cleaned length", async () => {
@@ -171,7 +239,7 @@ describe("ecdsa_recover", () => {
         });
 
         expect(out.recovered).toBe(true);
-        expect(BigInt(`0x${out.recoveries[0].private_key_hex}`)).toBe(D);
+        expect(out.recoveries.map(e => BigInt(`0x${e.private_key_hex}`))).toContain(D);
     });
 
     it("refuses a signature whose r or s is zero rather than dividing by it", async () => {

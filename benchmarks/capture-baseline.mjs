@@ -114,7 +114,12 @@ writeFileSync(OUT, `${JSON.stringify({
     capturedAt: runs.at(-1).capturedAt,
     node: runs.at(-1).node,
     runs: runs.length,
-    ...(runId ? { capturedOnRunnerRunId: runId } : {}),
+    // Set when this ran on a runner, and REMOVED when it did not -- `...existing` above carries
+    // the previous file's fields forward, so a local capture would otherwise keep the runner id of
+    // the baseline it replaces while `_machine` says developer machine. The file would then claim
+    // two different origins at once, which is the same defect as the inherited `_machine` text this
+    // block was written to fix. Found in review on PR #118.
+    capturedOnRunnerRunId: runId ?? undefined,
     _machine: machine,
     toleranceRationale:
         `Measured, not chosen. Across ${runs.length} runs on this machine the worst per-task ` +
