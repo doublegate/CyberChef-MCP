@@ -12,27 +12,42 @@
  * v2.8.0 were unprotected. A regression posted a number to a pull request and nothing stopped it
  * merging.
  *
- * WHY THE TOLERANCE IS 50%, AND WHY IT WAS 25% FOR ABOUT AN HOUR
- * --------------------------------------------------------------
- * Measured twice, in two places, and the second place is the one that set the number.
+ * WHY THE TOLERANCE IS 20%, AND WHAT IT WAS BEFORE
+ * ------------------------------------------------
+ * It has been 25%, then 50%, and is now 20%. The number moved every time the measurement did, and
+ * the history is kept because each step explains the next.
  *
- * Locally: four consecutive runs on an idle machine give a worst per-task spread of 9.8% and a
- * median of 4.3%. 25% is 2.5x the worst of those, and that is what shipped first. (An earlier
- * study reported spreads up to 84% and would have justified a useless threshold -- that was two
- * operations sharing a task name, `SHA2` registered for both 256 and 512, plus JIT warm-up on the
- * first bench of a cold process. Fixing the names and discarding the cold run moved the answer by
- * an order of magnitude.)
+ * 25% came from a LOCAL study: four consecutive runs on an idle developer machine, worst per-task
+ * spread 9.8%, median 4.3%. (An earlier version of that study reported spreads up to 84% and would
+ * have justified a useless threshold -- that was two operations sharing a task name, `SHA2`
+ * registered for both 256 and 512, plus JIT warm-up on the first bench of a cold process. Fixing
+ * the names and discarding the cold run moved the answer by an order of magnitude.)
  *
- * On GitHub's shared runners: three runs against this baseline produced deltas from -25.5% to
- * +99.1% and **two false failures** -- `Entropy (100KB)` at -25.3%, then `Frequency distribution
- * (100KB)` at -25.5%, a different task each time with nothing in the diff touching either. Two
- * cries of wolf in three runs is how a gate gets disabled, and a disabled gate is what this whole
- * exercise replaced.
+ * 50% came from discovering that a local study cannot set a threshold for a gate that runs on
+ * GitHub's shared runners against a baseline captured elsewhere. Three CI runs against that
+ * baseline produced deltas from -25.5% to +99.1% and TWO false failures -- `Entropy (100KB)` at
+ * -25.3%, then `Frequency distribution (100KB)` at -25.5%, a different task each time with nothing
+ * in the diff touching either. Two cries of wolf in three runs is how a gate gets disabled.
  *
- * So 50%, which is what a CROSS-MACHINE baseline can honestly support: it fires on factor-level
- * regressions and not on runner noise. A regression that matters is a factor, not a few percent.
- * The real fix is a baseline captured on the runner, or a median of several runs there -- both
- * carried forward, neither bodged in here.
+ * Both false failures were CROSS-MACHINE artefacts, and v3.4.0 removed their cause: the committed
+ * baseline is now captured on the runner by `.github/workflows/benchmark-baseline.yml`, so the
+ * gate compares like against like. The tolerance no longer has to absorb a machine-class
+ * difference -- only the runner pool's own variance, which was measured across three separate
+ * instances:
+ *
+ *     between the three captured medians    worst 6.7%    median 1.5%
+ *     within one capture (4 runs), pooled   worst 15.2%   median 3.6%   1 of 90 above 15%
+ *
+ * Simulated with each capture as the baseline and the other two as the run under test: ZERO false
+ * failures at 20%, at 15%, and even at 10%, across 180 comparisons.
+ *
+ * 20% is chosen rather than 10%, which the data would also support. Three instances over sixteen
+ * minutes is a narrow sample of a pool that is not homogeneous and varies by day and region, and
+ * picking a threshold from the sample it was measured on is a mistake this project has made twice
+ * before. 20% is 3x the worst observed cross-instance spread and sits above the worst
+ * single-capture spread, so a genuinely noisy instance still does not fail a build.
+ *
+ * The full study is in docs/internal/measurements/v3.4.0-runner-baseline.md.
  *
  * WHAT IT DELIBERATELY DOES NOT DO
  * --------------------------------
@@ -40,21 +55,25 @@
  * than baseline by more than the tolerance is reported, because one cause is that the benchmark
  * stopped doing the work rather than that the code got faster.
  *
- * THE BASELINE IS MACHINE-RELATIVE, AND THIS LIMITS WHAT THE GATE CATCHES
- * ----------------------------------------------------------------------
- * Measured on this gate's first green CI run: the GitHub runner is 27-99% FASTER than the machine
- * the baseline was captured on, across most tasks. That is a machine-class difference, not noise,
- * and it has a consequence worth stating rather than discovering later:
+ * THE BASELINE IS NO LONGER MACHINE-RELATIVE, AND THAT IS THE POINT
+ * -----------------------------------------------------------------
+ * Through v3.3.0 the committed baseline came from a developer machine, and the consequence was
+ * measured rather than assumed: the GitHub runner ran 27-99% FASTER across most tasks. That is a
+ * machine-class difference, not noise, and it had a consequence worth stating plainly --
  *
- *     a regression smaller than the cross-machine offset will not be caught on CI.
+ *     a regression smaller than the cross-machine offset was not caught on CI.
  *
  * If CI runs ~30% faster than the baseline machine, code that got 25% slower still measures faster
- * than baseline and passes. The gate therefore catches FACTOR-level regressions on CI and
- * tolerance-level ones only where it is run on the machine the baseline came from.
+ * than baseline and passes. The gate caught FACTOR-level regressions on CI and tolerance-level
+ * ones only on the machine the baseline came from.
  *
- * The fix is a baseline captured on the runner, compared like against like. That is a follow-up
- * with its own measurement, not something to bodge in here -- and until it exists, this comment is
- * the honest description of the gate's reach. See v3.2.0 findings log F-10.
+ * Since v3.4.0 the baseline is captured on the runner, and `_machine` in baseline.json says which
+ * -- derived from `GITHUB_RUN_ID` at capture time, not asserted, because the previous version
+ * carried the sentence "Captured on one developer machine" over into a runner capture and was
+ * therefore wrong the first time the workflow ran.
+ *
+ * A locally captured baseline is still possible and still says so in `_machine`. If you see that
+ * text in a committed baseline, the cross-machine caveat above is live again.
  *
  * @author DoubleGate
  * @license GPL-3.0-or-later
