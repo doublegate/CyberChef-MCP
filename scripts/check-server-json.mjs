@@ -66,7 +66,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
  * The schema version whose rules are encoded below.
  *
  * Transcribed from https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json,
- * retrieved 2026-09-05. Bumping `$schema` in `server.json` without updating this constant and the
+ * retrieved 2026-09-04. Bumping `$schema` in `server.json` without updating this constant and the
  * rules under it is a deliberate failure, not an oversight -- see the header.
  */
 const KNOWN_SCHEMA = "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json";

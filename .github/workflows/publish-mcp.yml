@@ -36,6 +36,19 @@ jobs:
     name: Publish server.json
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # A deployment environment, so this job can be gated on a human.
+    #
+    # The registry maps the OIDC `repository_owner` claim to the `io.github.doublegate/*` namespace,
+    # so a run of this workflow can publish or overwrite entries under that namespace. Anyone with
+    # write access can dispatch it from any branch they can push, which makes "who may publish" a
+    # strictly wider set than "who may cut a release".
+    #
+    # Naming the environment here is the half that lives in the repository. The other half is
+    # settings, and cannot be committed: add required reviewers, and restrict the deployment
+    # branches/tags to `v*`, under Settings -> Environments -> mcp-registry-publish. Until that is
+    # configured GitHub creates the environment unprotected on first use, and this line changes
+    # nothing -- it is the hook, not the protection.
+    environment: mcp-registry-publish
     permissions:
       # OIDC. This is the whole reason there is no registry token in this repository's secrets:
       # `mcp-publisher login github-oidc` exchanges a short-lived, workflow-scoped identity token
@@ -138,7 +151,19 @@ jobs:
           NAME="$(node -p "require('./server.json').name")"
           for attempt in $(seq 1 10); do
             BODY="$(curl -fsS "https://registry.modelcontextprotocol.io/v0/servers?search=cyberchef" || echo '{}')"
-            if echo "$BODY" | grep -q "\"$NAME\"" && echo "$BODY" | grep -q "\"$VERSION\""; then
+            # Both values must belong to the SAME record. Two independent greps over the whole
+            # response pass when the name is in one entry and the version in another -- a search
+            # response holds several servers, so that is a real way to report a listing that is not
+            # there. Parsed rather than grepped.
+            if MATCH="$BODY" NAME="$NAME" VERSION="$VERSION" node -e '
+                const body = JSON.parse(process.env.MATCH || "{}");
+                const servers = body.servers ?? [];
+                const hit = servers.some(entry => {
+                  const s = entry.server ?? entry;
+                  return s.name === process.env.NAME && s.version === process.env.VERSION;
+                });
+                process.exit(hit ? 0 : 1);
+              '; then
               echo "listed: $NAME $VERSION"
               echo "$BODY" | head -c 1200
               exit 0

@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [3.5.0] - 2026-09-05
+## [3.5.0] - 2026-09-04
 
 **Two of the previous release's conclusions were tested before being built on, and both were
 wrong.** The `server.json` gate v3.4.0 shipped was a schema version behind on the day it shipped;

@@ -68,6 +68,7 @@ const head = readRun(headPath);
 const rows = [];
 const onlyBase = [];
 const onlyHead = [];
+const unmeasured = [];
 
 for (const [task, baseValue] of base) {
     if (!head.has(task)) {
@@ -75,9 +76,15 @@ for (const [task, baseValue] of base) {
         continue;
     }
     const headValue = head.get(task);
-    // Guard the division rather than emit Infinity: a zero here means the base run produced no
-    // measurement for the task, which is a broken run and not a 100% regression.
-    if (!baseValue) continue;
+    // A zero base means the base run produced no measurement for the task -- a broken run, not a
+    // 100% regression, so it must not be divided by. It is RECORDED rather than skipped: dropping
+    // it silently shrinks what the comparison covers while the summary still says "30 tasks
+    // compared", which is the shape of every "gate that quietly stopped checking" this project has
+    // found.
+    if (!baseValue || !headValue) {
+        unmeasured.push({ task, base: baseValue, head: headValue });
+        continue;
+    }
     rows.push({ task, base: baseValue, head: headValue, deltaPct: (headValue / baseValue - 1) * 100 });
 }
 for (const task of head.keys()) if (!base.has(task)) onlyHead.push(task);
@@ -93,6 +100,12 @@ function median(values) {
 }
 
 const deltas = rows.map(row => row.deltaPct);
+// Split by direction rather than taking the ends of the sorted list. With every task regressing,
+// the last element is still negative, and it was being printed as "worst faster: +-2.0%" and listed
+// under "Largest speedups" -- a report that contradicts itself in exactly the run where it matters
+// most.
+const slower = rows.filter(row => row.deltaPct < 0);
+const faster = rows.filter(row => row.deltaPct > 0).reverse();
 const fmt = row =>
     `  ${row.task.padEnd(34)}${row.base.toFixed(1).padStart(10)} -> ${row.head.toFixed(1).padStart(10)}  ` +
     `${row.deltaPct >= 0 ? "+" : ""}${row.deltaPct.toFixed(1)}%`;
@@ -101,23 +114,41 @@ process.stdout.write(
     "Same-host comparison: merge base vs head, one runner, one job\n\n" +
     `  tasks compared: ${rows.length}\n` +
     `  median delta:   ${median(deltas) >= 0 ? "+" : ""}${median(deltas).toFixed(1)}%\n` +
-    `  worst slower:   ${deltas.length ? `${deltas[0].toFixed(1)}%  (${rows[0].task})` : "n/a"}\n` +
-    `  worst faster:   ${deltas.length ? `+${deltas.at(-1).toFixed(1)}%  (${rows.at(-1).task})` : "n/a"}\n\n`);
+    `  worst slower:   ${slower.length ? `${slower[0].deltaPct.toFixed(1)}%  (${slower[0].task})` : "n/a"}\n` +
+    `  worst faster:   ${faster.length ? `+${faster[0].deltaPct.toFixed(1)}%  (${faster[0].task})` : "n/a"}\n\n`);
 
 // The five largest movements in each direction. The whole table is noise to read and the tails are
 // where a regression would be.
 const tail = 5;
-if (rows.length) {
+if (slower.length) {
     process.stdout.write("Largest slowdowns:\n");
-    for (const row of rows.slice(0, tail)) process.stdout.write(`${fmt(row)}\n`);
+    for (const row of slower.slice(0, tail)) process.stdout.write(`${fmt(row)}\n`);
+} else {
+    process.stdout.write("Largest slowdowns: none -- no task was slower.\n");
+}
+if (faster.length) {
     process.stdout.write("\nLargest speedups:\n");
-    for (const row of rows.slice(-tail).reverse()) process.stdout.write(`${fmt(row)}\n`);
+    for (const row of faster.slice(0, tail)) process.stdout.write(`${fmt(row)}\n`);
+} else {
+    process.stdout.write("\nLargest speedups: none -- no task was faster.\n");
 }
 
 if (onlyBase.length || onlyHead.length) {
     process.stdout.write("\nTasks present on one side only:\n");
     for (const task of onlyBase) process.stdout.write(`  base only: ${task}\n`);
     for (const task of onlyHead) process.stdout.write(`  head only: ${task}\n`);
+}
+
+if (unmeasured.length) {
+    process.stdout.write(
+        "\nTasks with no usable measurement, EXCLUDED from every figure above:\n");
+    for (const entry of unmeasured) {
+        process.stdout.write(`  ${entry.task}: base ${entry.base}, head ${entry.head}\n`);
+    }
+    process.stdout.write(
+        "  A zero throughput is a broken run rather than a 100% change, so these cannot be\n" +
+        "  divided. They are listed because silently dropping them would shrink what this\n" +
+        "  compares while the count above still looked complete.\n");
 }
 
 process.stdout.write(

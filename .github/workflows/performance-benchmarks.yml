@@ -125,9 +125,18 @@ jobs:
         # separates a real regression from a slow host. Running it only on success would withhold
         # the number in the only case anyone needs it.
         if: always() && github.event_name == 'pull_request'
+        env:
+          # Through the environment, NOT interpolated into the script body. `${{ }}` is substituted
+          # into the shell SOURCE before bash parses it, so a ref containing shell metacharacters
+          # would be executed rather than passed to git -- and git branch names legally contain
+          # characters bash treats as syntax. `base_ref` is the target branch and so is not
+          # attacker-controlled the way `head_ref` is, which makes this defence in depth; the safe
+          # form costs one line and the unsafe form is what gets copied into the workflow where the
+          # ref IS attacker-controlled.
+          BASE_REF: ${{ github.base_ref }}
         run: |
           set -o pipefail
-          BASE_SHA="$(git merge-base origin/${{ github.base_ref }} HEAD)"
+          BASE_SHA="$(git merge-base "origin/$BASE_REF" HEAD)"
           echo "merge base: $BASE_SHA"
 
           # A worktree rather than a second clone: same object store, no network, and the head
