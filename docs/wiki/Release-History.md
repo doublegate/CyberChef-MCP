@@ -24,8 +24,10 @@ the regression test drives a real server through a real client.
 Also: `ecdsa_recover`, for the nonce reuse the four ECDSA operations cannot see; `server.json`
 validated for the first time by anything, having declared one schema while being written to
 another; both MCP registry ownership proofs, which were absent and would have had a publish
-rejected; and the performance gate's tolerance down from 50% to 20% on a baseline that finally
-gets captured on the runner it is compared against.
+rejected; and the benchmark baseline finally captured on the runner it is compared against, which
+removes a systematic -9.6% machine offset. The tolerance was cut from 50% to 20% on that basis
+and put back the same day when four CI runs swung 40% on tasks the release does not touch --
+recorded, because the study that supported 20% was wrong in an instructive way.
 
 Three carried-forward questions were measured and deliberately left alone — the shell-free base
 image (it works, and ships Node 25 against the current 26), the conformance suite's

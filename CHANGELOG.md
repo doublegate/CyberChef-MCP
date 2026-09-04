@@ -70,14 +70,18 @@ releases of a green suite watched. Details in [the release notes](docs/releases/
 
 ### Changed
 
-- **The performance regression tolerance comes down from 50% to 20%, and the baseline moves to the
-  runner.** Measured across three separate runner instances: worst spread between their medians
-  6.7%, median 1.5%; within one capture, worst 15.2%. Simulating the gate over 180 comparisons
-  gives zero false failures at 20%, 15%, or even 10% — 20% is chosen anyway, because three
-  instances over sixteen minutes is a narrow sample and picking a threshold from the sample it was
-  measured on is a mistake this project has made twice. The committed developer-machine baseline
-  sat at a median -9.6% offset from the runner, so a regression smaller than that was never
-  catchable on CI.
+- **The benchmark baseline is captured on the runner the gate runs on.** The committed
+  developer-machine baseline sat at a median -9.6% offset (worst +43.1%), so a regression smaller
+  than that offset was never catchable on CI. `_machine` in `baseline.json` now says which machine
+  a baseline came from, derived from `GITHUB_RUN_ID` rather than asserted.
+- **The tolerance was cut from 50% to 20% and put back the same day**, and both halves are
+  recorded. Three runner captures gave a worst cross-instance spread of 6.7% and zero false
+  failures in a 180-comparison simulation at 20%, 15% or 10%. Four real CI runs then swung
+  `To Hex (100KB)` **-41.8%** and `Regular expression (1KB)` **+28.2%** on the same run, on tasks
+  this release does not touch — the benchmark imports the generated bridge, which reaches no
+  changed module. Three captures sixteen minutes apart sampled one class of host; the pool is
+  heterogeneous in memory bandwidth. 50% covers what was actually observed. The number is not the
+  lever: a median of runs, or normalising against a calibration task, is.
 - **Surface figures re-measured**: 41 tools / 42,901 bytes for the default index, 119 / 106,147
   curated, 544 / 423,305 for all. The published figures were 325 bytes low across all three, having
   been recorded during v3.3.0's development and never re-measured before the tag.

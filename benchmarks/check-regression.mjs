@@ -12,42 +12,50 @@
  * v2.8.0 were unprotected. A regression posted a number to a pull request and nothing stopped it
  * merging.
  *
- * WHY THE TOLERANCE IS 20%, AND WHAT IT WAS BEFORE
- * ------------------------------------------------
- * It has been 25%, then 50%, and is now 20%. The number moved every time the measurement did, and
- * the history is kept because each step explains the next.
+ * WHY THE TOLERANCE IS 50%, AND WHY 20% DID NOT SURVIVE
+ * ------------------------------------------------------
+ * It has been 25%, then 50%, then 20% for a few hours, and is 50% again. Each move followed a
+ * measurement; the last one followed a measurement being WRONG, which is the useful part.
  *
- * 25% came from a LOCAL study: four consecutive runs on an idle developer machine, worst per-task
- * spread 9.8%, median 4.3%. (An earlier version of that study reported spreads up to 84% and would
- * have justified a useless threshold -- that was two operations sharing a task name, `SHA2`
- * registered for both 256 and 512, plus JIT warm-up on the first bench of a cold process. Fixing
- * the names and discarding the cold run moved the answer by an order of magnitude.)
+ * 25% came from a LOCAL study: four runs on an idle developer machine, worst per-task spread 9.8%.
+ * (An earlier version of that study reported spreads up to 84% and would have justified a useless
+ * threshold -- two operations shared a task name, `SHA2` for both 256 and 512, plus JIT warm-up on
+ * the first bench of a cold process. Fixing the names and discarding the cold run moved the answer
+ * by an order of magnitude.)
  *
- * 50% came from discovering that a local study cannot set a threshold for a gate that runs on
- * GitHub's shared runners against a baseline captured elsewhere. Three CI runs against that
- * baseline produced deltas from -25.5% to +99.1% and TWO false failures -- `Entropy (100KB)` at
- * -25.3%, then `Frequency distribution (100KB)` at -25.5%, a different task each time with nothing
- * in the diff touching either. Two cries of wolf in three runs is how a gate gets disabled.
+ * 50% came from discovering a local study cannot set a threshold for a gate that runs on GitHub's
+ * shared runners against a baseline captured elsewhere: three CI runs produced deltas from -25.5%
+ * to +99.1% and TWO false failures on different tasks each time.
  *
- * Both false failures were CROSS-MACHINE artefacts, and v3.4.0 removed their cause: the committed
- * baseline is now captured on the runner by `.github/workflows/benchmark-baseline.yml`, so the
- * gate compares like against like. The tolerance no longer has to absorb a machine-class
- * difference -- only the runner pool's own variance, which was measured across three separate
- * instances:
+ * 20% came from v3.4.0 moving the baseline ONTO the runner and then measuring three captures from
+ * three instances: worst spread between their medians 6.7%, and zero false failures simulating the
+ * gate over 180 comparisons at 20%, 15%, even 10%.
  *
- *     between the three captured medians    worst 6.7%    median 1.5%
- *     within one capture (4 runs), pooled   worst 15.2%   median 3.6%   1 of 90 above 15%
+ * **CI disproved it within the hour.** Four runs on the release branch split two-pass/two-fail:
  *
- * Simulated with each capture as the baseline and the other two as the run under test: ZERO false
- * failures at 20%, at 15%, and even at 10%, across 180 comparisons.
+ *     To Hex (100KB)                  -41.8%
+ *     To Hex (10KB)                   -37.0%
+ *     Frequency distribution (100KB)  -29.2%
+ *     Entropy (100KB)                 -26.2%
+ *     Regular expression (1KB)        +28.2%   <- on the SAME run
+ *     Regular expression (10KB)       +24.0%
  *
- * 20% is chosen rather than 10%, which the data would also support. Three instances over sixteen
- * minutes is a narrow sample of a pool that is not homogeneous and varies by day and region, and
- * picking a threshold from the sample it was measured on is a mistake this project has made twice
- * before. 20% is 3x the worst observed cross-instance spread and sits above the worst
- * single-capture spread, so a genuinely noisy instance still does not fail a build.
+ * Both directions at once, on tasks no commit in that branch touched -- this file's benchmark
+ * imports `bake` from `src/node/index.mjs`, and the generated bridge does not reach any module the
+ * release changed. It is a different HOST: the memory-bandwidth-bound tasks collapsed while the
+ * CPU-bound one improved.
  *
- * The full study is in docs/internal/measurements/v3.4.0-runner-baseline.md.
+ * The study's flaw was sampling, not arithmetic. Three captures sixteen minutes apart landed on one
+ * class of host, and it even said so while choosing 20% over the 10% its data allowed -- being
+ * aware of a bias is not being protected from it.
+ *
+ * So 50%, which covers the -41.8% actually observed. The number is not the interesting part any
+ * more, and widening it further would not be either: the real fix is a median of several runs (the
+ * baseline is a median of four and this compares ONE run against it) or normalising against a
+ * calibration task, which targets host-class difference directly. Both are follow-ups with their
+ * own validation, not something to bodge in here.
+ *
+ * The full study and its disproof: docs/internal/measurements/v3.4.0-runner-baseline.md.
  *
  * WHAT IT DELIBERATELY DOES NOT DO
  * --------------------------------

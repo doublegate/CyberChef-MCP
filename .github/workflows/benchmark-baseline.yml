@@ -154,8 +154,9 @@ jobs:
             echo "gate switched off, and it looks identical to one moved for a good reason — which is"
             echo "why this stops at a branch rather than pushing to master."
             echo
-            echo "The tolerance in \`baseline.json\` came down from the 50% stopgap to 20% in"
-            echo "v3.4.0, on a cross-instance study of three runner captures. Revisit it on"
-            echo "evidence from several monthly cycles, not on any single capture."
+            echo "The tolerance in \`baseline.json\` stays at 50%. v3.4.0 tried 20% on a study of"
+            echo "three runner captures and CI disproved it the same day -- the pool varies by"
+            echo "~40% on memory-bound tasks. See docs/internal/measurements/v3.4.0-runner-baseline.md;"
+            echo "the fix is a calibration task or a median of runs, not a different number."
             echo "See \`docs/internal/v3.4.0-findings-log.md\` F-01 and F-02."
           } >> "$GITHUB_STEP_SUMMARY"

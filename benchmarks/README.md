@@ -28,45 +28,56 @@ cold-start work and v2.8.0's image-size work were unprotected.
 A task *faster* than the tolerance is reported and not failed, because the usual cause is a
 benchmark that stopped doing the work.
 
-### Why the tolerance is 20%
+### Why the tolerance is 50%
 
-Measured, not chosen — three times, because the measurement kept turning out to be of the wrong
-thing. The history is kept because each step explains the next.
+Measured, not chosen — four times now, and the fourth measurement is the one that disproved the
+third. The history is kept because the *shape* of the error repeats.
 
-**First measurement, wrong by an order of magnitude.** It reported per-task spreads up to **84%**,
-plausible enough to believe on a JIT-compiled workload and wide enough to justify a gate that could
-never fire. Two causes: `SHA2` is registered twice, for 256 and for 512, and both emitted tasks
-called `SHA2 (1KB)` — the "variance" was two operations taking turns in one slot; and the first
-bench of a cold process absorbs JIT warm-up (`To Base64 (1KB)` measured 7,482 ops/s cold against
-11,445–12,188 warm). With names disambiguated and the cold run discarded, four runs on an idle
-developer machine give a worst per-task spread of **9.8%** and a median of **4.3%**. That supported
-**25%**, which shipped first.
+**A local study.** Four runs on an idle developer machine give a worst per-task spread of 9.8%.
+(An earlier version reported up to 84% and would have justified a gate that could never fire: two
+operations shared a task name, `SHA2` for both 256 and 512, and JIT warm-up inflated the first
+bench of a cold process. Fixing the names and discarding the cold run moved the answer by an order
+of magnitude.) That supported **25%**.
 
-**Then CI disagreed.** Three runs on GitHub's shared runners produced deltas from **−25.5% to
-+99.1%** and **two false failures**: `Entropy (100KB)` at −25.3%, then
-`Frequency distribution (100KB)` at −25.5%, a different task each time with nothing in the diff
-touching either. Two cries of wolf in three runs is how a gate gets switched off, so the tolerance
-went to **50%** — what a cross-machine baseline can honestly support.
+**CI disagreed.** Three runs on GitHub's shared runners produced deltas from −25.5% to +99.1% and
+two false failures on a different task each time. Two cries of wolf in three runs is how a gate gets
+switched off, so the tolerance went to **50%** — what a cross-machine baseline can honestly support.
 
-**Then the baseline moved to the runner (v3.4.0), and both false failures lost their cause.** They
-were cross-machine artefacts, and the gate now compares like against like. What remains is the
-runner pool's own variance, measured across three separate instances:
+**v3.4.0 moved the baseline onto the runner** and measured three captures from three instances:
+worst spread between their medians 6.7%, and zero false failures simulating the gate over 180
+comparisons at 20%, 15%, even 10%. That supported **20%**.
+
+**CI disagreed again, within the hour.** Four runs on the release branch split two-pass/two-fail:
 
 ```text
-between the three captured medians (30 tasks)   worst  6.7%   median 1.5%
-within one capture (4 runs), pooled  (n = 90)   worst 15.2%   median 3.6%   1 of 90 above 15%
+To Hex (100KB)                  -41.8%
+To Hex (10KB)                   -37.0%
+Frequency distribution (100KB)  -29.2%
+Entropy (100KB)                 -26.2%
+Regular expression (1KB)        +28.2%   <- on the SAME run
+Regular expression (10KB)       +24.0%
 ```
 
-Simulated with each capture as the baseline and the other two as the run under test — 180
-comparisons — there are **zero** false failures at 20%, at 15%, and even at 10%. Verified through
-the real checker afterwards rather than a reimplementation: both other captures report
-"No regression" against the committed baseline.
+Both directions at once, on tasks no commit in that branch touched — `operation-benchmarks.mjs`
+imports `bake` from `src/node/index.mjs`, and the generated bridge does not reach any module the
+release changed. That is a different **host**: the memory-bandwidth-bound tasks collapsed while the
+CPU-bound one improved.
 
-So **20%**, not the 10% the data would also support. Three instances over sixteen minutes is a
-narrow sample of a pool that is not homogeneous and varies by day and region, and picking a
-threshold from the sample it was measured on is a mistake this project has made twice. 20% is 3x
-the worst observed cross-instance spread and clears the worst single-capture spread. Full study:
+The study's flaw was sampling rather than arithmetic. Three captures sixteen minutes apart landed
+on one class of host — and the document said so while choosing 20% over the 10% its own data
+allowed. Being aware of a bias is not being protected from it.
+
+So **50%**, which covers the −41.8% actually observed. Full study and disproof:
 [`../docs/internal/measurements/v3.4.0-runner-baseline.md`](../docs/internal/measurements/v3.4.0-runner-baseline.md).
+
+**The number is not the lever worth pulling.** Widening it further would not help either. Two
+mechanisms would, and both are follow-ups with their own validation:
+
+1. **A median of several runs in CI**, matching what the baseline already is — it is a median of
+   four and the gate compares a *single* run against it, which is asymmetric. Cuts within-instance
+   noise, not host-to-host difference, and triples the job.
+2. **Normalising against a calibration task** — measure one fixed operation each run and scale the
+   rest by it. Targets host-class difference directly, which is what actually broke this.
 
 The missing-task check is unaffected and stays exact: a benchmark that disappears is a fact, not a
 measurement.
