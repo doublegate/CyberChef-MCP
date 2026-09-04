@@ -43,6 +43,13 @@ Details in [the release notes](docs/releases/v3.8.0.md) and
   fails"; that branch is unreachable — `checkIssued` verifies cryptographically, measured against a
   purpose-built imposter — and the claim was removed rather than left standing.
 
+- **The benchmark workflow did not trigger on changes to itself.** Its path filter listed the code
+  the benchmarks measure and not the workflow that measures it, so the one class of edit whose
+  correctness it is the only judge of was the class it never ran on. Found by consequence: this
+  release's new `benchmark-arm64` job would have merged **having never executed once**. The
+  workflow's own path is now in both filters; `src/node/lib/**` stays out deliberately, because a
+  run costs two dependency installs across two architectures on a runner pool measured as
+  heterogeneous.
 - **A stale token figure in a runtime log line.** `describeSurface` told operators the `all` surface
   costs "~86k tokens per tools/list" — a token claim in a repository whose stated rule is bytes-only
   (it was bytes/4 wearing a token label), and stale besides: the payload is now 424,810 bytes, ~106k
