@@ -18,14 +18,14 @@ try {
     step("Search by keyword");
     const raw = await call(client, "cyberchef_search", { query: "base64" });
     const hits = JSON.parse(raw);
-    console.log(`  "base64" matched ${hits.length} operations`);
-    for (const h of hits.slice(0, 5)) console.log(`    - ${h.name}`);
-    expect("finds To Base64", hits.some(h => h.name === "To Base64"), true);
+    console.log(`  "base64" matched ${hits.matches} operations`);
+    for (const h of hits.operations.slice(0, 5)) console.log(`    - ${h.operation}: ${h.summary}`);
+    expect("finds To Base64", hits.operations.some(h => h.operation === "To Base64"), true);
 
     step("Search is how you learn an operation's exact name");
     const jwt = JSON.parse(await call(client, "cyberchef_search", { query: "JWT" }));
-    console.log(`  "JWT" matched: ${jwt.map(h => h.name).join(", ")}`);
-    expect("finds a JWT operation", jwt.length > 0, true);
+    console.log(`  "JWT" matched: ${jwt.operations.map(h => h.operation).join(", ")}`);
+    expect("finds a JWT operation", jwt.matches > 0, true);
 
     step("Then run it by that name");
     // A throwaway token, signed with the literal key "secret" -- this is the canonical example

@@ -250,12 +250,48 @@ describe("in-process handlers: bake and search", () => {
         }
     });
 
-    it("searches operations by keyword", async () => {
+    it("searches operations by keyword, and summarises by default", async () => {
+        // CHANGED IN v3.2.0. Search returned the raw `help()` output -- the full OperationConfig
+        // entry per match, HTML description and every argument -- which measured 27,060 bytes for
+        // "base64" against 3,087 now. That is the index surface paid twice: search is the
+        // DISCOVERY step, and `describe_operation` is the one place a full schema is paid for.
         const { client, close } = await connected();
         try {
             const results = await callJson(client, "cyberchef_search", { query: "base64" });
-            expect(Array.isArray(results)).toBe(true);
-            expect(results.length).toBeGreaterThan(0);
+
+            expect(results.query).toBe("base64");
+            expect(results.matches).toBeGreaterThan(0);
+            expect(results.operations.length).toBe(results.matches);
+            // The name is the whole point of a search result: it is what the caller feeds to
+            // `bake` or `describe_operation` next.
+            expect(results.operations.map(o => o.operation)).toContain("To Base64");
+            // Summarised, not raw: no HTML, and a bounded length.
+            const summary = results.operations[0].summary;
+            expect(summary).not.toMatch(/<[a-z]/i);
+            expect(summary.length).toBeLessThanOrEqual(130);
+            expect(results.next).toMatch(/cyberchef_describe_operation/);
+        } finally {
+            await close();
+        }
+    });
+
+    it("returns the full entries when the caller asks for them", async () => {
+        // The escape hatch, so this is not a silent shape change for anything already parsing the
+        // old payload. Opt-in rather than default, because the default is what every model pays.
+        const { client, close } = await connected();
+        try {
+            const detailed = await callJson(
+                client, "cyberchef_search", { query: "base64", detailed: true });
+
+            expect(Array.isArray(detailed)).toBe(true);
+            expect(detailed.length).toBeGreaterThan(0);
+            expect(detailed[0]).toHaveProperty("args");
+            expect(detailed[0]).toHaveProperty("inputType");
+
+            const concise = await callJson(client, "cyberchef_search", { query: "base64" });
+            // The reason the flag exists, asserted rather than claimed.
+            expect(JSON.stringify(detailed).length)
+                .toBeGreaterThan(JSON.stringify(concise).length * 4);
         } finally {
             await close();
         }

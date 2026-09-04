@@ -153,6 +153,42 @@ export function listOperations(category) {
 }
 
 /**
+ * Search results in the same shape the rest of the index hierarchy uses.
+ *
+ * WHY THIS EXISTS
+ * ---------------
+ * `cyberchef_search` returned the raw `help()` output: the FULL `OperationConfig` entry for every
+ * match -- module, HTML description, infoURL, input and output types, and every argument with its
+ * defaults. Measured on this catalogue:
+ *
+ *     query "base64"   14 matches   27,060 bytes
+ *     query "aes"      21 matches   35,642 bytes
+ *
+ * That is the whole point of the index surface paid twice. `cyberchef_list_operations` returns
+ * names and one-line summaries for exactly this reason, and `cyberchef_describe_operation` is the
+ * one place a full argument schema is paid for. Search sat outside that design and handed back
+ * more than `describe_operation` would for the same operations.
+ *
+ * A discovery tool's job is to narrow. The caller reads names, picks one or two, and asks for the
+ * detail it actually needs.
+ *
+ * @param {Array<Object>} results - Raw `help()` output.
+ * @returns {Object} `{query, matches, operations, next}`.
+ */
+export function summariseSearch(query, results) {
+    return {
+        query,
+        matches: results.length,
+        operations: results.map(op => ({
+            operation: op.name,
+            summary: summarise(op.description, 120),
+            args: (op.args || []).length
+        })),
+        next: "Use cyberchef_describe_operation for argument schemas, then cyberchef_bake to run."
+    };
+}
+
+/**
  * Full detail for one or more operations: description, arguments, defaults.
  *
  * This is the leaf of the hierarchy and the only place the full argument schema is paid for. It

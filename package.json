@@ -244,7 +244,8 @@
     "measure:surfaces": "node benchmarks/tool-surface.mjs",
     "benchmark:json": "node benchmarks/operation-benchmarks.mjs --json",
     "benchmark:check": "node benchmarks/operation-benchmarks.mjs --json > /tmp/cyberchef-bench.json && node benchmarks/check-regression.mjs /tmp/cyberchef-bench.json",
-    "benchmark:baseline": "node benchmarks/capture-baseline.mjs"
+    "benchmark:baseline": "node benchmarks/capture-baseline.mjs",
+    "measure:results": "node benchmarks/tool-results.mjs"
   },
   "overrides": {
     "ws": ">=5.2.4",
