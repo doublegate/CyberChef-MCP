@@ -195,8 +195,9 @@ export default {
             // producing a plausible wrong key. A decimal hash cannot express its own width at all;
             // there the value's bit length is the only available answer and it under-reports a
             // digest with leading zero bits. Give hashes as hex.
-            const hashBits = /^0[xX]/.test(String(sig.hash).trim()) ?
-                Math.ceil((String(sig.hash).trim().length - 2) / 2) * 8 :
+            const written = String(sig.hash).trim();
+            const hashBits = /^0[xX]/.test(written) ?
+                Math.ceil((written.length - 2) / 2) * 8 :
                 hash.toString(2).length;
             const r = parseInteger(sig.r, `signatures[${index}].r`) % n;
             const s = parseInteger(sig.s, `signatures[${index}].s`) % n;

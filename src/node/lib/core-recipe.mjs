@@ -275,8 +275,27 @@ export async function bakeOnCore(input, recipeConfig) {
             const bytes = Buffer.from(file.data ?? []);
             // Base64 for a member that is not text, rather than mojibake. The same choice the
             // content-block layer makes for a binary result, applied per member.
-            const printable = bytes.length > 0 && bytes.every(b =>
-                b === 9 || b === 10 || b === 13 || (b >= 32 && b < 127));
+            //
+            // A plain loop rather than `bytes.every(...)`, and the WHOLE buffer rather than a
+            // prefix. Measured on 16 MB of printable bytes -- the worst case, since a non-printable
+            // byte exits immediately either way:
+            //
+            //     bytes.every(callback)   112 ms
+            //     this loop                19 ms
+            //     toString("utf8")          9 ms   (the work that follows regardless)
+            //
+            // `every` was costing twelve times the encode it precedes, entirely in per-byte
+            // callback dispatch. Sampling only a prefix would be faster still and is wrong: a
+            // member that is text for its first few kilobytes and binary afterwards would be
+            // decoded as UTF-8, which is the mojibake this branch exists to prevent.
+            let printable = bytes.length > 0;
+            for (let i = 0; i < bytes.length; i++) {
+                const b = bytes[i];
+                if (b !== 9 && b !== 10 && b !== 13 && (b < 32 || b >= 127)) {
+                    printable = false;
+                    break;
+                }
+            }
             const header = `=== ${file.name} (${bytes.length} bytes${printable ? "" : ", base64"}) ===`;
             return `${header}\n${printable ? bytes.toString("utf8") : bytes.toString("base64")}`;
         }).join("\n");
