@@ -74,7 +74,7 @@ const expectedMajor = expected.split(".")[0];
  * `g` is deliberately absent here; a shared regex with `g` carries mutable `lastIndex` between
  * consumers and would make `.test()` alternate true/false on identical input.
  */
-const CATALOGUE_COUNT = /(?:all|loads|exposes|importing) ([0-9]{3})[- ]operation|\b([0-9]{3})-operation \*?barrel|\b([0-9]{3}) operation implementations/;
+const CATALOGUE_COUNT = /(?:all|loads|exposes|importing) ([0-9]{3})[- ]operation|\b([0-9]{3})-operation \*?barrel/;
 
 /**
  * Every text file in the repository that could carry a whole-catalogue operation count.
@@ -338,22 +338,20 @@ const LOCATIONS = [
         // below -- which is short, explicit, and about history rather than convenience.
         ...discoverFiles().map(file => ({
             file,
-            // Anchored on phrasings that mean THE WHOLE CATALOGUE. A bare `NNN operation` matches
-            // "2,289 operation tests" and "100-operation" in an unrelated sentence, which is
-            // worse than under-matching: a check that fires on the wrong claim gets deleted.
-            // Anchored on phrasings that mean THE WHOLE CATALOGUE. A bare `NNN operation` matches
-            // "2,289 operation tests" and "100-operation" in an unrelated sentence, which is worse
-            // than under-matching: a check that fires on the wrong claim gets deleted.
+            // Anchored on phrasings that mean THE WHOLE CATALOGUE. A bare `NNN operation`
+            // matches "2,289 operation tests" and "100-operation" in an unrelated sentence, which
+            // is worse than under-matching: a check that fires on the wrong claim gets deleted.
             //
-            // `NNN operation implementations` is the third anchor, added in v3.7.0. It is the
-            // phrase every one of the seven stale locations used and the one the first two anchors
-            // missed -- "imports **every one of the 505 operation implementations**" contains
-            // neither `all NNN operation` nor a barrel. Measured against a deliberately WIDE
-            // pattern over the whole tree: this anchor catches all nine wrong occurrences and adds
-            // no false positives, while the wide version also flagged the 100-operation batch
-            // limit, upstream's 463, an external reference's "over 300", and `HAS-160 operation`.
+            // A third anchor, `NNN operation implementations`, was added in v3.7.0 and REMOVED in
+            // its review. It matched every one of the nine stale locations -- but it would have
+            // made this gate demand that an IMPLEMENTATION count equal the CATALOGUE count, and
+            // those are different numbers: the bridge imports 494 modules where `OperationConfig`
+            // has 504. The gate would have enforced a figure that is not true and rejected the
+            // accurate one. The phrase was removed from the prose instead, since those sentences
+            // are about the COST of the eager import and the count was never load-bearing -- which
+            // is precisely why a wrong one survived three releases.
             find: text => [...text.matchAll(new RegExp(CATALOGUE_COUNT, "g"))]
-                .map((m, i) => ({ what: `operation count ${i + 1}`, value: m[1] ?? m[2] ?? m[3],
+                .map((m, i) => ({ what: `operation count ${i + 1}`, value: m[1] ?? m[2],
                     compare: String(operationCount) }))
         }))
     ]),

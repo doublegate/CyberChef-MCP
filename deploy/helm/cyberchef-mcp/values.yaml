@@ -74,7 +74,7 @@ ingress:
 
 resources:
   requests:
-    # The server loads 504 operation implementations on first use of the Node API. Measured
+    # The server loads every operation implementation on first use of the Node API. Measured
     # resident set after that load is well under 512Mi, but a limit below it will OOM on the
     # first cyberchef_search rather than at startup, which is a confusing place to find out.
     memory: 256Mi

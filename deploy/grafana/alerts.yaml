@@ -76,7 +76,7 @@ groups:
           description: >-
             {{ $labels.instance }} restarted 3 or more times in 15 minutes. If it coincides with
             first use of cyberchef_search, batch search or a saved recipe, suspect the container
-            memory limit: that is when the Node API loads all 504 operation implementations, and a
+            memory limit: that is when the Node API loads all every operation implementation, and a
             limit sized for the idle process OOMs exactly there rather than at startup.
 
       # ---- correctness --------------------------------------------------------------------

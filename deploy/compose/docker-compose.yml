@@ -92,7 +92,7 @@ services:
     deploy:
       resources:
         limits:
-          # The Node API loads 504 operation implementations on first use of cyberchef_search or
+          # The Node API loads every operation implementation on first use of cyberchef_search or
           # a saved recipe. A limit below ~512Mi will OOM there rather than at startup, which is a
           # confusing place to discover it.
           memory: 1G

@@ -2531,7 +2531,7 @@
     {
       "type": "timeseries",
       "title": "Memory per replica",
-      "description": "RSS and heap.\n\nEXPECT A STEP of roughly 100-200 MB the first time `cyberchef_search`, batch search or a saved recipe runs on a given replica. That is the Node API loading all 504 operation implementations -- deferred in v2.6.0 to take cold start from ~1300 ms to ~185 ms. It happens once per process and is NOT a leak.\n\nA container memory limit below that step will OOM at that moment rather than at startup, which is a confusing place to find out. The chart's `resources.requests.memory` default of 256Mi and limit of 1Gi are sized for it.",
+      "description": "RSS and heap.\n\nEXPECT A STEP of roughly 100-200 MB the first time `cyberchef_search`, batch search or a saved recipe runs on a given replica. That is the Node API loading all every operation implementation -- deferred in v2.6.0 to take cold start from ~1300 ms to ~185 ms. It happens once per process and is NOT a leak.\n\nA container memory limit below that step will OOM at that moment rather than at startup, which is a confusing place to find out. The chart's `resources.requests.memory` default of 256Mi and limit of 1Gi are sized for it.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
