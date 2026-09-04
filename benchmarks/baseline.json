@@ -1,161 +1,161 @@
 {
   "_comment": "Committed regression baseline. Generated from the MEDIAN of four consecutive `npm run benchmark -- --json` runs on one machine; see docs/internal/measurements/v3.1.0-baseline.md for the method and the variance study behind the tolerance. Regenerate with `npm run benchmark:baseline` and commit the change with the reason in the message -- a baseline moved without a stated reason is how a gate stops gating.",
-  "capturedFor": "v3.1.0",
-  "capturedAt": "2026-09-04T00:41:23.986Z",
+  "capturedFor": "3.3.0",
+  "capturedAt": "2026-09-04T11:39:38.011Z",
   "node": "v26.8.1",
   "runs": 4,
   "tolerancePct": 50,
-  "toleranceRationale": "Measured on the machine this baseline came from AND on the CI runner, and the second measurement is why it is 50 rather than 25. Locally, four runs give a worst per-task spread of 9.8% and a median of 4.3%, which supported 25%. On GitHub's shared runners, three runs against this baseline produced deltas from -25.5% to +99.1% and TWO FALSE FAILURES -- `Entropy (100KB)` at -25.3% and `Frequency distribution (100KB)` at -25.5%, different tasks each time, with nothing in the diff touching either. That is per-task noise on a shared runner, not a regression, and a gate that cries wolf twice in three runs is a gate that gets disabled. 50% keeps it firing only on the kind of regression that matters -- a factor -- which is what a cross-machine baseline can honestly support. The real fix is a baseline captured on the runner, or a median of several runs there; both are carried forward. See v3.2.0 findings log F-13.",
+  "toleranceRationale": "Measured, not chosen. Across 4 runs the worst per-task spread was 14.4% and the median was 3.4%, on an otherwise idle machine. 50% is roughly 2.5x the worst observed spread: wide enough that runner noise does not fail a build, narrow enough to catch the kind of regression that matters, which is a factor rather than a few percent. CI variance is NOT yet measured -- revisit once there are enough runs to characterise it.",
   "tasks": {
     "AES Encrypt (100KB)": {
       "suite": "crypto",
-      "throughputMedian": 95.6,
-      "observedSpreadPct": 5.0
+      "throughputMedian": 86.9,
+      "observedSpreadPct": 6.1
     },
     "AES Encrypt (10KB)": {
       "suite": "crypto",
-      "throughputMedian": 1025.7,
-      "observedSpreadPct": 4.0
+      "throughputMedian": 939.9,
+      "observedSpreadPct": 4.5
     },
     "AES Encrypt (1KB)": {
       "suite": "crypto",
-      "throughputMedian": 9199.5,
+      "throughputMedian": 8625.4,
       "observedSpreadPct": 3.1
     },
     "Entropy (100KB)": {
       "suite": "analysis",
-      "throughputMedian": 2396.5,
-      "observedSpreadPct": 3.7
+      "throughputMedian": 2062.6,
+      "observedSpreadPct": 0.8
     },
     "Entropy (10KB)": {
       "suite": "analysis",
-      "throughputMedian": 16549.2,
-      "observedSpreadPct": 6.2
+      "throughputMedian": 14982.2,
+      "observedSpreadPct": 5.6
     },
     "Entropy (1KB)": {
       "suite": "analysis",
-      "throughputMedian": 40422.9,
-      "observedSpreadPct": 9.6
+      "throughputMedian": 39950.5,
+      "observedSpreadPct": 14.4
     },
     "Frequency distribution (100KB)": {
       "suite": "analysis",
-      "throughputMedian": 2300.2,
-      "observedSpreadPct": 3.4
+      "throughputMedian": 2120.4,
+      "observedSpreadPct": 1.7
     },
     "Frequency distribution (10KB)": {
       "suite": "analysis",
-      "throughputMedian": 12756.2,
-      "observedSpreadPct": 9.3
+      "throughputMedian": 11550.7,
+      "observedSpreadPct": 2.3
     },
     "Frequency distribution (1KB)": {
       "suite": "analysis",
-      "throughputMedian": 22976.7,
-      "observedSpreadPct": 9.8
+      "throughputMedian": 20978.5,
+      "observedSpreadPct": 4.5
     },
     "Gzip (100KB)": {
       "suite": "compression",
-      "throughputMedian": 3.3,
-      "observedSpreadPct": 7.7
+      "throughputMedian": 3.2,
+      "observedSpreadPct": 0.3
     },
     "Gzip (10KB)": {
       "suite": "compression",
-      "throughputMedian": 383.4,
-      "observedSpreadPct": 4.0
+      "throughputMedian": 345.9,
+      "observedSpreadPct": 0.5
     },
     "Gzip (1KB)": {
       "suite": "compression",
-      "throughputMedian": 3199.8,
-      "observedSpreadPct": 2.5
+      "throughputMedian": 2859.9,
+      "observedSpreadPct": 1.8
     },
     "MD5 (100KB)": {
       "suite": "hashing",
-      "throughputMedian": 225.3,
-      "observedSpreadPct": 2.0
+      "throughputMedian": 182.4,
+      "observedSpreadPct": 0.4
     },
     "MD5 (10KB)": {
       "suite": "hashing",
-      "throughputMedian": 2087.5,
-      "observedSpreadPct": 4.7
+      "throughputMedian": 1700.8,
+      "observedSpreadPct": 2.2
     },
     "MD5 (1KB)": {
       "suite": "hashing",
-      "throughputMedian": 11683.9,
-      "observedSpreadPct": 9.1
+      "throughputMedian": 10745.9,
+      "observedSpreadPct": 9.2
     },
     "Regular expression (100KB)": {
       "suite": "text",
-      "throughputMedian": 7786.0,
-      "observedSpreadPct": 5.8
+      "throughputMedian": 6077.3,
+      "observedSpreadPct": 3.9
     },
     "Regular expression (10KB)": {
       "suite": "text",
-      "throughputMedian": 12207.8,
-      "observedSpreadPct": 5.6
+      "throughputMedian": 10597.7,
+      "observedSpreadPct": 6.7
     },
     "Regular expression (1KB)": {
       "suite": "text",
-      "throughputMedian": 13105.2,
-      "observedSpreadPct": 5.5
+      "throughputMedian": 11461.9,
+      "observedSpreadPct": 7.1
     },
     "SHA2-256 (100KB)": {
       "suite": "hashing",
-      "throughputMedian": 250.5,
-      "observedSpreadPct": 2.4
+      "throughputMedian": 208.6,
+      "observedSpreadPct": 1.1
     },
     "SHA2-256 (10KB)": {
       "suite": "hashing",
-      "throughputMedian": 2214.3,
-      "observedSpreadPct": 6.6
+      "throughputMedian": 1873.3,
+      "observedSpreadPct": 2.1
     },
     "SHA2-256 (1KB)": {
       "suite": "hashing",
-      "throughputMedian": 10620.5,
-      "observedSpreadPct": 2.8
+      "throughputMedian": 9948.1,
+      "observedSpreadPct": 10.8
     },
     "SHA2-512 (100KB)": {
       "suite": "hashing",
-      "throughputMedian": 118.7,
-      "observedSpreadPct": 3.9
+      "throughputMedian": 99.1,
+      "observedSpreadPct": 0.7
     },
     "SHA2-512 (10KB)": {
       "suite": "hashing",
-      "throughputMedian": 1114.2,
-      "observedSpreadPct": 0.9
+      "throughputMedian": 958.7,
+      "observedSpreadPct": 1.3
     },
     "SHA2-512 (1KB)": {
       "suite": "hashing",
-      "throughputMedian": 7001.9,
-      "observedSpreadPct": 3.3
+      "throughputMedian": 6982.3,
+      "observedSpreadPct": 7.9
     },
     "To Base64 (100KB)": {
       "suite": "encoding",
-      "throughputMedian": 733.6,
-      "observedSpreadPct": 3.7
+      "throughputMedian": 723.3,
+      "observedSpreadPct": 1.2
     },
     "To Base64 (10KB)": {
       "suite": "encoding",
-      "throughputMedian": 5048.9,
-      "observedSpreadPct": 2.2
+      "throughputMedian": 4841.2,
+      "observedSpreadPct": 6.6
     },
     "To Base64 (1KB)": {
       "suite": "encoding",
-      "throughputMedian": 12059.7,
-      "observedSpreadPct": 6.2
+      "throughputMedian": 11081,
+      "observedSpreadPct": 12.9
     },
     "To Hex (100KB)": {
       "suite": "encoding",
-      "throughputMedian": 162.2,
-      "observedSpreadPct": 4.8
+      "throughputMedian": 232.1,
+      "observedSpreadPct": 3
     },
     "To Hex (10KB)": {
       "suite": "encoding",
-      "throughputMedian": 1483.9,
-      "observedSpreadPct": 2.2
+      "throughputMedian": 1970.3,
+      "observedSpreadPct": 3.7
     },
     "To Hex (1KB)": {
       "suite": "encoding",
-      "throughputMedian": 7876.2,
-      "observedSpreadPct": 4.6
+      "throughputMedian": 8762.2,
+      "observedSpreadPct": 13.9
     }
   },
   "_machine": "Captured on one developer machine. The GitHub runner measured 27-99% FASTER across most tasks on 2026-09-04, which is a machine-class difference rather than noise -- so a regression smaller than that offset will NOT be caught on CI. The gate catches factor-level regressions there, and tolerance-level ones only on the machine this was captured on. A runner-captured baseline is the fix; see v3.2.0 findings log F-10."
