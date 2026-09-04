@@ -23,10 +23,13 @@ import hashStatistics from "./hash-statistics.mjs";
 import plaintextCheck from "./plaintext-check.mjs";
 import rsaAttack from "./rsa-attack.mjs";
 import rsaMultiKey from "./rsa-multi-key.mjs";
+import substitutionBreak from "./substitution-break.mjs";
+import timestampIdentify from "./timestamp-identify.mjs";
+import vigenereBreak from "./vigenere-break.mjs";
 import xorKeyLength from "./xor-key-length.mjs";
 
 /** Tools, in the order they should appear in `tools/list`. */
-const TOOLS = [classicalCipher, corpusDiff, cribDrag, cyclicPattern, hashIdentify, hashStatistics, plaintextCheck, rsaAttack, rsaMultiKey, xorKeyLength];
+const TOOLS = [classicalCipher, corpusDiff, cribDrag, cyclicPattern, hashIdentify, hashStatistics, plaintextCheck, rsaAttack, rsaMultiKey, substitutionBreak, timestampIdentify, vigenereBreak, xorKeyLength];
 
 /**
  * Build the registry.

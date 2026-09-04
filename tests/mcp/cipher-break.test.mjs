@@ -1,0 +1,172 @@
+/**
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * The two solvers that need a loop with a decision in it, which is why they cannot be operations.
+ *
+ * Both are statistical, so every case here is seeded or long enough that the statistic is not being
+ * asked a question it cannot answer. The tests that matter most are the ones asserting the tools
+ * report their own failure: a cipher solver that returns a wrong key confidently is worse than one
+ * that returns nothing.
+ *
+ * @author DoubleGate
+ * @license GPL-3.0-or-later
+ */
+
+import { describe, it, expect } from "vitest";
+import vigenere from "../../src/node/tools/vigenere-break.mjs";
+import substitution from "../../src/node/tools/substitution-break.mjs";
+import { trigramScore, toCodes, indexOfCoincidence, chiSquared } from "../../src/node/tools/lib/english.mjs";
+
+/** Held-out prose: not in the corpus the trigram table was built from. */
+const PROSE = "The study of computer security begins with the observation that every system has a " +
+    "boundary and that the interesting questions live at that boundary. What crosses it, who is " +
+    "permitted to make it cross, and what happens when something crosses that should not have. " +
+    "The answers are rarely found in the algorithm and almost always found in the plumbing " +
+    "around it, which is why an attacker reads the configuration before reading the source code.";
+
+/** @returns {string} Vigenere ciphertext, preserving case and punctuation. */
+function encipherVigenere(text, key) {
+    let at = 0;
+    return [...text].map(ch => {
+        const upper = ch.toUpperCase();
+        if (upper < "A" || upper > "Z") return ch;
+        const shift = key.toUpperCase().charCodeAt(at++ % key.length) - 65;
+        const out = String.fromCharCode(65 + (upper.charCodeAt(0) - 65 + shift) % 26);
+        return ch === upper ? out : out.toLowerCase();
+    }).join("");
+}
+
+/** @returns {string} Ciphertext under a substitution alphabet. */
+function encipherSubstitution(text, alphabet) {
+    return [...text].map(ch => {
+        const upper = ch.toUpperCase();
+        if (upper < "A" || upper > "Z") return ch;
+        const out = alphabet[upper.charCodeAt(0) - 65];
+        return ch === upper ? out : out.toLowerCase();
+    }).join("");
+}
+
+describe("the shared English model", () => {
+    it("scores English above the same letters shuffled", async () => {
+        const english = trigramScore(toCodes(PROSE));
+        const shuffled = toCodes(PROSE).sort(() => Math.random() - 0.5);
+        expect(english).toBeGreaterThan(trigramScore(shuffled) + 0.5);
+    });
+
+    it("computes the index of coincidence without replacement", async () => {
+        // sum f(f-1) / N(N-1), not sum(f^2)/N^2. The latter is biased upward and diverges at small
+        // N, which is exactly the regime a per-coset key-length search runs in.
+        // AABB: two letters twice each, so sum f(f-1) = 4 over N(N-1) = 12.
+        expect(indexOfCoincidence(toCodes("AABB"))).toBeCloseTo(4 / 12, 6);
+        expect(indexOfCoincidence(toCodes("A"))).toBeNull();
+    });
+
+    it("reads its packed table from the right byte offset", async () => {
+        // A Buffer's ArrayBuffer may be a slice of a shared pool, so a Uint16Array constructed
+        // without the byteOffset reads whatever else the pool holds. The symptom would be a model
+        // that scores plausibly and solves nothing, so it is asserted rather than assumed.
+        expect(chiSquared(toCodes(PROSE))).toBeLessThan(chiSquared(toCodes("ZZZZZZZZZZQQQQQQQQQQ")));
+    });
+});
+
+describe("vigenere_break", () => {
+    it.each([["AB", 2], ["KEY", 3], ["CIPHERS", 7], ["LEMONADE", 8]])(
+        "recovers the key %s", async (key) => {
+            const r = await vigenere.run(
+                vigenere.inputSchema.parse({ input: encipherVigenere(PROSE, key) }));
+            expect(r.key).toBe(key.toUpperCase());
+            expect(r.key_length).toBe(key.length);
+        }, 30000);
+
+    it("does not report a multiple of the key as the key", async () => {
+        // Practical Cryptography's own CIPHERS example scores period 14 ABOVE period 7. An argmax
+        // over the index of coincidence therefore answers 14 for a 7-letter key -- which decrypts
+        // correctly, and reports a key twice as long as the real one.
+        const r = await vigenere.run(
+            vigenere.inputSchema.parse({ input: encipherVigenere(PROSE, "CIPHERS") }));
+        expect(r.key_length).toBe(7);
+        expect(r.key_length_source).toMatch(/decrypts identically/);
+    }, 30000);
+
+    it("restores the original spacing and case", async () => {
+        const r = await vigenere.run(
+            vigenere.inputSchema.parse({ input: encipherVigenere(PROSE, "KEY") }));
+        expect(r.plaintext.startsWith("The study of computer security")).toBe(true);
+    }, 30000);
+
+    it("reports the runner-up at every key position", async () => {
+        // `CIPHERS` comes back as `CIAHERS` when one coset's second-place shift was the right one.
+        // A caller can only notice that if the runner-up is shown.
+        const r = await vigenere.run(
+            vigenere.inputSchema.parse({ input: encipherVigenere(PROSE, "KEY") }));
+        expect(r.key_positions).toHaveLength(3);
+        for (const position of r.key_positions) expect(position.alternatives.length).toBeGreaterThan(0);
+    }, 30000);
+
+    it("says it failed rather than returning a wrong key", async () => {
+        const r = await vigenere.run(vigenere.inputSchema.parse({
+            input: "QWERTYUIOPASDFGHJKLZXCVBNMQWERTYUIOPASDFGHJKLZXCVBNMQWERTYUIOPASDFGHJKL"
+        }));
+        expect(r.assessment).toMatch(/does not score as English/);
+    }, 30000);
+
+    it("refuses an input too short for the per-coset statistics", async () => {
+        await expect(vigenere.run(vigenere.inputSchema.parse({ input: "SHORTTEXT" })))
+            .rejects.toThrow(/Below about 40/);
+    });
+});
+
+describe("substitution_break", () => {
+    it("recovers a keyboard-order alphabet from a few hundred letters", async () => {
+        const r = await substitution.run(substitution.inputSchema.parse({
+            input: encipherSubstitution(PROSE, "QWERTYUIOPASDFGHJKLZXCVBNM"), seed: 12345
+        }));
+        expect(r.plaintext.startsWith("The study of computer security")).toBe(true);
+    }, 60000);
+
+    it("solves ROT13, because a rotation is a substitution", async () => {
+        const rot13 = "NOPQRSTUVWXYZABCDEFGHIJKLM";
+        const r = await substitution.run(substitution.inputSchema.parse({
+            input: encipherSubstitution(PROSE, rot13), seed: 7
+        }));
+        expect(r.plaintext.startsWith("The study of computer security")).toBe(true);
+    }, 60000);
+
+    it("is reproducible when seeded, and not when it is not", async () => {
+        const input = encipherSubstitution(PROSE, "QWERTYUIOPASDFGHJKLZXCVBNM");
+        const a = await substitution.run(substitution.inputSchema.parse({ input, seed: 99, restarts: 5 }));
+        const b = await substitution.run(substitution.inputSchema.parse({ input, seed: 99, restarts: 5 }));
+        expect(a.mapping.plain_alphabet).toBe(b.mapping.plain_alphabet);
+    }, 60000);
+
+    it("holds known_mapping fixed instead of treating it as a hint", async () => {
+        // A starting hint the search immediately swaps away is not a constraint. Pinned positions
+        // are excluded from the swap pool entirely, which is what makes "pin what you can read and
+        // run it again" a real workflow rather than advice.
+        const input = encipherSubstitution(PROSE, "QWERTYUIOPASDFGHJKLZXCVBNM");
+        const r = await substitution.run(substitution.inputSchema.parse({
+            input, "known_mapping": "q:a,w:b", seed: 5, restarts: 3
+        }));
+        expect(r.mapping.plain_alphabet[16]).toBe("A");   // cipher Q -> plain A
+        expect(r.mapping.plain_alphabet[22]).toBe("B");   // cipher W -> plain B
+    }, 60000);
+
+    it("rejects a known_mapping that is not a permutation", async () => {
+        await expect(substitution.run(substitution.inputSchema.parse({
+            input: PROSE, "known_mapping": "a:x,b:x"
+        }))).rejects.toThrow(/cannot exist/);
+    });
+
+    it("rejects a malformed known_mapping pair by name", async () => {
+        await expect(substitution.run(substitution.inputSchema.parse({
+            input: PROSE, "known_mapping": "ab:c"
+        }))).rejects.toThrow(/not a cipher:plain pair/);
+    });
+
+    it("refuses below the unicity distance, and explains why that is different from being hard", async () => {
+        // Under 28 letters more than one mapping yields sensible English, so no amount of searching
+        // can choose. That is not the same failure as "too little signal" and the message says so.
+        await expect(substitution.run(substitution.inputSchema.parse({ input: "SHORT TEXT HERE" })))
+            .rejects.toThrow(/not determined by the ciphertext/);
+    });
+});
