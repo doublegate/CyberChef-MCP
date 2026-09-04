@@ -10,6 +10,45 @@
 import { Bench } from "tinybench";
 import { bake } from "../src/node/index.mjs";
 
+// Results are COLLECTED as well as printed. Until v3.2.0 every run printed a table and threw the
+// numbers away, which is why `performance-benchmarks.yml` could say in its own output that it
+// "cannot fail on a regression": there was nothing to compare. `--json` emits what
+// `benchmarks/check-regression.mjs` gates on.
+const AS_JSON = process.argv.includes("--json");
+const collected = [];
+
+/**
+ * Run a bench, print it for humans, and keep the numbers.
+ *
+ * `throughput.mean` is the gated figure rather than latency: it is the one that reads the right
+ * way round (higher is better) and the one every prior release note quoted.
+ *
+ * @param {string} suite - Group heading this bench belongs to.
+ * @param {Object} bench - A tinybench instance, already constructed.
+ * @returns {Promise<void>} Resolves when the bench has run.
+ */
+async function runAndCollect(suite, bench) {
+    await bench.run();
+    if (!AS_JSON) console.table(bench.table());
+    for (const task of bench.tasks) {
+        const r = task.result;
+        if (!r) continue;
+        collected.push({
+            suite,
+            task: task.name,
+            // MEDIAN, not mean. The mean is dragged by the first samples while the JIT is still
+            // warming and by any scheduler hiccup; on this machine `Gzip (100KB)` reported a mean
+            // relative margin of error of 15.69% against a median that barely moved. A gate reads
+            // the statistic that is stable, and records the other so a reader can see the spread.
+            throughputMedian: r.throughput.p50,
+            throughputMean: r.throughput.mean,
+            throughputRme: r.throughput.rme,
+            latencyMedian: r.latency.p50,
+            samples: r.latency.samplesCount ?? r.latency.samples?.length ?? 0
+        });
+    }
+}
+
 // Test data of various sizes
 const testData1KB = "A".repeat(1024);
 const testData10KB = "A".repeat(10 * 1024);
@@ -42,18 +81,23 @@ async function executeOperation(opName, input, args = []) {
  * Create benchmark suite for a specific operation.
  * Using moderate test sizes (1KB, 10KB, 100KB) to prevent memory issues.
  */
-function createOperationBenchmark(opName, args = []) {
+function createOperationBenchmark(opName, args = [], label = opName) {
     // Reduced warmup time to 500ms to prevent memory pressure from excessive iterations
     const bench = new Bench({ time: 500, iterations: 10 });
 
+    // `label` exists because SHA2 is registered twice -- once for 256 and once for 512 -- and both
+    // produced tasks called `SHA2 (1KB)`. Printed side by side that reads as a repeat; consumed by
+    // anything keyed on the name it silently conflates two different operations, which is exactly
+    // what the first regression baseline did: SHA2 appeared to swing 84% run to run, and the swing
+    // was SHA-256 and SHA-512 taking turns in the same slot.
     bench
-        .add(`${opName} (1KB)`, async () => {
+        .add(`${label} (1KB)`, async () => {
             await executeOperation(opName, testData1KB, args);
         })
-        .add(`${opName} (10KB)`, async () => {
+        .add(`${label} (10KB)`, async () => {
             await executeOperation(opName, testData10KB, args);
         })
-        .add(`${opName} (100KB)`, async () => {
+        .add(`${label} (100KB)`, async () => {
             await executeOperation(opName, testData100KB, args);
         });
 
@@ -86,34 +130,33 @@ function createCompressionBenchmark(opName, args = []) {
  * Run encoding benchmarks.
  */
 async function runEncodingBenchmarks() {
+    if (!AS_JSON) {
     console.log("\n=== Encoding Operations ===");
+    }
 
     const base64Bench = createOperationBenchmark("To Base64");
-    await base64Bench.run();
-    console.table(base64Bench.table());
+    await runAndCollect("encoding", base64Bench);
 
     const hexBench = createOperationBenchmark("To Hex", ["None"]);
-    await hexBench.run();
-    console.table(hexBench.table());
+    await runAndCollect("encoding", hexBench);
 }
 
 /**
  * Run hashing benchmarks.
  */
 async function runHashingBenchmarks() {
+    if (!AS_JSON) {
     console.log("\n=== Hashing Operations ===");
+    }
 
     const md5Bench = createOperationBenchmark("MD5");
-    await md5Bench.run();
-    console.table(md5Bench.table());
+    await runAndCollect("hashing", md5Bench);
 
-    const sha256Bench = createOperationBenchmark("SHA2", ["256"]);
-    await sha256Bench.run();
-    console.table(sha256Bench.table());
+    const sha256Bench = createOperationBenchmark("SHA2", ["256"], "SHA2-256");
+    await runAndCollect("hashing", sha256Bench);
 
-    const sha512Bench = createOperationBenchmark("SHA2", ["512"]);
-    await sha512Bench.run();
-    console.table(sha512Bench.table());
+    const sha512Bench = createOperationBenchmark("SHA2", ["512"], "SHA2-512");
+    await runAndCollect("hashing", sha512Bench);
 }
 
 /**
@@ -121,8 +164,10 @@ async function runHashingBenchmarks() {
  * Note: Using smaller test sizes (1KB, 10KB, 100KB) to prevent timeouts.
  */
 async function runCompressionBenchmarks() {
+    if (!AS_JSON) {
     console.log("\n=== Compression Operations ===");
-    console.log("(Using smaller test sizes for compression operations)");
+        console.log("(Using smaller test sizes for compression operations)");
+    }
 
     const gzipBench = createCompressionBenchmark("Gzip", [
         "Dynamic Huffman Coding",
@@ -132,8 +177,7 @@ async function runCompressionBenchmarks() {
     ]);
 
     try {
-        await gzipBench.run();
-        console.table(gzipBench.table());
+        await runAndCollect("compression", gzipBench);
     } catch (error) {
         if (error.message.includes('timeout')) {
             console.error("Gzip benchmark exceeded timeout - skipping");
@@ -147,7 +191,9 @@ async function runCompressionBenchmarks() {
  * Run crypto benchmarks.
  */
 async function runCryptoBenchmarks() {
+    if (!AS_JSON) {
     console.log("\n=== Cryptographic Operations ===");
+    }
 
     const aesBench = createOperationBenchmark("AES Encrypt", [
         { option: "Hex", string: "00112233445566778899aabbccddeeff" },
@@ -157,15 +203,16 @@ async function runCryptoBenchmarks() {
         "Hex",
         { option: "Hex", string: "" }
     ]);
-    await aesBench.run();
-    console.table(aesBench.table());
+    await runAndCollect("crypto", aesBench);
 }
 
 /**
  * Run text operation benchmarks.
  */
 async function runTextBenchmarks() {
+    if (!AS_JSON) {
     console.log("\n=== Text Operations ===");
+    }
 
     const regexBench = createOperationBenchmark("Regular expression", [
         "test",
@@ -178,31 +225,32 @@ async function runTextBenchmarks() {
         false,
         "Highlight matches"
     ]);
-    await regexBench.run();
-    console.table(regexBench.table());
+    await runAndCollect("text", regexBench);
 }
 
 /**
  * Run analysis benchmarks.
  */
 async function runAnalysisBenchmarks() {
+    if (!AS_JSON) {
     console.log("\n=== Analysis Operations ===");
+    }
 
     const entropyBench = createOperationBenchmark("Entropy", ["Shannon scale"]);
-    await entropyBench.run();
-    console.table(entropyBench.table());
+    await runAndCollect("analysis", entropyBench);
 
     const freqBench = createOperationBenchmark("Frequency distribution", ["Space"]);
-    await freqBench.run();
-    console.table(freqBench.table());
+    await runAndCollect("analysis", freqBench);
 }
 
 /**
  * Run all benchmarks.
  */
 async function runAllBenchmarks() {
-    console.log("CyberChef MCP Performance Benchmarks");
-    console.log("=====================================");
+    if (!AS_JSON) {
+        console.log("CyberChef MCP Performance Benchmarks");
+        console.log("=====================================");
+    }
 
     const startTime = Date.now();
 
@@ -215,8 +263,17 @@ async function runAllBenchmarks() {
         await runAnalysisBenchmarks();
 
         const totalTime = ((Date.now() - startTime) / 1000).toFixed(2);
-        console.log(`\n=== Benchmarks Complete ===`);
-        console.log(`Total time: ${totalTime}s`);
+        if (AS_JSON) {
+            process.stdout.write(`${JSON.stringify({
+                node: process.version,
+                capturedAt: new Date().toISOString(),
+                totalSeconds: Number(totalTime),
+                results: collected
+            }, null, 2)}\n`);
+        } else {
+            console.log(`\n=== Benchmarks Complete ===`);
+            console.log(`Total time: ${totalTime}s`);
+        }
     } catch (error) {
         console.error("Benchmark error:", error);
         process.exit(1);

@@ -58,6 +58,14 @@ coverage/
 test-results/
 .nyc_output/
 
+# Benchmark and conformance RUN output. The committed artefacts these are compared against --
+# `benchmarks/baseline.json` and `conformance/expected-failures.yaml` -- are tracked on purpose:
+# they are the gate, and a gate that is not in the repository is not a gate. What is ignored is
+# the per-run output, which is a measurement of one machine on one afternoon.
+benchmark-output.txt
+benchmark-results.json
+conformance-results/
+
 # The default recipe store. `CYBERCHEF_RECIPE_STORAGE` defaults to ./recipes.json, so running the
 # server or the examples from a checkout writes one into the repository root. It is user data --
 # and it may hold keys and IVs, since a saved recipe carries its arguments.

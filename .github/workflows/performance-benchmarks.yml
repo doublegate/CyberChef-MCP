@@ -73,6 +73,24 @@ jobs:
           # escapes render as literal `\x1b[32m` noise rather than colour.
           NO_COLOR=1 FORCE_COLOR=0 npm run benchmark 2>&1 | tee benchmark-output.txt
 
+      # THE GATE. Until v3.2.0 this workflow said in its own PR comment that it "cannot fail
+      # on a regression", and it was right: the harness printed a table and discarded the
+      # numbers, so v2.6.0's cold-start work and v2.8.0's image-size work were unprotected --
+      # a regression posted a number to a pull request and nothing stopped it merging.
+      #
+      # Compares median throughput per task against `benchmarks/baseline.json` at the tolerance
+      # recorded there, which was measured rather than chosen. It also fails when a baselined
+      # task is MISSING from the run, because renaming or deleting a benchmark otherwise shrinks
+      # what is protected without anyone noticing.
+      #
+      # Deliberately after the reporting artifact is produced above, and `if: always()` on that
+      # upload, so a regression still posts its numbers to the PR rather than failing silently.
+      - name: Check for regressions against the committed baseline
+        run: |
+          set -o pipefail
+          npm run benchmark:json > benchmark-results.json
+          node benchmarks/check-regression.mjs benchmark-results.json
+
       # Hand the output to the reporting job as an artifact. `if: always()` so a FAILING
       # benchmark still gets reported -- the output of a failure is the most useful comment
       # this workflow can post, and it was previously discarded.
@@ -174,9 +192,10 @@ jobs:
               "",
               "</details>",
               "",
-              "> No baseline comparison is performed yet, so these numbers are informational and",
-              "> this check cannot fail on a regression. Automated regression detection is tracked",
-              "> for the v2.0.0 release work.",
+              "> Compared against `benchmarks/baseline.json` at its recorded tolerance. **This",
+              "> check fails on a regression**, and on a baselined task disappearing from the run.",
+              "> A task faster than baseline by more than the tolerance is reported rather than",
+              "> failed -- the usual cause is a benchmark that stopped doing the work.",
             ].join("\n");
 
             // Update the existing comment if there is one, otherwise post a new one.
