@@ -35,7 +35,12 @@ jobs:
   publish:
     name: Publish server.json
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # 35, against a wait step that can spend up to 25. The first run of this workflow was CANCELLED
+    # at exactly ten minutes with a `timeout-minutes: 10` and a poll budgeted at 30 x 20s = 10
+    # minutes: the poll could never exhaust, so a slow publish ended as an unexplained cancellation
+    # instead of as the error message written for it. A job budget must exceed the budgets it
+    # contains, or the steps' own error handling is unreachable.
+    timeout-minutes: 35
     # A deployment environment, so this job can be gated on a human.
     #
     # The registry maps the OIDC `repository_owner` claim to the `io.github.doublegate/*` namespace,
@@ -115,25 +120,35 @@ jobs:
             exit 1
           fi
 
-      # npm and the images are published by mcp-release.yml on this same tag. The registry resolves
-      # what server.json names, so publishing before they exist produces a listing that 404s.
-      # Polling npm is the cheap, honest check -- the OCI images are published in the same job as
-      # the npm package, so npm arriving is good evidence for both.
+      # npm and the images are published by mcp-release.yml, which triggers on this SAME tag and
+      # therefore runs in parallel with this workflow. The registry resolves what server.json names,
+      # so publishing before those artefacts exist produces a listing that 404s.
+      #
+      # The budget is sized from a real timeline, not guessed. On v3.5.0 this poll began at 20:04:24
+      # and the npm publish completed at 20:12:42 -- because `mcp-release.yml` builds and pushes
+      # multi-arch images FIRST and publishes npm afterwards, so the wait is dominated by an image
+      # build rather than by npm propagation. The first version budgeted ten minutes for
+      # propagation alone and was cancelled with the package eighteen seconds from appearing.
+      #
+      # 75 x 20s = 25 minutes, inside a 35-minute job. Polling npm is still the honest check: the
+      # images are pushed in the same job and earlier than npm, so npm arriving is evidence for
+      # both.
       - name: Wait for the npm package this listing points at
         if: github.event_name == 'push'
         run: |
           VERSION="$(node -p "require('./package.json').version")"
           NAME="$(node -p "require('./package.json').name")"
-          for attempt in $(seq 1 30); do
+          for attempt in $(seq 1 75); do
             if npm view "$NAME@$VERSION" version > /dev/null 2>&1; then
-              echo "$NAME@$VERSION is on the registry"
+              echo "$NAME@$VERSION is on npm after $((attempt * 20))s"
               exit 0
             fi
-            echo "attempt $attempt/30: $NAME@$VERSION not visible yet"
+            echo "attempt $attempt/75: $NAME@$VERSION not visible yet"
             sleep 20
           done
-          echo "::error::$NAME@$VERSION never appeared on npm. mcp-release.yml publishes it on this"
-          echo "::error::same tag; check that job before re-running this one by workflow_dispatch."
+          echo "::error::$NAME@$VERSION never appeared on npm within 25 minutes. mcp-release.yml"
+          echo "::error::publishes it on this same tag and runs in parallel; check that workflow"
+          echo "::error::before re-running this one by workflow_dispatch."
           exit 1
 
       - name: Authenticate with the registry
