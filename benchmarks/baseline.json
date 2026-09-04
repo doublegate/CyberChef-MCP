@@ -4,8 +4,8 @@
   "capturedAt": "2026-09-04T00:41:23.986Z",
   "node": "v26.8.1",
   "runs": 4,
-  "tolerancePct": 25,
-  "toleranceRationale": "Measured, not chosen. Across four runs the worst per-task spread was 9.8% and the median was 4.3%, on an otherwise idle machine. 25% is ~2.5x the worst observed spread: wide enough that runner noise does not fail a build, narrow enough to catch the kind of regression that matters, which is a factor rather than a few percent. CI variance is NOT yet measured -- revisit once there are enough runs to characterise it.",
+  "tolerancePct": 50,
+  "toleranceRationale": "Measured on the machine this baseline came from AND on the CI runner, and the second measurement is why it is 50 rather than 25. Locally, four runs give a worst per-task spread of 9.8% and a median of 4.3%, which supported 25%. On GitHub's shared runners, three runs against this baseline produced deltas from -25.5% to +99.1% and TWO FALSE FAILURES -- `Entropy (100KB)` at -25.3% and `Frequency distribution (100KB)` at -25.5%, different tasks each time, with nothing in the diff touching either. That is per-task noise on a shared runner, not a regression, and a gate that cries wolf twice in three runs is a gate that gets disabled. 50% keeps it firing only on the kind of regression that matters -- a factor -- which is what a cross-machine baseline can honestly support. The real fix is a baseline captured on the runner, or a median of several runs there; both are carried forward. See v3.2.0 findings log F-13.",
   "tasks": {
     "AES Encrypt (100KB)": {
       "suite": "crypto",

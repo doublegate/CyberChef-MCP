@@ -28,7 +28,7 @@ cold-start work and v2.8.0's image-size work were unprotected.
 A task *faster* than the tolerance is reported and not failed, because the usual cause is a
 benchmark that stopped doing the work.
 
-### Why the tolerance is 25%
+### Why the tolerance is 50%
 
 Measured, not chosen — and the first measurement was wrong by an order of magnitude, which is the
 part worth knowing.
@@ -42,9 +42,18 @@ workload, and wide enough to justify a gate that could never fire. Two causes:
    ops/s cold against 11,445–12,188 warm.
 
 With names disambiguated and the cold run discarded, four runs give a worst per-task spread of
-**9.8%** and a median of **4.3%**. 25% is roughly 2.5x the worst observed: a regression that matters
-is a factor, not a few percent, and a gate tuned to a few percent on a shared CI runner is a gate
-that gets disabled within two releases.
+**9.8%** and a median of **4.3%**. That supported 25%, which is what shipped first — and then CI
+disagreed.
+
+Three runs on GitHub's shared runners produced deltas from **−25.5% to +99.1%** and **two false
+failures**: `Entropy (100KB)` at −25.3%, then `Frequency distribution (100KB)` at −25.5%, a
+different task each time with nothing in the diff touching either. Two cries of wolf in three runs
+is how a gate gets switched off.
+
+So the tolerance is **50%** — what a cross-machine baseline can honestly support. It fires on
+factor-level regressions, which is what a regression that matters looks like, and stops firing on
+the runner. The missing-task check is unaffected and stays exact: a benchmark that disappears is a
+fact, not a measurement.
 
 ### What the gate does not catch
 

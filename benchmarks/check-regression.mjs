@@ -12,17 +12,27 @@
  * v2.8.0 were unprotected. A regression posted a number to a pull request and nothing stopped it
  * merging.
  *
- * WHY THE TOLERANCE IS 25% AND NOT SOMETHING TIGHTER
- * --------------------------------------------------
- * It was measured rather than chosen. Four consecutive runs on an idle machine gave a worst
- * per-task spread of 9.8% and a median of 4.3%; 25% is about 2.5x the worst of those. The first
- * attempt at this study reported spreads up to 84% and would have justified a useless threshold --
- * that was an artefact of two different operations sharing a task name (`SHA2`, registered for
- * both 256 and 512) plus JIT warm-up on the very first bench of a cold process. Fixing the names
- * and discarding the cold run changed the answer by an order of magnitude.
+ * WHY THE TOLERANCE IS 50%, AND WHY IT WAS 25% FOR ABOUT AN HOUR
+ * --------------------------------------------------------------
+ * Measured twice, in two places, and the second place is the one that set the number.
  *
- * A performance regression that matters is a factor, not a few percent. A gate tuned to catch a
- * few percent on a shared CI runner is a gate that gets disabled within two releases.
+ * Locally: four consecutive runs on an idle machine give a worst per-task spread of 9.8% and a
+ * median of 4.3%. 25% is 2.5x the worst of those, and that is what shipped first. (An earlier
+ * study reported spreads up to 84% and would have justified a useless threshold -- that was two
+ * operations sharing a task name, `SHA2` registered for both 256 and 512, plus JIT warm-up on the
+ * first bench of a cold process. Fixing the names and discarding the cold run moved the answer by
+ * an order of magnitude.)
+ *
+ * On GitHub's shared runners: three runs against this baseline produced deltas from -25.5% to
+ * +99.1% and **two false failures** -- `Entropy (100KB)` at -25.3%, then `Frequency distribution
+ * (100KB)` at -25.5%, a different task each time with nothing in the diff touching either. Two
+ * cries of wolf in three runs is how a gate gets disabled, and a disabled gate is what this whole
+ * exercise replaced.
+ *
+ * So 50%, which is what a CROSS-MACHINE baseline can honestly support: it fires on factor-level
+ * regressions and not on runner noise. A regression that matters is a factor, not a few percent.
+ * The real fix is a baseline captured on the runner, or a median of several runs there -- both
+ * carried forward, neither bodged in here.
  *
  * WHAT IT DELIBERATELY DOES NOT DO
  * --------------------------------
