@@ -85,6 +85,13 @@ jobs:
     - name: Version consistency
       run: npm run check:versions
 
+    # `server.json` exists to be machine-read by the MCP registry, and until v3.4.0 nothing read
+    # it: it declared the 2025-07-09 schema while being written in the 2025-09-29 shape, and failed
+    # validation in six places. Runs offline against transcribed rules -- see the script header for
+    # why not a JSON Schema validator against the live URL.
+    - name: server.json validity
+      run: npm run check:server-json
+
     - name: Config Tests (Generate Configs)
       run: npx grunt configTests
 
