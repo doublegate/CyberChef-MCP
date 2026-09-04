@@ -20,12 +20,12 @@
 <<< MC-PROJECT-START >>>
 ## Project: CyberChef
 
-**CyberChef MCP Server** (v3.2.0) - Fork of GCHQ CyberChef wrapping the Node.js API into an MCP
+**CyberChef MCP Server** (v3.3.0) - Fork of GCHQ CyberChef wrapping the Node.js API into an MCP
 server. Exposes 504 operations (encryption, encoding, compression, forensics) as AI assistant tools.
 
 | Metric | Value |
 |--------|-------|
-| MCP Version | 3.2.0 (single source: `package.json` `version`, read by `src/node/lib/config.mjs`). `mcpVersion` was removed in v2.2.0 -- npm requires `version` to be the published version, so the upstream base moved to `cyberchefUpstreamVersion`. |
+| MCP Version | 3.3.0 (single source: `package.json` `version`, read by `src/node/lib/config.mjs`). `mcpVersion` was removed in v2.2.0 -- npm requires `version` to be the published version, so the upstream base moved to `cyberchefUpstreamVersion`. |
 | Upstream base | CyberChef **v11.4.0** |
 | Operations / tools | 504 operations **plus 4 registry tools** that are not operations. `tools/list` is an **index** by default (28 tools, **20,297 bytes**); `CYBERCHEF_TOOL_SURFACE=curated\|all` for 106 (83,543) or all 531 (400,701). Bytes, not tokens: no tokenizer has ever been in this repo and every historical `~N tokens` figure was bytes/4. Re-measure with `npm run measure:surfaces` rather than trusting this row -- every number in `tool-catalog.mjs`'s header had drifted by v3.1.0. All 504 reachable via `cyberchef_bake` + the three navigation tools. Every tool carries annotations + a title. |
 | Licence | **GPL-3.0-or-later** (from v2.0.0; v1.9.x and earlier are Apache-2.0) |
@@ -36,7 +36,7 @@ server. Exposes 504 operations (encryption, encoding, compression, forensics) as
 | Presented output | **44 operations declare a `presentType` differing from `outputType`** -- the presenter targets a browser. `bakeOnCore` asks for the presented form because a few carry their payload ONLY in markup (`Generate QR Code` -> `<img src="data:image/png...">`); for the rest it returned a browser artefact. Since v2.9.0 it prefers `Chef.bake`'s `dish` (the raw, unpresented value, free from the same bake) when the presented value has markup and **no** media. Resolved **before the cache** -- a decision downstream of the cache applies to a miss and not a hit. `JSON Beautify` is why this is a correctness rule and not a formatting one: its keys' quotes were markup structure, so stripping tags returned unparseable JSON. Both directions are pinned by `tests/mcp/presented-output.test.mjs`. |
 | Magic | `cyberchef_magic` does NOT go through the operation; `src/node/lib/magic.mjs` calls `speculativeExecution` directly and returns a plain-text report + `structuredContent`. Reason: the operation emitted the web results **table**, with its recipes in the pretty form (`From_Base64('A-Za-z0-9+/=',true,false)`) which **`bake` rejects** -- the most actionable field was the one field a caller could not use. Recipes are now emitted as `[{op,args}]` and a test bakes every one. Language is an **estimate**, never a determination: chi-squared byte frequencies called "Attack at dawn" German at probability 1.35e-8, and accuracy does not rise monotonically with length, so no cutoff fixes it. This path bypasses `resolveArgValue`, so it screens the crib regex itself. |
 | Configuration | Two sources: `cyberchef.config.json` and environment variables, with **env > file > default**. 64 settings in 15 sections; the mapping is a committed literal in `src/node/lib/config-file.mjs`, NOT a runtime transform (`http.maxSessions` is `CYBERCHEF_MAX_SESSIONS`, not `CYBERCHEF_HTTP_MAX_SESSIONS`, so a derived name would be set and read by nothing). Applied by populating `process.env` before anything reads it, because settings are resolved at MODULE LOAD in ~30 places across five modules -- hence `bootstrap-config.mjs` and the rule that it is imported FIRST. Fails closed on unknown sections/keys/types. Added in v2.10.0; the migration guide had told users to write this file since v1.8.0 and nothing read it. |
-| Tests | 1,437 MCP (55 files) + 241 Node-API + 2,289 operations + 9 CI-executed examples |
+| Tests | 1,440 MCP (55 files) + 241 Node-API + 2,289 operations + 9 CI-executed examples |
 | Coverage | 95.5% lines / 89.9% branches / 96.4% functions / 96.2% statements. Thresholds raised in v2.3.0 from 75/70/90/75 to **95/89/96/96** (branches raised again in v2.7.0), with `src/node/lib/**` held separately at 99/94/100/99 -- the old numbers were twenty points below actual, so the gate could not fail. `perFile` is off deliberately; see `vitest.config.mjs` for why. Gated on **pull requests** since v2.2.0. |
 | Open security alerts | **0** Dependabot, **0** code-scanning (55 dispositioned in v2.1.1) |
 | MCP surfaces | tools + **prompts** (5) + **resources** (`recipe://<id>`), all three declared from one `SERVER_CAPABILITIES` -- there are two server construction sites and two capability lists drift. **Tasks and `extensions` are declined**, with the reasons at `SERVER_CAPABILITIES` and a negative test as a tripwire: tasks need state outliving the request and this server deliberately has none. |
@@ -282,7 +282,7 @@ perfectly good tag and would be ignored within a release or two.
 | Planning | `docs/planning/v3/` (**current**: the v3.0.0 plan, `RE-MEASURE.md`, and one-page charters through v4.0.0), `docs/planning/ROADMAP.md`. `docs/planning/future-releases/` and `phases/` are **historical** -- every file carries a dated banner saying what replaced it. |
 | Security | `docs/security/audit.md` |
 | Reference | `docs/reference/mcp-2026-07-28-conformance.md`, `agent-tool-design.md`, `mcp-eval-benchmarks.md`, `mcp-threat-model-2026.md` -- written summaries with citations and retrieval dates, not vendored PDFs |
-| Releases | `docs/releases/v3.2.0.md` (latest), then `v3.1.0.md`, `v3.0.0.md`, `v2.10.0.md`, `v2.9.0.md` ... `v2.0.0.md`, `v1.9.0.md` ... `v1.0.0.md` |
+| Releases | `docs/releases/v3.3.0.md` (latest), then `v3.2.0.md`, `v3.1.0.md`, `v3.0.0.md`, `v2.10.0.md` ... `v2.0.0.md`, `v1.9.0.md` ... `v1.0.0.md` |
 | Internal | `docs/internal/tech-debt-analysis-v1.6.1.md` (project health: 8.9/10) |
 | Measurement | `conformance/README.md` (the external oracle and why its baseline is a baseline); `benchmarks/README.md` (`measure:surfaces`, `measure:results`, `benchmark:check` and the variance study behind the 25% tolerance); `docs/internal/measurements/v3.1.0-baseline.md` (the pre-v3.2.0 capture). Everything is in BYTES: no tokenizer has ever been in this repo. |
 

@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.3.0] - 2026-09-04
+
+The things v3.2.0 shipped knowing they were incomplete. No new tools: the charter's own kill
+criterion fired on the phase it proposed next. Details in
+[the release notes](docs/releases/v3.3.0.md) and
+[the findings log](docs/internal/v3.3.0-findings-log.md).
+
+### Changed
+
+- **Errors stop giving advice that points away from the fix.** `ErrorSuggestions` is keyed by
+  error CODE, so all 504 operations shared three lines for every `INVALID_INPUT` -- an
+  unknown-argument failure was answered with "Verify input data format and encoding" while the
+  context two lines above already named every valid argument. Generic suggestions are now
+  suppressed when a specific hint exists, and kept when there is nothing better to say.
+- **Guidance is no longer the thing that gets truncated.** A flat 100-character cap on context
+  values cut `hint` mid-word -- the one field that says what to do. Guidance keys get 600
+  characters and say when they were cut. The unknown-argument error is **663 -> 540 bytes** and no
+  longer truncated where it matters.
+
+### Added
+
+- **`benchmark-baseline.yml`** captures the regression baseline on the runner the gate actually
+  runs on. v3.2.0's 50% tolerance is a stopgap for a cross-machine baseline; this is what lets it
+  come back down. Manual and scheduled but never on push, and it opens a pull request rather than
+  pushing -- moving a gate's reference point silently is indistinguishable from switching the gate
+  off.
+- **First end-to-end verification of the arm64 image.** v2.8.0 shipped it and CI asserted the
+  optional `@napi-rs/nice` arm64 binary resolved, but no test had connected a client to it. It
+  boots, lists tools and bakes correctly. Its *performance* remains unmeasured: the timings came
+  from QEMU on an amd64 host and measure the emulator, not the platform.
+
 ## [3.2.0] - 2026-09-04
 
 Every gate now does what it says it does, and the one documented claim that was a security claim
