@@ -14,7 +14,7 @@ Running the server on small hardware, on ARM, or with no route to the internet.
 
 **arm/v7 is not available, and the reason is the base image.** `cgr.dev/chainguard/node` publishes
 amd64 and arm64 and nothing else, so serving a 32-bit Pi would mean changing base image entirely —
-giving up the distroless runtime, the digest pinning and the non-root default that go with it. That
+giving up the hardened runtime, the digest pinning and the non-root default that go with it. That
 is a bigger trade than 32-bit ARM support is worth here, so it is stated rather than quietly
 omitted. If you need it, building `Dockerfile.mcp` against a `node:*-alpine` base on the device
 itself is the practical route.

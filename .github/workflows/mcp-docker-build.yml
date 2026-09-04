@@ -191,13 +191,26 @@ jobs:
           sarif_file: 'trivy-results.sarif'
           category: 'trivy-build-scan'
 
-      # Build gate: CRITICAL only, and prints the table so a failure is self-explanatory.
-      # TODO(PR 7): restore 'CRITICAL,HIGH' once the dependency backlog is cleared to zero.
+      # Build gate: CRITICAL **and HIGH**, printing the table so a failure is self-explanatory.
+      #
+      # This read `severity: 'CRITICAL'` with a `TODO(PR 7): restore 'CRITICAL,HIGH' once the
+      # dependency backlog is cleared to zero` from the v2.0.0 series, when that backlog was 272
+      # findings. It reached zero in v2.1.1 and has stayed there, so the narrowed gate spent eight
+      # releases outliving its own stated condition -- and a TODO whose precondition is met is just
+      # a gate somebody forgot to switch back on.
+      #
+      # Measured before restoring, against the published v3.1.0 image:
+      #
+      #     trivy image --severity CRITICAL,HIGH ghcr.io/doublegate/cyberchef-mcp_v3:3.1.0
+      #     -> 0 CRITICAL, 0 HIGH
+      #
+      # If this starts failing, the finding is real and `docs/security/` has the disposition
+      # process for it. Narrowing the gate again is not the fix.
       - name: Run Trivy vulnerability scanner (build gate)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: 'cyberchef-mcp:latest'
           format: 'table'
-          severity: 'CRITICAL'
+          severity: 'CRITICAL,HIGH'
           vuln-type: 'os,library'
           exit-code: '1'

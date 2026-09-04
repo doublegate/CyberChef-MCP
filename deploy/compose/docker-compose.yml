@@ -10,17 +10,17 @@
 
 services:
   cyberchef-mcp:
-    image: ghcr.io/doublegate/cyberchef-mcp_v3:3.1.0
+    image: ghcr.io/doublegate/cyberchef-mcp_v3:3.2.0
     # Pinned, not `latest`: a compose file that floats its tag cannot be rolled back to a known
     # state, and `latest` moves on every release.
     #
-    # A VERSION TAG IS NOT A DIGEST. GHCR tags are mutable, so `3.1.0` is a promise about which
+    # A VERSION TAG IS NOT A DIGEST. GHCR tags are mutable, so `3.2.0` is a promise about which
     # bytes were pushed rather than a guarantee about which bytes you get. For a deployment that
     # needs integrity, resolve the tag once and pin what it resolved to:
     #
-    #     docker buildx imagetools inspect ghcr.io/doublegate/cyberchef-mcp_v3:3.1.0 \
+    #     docker buildx imagetools inspect ghcr.io/doublegate/cyberchef-mcp_v3:3.2.0 \
     #       --format '{{.Manifest.Digest}}'
-    #     # then: image: ghcr.io/doublegate/cyberchef-mcp_v3:3.1.0@sha256:<digest>
+    #     # then: image: ghcr.io/doublegate/cyberchef-mcp_v3:3.2.0@sha256:<digest>
     #
     # The digest is deliberately not baked in here. It cannot be: this file ships in the commit
     # that CREATES the release, so at authoring time the image it names does not exist yet, and a
@@ -30,7 +30,7 @@ services:
 
     ports:
       # Bound to loopback on purpose. The MCP endpoint has NO authentication unless
-      # CYBERCHEF_AUTH_ISSUER is set, so publishing it on 0.0.0.0 exposes 505 operations to
+      # CYBERCHEF_AUTH_ISSUER is set, so publishing it on 0.0.0.0 exposes 504 operations to
       # anything that can route to this host. Change the left-hand side deliberately, not by
       # copying an example.
       - "127.0.0.1:3000:3000"
@@ -92,7 +92,7 @@ services:
     deploy:
       resources:
         limits:
-          # The Node API loads 505 operation implementations on first use of cyberchef_search or
+          # The Node API loads 504 operation implementations on first use of cyberchef_search or
           # a saved recipe. A limit below ~512Mi will OOM there rather than at startup, which is a
           # confusing place to discover it.
           memory: 1G

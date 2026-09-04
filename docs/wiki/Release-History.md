@@ -82,7 +82,7 @@ labels that anyone could have used to explode a shared Prometheus.
 
 ## v2.6.0 — deployable, and seven times faster to start
 
-Cold start ~1300 ms → **~185 ms**. 88% of it was one import pulling in all 505 operation
+Cold start ~1300 ms → **~185 ms**. 88% of it was one import pulling in all 504 operation
 implementations before answering anything, on a path only three tools need. A background warm-up was
 tried, measured, and removed — module loading blocks the event loop, so "in the background" is not
 something it can be.
@@ -167,7 +167,7 @@ one of 524 tools carrying an empty `inputSchema`**, with the suite green through
 
 ## v2.0.0 — the major
 
-Upstream catch-up **v10.19.4 → v11.4.0** (440 → 505 operations). Relicensed to
+Upstream catch-up **v10.19.4 → v11.4.0** (440 → 504 operations). Relicensed to
 **GPL-3.0-or-later**. Per-session HTTP transport. 272 security findings closed. The `cyberchef_`
 prefix removal was **withdrawn** after measurement: it saved 2.6% of the payload against breaking
 every integration and creating 19 colliding names.

@@ -1,6 +1,6 @@
 # CyberChef MCP Server - Product Roadmap
 
-**Current version:** **v3.1.0** (released 2026-09-03) · **Upstream base:** CyberChef v11.4.0
+**Current version:** **v3.2.0** (released 2026-09-04) · **Upstream base:** CyberChef v11.4.0
 **Charted through:** v4.0.0 — as one plan plus five charters, not five plans
 **Timeline:** January 2026 - present
 **Last Updated:** 2026-09-03
@@ -44,7 +44,7 @@ Extend the platform with binary/image handling, WebSocket/SSE transports, and a 
 
 Deploy enterprise-grade features including OAuth 2.1 authentication, RBAC authorization, horizontal scaling with Kubernetes, and comprehensive OpenTelemetry observability. This phase enables production deployment at scale.
 
-### Phase 6: Evolution (v2.8.0 - v3.1.0) - shipped September 2026
+### Phase 6: Evolution (v2.8.0 - v3.2.0) - shipped September 2026
 
 > **Corrected 2026-09-03.** This phase listed "v2.9.x Pre-v3.0.0 Polish", whose primary goal was
 > deprecation warnings for v3.0.0's breaking changes. Measured against the server, that goal is
@@ -95,6 +95,7 @@ gantt
     v2.10.0 Configuration File          :done, 2026-09-03, 1d
     v3.0.0 Spec Conformance             :done, 2026-09-03, 1d
     v3.1.0 External Oracle              :done, 2026-09-03, 1d
+    v3.2.0 Gates That Can Fail          :done, 2026-09-04, 1d
 ```
 
 ## Release Overview
@@ -148,7 +149,7 @@ gantt
 > The curated tool surface **did** ship, in v2.1.0, alongside an index surface that goes further.
 > The SDK v2 migration did not, and moves to Phase 4.
 
-### Phase 4-6 (v2.2.0 - v3.1.0)
+### Phase 4-6 (v2.2.0 - v3.2.0)
 
 | Release | Theme | Key Features | Effort | Risk |
 |---------|-------|--------------|--------|------|
@@ -162,8 +163,9 @@ gantt
 | **v2.8.1** | CI correctness | **Released 2026-09-02.** No runtime change. CI tested Node 24 while the image shipped 26.8.1, so the runtime users get was never exercised by a test -- the test gates now run a matrix of BOTH ends of the declared `>=24 <27` range. The performance benchmarks were additionally pinned to Node 22, which `engines` does not permit, so every number posted to a PR was measured on an unsupported runtime. Three Pages actions moved off deprecated Node 20. | S | Medium |
 | **v2.9.0** | Readable results | **Released 2026-09-02.** `cyberchef_magic` rewritten to a plain-text report with executable `[{op,args}]` recipes — it had been emitting the web results *table*, whose recipes `bake` rejects, so the most actionable field was the one a caller could not use. Also: `bakeOnCore` now prefers the raw dish over the browser-targeted presented value for the 44 operations where those differ. **Re-scoped:** four of the plan's seven "AI-native" features already existed as `Magic`, `ErrorSuggestions` and `cyberchef_describe_operation`. | M | Medium |
 | **v2.10.0** | Configuration file | **Released 2026-09-03.** `cyberchef.config.json` — 64 settings across 15 sections, announced for v2.0.0 and documented as existing for nine releases without ever being written — with typo suggestions and fail-closed parsing, plus `npm run check:versions`, which caught five version drifts on its first run. **Unplanned:** there was no v2.10.0 in the plan set. | M | Medium |
-| **v3.1.0** | External oracle | **Released 2026-09-03.** The official MCP conformance suite runs in CI against both protocol eras -- 141 checks pass, the rest baselined with a written reason each, and the build fails when a baselined entry starts *passing*. Wire cost per tool surface measured through a real client (`npm run measure:surfaces`): index + one operation schema is **18.2x cheaper** than `all`. Four defects found by the new measurement, two of them by the suite on its first run. **Re-scoped:** the planned evaluation harness was half already built by the ecosystem -- see the charter row above. | M | Medium |
 | **v3.0.0** | Spec conformance | **Released 2026-09-03.** MCP 2026-07-28 conformance and the breaking cleanups it forces: resource errors answer `-32602` instead of Internal Error, `tools/list` is deterministically ordered and filtered by the caller's scopes, `cyberchef_bake` is priced by the recipe it carries rather than by an `openWorldHint` that assumed the worst, honest cache hints on all six cacheable methods, and server spans that join the caller's trace. **Re-scoped:** all six planned breaking changes were already done, withdrawn, or superseded — see [`v3/v3.0.0-plan.md`](./v3/v3.0.0-plan.md). | L | High |
+| **v3.1.0** | External oracle | **Released 2026-09-03.** The official MCP conformance suite runs in CI against both protocol eras -- 141 checks pass, the rest baselined with a written reason each, and the build fails when a baselined entry starts *passing*. Wire cost per tool surface measured through a real client (`npm run measure:surfaces`): index + one operation schema is **18.2x cheaper** than `all`. Four defects found by the new measurement, two of them by the suite on its first run. **Re-scoped:** the planned evaluation harness was half already built by the ecosystem -- see the charter row above. | M | Medium |
+| **v3.2.0** | Gates that can fail | **Released 2026-09-04.** Every gate checked against its own claim: the benchmarks compare to a committed baseline at a **measured** 25% tolerance (they previously said in their own output that they could not fail), Trivy is back to `CRITICAL,HIGH` after its TODO's precondition had been met for eight releases, the published Helm chart is linted and rendered for the first time, prose operation counts are gated, and 7,408 upstream-mirrored metadata strings are screened for characters a diff review cannot render. **The image is not shell-free** and two documents said it was -- a security claim, now corrected. `cyberchef_search` summarises by default: 27,060 -> 3,087 bytes. **Re-scoped:** the planned `response_format` enum was aimed at the wrong tools; the median result is ~3,000 bytes. | M | Medium |
 
 > **v2.9.x "Pre-v3.0.0 Polish" was dropped**, not deferred. Its primary goal was deprecation
 > warnings for v3.0.0's breaking changes, and there was nothing left to warn about: the tool-name
@@ -411,7 +413,7 @@ an intent, a candidate scope, and kill criteria — and none of them may be exec
 | Charter | Intent | Why this, on the evidence |
 |---|---|---|
 | [v3.1.0](./v3/charters/v3.1.0-evaluation-harness.md) | Evaluation harness | **Shipped 2026-09-03, re-scoped on measurement.** Its own first kill criterion fired: an official conformance suite already existed, published four weeks before v3.0.0 claimed conformance on its own tests. Adopted rather than rebuilt, gating both eras; the deterministic half of the tool-quality axis built (`npm run measure:surfaces`); the model-in-the-loop half deferred with a reason to v3.2.0 Track C. Four defects found by the new measurement. |
-| [v3.2.0](./v3/charters/v3.2.0-result-efficiency.md) | Result efficiency, **plus the debt v3.1.0 named** | Track A: a `response_format` enum measured at 65% reduction elsewhere, truncation *with guidance*, error suggestions keyed by operation rather than by code. Track B: five gates whose stated preconditions have expired -- the Trivy severity `TODO`s (backlog is now 0/0), benchmarks that say in their own output they cannot fail, a Helm chart nothing in CI renders, no metadata-integrity guard on the sync path, and prose operation counts nothing checks. Track C: task-level scoring, only if it can be made non-flaky. |
+| ~~[v3.2.0](./v3/charters/v3.2.0-result-efficiency.md)~~ | **Shipped 2026-09-04.** Result efficiency, plus the debt v3.1.0 named | Track A: a `response_format` enum measured at 65% reduction elsewhere, truncation *with guidance*, error suggestions keyed by operation rather than by code. Track B: five gates whose stated preconditions have expired -- the Trivy severity `TODO`s (backlog is now 0/0), benchmarks that say in their own output they cannot fail, a Helm chart nothing in CI renders, no metadata-integrity guard on the sync path, and prose operation counts nothing checks. Track C: task-level scoring, only if it can be made non-flaky. |
 | [v3.3.0+](./v3/charters/v3.3.0-external-tools.md) | The `ext-proj-int` programme | The real feature backlog: 80-120 tools from 8 reference projects, of which ~4 shipped in v2.4.0. The GPL-3.0 relicense unblocked katana and John the Ripper. Spans several releases. |
 | ~~[v3.x](./v3/charters/v3.x-supply-chain.md)~~ | Security and supply chain | **Absorbed into v3.2.0 Track B.** Its own trigger -- "a gate used as evidence must actually gate" -- fired when v3.1.0's release notes cited the CI gates as verification. |
 | [v4.0.0](./v3/charters/v4.0.0.md) | Determined by the spec, not by us | The MCP roadmap's five priorities — notably **progressive tool discovery**, which is the problem this server's hand-rolled index surface solves privately. |

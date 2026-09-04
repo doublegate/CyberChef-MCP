@@ -64,7 +64,7 @@ the older `initialize` handshake still negotiates 2025-11-25 and is unaffected.
 
 The operations are CyberChef's, with CyberChef's properties — several are parsers over untrusted
 bytes. The MCP layer adds input-size limits, an operation timeout, concurrency and rate limits, and
-structured errors. The container runs non-root (UID 65532) on a distroless base and supports
+structured errors. The container runs non-root (UID 65532) on a Chainguard Wolfi base -- which is not shell-free; see [Installation](Installation) -- and supports
 `--read-only`.
 
 The honest caveat, which upstream states too: no guarantee is offered for the correctness or

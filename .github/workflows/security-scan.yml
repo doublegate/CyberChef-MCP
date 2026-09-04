@@ -113,17 +113,25 @@ jobs:
           sarif_file: 'trivy-results.sarif'
           category: 'trivy-container-scan'
 
-      # PR gate. CRITICAL only for now: the SARIF step above still reports CRITICAL+HIGH to
-      # the Security tab, so nothing is hidden - but with a 272-finding backlog open, gating
-      # on HIGH would fail every PR in the v2.0.0 series before it can fix anything.
-      # TODO(PR 7): restore ${{ steps.severity.outputs.level }} once the backlog is zero.
+      # PR gate, now at the SAME severity as the SARIF report above.
+      #
+      # It was pinned to CRITICAL with a `TODO(PR 7): restore ... once the backlog is zero`, whose
+      # stated reason was "a 272-finding backlog" that would have failed every PR in the v2.0.0
+      # series. The backlog reached zero in v2.1.1 and has stayed there; the narrowed gate outlived
+      # its cause by eight releases.
+      #
+      # A gate quieter than its own report is the shape worth avoiding: the Security tab showed
+      # CRITICAL+HIGH the whole time, so nothing was hidden -- but a HIGH could merge while the
+      # dashboard listed it, and the difference between "reported" and "gated" is the only part
+      # that changes what ships. Measured 0 CRITICAL / 0 HIGH on the published v3.1.0 image before
+      # restoring this.
       - name: Run Trivy in table format for logs
         uses: aquasecurity/trivy-action@v0.36.0
         if: github.event_name == 'pull_request'
         with:
           image-ref: 'cyberchef-mcp:scan'
           format: 'table'
-          severity: 'CRITICAL'
+          severity: ${{ steps.severity.outputs.level }}
           vuln-type: 'os,library'
           exit-code: '1'
           # Same ignore file as the SARIF steps. It changes nothing today -- the only entry is a

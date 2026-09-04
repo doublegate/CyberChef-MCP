@@ -1,0 +1,162 @@
+{
+  "_comment": "Committed regression baseline. Generated from the MEDIAN of four consecutive `npm run benchmark -- --json` runs on one machine; see docs/internal/measurements/v3.1.0-baseline.md for the method and the variance study behind the tolerance. Regenerate with `npm run benchmark:baseline` and commit the change with the reason in the message -- a baseline moved without a stated reason is how a gate stops gating.",
+  "capturedFor": "v3.1.0",
+  "capturedAt": "2026-09-04T00:41:23.986Z",
+  "node": "v26.8.1",
+  "runs": 4,
+  "tolerancePct": 50,
+  "toleranceRationale": "Measured on the machine this baseline came from AND on the CI runner, and the second measurement is why it is 50 rather than 25. Locally, four runs give a worst per-task spread of 9.8% and a median of 4.3%, which supported 25%. On GitHub's shared runners, three runs against this baseline produced deltas from -25.5% to +99.1% and TWO FALSE FAILURES -- `Entropy (100KB)` at -25.3% and `Frequency distribution (100KB)` at -25.5%, different tasks each time, with nothing in the diff touching either. That is per-task noise on a shared runner, not a regression, and a gate that cries wolf twice in three runs is a gate that gets disabled. 50% keeps it firing only on the kind of regression that matters -- a factor -- which is what a cross-machine baseline can honestly support. The real fix is a baseline captured on the runner, or a median of several runs there; both are carried forward. See v3.2.0 findings log F-13.",
+  "tasks": {
+    "AES Encrypt (100KB)": {
+      "suite": "crypto",
+      "throughputMedian": 95.6,
+      "observedSpreadPct": 5.0
+    },
+    "AES Encrypt (10KB)": {
+      "suite": "crypto",
+      "throughputMedian": 1025.7,
+      "observedSpreadPct": 4.0
+    },
+    "AES Encrypt (1KB)": {
+      "suite": "crypto",
+      "throughputMedian": 9199.5,
+      "observedSpreadPct": 3.1
+    },
+    "Entropy (100KB)": {
+      "suite": "analysis",
+      "throughputMedian": 2396.5,
+      "observedSpreadPct": 3.7
+    },
+    "Entropy (10KB)": {
+      "suite": "analysis",
+      "throughputMedian": 16549.2,
+      "observedSpreadPct": 6.2
+    },
+    "Entropy (1KB)": {
+      "suite": "analysis",
+      "throughputMedian": 40422.9,
+      "observedSpreadPct": 9.6
+    },
+    "Frequency distribution (100KB)": {
+      "suite": "analysis",
+      "throughputMedian": 2300.2,
+      "observedSpreadPct": 3.4
+    },
+    "Frequency distribution (10KB)": {
+      "suite": "analysis",
+      "throughputMedian": 12756.2,
+      "observedSpreadPct": 9.3
+    },
+    "Frequency distribution (1KB)": {
+      "suite": "analysis",
+      "throughputMedian": 22976.7,
+      "observedSpreadPct": 9.8
+    },
+    "Gzip (100KB)": {
+      "suite": "compression",
+      "throughputMedian": 3.3,
+      "observedSpreadPct": 7.7
+    },
+    "Gzip (10KB)": {
+      "suite": "compression",
+      "throughputMedian": 383.4,
+      "observedSpreadPct": 4.0
+    },
+    "Gzip (1KB)": {
+      "suite": "compression",
+      "throughputMedian": 3199.8,
+      "observedSpreadPct": 2.5
+    },
+    "MD5 (100KB)": {
+      "suite": "hashing",
+      "throughputMedian": 225.3,
+      "observedSpreadPct": 2.0
+    },
+    "MD5 (10KB)": {
+      "suite": "hashing",
+      "throughputMedian": 2087.5,
+      "observedSpreadPct": 4.7
+    },
+    "MD5 (1KB)": {
+      "suite": "hashing",
+      "throughputMedian": 11683.9,
+      "observedSpreadPct": 9.1
+    },
+    "Regular expression (100KB)": {
+      "suite": "text",
+      "throughputMedian": 7786.0,
+      "observedSpreadPct": 5.8
+    },
+    "Regular expression (10KB)": {
+      "suite": "text",
+      "throughputMedian": 12207.8,
+      "observedSpreadPct": 5.6
+    },
+    "Regular expression (1KB)": {
+      "suite": "text",
+      "throughputMedian": 13105.2,
+      "observedSpreadPct": 5.5
+    },
+    "SHA2-256 (100KB)": {
+      "suite": "hashing",
+      "throughputMedian": 250.5,
+      "observedSpreadPct": 2.4
+    },
+    "SHA2-256 (10KB)": {
+      "suite": "hashing",
+      "throughputMedian": 2214.3,
+      "observedSpreadPct": 6.6
+    },
+    "SHA2-256 (1KB)": {
+      "suite": "hashing",
+      "throughputMedian": 10620.5,
+      "observedSpreadPct": 2.8
+    },
+    "SHA2-512 (100KB)": {
+      "suite": "hashing",
+      "throughputMedian": 118.7,
+      "observedSpreadPct": 3.9
+    },
+    "SHA2-512 (10KB)": {
+      "suite": "hashing",
+      "throughputMedian": 1114.2,
+      "observedSpreadPct": 0.9
+    },
+    "SHA2-512 (1KB)": {
+      "suite": "hashing",
+      "throughputMedian": 7001.9,
+      "observedSpreadPct": 3.3
+    },
+    "To Base64 (100KB)": {
+      "suite": "encoding",
+      "throughputMedian": 733.6,
+      "observedSpreadPct": 3.7
+    },
+    "To Base64 (10KB)": {
+      "suite": "encoding",
+      "throughputMedian": 5048.9,
+      "observedSpreadPct": 2.2
+    },
+    "To Base64 (1KB)": {
+      "suite": "encoding",
+      "throughputMedian": 12059.7,
+      "observedSpreadPct": 6.2
+    },
+    "To Hex (100KB)": {
+      "suite": "encoding",
+      "throughputMedian": 162.2,
+      "observedSpreadPct": 4.8
+    },
+    "To Hex (10KB)": {
+      "suite": "encoding",
+      "throughputMedian": 1483.9,
+      "observedSpreadPct": 2.2
+    },
+    "To Hex (1KB)": {
+      "suite": "encoding",
+      "throughputMedian": 7876.2,
+      "observedSpreadPct": 4.6
+    }
+  },
+  "_machine": "Captured on one developer machine. The GitHub runner measured 27-99% FASTER across most tasks on 2026-09-04, which is a machine-class difference rather than noise -- so a regression smaller than that offset will NOT be caught on CI. The gate catches factor-level regressions there, and tolerance-level ones only on the machine this was captured on. A runner-captured baseline is the fix; see v3.2.0 findings log F-10."
+}

@@ -60,7 +60,7 @@ spec:
             severity: warning
           annotations:
             summary: "Replica restarting repeatedly"
-            description: "{{`{{ $labels.instance }}`}} restarted 3 or more times in 15 minutes. If it coincides with first use of cyberchef_search or a saved recipe, suspect the memory limit ({{ .Values.resources.limits.memory }}): that is when the Node API loads all 505 operations."
+            description: "{{`{{ $labels.instance }}`}} restarted 3 or more times in 15 minutes. If it coincides with first use of cyberchef_search or a saved recipe, suspect the memory limit ({{ .Values.resources.limits.memory }}): that is when the Node API loads all 504 operations."
 
         - alert: CyberChefMCPHighFailureRate
           expr: sum by (job) (rate(cyberchef_mcp_tool_failures_total[5m])) / clamp_min(sum by (job) (rate(cyberchef_mcp_tool_calls_total[5m])), 1e-9) > 0.05

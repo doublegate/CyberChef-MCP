@@ -315,6 +315,19 @@ jobs:
           echo "Total operations: $OPERATION_COUNT"
           echo "operation_count=$OPERATION_COUNT" >> "$GITHUB_ENV"
 
+      # HARD FAIL, unlike the test step below, and deliberately so.
+      #
+      # Everything else here records pass/fail into an output and lets the sync PR be opened for a
+      # human to review. That is right for a broken test -- a reviewer can see it. It is wrong for
+      # concealed metadata, because the review IS a diff review and a Unicode TAG-block sequence
+      # renders as nothing in a diff: the reviewer cannot see the thing they would have to catch.
+      #
+      # `src/core/**` is mirrored from upstream verbatim, so this is the one point between an
+      # upstream commit and text a model reads as instruction where a machine can look.
+      - name: Tool metadata integrity (blocking)
+        if: steps.changes.outputs.needs_sync == 'true'
+        run: npx vitest run tests/mcp/metadata-integrity.test.mjs
+
       - name: Run tests
         if: steps.changes.outputs.needs_sync == 'true'
         id: tests

@@ -47,7 +47,9 @@ import { bakeOnCore, toCoreRecipe } from "./lib/core-recipe.mjs";
 import { assertOfflineAllowed } from "./lib/offline.mjs";
 import { runMagic, renderMagicReport } from "./lib/magic.mjs";
 import { isExposed, describeSurface } from "./lib/tool-surface.mjs";
-import { categoryIndex, listOperations, describeOperations } from "./lib/tool-catalog.mjs";
+import {
+    categoryIndex, listOperations, describeOperations, summariseSearch
+} from "./lib/tool-catalog.mjs";
 import { installWasmFetch } from "./lib/wasm-fetch.mjs";
 import { buildRegistry, ToolRegistry } from "./tools/index.mjs";
 
@@ -457,9 +459,14 @@ const META_TOOLS = [
     },
     {
         name: "cyberchef_search",
-        description: "Search for available CyberChef operations.",
+        description:
+            "Search for available CyberChef operations. Returns names and one-line summaries; " +
+            "follow up with cyberchef_describe_operation for argument schemas.",
         inputSchema: toInputSchema(z.object({
-            query: z.string().describe("Search query")
+            query: z.string().describe("Search query"),
+            detailed: z.boolean().optional().describe(
+                "Return the full operation entries instead of summaries. Costs roughly 8x the " +
+                "bytes; prefer cyberchef_describe_operation for the few operations you want.")
         }))
     },
     // Recipe management tools (v1.6.0)
@@ -1034,9 +1041,24 @@ const handleCallToolInner = async (request, extra, ownerServer = server) => {
             // Emit deprecation warning for v2.0.0 (meta-tool rename)
             emitMetaToolDeprecation(name);
 
+            // CHANGED IN v3.2.0: summarised by default, full entries behind `detailed`.
+            //
+            // This returned raw `help()` output -- the whole `OperationConfig` entry per match,
+            // HTML description and every argument included. Measured on this catalogue before the
+            // change: "base64" 14 matches / 27,060 bytes, "aes" 21 matches / 35,642 bytes, more
+            // than `cyberchef_describe_operation` returns for the same operations.
+            //
+            // That is the index surface paid twice. Search is the DISCOVERY step: names and
+            // one-liners, then `describe_operation` for the two the caller actually wants. The
+            // rest of the hierarchy already works that way and search sat outside it.
+            //
+            // `detailed: true` keeps the old payload for anyone parsing it, rather than a silent
+            // shape change -- and it is opt-in rather than default because the default is what
+            // every model pays.
             const { help } = await loadNodeApi();
             const results = help(args.query);
-            const output = JSON.stringify(results, null, 2);
+            const output = JSON.stringify(
+                args.detailed ? results : summariseSearch(args.query, results), null, 2);
             logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
 
             return {

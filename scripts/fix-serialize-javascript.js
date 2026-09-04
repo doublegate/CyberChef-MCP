@@ -7,17 +7,17 @@
  * globally available in all contexts.
  */
 
-const fs = require('fs');
-const path = require('path');
+const fs = require("fs");
+const path = require("path");
 
-const filePath = path.join(__dirname, '..', 'node_modules', 'serialize-javascript', 'index.js');
+const filePath = path.join(__dirname, "..", "node_modules", "serialize-javascript", "index.js");
 
 try {
-    let content = fs.readFileSync(filePath, 'utf8');
+    let content = fs.readFileSync(filePath, "utf8");
 
     // Check if already patched
-    if (content.includes('var nodeCrypto = require')) {
-        console.log('serialize-javascript already patched');
+    if (content.includes("var nodeCrypto = require")) {
+        console.log("serialize-javascript already patched");
         process.exit(0);
     }
 
@@ -48,9 +48,9 @@ try {
 
     content = content.replace(oldFunction, newFunction);
 
-    fs.writeFileSync(filePath, content, 'utf8');
-    console.log('Successfully patched serialize-javascript for Node.js 22+ compatibility');
+    fs.writeFileSync(filePath, content, "utf8");
+    console.log("Successfully patched serialize-javascript for Node.js 22+ compatibility");
 } catch (error) {
-    console.error('Failed to patch serialize-javascript:', error.message);
+    console.error("Failed to patch serialize-javascript:", error.message);
     process.exit(1);
 }

@@ -153,6 +153,53 @@ export function listOperations(category) {
 }
 
 /**
+ * Search results in the same shape the rest of the index hierarchy uses.
+ *
+ * WHY THIS EXISTS
+ * ---------------
+ * `cyberchef_search` returned the raw `help()` output: the FULL `OperationConfig` entry for every
+ * match -- module, HTML description, infoURL, input and output types, and every argument with its
+ * defaults. Measured on this catalogue:
+ *
+ *     query "base64"   14 matches   27,060 bytes
+ *     query "aes"      21 matches   35,642 bytes
+ *
+ * That is the whole point of the index surface paid twice. `cyberchef_list_operations` returns
+ * names and one-line summaries for exactly this reason, and `cyberchef_describe_operation` is the
+ * one place a full argument schema is paid for. Search sat outside that design and handed back
+ * more than `describe_operation` would for the same operations.
+ *
+ * A discovery tool's job is to narrow. The caller reads names, picks one or two, and asks for the
+ * detail it actually needs.
+ *
+ * @param {Array<Object>} results - Raw `help()` output.
+ * @returns {Object} `{query, matches, operations, next}`.
+ */
+export function summariseSearch(query, results) {
+    // `help()` returns **null**, not an empty array, when nothing matches -- and for an empty or
+    // absent query too. The old code path serialised that straight through, so a caller searching
+    // for a term with no hits received the four characters `null`. Passing it to `.length` here
+    // would have turned that into a server error instead, which is worse; caught in review before
+    // it shipped, and it existed because no test searched for something absent.
+    //
+    // A search that found nothing is a successful search. It answers in the same shape as one that
+    // found something, so a caller parses one path rather than three.
+    const found = Array.isArray(results) ? results : [];
+    return {
+        query,
+        matches: found.length,
+        operations: found.map(op => ({
+            operation: op.name,
+            summary: summarise(op.description, 120),
+            args: (op.args || []).length
+        })),
+        next: found.length ?
+            "Use cyberchef_describe_operation for argument schemas, then cyberchef_bake to run." :
+            "No match. Try cyberchef_categories to browse, or a shorter or more general keyword."
+    };
+}
+
+/**
  * Full detail for one or more operations: description, arguments, defaults.
  *
  * This is the leaf of the hierarchy and the only place the full argument schema is paid for. It
