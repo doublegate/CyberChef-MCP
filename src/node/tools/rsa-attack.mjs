@@ -554,12 +554,30 @@ async function wiener(e, n, deadline) {
  * when it cannot be read as decimal -- otherwise "123456" would be ambiguous, and guessing wrong
  * changes the answer silently.
  *
+ * Strip the separators an integer may be written with, before parsing or measuring it.
+ *
+ * Exported because a CALLER that measures the input's width must measure the same string
+ * `parseInteger` reads. `ecdsa_recover` derives a hash's bit width from its length, and computing
+ * that from the raw text while parsing the cleaned text over-reports the width of any hash written
+ * with separators -- which truncates a digest that needed no truncation and silently recovers the
+ * wrong key. One rule, used by both, so they cannot disagree.
+ *
+ * @param {string} value - The text.
+ * @returns {string} The text with whitespace, underscores and colons removed.
+ */
+export function cleanIntegerText(value) {
+    return String(value).trim().replace(/[\s_:]/g, "");
+}
+
+/**
+ * Parse an integer from decimal, 0x-prefixed hex, or bare hex.
+ *
  * @param {string} value - The text.
  * @param {string} label - Field name, for the error message.
  * @returns {bigint} The value.
  */
 export function parseInteger(value, label) {
-    const cleaned = String(value).trim().replace(/[\s_:]/g, "");
+    const cleaned = cleanIntegerText(value);
     try {
         if (/^0x/i.test(cleaned)) return BigInt(cleaned);
         if (/^\d+$/.test(cleaned)) return BigInt(cleaned);

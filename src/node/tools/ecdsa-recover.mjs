@@ -40,7 +40,7 @@
 
 import { z } from "zod";
 import { createInputError } from "../errors.mjs";
-import { MAX_OPERAND_CHARS, modInverse, parseInteger } from "./rsa-attack.mjs";
+import { MAX_OPERAND_CHARS, cleanIntegerText, modInverse, parseInteger } from "./rsa-attack.mjs";
 
 /**
  * The curves, by name, with the order `n` each `k` and `d` live modulo.
@@ -195,7 +195,15 @@ export default {
             // producing a plausible wrong key. A decimal hash cannot express its own width at all;
             // there the value's bit length is the only available answer and it under-reports a
             // digest with leading zero bits. Give hashes as hex.
-            const written = String(sig.hash).trim();
+            // `cleanIntegerText`, the same normalisation `parseInteger` applies -- not the raw
+            // string. `parseInteger` strips whitespace, underscores and colons, all of which are
+            // reasonable ways to write a digest (`ab:cd:ef...`, or grouped with underscores), and
+            // measuring the raw text while parsing the cleaned text over-reports the width by one
+            // byte per separator. That truncates a hash which needed no truncation, and the tool
+            // then recovers a key that is wrong without anything looking wrong. Found in review;
+            // it is the second time this exact mismatch appeared in this function, the first being
+            // a width derived as `digits * 4`.
+            const written = cleanIntegerText(sig.hash);
             const hashBits = /^0[xX]/.test(written) ?
                 Math.ceil((written.length - 2) / 2) * 8 :
                 hash.toString(2).length;

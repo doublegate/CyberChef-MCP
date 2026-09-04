@@ -156,6 +156,24 @@ describe("ecdsa_recover", () => {
         expect(BigInt(`0x${out.recoveries[0].private_key_hex}`)).toBe(D);
     });
 
+    it("measures a hash written with separators by its cleaned length", async () => {
+        // `parseInteger` strips whitespace, underscores and colons, all reasonable ways to write a
+        // digest. Deriving the width from the RAW string then over-reports it by one byte per
+        // separator, truncates a hash that needed no truncation, and recovers a key that is wrong
+        // with nothing looking wrong. Found in review on PR #118.
+        const a = sign(D, K, Z1);
+        const b = sign(D, K, Z2);
+        const grouped = a.hash.slice(2).replace(/(..)/g, "$1:").replace(/:$/, "");
+
+        const out = await tool.run({
+            curve: "secp256k1",
+            signatures: [{ r: a.r, s: a.s, hash: `0x${grouped}` }, b]
+        });
+
+        expect(out.recovered).toBe(true);
+        expect(BigInt(`0x${out.recoveries[0].private_key_hex}`)).toBe(D);
+    });
+
     it("refuses a signature whose r or s is zero rather than dividing by it", async () => {
         await expect(tool.run({
             curve: "secp256k1",
