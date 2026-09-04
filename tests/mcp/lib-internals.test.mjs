@@ -517,7 +517,7 @@ describe("prompts: every prompt renders, including without its arguments", () =>
     it("renders all five with their arguments", async () => {
         const { listPrompts, getPrompt } = await import("../../src/node/lib/prompts.mjs");
         const { prompts } = listPrompts();
-        expect(prompts.length).toBe(5);
+        expect(prompts.length).toBe(6);
 
         for (const p of prompts) {
             // Supply every declared argument, so each prompt's own `build` actually runs. Two of
@@ -565,6 +565,50 @@ describe("tool-catalog: degenerate inputs", () => {
         // the descriptions of the good ones -- and the message names the way out.
         expect(res.operations[0].error).toMatch(/No such operation/);
         expect(res.operations[0].error).toMatch(/cyberchef_search/);
+    });
+
+    it("tells a caller a registry tool is a registry tool, not that it does not exist", async () => {
+        const { describeOperations } = await import("../../src/node/lib/tool-catalog.mjs");
+        const registry = new Set(["cyberchef_vigenere_break"]);
+
+        // The old answer -- "No such operation. Use cyberchef_search to find the exact name." --
+        // pointed away from the fix twice: search reads OperationConfig and would not find it
+        // either, and the tool is already in tools/list with its complete schema. A caller who
+        // saw the name there and asked about it here deserves to be told where to look.
+        for (const asked of ["vigenere_break", "cyberchef_vigenere_break"]) {
+            const res = describeOperations([asked], (n) => n, registry);
+            expect(res.operations[0].error, asked).toMatch(/is a registry tool, not an operation/);
+            expect(res.operations[0].hint, asked).toMatch(/already in `tools\/list`/);
+        }
+
+        // A genuinely unknown name still gets the original answer, which is correct for it.
+        const unknown = describeOperations(["Definitely Not An Operation"], (n) => n, registry);
+        expect(unknown.operations[0].error).toMatch(/No such operation/);
+        expect(unknown.operations[0].hint).toBeUndefined();
+    });
+
+    it("finds registry tools in a search, which help() structurally cannot", async () => {
+        const { summariseSearch } = await import("../../src/node/lib/tool-catalog.mjs");
+        const index = [{
+            name: "classical_cipher",
+            exposedName: "cyberchef_classical_cipher",
+            title: "Classical ciphers",
+            description: "Playfair, the Polybius square, ADFGVX and Baudot/ITA2."
+        }];
+
+        // "playfair" matches NO operation -- there is no Playfair operation, which is why the tool
+        // exists. Before this the search returned nothing and told the caller to try a shorter
+        // keyword, for a capability sitting in tools/list the whole time.
+        const hit = summariseSearch("playfair", [], index);
+        expect(hit.matches).toBe(0);
+        expect(hit.analysis_tools[0].tool).toBe("cyberchef_classical_cipher");
+        expect(hit.analysis_tools[0].note).toMatch(/call it directly/);
+        expect(hit.next).not.toMatch(/No match/);
+
+        // A term matching neither still says so, rather than listing every tool.
+        expect(summariseSearch("zzzznothing", [], index).analysis_tools).toBeUndefined();
+        // And an absent query must not match everything by matching the empty string.
+        expect(summariseSearch("", null, index).analysis_tools).toBeUndefined();
     });
 
     it("rejects an unknown category by name, listing the real ones", async () => {

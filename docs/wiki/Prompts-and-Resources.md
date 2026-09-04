@@ -5,7 +5,7 @@ starting point** when you do not yet know what you are looking at.
 
 ## Prompts
 
-Five workflow prompts, discoverable through `prompts/list`. In a client that surfaces them, they
+Six workflow prompts, discoverable through `prompts/list`. In a client that surfaces them, they
 appear as slash commands or a picker.
 
 | Prompt | Arguments | What it is for |
@@ -14,6 +14,7 @@ appear as slash commands or a picker.
 | `extract-iocs` | `content` * | Pull URLs, IPs, email addresses, domains and hashes out of a document, log or script, and **defang** them for safe reporting. |
 | `deobfuscate-script` | `script` * | Unwrap an obfuscated PowerShell, JavaScript, VBScript or PHP payload layer by layer and report what it does. |
 | `identify-hash` | `hash` * | Work out which algorithm produced a hash, and what can be done with it. |
+| `break-cipher` | `ciphertext` *, `hint` | Recover the plaintext from a classical or repeating-key cipher when you do not have the key. The order is the substance: each step is cheaper than the next and rules out the case it would waste time on. |
 | `decode-chain` | `data` *, `hint` | Walk a known chain of nested encodings, when you already know roughly what was done. |
 
 `*` = required.

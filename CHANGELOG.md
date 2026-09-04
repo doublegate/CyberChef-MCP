@@ -7,6 +7,144 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.3.0] - 2026-09-04
+
+**Twelve new analysis tools, and none of them is a tool the plan asked for.** The charter's own
+kill criterion fired on the phase it proposed next — six of its nine tools already exist as
+upstream operations and three of those would throw at startup — so the scope was re-derived by
+reading the reference projects as code instead of as documentation. Details in
+[the release notes](docs/releases/v3.3.0.md) and
+[the findings log](docs/internal/v3.3.0-findings-log.md).
+
+### Added
+
+- **Twelve registry tools, 4 → 16.** Each fills a gap verified against `OperationConfig` rather
+  than assumed, and none shadows an operation:
+  - **`vigenere_break`** and **`substitution_break`** — `Vigenère Decode` takes a key and
+    `Substitute` takes a mapping; no operation finds either, because the search is a loop with a
+    decision inside it and a linear recipe cannot express one. Measured: the exact Vigenere key in
+    9 of 10 cases, and 95.9% of substitution letters at 350 characters.
+  - **`classical_cipher`** — Playfair, Polybius, ADFGVX and Baudot/ITA2, all verified absent from
+    `src/core/operations/`. Every published vector reproduces exactly. The three contested
+    conventions are parameters, because implementations that disagree on one disagree on every
+    message: Playfair's 26th letter, Polybius coordinate order, and ITA2 versus the US teleprinter
+    figures shift (dcode.fr ships the latter under the former's name).
+  - **`rsa_multi_key`** — batch GCD, common modulus, Håstad broadcast and Franklin–Reiter. Attacks
+    that need a SET of keys, which `Fork` structurally cannot express.
+  - **`corpus_diff`** — per-offset byte and bit variance across samples, ECB detection with
+    offsets, and nonce reuse. The other thing `Fork` cannot do: a statistic across branches.
+  - **`crib_drag`** — two ciphertexts under one key, or one with a known fragment. Adds a `mod k`
+    periodicity constraint that no published write-up of the technique states.
+  - **`plaintext_check`** — the verdict every auto-decoder makes internally and none exposes.
+  - **`entropy_scan`** — WHERE the entropy is, with offsets, plus the sourced two-threshold packed
+    rule and a second axis that separates compressed from encrypted.
+  - **`jwt_weakness`** — everything decidable from a token, with server-dependent headers kept in
+    a separate list rather than reported as findings.
+  - **`hash_crack`** — MD5, SHA-1, SHA-2 and NTLM from a wordlist, refusing the slow schemes by
+    name. Carries its own MD4, because OpenSSL 3 will not give you one.
+  - **`hash_statistics`** — corpus-level hash analysis: shared passwords, weakest format,
+    placeholders.
+  - **`timestamp_identify`** — ranks every format a number could be, because one 64-bit integer is
+    a valid FILETIME, Cocoa date and nanosecond count at once.
+- **`src/node/tools/lib/english.mjs`** and a generated trigram model built from this repository's
+  own prose by **`scripts/build-english-trigrams.mjs`** — 1,328,077 letters, 46 KB packed,
+  regenerable byte-for-byte.
+- **A sixth prompt, `break-cipher`**, routing a caller through the cheap checks before the
+  expensive ones: plaintext check, then Magic, then the solver the shape of the data calls for.
+  `identify-hash` was rewritten too — it still told the model to use `Analyse hash`, which is
+  length-only, and never mentioned the registry tools that separate bcrypt from yescrypt or answer
+  a question about a whole corpus.
+- **`examples/10-break-a-cipher.mjs`**, self-asserting and run by CI like the other nine.
+
+### Fixed
+
+- **Two crashes and one silently wrong private key**, all from inputs the schema accepts and all
+  found by reproducing bot-review findings rather than by reading them. `rsa_attack` with
+  `modulus: "97"` threw `RangeError: Division by zero`, because a prime modulus factored as n x 1
+  and phi became 0. `rsa_multi_key` with moduli 15 and 45 threw `TypeError`, because Håstad's
+  coprimality test missed the case where one modulus DIVIDES another. And `modulus: "105"` returned
+  `p = 3, q = 35, private_exponent = 9` and a plaintext derived from it — `q` is composite, so the
+  totient was 68 against the true 48, and `modInverse` succeeded on the wrong one. Both factors are
+  now primality-tested with random-base Miller-Rabin before phi is computed.
+- **`vigenere_break` reported a key and a score that described different keys.** The trigram
+  rescore captured the original letter once per position, so a later failed alternative reverted an
+  accepted correction while the score kept the improved value.
+- **`entropy_scan` returned one region per window instead of one per blob** whenever the step was
+  smaller than the window — 29 regions for a single 2 KB blob, competing for the same `max_regions`
+  slots. Its yield counter was also keyed on a value that stays zero for an all-zero input.
+- **Base64 was not validated in `entropy_scan`, `corpus_diff` or `crib_drag`.**
+  `Buffer.from(v, "base64")` ignores characters outside the alphabet, so Raw text submitted with
+  `input_format: "Base64"` decoded to a shorter, different byte string and every statistic was
+  computed on it. `"hello world!!"` became 7 bytes.
+- **`hash_crack` reported an unsupported hash as uncracked**, which reads as a password that
+  survived a search it was never part of. **`hash_statistics`** split a bare NetNTLM record on its
+  first colon and reported a passwordless account. **`crib_drag`** accepted an empty
+  `ciphertext_b`, treated it as absent, and silently answered a different question.
+- **`timestamp_identify` did not apply GPS leap seconds**, so every GPS timestamp came back up to
+  18 seconds late. The offset in force at the represented instant is now used, not today's.
+- **`corpus_diff`'s cross-sample block map retained every block**: 512 samples of 64 KB at
+  `block_size: 4` held 8.4 million hex keys and objects — over a gigabyte of live heap for one
+  accepted request — and then discarded all but 16. It now keeps one first sighting per block.
+  Its nonce-reuse output also reports one XOR **per pair** rather than one for a whole group.
+
+### Changed
+
+- **`xor_key_length` gained two more length estimators and stopped assuming a space.**
+  Autocorrelation and Kasiski join the index of coincidence, chosen for uncorrelated failure modes;
+  all three opinions are reported so a disagreement is visible. Key recovery now scores all 256
+  candidate bytes per column by chi-squared against English, with runners-up and margins, instead
+  of taking an argmax and XORing with a hardcoded `0x20` — 28 exact keys against the old method's
+  23, over 43 cases. The old method remains behind an explicit `assumed_common_byte`.
+- **`cyberchef_search` finds registry tools, and `cyberchef_describe_operation` recognises them.**
+  `help()` searches `OperationConfig`, which registry tools are deliberately not in, so searching
+  "playfair" returned zero matches and "try a shorter keyword" for a capability sitting in
+  `tools/list` the whole time. Search now returns an `analysis_tools` section alongside
+  `operations`; `describe_operation` names a registry tool as one and says its schema is already
+  loaded, instead of "No such operation, use cyberchef_search" — which pointed at a search that
+  could not find it either.
+- **`entropy_scan` refuses a window count that would hold the server for tens of seconds.** Its
+  cost is bounded by `(bytes - window) / step`, not by input size, and the schema permitted 8 MB
+  with a one-byte step: 8.4 million windows, measured at **29,219 ms** against a 30-second timeout,
+  synchronous and therefore uninterruptible. Capped at 500,000 windows, with the refusal naming the
+  `step_bytes` that would fit. Yields added to every remaining O(input) loop in `entropy_scan`,
+  `corpus_diff` and `crib_drag`; the longest event-loop block at `crib_drag`'s maximum falls from
+  about 4,000 ms to 301 ms.
+- **Three enum arrays were unbounded, one of them since v2.4.0.** The bounds test named four tools
+  by hand and kept passing as twelve more were added — the same shape as the gap it was written
+  for. It now walks every registry schema structurally, and found `corpus_diff.analyses`,
+  `rsa_attack.attacks` and `rsa_multi_key.attacks` accepting arrays of any length.
+- **A per-character decode was the largest single block of synchronous work in these tools.**
+  `Uint8Array.from(value, ch => ch.charCodeAt(0) & 0xff)` measures 675 ms on 8 MB;
+  `new Uint8Array(Buffer.from(value, "latin1"))` is byte-identical and takes 14 ms. Replaced in
+  `entropy_scan`, `corpus_diff`, `crib_drag` and `xor_key_length`.
+- **The default `tools/list` index grew from 28 tools / 20,297 bytes to 40 / 40,637.** Registry
+  tools have no navigation path, so one that is not listed cannot be called at all; listing must
+  never be stricter than dispatch. `curated` is 118 / 103,883 and `all` is 543 / 421,041. Trimming
+  prose from descriptions recovered 3.8 KB; a generic dispatcher would have recovered 5 KB more and
+  reintroduced the empty-`inputSchema` defect of v2.1.0.
+
+- **Errors stop giving advice that points away from the fix.** `ErrorSuggestions` is keyed by
+  error CODE, so all 504 operations shared three lines for every `INVALID_INPUT` -- an
+  unknown-argument failure was answered with "Verify input data format and encoding" while the
+  context two lines above already named every valid argument. Generic suggestions are now
+  suppressed when a specific hint exists, and kept when there is nothing better to say.
+- **Guidance is no longer the thing that gets truncated.** A flat 100-character cap on context
+  values cut `hint` mid-word -- the one field that says what to do. Guidance keys get 600
+  characters and say when they were cut. The unknown-argument error is **663 -> 540 bytes** and no
+  longer truncated where it matters.
+
+### Added
+
+- **`benchmark-baseline.yml`** captures the regression baseline on the runner the gate actually
+  runs on. v3.2.0's 50% tolerance is a stopgap for a cross-machine baseline; this is what lets it
+  come back down. Manual and scheduled but never on push, and it opens a pull request rather than
+  pushing -- moving a gate's reference point silently is indistinguishable from switching the gate
+  off.
+- **First end-to-end verification of the arm64 image.** v2.8.0 shipped it and CI asserted the
+  optional `@napi-rs/nice` arm64 binary resolved, but no test had connected a client to it. It
+  boots, lists tools and bakes correctly. Its *performance* remains unmeasured: the timings came
+  from QEMU on an amd64 host and measure the emulator, not the platform.
+
 ## [3.2.0] - 2026-09-04
 
 Every gate now does what it says it does, and the one documented claim that was a security claim

@@ -1,9 +1,9 @@
 # CyberChef MCP Server - Product Roadmap
 
-**Current version:** **v3.2.0** (released 2026-09-04) · **Upstream base:** CyberChef v11.4.0
+**Current version:** **v3.3.0** (released 2026-09-04) · **Upstream base:** CyberChef v11.4.0
 **Charted through:** v4.0.0 — as one plan plus five charters, not five plans
 **Timeline:** January 2026 - present
-**Last Updated:** 2026-09-03
+**Last Updated:** 2026-09-04
 
 > **Read this before trusting a date below.** Every release from v2.5.0 onward opened by measuring
 > its plan against the running server, and all six found the plan empty, already built, or
@@ -44,7 +44,7 @@ Extend the platform with binary/image handling, WebSocket/SSE transports, and a 
 
 Deploy enterprise-grade features including OAuth 2.1 authentication, RBAC authorization, horizontal scaling with Kubernetes, and comprehensive OpenTelemetry observability. This phase enables production deployment at scale.
 
-### Phase 6: Evolution (v2.8.0 - v3.2.0) - shipped September 2026
+### Phase 6: Evolution (v2.8.0 - v3.3.0) - shipped September 2026
 
 > **Corrected 2026-09-03.** This phase listed "v2.9.x Pre-v3.0.0 Polish", whose primary goal was
 > deprecation warnings for v3.0.0's breaking changes. Measured against the server, that goal is
@@ -96,6 +96,7 @@ gantt
     v3.0.0 Spec Conformance             :done, 2026-09-03, 1d
     v3.1.0 External Oracle              :done, 2026-09-03, 1d
     v3.2.0 Gates That Can Fail          :done, 2026-09-04, 1d
+    v3.3.0 The Debt v3.2.0 Left         :done, 2026-09-04, 1d
 ```
 
 ## Release Overview
@@ -149,7 +150,7 @@ gantt
 > The curated tool surface **did** ship, in v2.1.0, alongside an index surface that goes further.
 > The SDK v2 migration did not, and moves to Phase 4.
 
-### Phase 4-6 (v2.2.0 - v3.2.0)
+### Phase 4-6 (v2.2.0 - v3.3.0)
 
 | Release | Theme | Key Features | Effort | Risk |
 |---------|-------|--------------|--------|------|
@@ -166,6 +167,7 @@ gantt
 | **v3.0.0** | Spec conformance | **Released 2026-09-03.** MCP 2026-07-28 conformance and the breaking cleanups it forces: resource errors answer `-32602` instead of Internal Error, `tools/list` is deterministically ordered and filtered by the caller's scopes, `cyberchef_bake` is priced by the recipe it carries rather than by an `openWorldHint` that assumed the worst, honest cache hints on all six cacheable methods, and server spans that join the caller's trace. **Re-scoped:** all six planned breaking changes were already done, withdrawn, or superseded — see [`v3/v3.0.0-plan.md`](./v3/v3.0.0-plan.md). | L | High |
 | **v3.1.0** | External oracle | **Released 2026-09-03.** The official MCP conformance suite runs in CI against both protocol eras -- 141 checks pass, the rest baselined with a written reason each, and the build fails when a baselined entry starts *passing*. Wire cost per tool surface measured through a real client (`npm run measure:surfaces`): index + one operation schema is **18.2x cheaper** than `all`. Four defects found by the new measurement, two of them by the suite on its first run. **Re-scoped:** the planned evaluation harness was half already built by the ecosystem -- see the charter row above. | M | Medium |
 | **v3.2.0** | Gates that can fail | **Released 2026-09-04.** Every gate checked against its own claim: the benchmarks compare to a committed baseline at a **measured** 25% tolerance (they previously said in their own output that they could not fail), Trivy is back to `CRITICAL,HIGH` after its TODO's precondition had been met for eight releases, the published Helm chart is linted and rendered for the first time, prose operation counts are gated, and 7,408 upstream-mirrored metadata strings are screened for characters a diff review cannot render. **The image is not shell-free** and two documents said it was -- a security claim, now corrected. `cyberchef_search` summarises by default: 27,060 -> 3,087 bytes. **Re-scoped:** the planned `response_format` enum was aimed at the wrong tools; the median result is ~3,000 bytes. | M | Medium |
+| **v3.3.0** | The debt v3.2.0 left | **Released 2026-09-04.** Errors stop giving advice that points away from the fix -- `ErrorSuggestions` is keyed by CODE, so an unknown-argument failure was answered with "verify input data format" while the context above it already named every valid argument; and the 100-character context cap truncated exactly that field. 663 -> 540 bytes. A workflow captures the benchmark baseline **on the runner**, which is what lets v3.2.0's 50% stopgap come down. The arm64 image is driven through a real client for the first time -- it works; its performance is still unmeasured, because QEMU numbers measure QEMU. **Re-scoped:** the external-tool programme's own kill criterion fired -- six of Sprint 2.1's nine tools already exist upstream, and Sprint 2.2 names a shipped v1.6.0 tool. | M | Low |
 
 > **v2.9.x "Pre-v3.0.0 Polish" was dropped**, not deferred. Its primary goal was deprecation
 > warnings for v3.0.0's breaking changes, and there was nothing left to warn about: the tool-name

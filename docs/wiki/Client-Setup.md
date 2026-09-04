@@ -62,8 +62,8 @@ Use `docker` in place of `podman` if that is what you have. If LM Studio runs as
 inherits your desktop environment's `PATH`, so a bare `podman`/`docker` resolves — no absolute path
 needed.
 
-**Set the tool surface deliberately for a local model.** The default (`index`, 28 tools,
-~4,900 tokens) is usually right; `all` is 531 tools and ~100,000 tokens, which will swamp most
+**Set the tool surface deliberately for a local model.** The default (`index`, 40 tools,
+40,637 bytes) is usually right; `all` is 543 tools and 421,041 bytes, which will swamp most
 locally-hosted context windows:
 
 ```json

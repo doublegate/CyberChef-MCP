@@ -38,7 +38,7 @@ import { createInputError } from "../errors.mjs";
  *
  * @type {Array<{name: string, pattern: RegExp, hashcat: number|null, john: string|null, note?: string}>}
  */
-const FORMATS = [
+export const FORMATS = [
     // --- modular crypt format -----------------------------------------------------------------
     { name: "bcrypt", pattern: /^\$2[abxy]?\$\d{2}\$[./A-Za-z0-9]{53}$/, hashcat: 3200, john: "bcrypt",
         note: "Cost is the number after the second $: 10 means 2^10 rounds." },
@@ -91,7 +91,7 @@ const FORMATS = [
 ];
 
 /** Bare digests, by hex length. Ambiguous by construction, so all plausible answers are listed. */
-const BY_HEX_LENGTH = {
+export const BY_HEX_LENGTH = {
     8: [["CRC-32", null, null]],
     16: [["MySQL 3.23 (pre-4.1)", 200, "mysql"], ["DES (tripcode)", null, null]],
     32: [["MD5", 0, "raw-md5"], ["NTLM", 1000, "nt"], ["MD4", 900, "raw-md4"],

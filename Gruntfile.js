@@ -275,7 +275,8 @@ module.exports = function (grunt) {
             // A lint gate that does not cover a directory is not a lint gate for that directory,
             // and the failure is silent in exactly the way a missing test is not.
             tooling: [
-                "benchmarks/**/*.mjs", "conformance/**/*.mjs", "scripts/**/*.{js,mjs}"
+                "benchmarks/**/*.mjs", "conformance/**/*.mjs", "scripts/**/*.{js,mjs}",
+                "examples/**/*.mjs"
             ],
         },
         webpack: {

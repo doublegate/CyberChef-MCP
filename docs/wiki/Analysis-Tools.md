@@ -1,6 +1,6 @@
 # Analysis Tools
 
-Four tools that are **not** CyberChef operations, added in v2.4.0.
+Sixteen tools that are **not** CyberChef operations: four added in v2.4.0, twelve more in v3.3.0.
 
 ## Why they exist
 
@@ -141,6 +141,69 @@ against a 262,144-bit one blocked for **72 seconds**.
 The Fermat search also stops at a **ten-second budget** and says so, rather than reporting a search
 it never finished as one that found nothing. A recovered plaintext is raw RSA output, so expect
 PKCS#1 or OAEP padding ahead of the message.
+
+---
+
+## Added in v3.3.0
+
+Twelve more tools, for the same reason as the first four: each closes a gap an operation cannot
+express, whether that is a loop with a decision inside it, a statistic computed across several
+inputs, or a cipher upstream simply does not have.
+
+### `cyberchef_classical_cipher`
+
+Solves Playfair, Polybius, ADFGVX and Baudot/ITA2 ciphers, none of which exists as a CyberChef
+operation.
+
+### `cyberchef_corpus_diff`
+
+Compares several samples and reports per-offset byte and bit variance across them, ECB detection
+with offsets, and nonce-reuse detection.
+
+### `cyberchef_crib_drag`
+
+Drags a guessed plaintext fragment along a XOR ciphertext — against two ciphertexts under one key,
+or one ciphertext with a known fragment.
+
+### `cyberchef_entropy_scan`
+
+Reports where a file's entropy is high, as regions with offsets, plus the Lyda-Hamrock
+two-threshold packed test.
+
+### `cyberchef_hash_crack`
+
+Cracks MD5, SHA-1, SHA-2 and NTLM hashes from a wordlist; refuses bcrypt, scrypt, Argon2 and
+yescrypt by name rather than attempting them.
+
+### `cyberchef_hash_statistics`
+
+Corpus-level hash analysis: shared passwords, the weakest format present, and placeholder values.
+
+### `cyberchef_jwt_weakness`
+
+Reports everything decidable about a JWT from the token alone, with server-dependent checks listed
+separately.
+
+### `cyberchef_plaintext_check`
+
+Answers whether a candidate is plaintext yet, as a verdict together with its supporting evidence.
+
+### `cyberchef_rsa_multi_key`
+
+Batch RSA attacks across several keys: batch GCD, common modulus, Hastad broadcast and
+Franklin-Reiter.
+
+### `cyberchef_substitution_break`
+
+Recovers a monoalphabetic substitution mapping by hill-climbing on trigram fitness.
+
+### `cyberchef_timestamp_identify`
+
+Ranks every timestamp format a given number could plausibly be.
+
+### `cyberchef_vigenere_break`
+
+Recovers a Vigenère key from ciphertext alone.
 
 ---
 

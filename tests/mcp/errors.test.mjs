@@ -365,3 +365,53 @@ describe("Helper Functions", () => {
         });
     });
 });
+
+describe("advice that contradicts the error (v3.3.0)", () => {
+    it("drops the generic suggestions when the context carries a hint", () => {
+        // Measured before the change: an unknown-argument error -- whose context already named
+        // every valid argument -- was followed by "Verify input data format and encoding",
+        // "Check for special characters", "Ensure input matches the expected format". None is the
+        // fix, and all three point away from it. The suggestions are keyed by error CODE, so every
+        // INVALID_INPUT gets the same three regardless of which of 504 operations failed.
+        //
+        // Advice that contradicts the error above it is worse than no advice: it is the model's
+        // next action.
+        const specific = new CyberChefMCPError(
+            ErrorCodes.INVALID_INPUT,
+            "Unknown argument for \"AES Encrypt\": input_type",
+            { operation: "AES Encrypt", hint: "Valid arguments: key, iv, mode." });
+
+        const text = specific.formatErrorMessage();
+        expect(text).toContain("Valid arguments: key, iv, mode.");
+        expect(text).not.toContain("Suggestions:");
+        expect(text).not.toContain("Verify input data format");
+    });
+
+    it("keeps them when there is nothing more specific to say", () => {
+        // The generic list is suppressed, not deleted. An error with no better answer still
+        // answers -- a `Gunzip` failure on non-gzip input has no hint to offer and the three
+        // generic lines are the best available.
+        const generic = new CyberChefMCPError(
+            ErrorCodes.INVALID_INPUT, "Gunzip - invalid file signature", { recipe: ["Gunzip"] });
+
+        const text = generic.formatErrorMessage();
+        expect(text).toContain("Suggestions:");
+        expect(text).toContain("Verify input data format");
+    });
+
+    it("does not truncate the field that carries the fix", () => {
+        // A flat 100-character cap cut the argument list mid-word -- `include_iv_in_outp..."` --
+        // while the complete list sat two lines above in `accepted`. "Truncate with guidance" is
+        // the principle, and a guidance field is exactly the wrong thing to truncate.
+        const hint = `Valid arguments: ${Array.from({ length: 12 }, (_, i) => `argument_number_${i}`).join(", ")}.`;
+        expect(hint.length).toBeGreaterThan(100);
+
+        const error = new CyberChefMCPError(
+            ErrorCodes.INVALID_INPUT, "Unknown argument", { hint, sample: "x".repeat(400) });
+        const text = error.formatErrorMessage();
+
+        expect(text).toContain(hint);
+        // ...while an ordinary long value is still capped, and says that it was.
+        expect(text).toContain("(truncated; 400 characters)");
+    });
+});

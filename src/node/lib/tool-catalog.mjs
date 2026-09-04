@@ -9,9 +9,9 @@
  * numbers now come from `npm run measure:surfaces`, which drives a real client and counts the
  * exact bytes of the result, rather than from a comment:
  *
- *     all       531 tools   400,701 bytes   391 KB
- *     curated   106 tools    83,543 bytes    82 KB
- *     index      28 tools    20,297 bytes    20 KB
+ *     all       543 tools   421,041 bytes   411 KB
+ *     curated   118 tools   103,883 bytes   101 KB
+ *     index      40 tools    40,637 bytes    39 KB
  *
  * Both presets pay up front for schemas the session may never use. `curated` is cheaper only
  * because it guesses which operations matter, and it is wrong for anyone whose work is the rest.
@@ -48,9 +48,12 @@
  * one schema instead of 504.
  *
  * The trade is honest and worth stating: reaching an operation costs an extra round trip the first
- * time. Measured, that trade is the index plus one operation schema -- 22,075 bytes against
- * 400,701, or **18.2x cheaper** than `all`. For a client that wants everything in one shot,
- * `CYBERCHEF_TOOL_SURFACE=all` is still there.
+ * time. Measured, that trade is the index plus one operation schema -- 42,415 bytes against
+ * 421,041, or **9.9x cheaper** than `all`. That multiplier fell from 18.2x in v3.2.0, and the
+ * reason is worth recording rather than quietly restating: twelve registry tools were added in
+ * v3.3.0 and a registry tool has no navigation path, so one that is not listed cannot be called at
+ * all. They are all in the index, and the index is twice the size it was. For a client that wants
+ * everything in one shot, `CYBERCHEF_TOOL_SURFACE=all` is still there.
  *
  * @author DoubleGate
  * @license GPL-3.0-or-later
@@ -172,10 +175,14 @@ export function listOperations(category) {
  * A discovery tool's job is to narrow. The caller reads names, picks one or two, and asks for the
  * detail it actually needs.
  *
+ * @param {string} query - What was searched for.
  * @param {Array<Object>} results - Raw `help()` output.
- * @returns {Object} `{query, matches, operations, next}`.
+ * @param {Array<{name: string, exposedName: string, title?: string, description?: string}>}
+ *   [registryTools] - The registry tools, which `help()` cannot see because they are not in
+ *   `OperationConfig`.
+ * @returns {Object} `{query, matches, operations, analysis_tools?, next}`.
  */
-export function summariseSearch(query, results) {
+export function summariseSearch(query, results, registryTools) {
     // `help()` returns **null**, not an empty array, when nothing matches -- and for an empty or
     // absent query too. The old code path serialised that straight through, so a caller searching
     // for a term with no hits received the four characters `null`. Passing it to `.length` here
@@ -185,6 +192,19 @@ export function summariseSearch(query, results) {
     // A search that found nothing is a successful search. It answers in the same shape as one that
     // found something, so a caller parses one path rather than three.
     const found = Array.isArray(results) ? results : [];
+
+    // Registry tools are searched too, and they have to be: `help()` reads `OperationConfig`, which
+    // they are deliberately not in, so a caller searching "vigenere" was shown the two operations
+    // that need a key and not the tool that finds one. The index surface's whole design rests on
+    // search being how a caller finds things, and a search that structurally cannot return sixteen
+    // of the tools on offer is a hole in it.
+    const term = String(query ?? "").trim().toLowerCase();
+    const registryHits = term ? (registryTools ?? []).filter(tool =>
+        tool.name.toLowerCase().includes(term) ||
+        tool.exposedName.toLowerCase().includes(term) ||
+        (tool.title ?? "").toLowerCase().includes(term) ||
+        (tool.description ?? "").toLowerCase().includes(term)) : [];
+
     return {
         query,
         matches: found.length,
@@ -193,8 +213,16 @@ export function summariseSearch(query, results) {
             summary: summarise(op.description, 120),
             args: (op.args || []).length
         })),
-        next: found.length ?
-            "Use cyberchef_describe_operation for argument schemas, then cyberchef_bake to run." :
+        ...(registryHits.length ? {
+            "analysis_tools": registryHits.map(tool => ({
+                tool: tool.exposedName,
+                summary: summarise(tool.description, 160),
+                note: "Not an operation: call it directly rather than putting it in a recipe."
+            }))
+        } : {}),
+        next: found.length || registryHits.length ?
+            "Use cyberchef_describe_operation for argument schemas, then cyberchef_bake to run. " +
+            "Analysis tools are called directly; their schemas are already in tools/list." :
             "No match. Try cyberchef_categories to browse, or a shorter or more general keyword."
     };
 }
@@ -208,9 +236,11 @@ export function summariseSearch(query, results) {
  *
  * @param {string|string[]} operations - Operation name(s).
  * @param {Function} argNameFor - Maps a CyberChef argument name to its tool-schema property name.
+ * @param {Set<string>} [registryNames] - Exposed names of the registry tools, so a caller who asks
+ *   about one is told what it is rather than that it does not exist.
  * @returns {Object} The detail.
  */
-export function describeOperations(operations, argNameFor) {
+export function describeOperations(operations, argNameFor, registryNames) {
     const names = Array.isArray(operations) ? operations : [operations];
 
     const described = names.map(raw => {
@@ -220,6 +250,20 @@ export function describeOperations(operations, argNameFor) {
             Object.keys(OperationConfig).find(k => k.toLowerCase() === name.toLowerCase());
 
         if (!canonical) {
+            // A registry tool is not an operation, and answering "no such operation, use
+            // cyberchef_search" for one is advice that points away from the fix twice over: search
+            // reads OperationConfig and will not find it either, and the tool is already in
+            // `tools/list` with its complete schema. A caller who saw the name there and asked
+            // about it here deserves to be told where to look, not that it does not exist.
+            const exposed = name.startsWith("cyberchef_") ? name : `cyberchef_${name}`;
+            if (registryNames?.has(exposed)) {
+                return {
+                    operation: name,
+                    error: `\`${exposed}\` is a registry tool, not an operation, so it has no ` +
+                        "OperationConfig entry and cannot be used inside a recipe.",
+                    hint: `Its full schema is already in \`tools/list\`; call \`${exposed}\` directly.`
+                };
+            }
             return {
                 operation: name,
                 error: "No such operation. Use cyberchef_search to find the exact name."

@@ -45,7 +45,14 @@ format has to match for the tools to be interoperable at all, that is stated as 
 | `cyberchef_cyclic_pattern` | **pwntools** | MIT | The De Bruijn pattern format. Matching it byte-for-byte is the point: an offset found here must equal the one `cyclic -l` reports. Verified against pwntools' canonical output. |
 | `cyberchef_hash_identify` | **hashcat**, **John the Ripper** | MIT / GPL-2.0-or-later | Mode numbers and format names, so the tool's output is a command you can run. The `$id$` structures it matches are the public crypt(3) and PHC formats. |
 | `cyberchef_rsa_attack` | **RsaCtfTool** | MIT | Which attacks are worth trying against a public key. Fermat, Wiener, common-factor and small-e are textbook cryptanalysis; the BigInt implementations are written here. |
-| `cyberchef_xor_key_length` | **xortool** | MIT | Index of coincidence as the scoring function for key length — see the findings log for why the obvious alternative is wrong. |
+| `cyberchef_xor_key_length` | **xortool** | MIT | Index of coincidence as the scoring function for key length — see the findings log for why the obvious alternative is wrong. xortool's refusal to assume a most-common plaintext byte is followed too: `assumed_common_byte` has no default. |
+| `cyberchef_crib_drag` | **cribdrag** (SpiderLabs) | GPL-3.0 | Three design choices, not code: every offset is reported rather than only the hits, candidates are *flagged* rather than sorted away, and the character-class test is anchored so one bad byte disqualifies a fragment. The `mod k` periodicity constraint is not from there — no published write-up of the technique states it. |
+| `cyberchef_rsa_multi_key` | **RsaCtfTool**, Boneh's *Twenty Years of Attacks on the RSA Cryptosystem* | MIT / paper | Which multi-key attacks exist and their preconditions. The batch-GCD identity is Bernstein's (FactHacks); the BigInt and polynomial implementations are written here. RsaCtfTool's `common_modulus_related_message` is **not** followed — it returns early on `g == 1`, refusing the common coprime case. |
+| `cyberchef_substitution_break`, `cyberchef_vigenere_break` | **Practical Cryptography** (James Lyons) | Method, not data | The hill-climbing parameters (swap two key letters, 1000 non-improving swaps, random restarts) and the Vigenere coset method. **No data was taken**: `english_quadgrams.txt` is not used and is not bundled — the trigram model is generated from this repository's own prose by `scripts/build-english-trigrams.mjs`. |
+| `cyberchef_hash_crack` | **hashcat**, **RFC 1320** | MIT / IETF | Mode numbers for the follow-on advice, and MD4 from its specification. The MD4 implementation is written here because OpenSSL 3 moved MD4 to the legacy provider, so `createHash("md4")` throws. |
+| `cyberchef_jwt_weakness` | **RFC 8725**, **jwt_tool**, PortSwigger | IETF / GPL-3.0 / prose | The checklist of what is checkable, and the boundary between what a token proves and what needs a server. No code. |
+| `cyberchef_entropy_scan` | Lyda & Hamrock (IEEE S&P 2007), Mantovani et al. (NDSS 2020) | papers | The two-threshold packed-binary rule and its block size, and the calibration that says what an entropy of 7.0 actually means. |
+| `cyberchef_classical_cipher` | ITU-T Recommendation S.1, Wikipedia, Christensen (NKU MAT/CSC 483) | standards / prose | The normative ITA2 table and the published Playfair and Polybius vectors, used as tests rather than as source. |
 
 | Project | Licence | GPLv3-compatible | Source |
 |---|---|---|---|
@@ -54,6 +61,8 @@ format has to match for the tools to be interoperable at all, that is stated as 
 | **pwntools** | MIT | Yes | <https://github.com/Gallopsled/pwntools> |
 | **RsaCtfTool** | MIT | Yes | <https://github.com/RsaCtfTool/RsaCtfTool> |
 | **xortool** | MIT | Yes | <https://github.com/hellman/xortool> |
+| **cribdrag** | GPL-3.0 | Yes — same licence as this project | <https://github.com/SpiderLabs/cribdrag> |
+| **jwt_tool** | GPL-3.0 | Yes | <https://github.com/ticarpi/jwt_tool> |
 
 ### Evaluated, and nothing taken
 
@@ -63,7 +72,7 @@ has. They are listed because the plan says they were ported, and they were not:
 | Project | Licence | Why nothing was taken |
 |---|---|---|
 | **katana** | GPL-3.0-or-later | Its useful core is auto-decode plus a flag regex. `Magic` already does the first, and the second is one recipe. It remains the reason the project is GPLv**3** rather than v2: the relicense was decided before this was measured, and is not being reversed. |
-| **Ciphey** / **Ares** | MIT | Auto-decode search. CyberChef's `Magic` operation is the same idea, already exposed. |
+| **Ciphey** / **Ares** | MIT | Auto-decode search. CyberChef's `Magic` operation is the same idea, already exposed. Re-read as code for v3.3.0, and the finding is that their published intelligence does not run: Ciphey's A* searcher is never imported, and both of Ares' production call sites pass `&None` for the decoder heuristic. What they *do* contribute is a negative result — the boring pruning carries them — and that shaped `plaintext_check`. Still nothing taken. |
 | **cryptii** | MIT | Its encodings have 26 equivalents among the 504 operations. |
 
 ### cyberchef-recipes — a note on scope

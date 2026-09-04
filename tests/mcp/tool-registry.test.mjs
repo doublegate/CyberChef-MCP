@@ -213,6 +213,49 @@ describe("xor_key_length", () => {
             .rejects.toThrow(/Too little data/);
     }, 30000);
 
+    it("reports what each of the three estimators concluded", async () => {
+        const out = await tool.run(
+            tool.inputSchema.parse({ input: encrypt("hunter"), "input_format": "Hex", "preview_bytes": 0 }),
+            { bake });
+
+        // The three are chosen for uncorrelated failure modes, not for individual accuracy -- the
+        // index of coincidence is defeated by periodic plaintext, autocorrelation by short input,
+        // Kasiski by too few repeats. So the disagreement is the output, not an embarrassment to
+        // be averaged away: a caller deciding what to try next needs to know they disagreed.
+        expect(out.estimates).toHaveProperty("index_of_coincidence");
+        expect(out.estimates).toHaveProperty("autocorrelation");
+        expect(out.estimates).toHaveProperty("kasiski");
+        expect(out.estimates.agreement).toBeTruthy();
+    }, 30000);
+
+    it("scores every candidate key byte rather than taking a column argmax", async () => {
+        const out = await tool.run(
+            tool.inputSchema.parse({ input: encrypt("hunter"), "input_format": "Hex", "preview_bytes": 0 }),
+            { bake });
+
+        expect(out.key_guess.method).toMatch(/chi-squared/);
+        expect(out.key_guess.columns).toHaveLength(out.key_length);
+        for (const column of out.key_guess.columns) {
+            // Runners-up are the point of scoring: practicalcryptography's own worked example of
+            // the argmax method recovers `CIAHERS` for the key `CIPHERS`, because two candidates
+            // scored closely on one column and the wrong one scored slightly lower. A caller can
+            // only notice that if the margin is reported.
+            expect(column.alternatives.length).toBeGreaterThan(0);
+            expect(column.margin).toBeGreaterThanOrEqual(1);
+        }
+    }, 30000);
+
+    it("still offers the old argmax method behind an explicit assumption", async () => {
+        const out = await tool.run(
+            tool.inputSchema.parse({
+                input: encrypt("K"), "input_format": "Hex", "preview_bytes": 0,
+                "assumed_common_byte": 32
+            }), { bake });
+
+        expect(out.key_guess.method).toMatch(/0x20/);
+        expect(out.key_guess.printable).toBe("K");
+    }, 30000);
+
     it("accepts raw and base64 as well as hex", async () => {
         const hexCt = encrypt("hunter");
         const raw = Buffer.from(hexCt, "hex").toString("latin1");
@@ -258,8 +301,11 @@ describe("input bounds: what stops a tool blocking the server", () => {
     it("still accepts a modulus the size of a real RSA-4096 key", async () => {
         // The bound has to be loose enough to be useless to nobody. RSA-4096 is already unusual,
         // and this is one of them.
+        // Scoped to fermat because this test is about the SIZE BOUND, not about which attack
+        // applies. Unscoped it now factors: v3.3.0 added trial division, and this fixture -- a
+        // number chosen for its length rather than its factors -- has a small prime in it.
         const out = await run("rsa_attack",
-            { modulus: "c" + "f".repeat(1023), "fermat_iterations": 50 });
+            { modulus: "c" + "f".repeat(1023), "fermat_iterations": 50, attacks: ["fermat"] });
         expect(out.factored).toBe(false);
     });
 
@@ -272,6 +318,59 @@ describe("input bounds: what stops a tool blocking the server", () => {
             .rejects.toThrow();
         await expect(run("rsa_attack", { modulus: "1", ciphertext: "9".repeat(5001) }))
             .rejects.toThrow();
+    });
+
+    it("bounds every string and array field of every registry tool, structurally", async () => {
+        // The four assertions above name four tools, which is how the gap they were written for
+        // comes back: the twelve tools added in v3.3.0 were not among them, and a fifth would not
+        // be either. This walks the schemas instead, so a new tool with an unbounded field fails
+        // here on the day it is added rather than on the day someone sends a gigabyte to it.
+        //
+        // An unbounded string is not a style question. Every one of these tools is superlinear in
+        // at least one input, and the server's general input ceiling is 100 MB.
+        const unbounded = [];
+        for (const tool of reg.list()) {
+            const shape = tool.inputSchema?.shape ?? {};
+            for (const [field, definition] of Object.entries(shape)) {
+                const json = z.toJSONSchema(z.object({ [field]: definition }), { io: "input" });
+                const property = json.properties?.[field] ?? {};
+                // EVERY anyOf branch, not the first one carrying a `type`. `.optional()` and
+                // `.nullable()` both produce a union, and checking one arm would let an unbounded
+                // string through whenever it happened to sit in another. `type` may also be an
+                // ARRAY of names for a nullable scalar, so it is normalised to a set.
+                const branches = property.anyOf ?? [property];
+                const has = (schema, name) => {
+                    const type = schema?.type;
+                    return Array.isArray(type) ? type.includes(name) : type === name;
+                };
+                for (const inner of branches) {
+                    if (has(inner, "string") && inner.maxLength === undefined && !inner.enum) {
+                        unbounded.push(`${tool.name}.${field} (string)`);
+                    }
+                    if (has(inner, "array")) {
+                        if (inner.maxItems === undefined) unbounded.push(`${tool.name}.${field} (array length)`);
+                        for (const item of inner.items?.anyOf ?? [inner.items ?? {}]) {
+                            if (has(item, "string") && item.maxLength === undefined && !item.enum) {
+                                unbounded.push(`${tool.name}.${field}[] (string)`);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        expect(unbounded).toEqual([]);
+    });
+
+    it("bounds an object-valued array element too, which the walk above would not reach", async () => {
+        // `rsa_multi_key.keys` is an array of OBJECTS, so the item check above sees `type: object`
+        // and stops. Its fields are bounded; asserted directly because the structural walk cannot
+        // reach them and an assertion that silently checks nothing is worse than none.
+        // Asserted on the MESSAGE, not just that something threw. A bare `rejects.toThrow()` here
+        // would pass if the call failed for any other reason -- including a reason that has
+        // nothing to do with the bound the test is named for.
+        await expect(run("rsa_multi_key", {
+            keys: [{ modulus: "9".repeat(5001) }, { modulus: "77" }]
+        })).rejects.toThrow(/modulus/);
     });
 
     it("skips the small-e attack for an exponent that would kill the process", async () => {
@@ -308,9 +407,12 @@ describe("input bounds: what stops a tool blocking the server", () => {
         // 100,000 now finishes in ~3.5 s after the isqrt work, so the budget has to be provoked
         // with the maximum to be exercised at all -- which is the right shape: the deadline is a
         // backstop for the pathological case, not something ordinary calls meet.
+        // Scoped to fermat for the same reason as the size-bound test above: this measures the
+        // DEADLINE, and letting trial division answer first would mean measuring nothing.
         const big = (2n ** 16384n - 1n) - 12345678n;
         const started = Date.now();
-        const out = await run("rsa_attack", { modulus: big.toString(), "fermat_iterations": 10000000 });
+        const out = await run("rsa_attack",
+            { modulus: big.toString(), "fermat_iterations": 10000000, attacks: ["fermat"] });
         const elapsed = Date.now() - started;
         expect(out.factored).toBe(false);
         expect(elapsed).toBeLessThan(20000);
@@ -323,7 +425,7 @@ describe("input bounds: what stops a tool blocking the server", () => {
         // 16,384 bits the default 100,000 iterations used to extrapolate to ~37 minutes. If this
         // starts hitting the 10-second budget, the isqrt fast paths have been undone.
         const big = (2n ** 16384n - 1n) - 12345678n;
-        const out = await run("rsa_attack", { modulus: big.toString() });
+        const out = await run("rsa_attack", { modulus: big.toString(), attacks: ["fermat"] });
         expect(out.attempted.join(" ")).toMatch(/fermat \(up to 100000 iterations\)/);
         expect(out.attempted.join(" ")).not.toMatch(/stopped at the/);
     }, 60000);
@@ -652,6 +754,114 @@ describe("rsa_attack", () => {
         return ((s % m) + m) % m;
     };
 
+    /**
+     * Miller-Rabin against the first twelve primes.
+     *
+     * NOT deterministic at the sizes used here, and the comment used to claim it was. The bases 2
+     * through 37 make it deterministic only below about 3.32e24 -- roughly 2^81 -- and the fixtures
+     * in this file are 200-, 255- and 512-bit values, so this is a probable-prime test at every
+     * size it is actually called with.
+     *
+     * That is fine for a test helper generating its own fixtures: the error probability is
+     * negligible and the numbers are not adversarial. It is not fine as a stated guarantee, because
+     * a reader who reuses this on the strength of the old comment inherits something it never had.
+     * The tool's own `isProbablePrime` uses RANDOM bases for that reason -- its inputs are
+     * attacker-supplied by definition, and a fixed base set is exactly what a constructed
+     * pseudoprime defeats.
+     */
+    const isPrime = (n) => {
+        if (n < 2n) return false;
+        for (const s of [2n, 3n, 5n, 7n, 11n, 13n, 17n, 19n, 23n, 29n, 31n, 37n]) {
+            if (n === s) return true;
+            if (n % s === 0n) return false;
+        }
+        let d = n - 1n, r = 0n;
+        while (d % 2n === 0n) {
+            d /= 2n;
+            r += 1n;
+        }
+        for (const a2 of [2n, 3n, 5n, 7n, 11n, 13n, 17n, 19n, 23n, 29n, 31n, 37n]) {
+            let x = 1n, b2 = a2 % n, e = d;
+            while (e > 0n) {
+                if (e & 1n) x = x * b2 % n;
+                b2 = b2 * b2 % n;
+                e >>= 1n;
+            }
+            if (x === 1n || x === n - 1n) continue;
+            let ok = false;
+            for (let i = 1n; i < r; i++) {
+                x = x * x % n;
+                if (x === n - 1n) {
+                    ok = true;
+                    break;
+                }
+            }
+            if (!ok) return false;
+        }
+        return true;
+    };
+    const nextPrime = (x) => {
+        let c = x | 1n;
+        while (!isPrime(c)) c += 2n;
+        return c;
+    };
+
+    it("finds a prime under 100,000 by trial division (small_factors)", async () => {
+        // Not an RSA key in any meaningful sense, and the cheapest thing to rule out -- which is
+        // why it runs before every search.
+        const p = 65537n, q = nextPrime(1n << 200n);
+        const out = await run({ modulus: (p * q).toString(), attacks: ["small_factors"] });
+
+        expect(out.factored).toBe(true);
+        expect(out.via).toBe("small_factors");
+        expect([out.p, out.q]).toContain(p.toString());
+        expect(out.assessment).toMatch(/one of the two 'primes' is tiny/);
+    }, 30000);
+
+    it("finds a short prime by random walk (pollard_rho)", async () => {
+        // 40 bits against a 256-bit partner. Fermat cannot see this -- the primes are as far
+        // apart as they can be -- and trial division stops at 100,000, so rho is the only one of
+        // the seven that applies.
+        const p = nextPrime(1n << 40n), q = nextPrime(1n << 255n);
+        const out = await run({ modulus: (p * q).toString(), attacks: ["pollard_rho"] });
+
+        expect(out.factored).toBe(true);
+        expect(out.via).toBe("pollard_rho");
+        expect([out.p, out.q]).toContain(p.toString());
+    }, 60000);
+
+    it("finds a prime whose predecessor is smooth (pollard_pm1)", async () => {
+        // p - 1 built from primes below 100 only. This is the flaw safe-prime generation exists
+        // to prevent, and no amount of primality testing on p detects it.
+        let smooth = 1n;
+        for (const x of [2n, 2n, 2n, 3n, 3n, 5n, 7n, 11n, 13n, 17n, 19n, 23n, 29n, 31n, 37n,
+                         41n, 43n, 47n, 53n, 59n, 61n, 67n, 71n, 73n, 79n, 83n, 89n, 97n]) smooth *= x;
+        let k = 1n;
+        while (!isPrime(smooth * k + 1n)) k += 1n;
+        const p = smooth * k + 1n;
+        const q = nextPrime(1n << 255n);
+
+        const out = await run({ modulus: (p * q).toString(), attacks: ["pollard_pm1"] });
+
+        expect(out.factored).toBe(true);
+        expect(out.via).toBe("pollard_pm1");
+        expect([out.p, out.q]).toContain(p.toString());
+        expect(out.assessment).toMatch(/smooth p-1/);
+    }, 60000);
+
+    it("leaves a soundly generated key alone, and says what that does not prove", async () => {
+        // The negative result is the common one and the one most easily over-read. Two 512-bit
+        // primes far apart, neither short nor smooth: all seven attacks are attempted and none
+        // applies, which rules out those flaws and nothing else.
+        const p = nextPrime(1n << 511n);
+        const q = nextPrime((1n << 511n) + (1n << 400n));
+        const out = await run({ modulus: (p * q).toString() });
+
+        expect(out.factored).toBe(false);
+        expect(out.attempted.length).toBeGreaterThanOrEqual(6);
+        expect(out.assessment).toMatch(/NOT proof the key is strong/);
+    }, 120000);
+
     it("factors a modulus whose primes are close together (Fermat)", async () => {
         const p = 1000000007n, q = 1000000009n;
         const out = await run({ modulus: (p * q).toString() });
@@ -714,11 +924,15 @@ describe("rsa_attack", () => {
     });
 
     it("reports a key it cannot break as unbroken, without claiming it is strong", async () => {
-        // Distant primes, so Fermat will not reach it in the iteration budget. The wording matters
-        // as much as the result: four ruled-out flaws is not a proof of strength, and a tool that
-        // implies otherwise is worse than one that says nothing.
+        // The wording matters as much as the result: a handful of ruled-out flaws is not a proof
+        // of strength, and a tool that implies otherwise is worse than one that says nothing.
+        //
+        // The fixture was 1000003 * 32416190071 until v3.3.0 -- two primes under 40 bits, chosen
+        // because Fermat could not reach them in a small budget. Pollard's rho now factors it in
+        // milliseconds, so the test needed a modulus that is actually hard rather than one that
+        // was merely hard for the one attack that existed when it was written.
         const out = await run({
-            modulus: (1000003n * 32416190071n).toString(),
+            modulus: (nextPrime(1n << 511n) * nextPrime((1n << 511n) + (1n << 400n))).toString(),
             "fermat_iterations": 500
         });
         expect(out.factored).toBe(false);
@@ -784,9 +998,15 @@ describe("rsa_attack", () => {
     });
 
     it("does not suggest supplying a second modulus when one was already given", async () => {
+        // The moduli here were 1000003 * 32416190071 until v3.3.0, and Pollard's rho now factors
+        // that in milliseconds -- both primes are under 40 bits. The fixture had to become a real
+        // key for the test to still be about its wording. That is the release working: four tests
+        // asserting "cannot break" were asserting it about numbers that are now breakable.
+        const p1 = nextPrime(1n << 511n), q1 = nextPrime((1n << 511n) + (1n << 400n));
+        const p2 = nextPrime((1n << 511n) + (1n << 300n)), q2 = nextPrime((1n << 511n) + (1n << 350n));
         const out = await run({
-            modulus: (1000003n * 32416190071n).toString(),
-            "other_modulus": (1000033n * 32416187567n).toString(),
+            modulus: (p1 * q1).toString(),
+            "other_modulus": (p2 * q2).toString(),
             "fermat_iterations": 200
         });
         expect(out.factored).toBe(false);

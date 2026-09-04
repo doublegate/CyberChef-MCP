@@ -119,7 +119,7 @@ describe("examples/", () => {
     it("finds the examples to run", () => {
         // Guards against a rename or a moved directory quietly reducing this suite to nothing --
         // zero discovered files would otherwise make every other assertion below vacuous.
-        expect(examples.length).toBeGreaterThanOrEqual(8);
+        expect(examples.length).toBeGreaterThanOrEqual(9);
     });
 
     for (const file of examples) {

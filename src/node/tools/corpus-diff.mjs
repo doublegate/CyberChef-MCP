@@ -1,0 +1,337 @@
+/**
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * Statistics computed ACROSS a set of samples, which is the one thing a CyberChef recipe cannot do.
+ *
+ * `Fork` applies the same recipe to each branch and each branch produces its own output. There is
+ * no operation that takes N inputs and returns one answer about the relationship between them, so
+ * "which byte offsets vary across these captures", "do any two of these ciphertext blocks repeat"
+ * and "did two of these messages reuse a nonce" have no expression in the catalogue at all. That is
+ * a structural gap rather than a missing algorithm, and it is the reason this is a registry tool.
+ *
+ * Three analyses, all O(N x L), no clustering machinery:
+ *
+ *   - **Field inference.** Per offset across the corpus: distinct values, entropy, and BIT-level
+ *     variance. Bit level is strictly more informative than byte level and the difference is not
+ *     academic -- a packed flag field or a sub-byte counter moves one bit and leaves the byte
+ *     looking merely "variable". Adjacent offsets with matching variance profiles are grouped into
+ *     runs, which is the practical core of what Discoverer (USENIX Security 2007) and FieldHunter
+ *     do with far more machinery.
+ *   - **ECB detection.** A repeated ciphertext block means a repeated plaintext block, which means
+ *     the mode has no diffusion. Offsets are reported, not just a rate: WHERE the repeat sits tells
+ *     you what the structure is.
+ *   - **Nonce reuse.** Two messages sharing a leading prefix under a stream cipher or counter mode
+ *     is catastrophic, and the XOR of the two bodies is both the evidence and the exploit -- the
+ *     keystream cancels, exactly as in `crib_drag`, which is where that XOR should be taken next.
+ *
+ * Field inference assumes fixed-length or left-aligned samples and says so. Variable-length records
+ * need an alignment pass first, which is precisely why the academic work needs the machinery this
+ * deliberately omits.
+ *
+ * @author DoubleGate
+ * @license GPL-3.0-or-later
+ */
+
+import { z } from "zod";
+import { createInputError } from "../errors.mjs";
+
+/** Largest single sample, in bytes. */
+const MAX_SAMPLE_BYTES = 65536;
+
+/** Largest number of samples. The analyses are O(N x L), so this and the above bound the work. */
+const MAX_SAMPLES = 512;
+
+/** Samples processed between yields, in the two loops that are O(N x L) rather than O(N). */
+const YIELD_EVERY = 16;
+
+/**
+ * Shannon entropy of a byte column, in bits.
+ *
+ * @param {Map<number, number>} counts - Byte value to occurrence count.
+ * @param {number} total - Number of samples contributing.
+ * @returns {number} Entropy in bits, 0 to 8.
+ */
+function columnEntropy(counts, total) {
+    let h = 0;
+    for (const count of counts.values()) {
+        const p = count / total;
+        h -= p * Math.log2(p);
+    }
+    return h;
+}
+
+/**
+ * Decode one sample.
+ *
+ * @param {string} value - The text.
+ * @param {string} format - Raw, Hex or Base64.
+ * @param {number} index - Position in the input list, for the error message.
+ * @returns {Uint8Array} The bytes.
+ */
+function decode(value, format, index) {
+    // `Buffer.from(value, "latin1")` rather than `Uint8Array.from(value, ch => ch.charCodeAt(0) & 0xff)`.
+    // Byte-identical -- latin1 takes the low byte of each UTF-16 code unit, which is what the
+    // mapper did -- and measured at **14 ms against 675 ms** on 8 MB. The per-character
+    // callback is the whole cost, and it was the largest single block of synchronous work in
+    // any of these tools.
+    if (format === "Raw") return new Uint8Array(Buffer.from(value, "latin1"));
+    const cleaned = format === "Hex" ? value.replace(/[\s,:]/g, "") : value.trim();
+    if (format === "Hex" && (cleaned.length % 2 || !/^[0-9a-f]*$/i.test(cleaned))) {
+        throw createInputError(`samples[${index}] is not valid hex.`, { index, received: value.slice(0, 60) });
+    }
+    // Base64 is validated as strictly as hex. `Buffer.from(value, "base64")` IGNORES characters
+    // outside the alphabet and truncates a trailing incomplete group, so Raw text submitted with
+    // input_format Base64 decoded to a shorter, entirely different byte string and every statistic
+    // below was computed on it -- silently. "hello world!!" came back as 7 bytes.
+    if (format === "Base64" && !/^[A-Za-z0-9+/]*={0,2}$/.test(cleaned.replace(/\s/g, ""))) {
+        throw createInputError(`samples[${index}] is not valid base64.`,
+            { index, received: value.slice(0, 60) });
+    }
+    return new Uint8Array(Buffer.from(cleaned, format === "Hex" ? "hex" : "base64"));
+}
+
+/**
+ * Per-offset statistics, grouped into runs of adjacent offsets that behave alike.
+ *
+ * @param {Uint8Array[]} samples - The corpus.
+ * @returns {Promise<{columns: Object[], fields: Object[]}>} Per-offset detail and the inferred runs.
+ */
+async function inferFields(samples) {
+    const width = Math.min(...samples.map(s => s.length));
+    const columns = [];
+    for (let offset = 0; offset < width; offset++) {
+        // Yield periodically. At the schema's maximum -- 512 samples of 64 KB -- this loop and the
+        // ECB scan below take about seven seconds between them, which is inside the 30-second
+        // timeout and still seven seconds of unbroken synchronous work: it starves every other
+        // request on a shared server, and the timeout cannot fire while it runs.
+        if ((offset & (YIELD_EVERY * 64 - 1)) === 0) await new Promise(resolve => setImmediate(resolve));
+        const counts = new Map();
+        // Eight independent bit counters. A field that is one flag inside a byte changes exactly
+        // one of these, and at byte level it is indistinguishable from a field that changes wholly.
+        const bitOnes = new Array(8).fill(0);
+        for (const sample of samples) {
+            const byte = sample[offset];
+            counts.set(byte, (counts.get(byte) ?? 0) + 1);
+            for (let bit = 0; bit < 8; bit++) if (byte & (1 << bit)) bitOnes[bit]++;
+        }
+        const varyingBits = bitOnes.filter(ones => ones > 0 && ones < samples.length).length;
+        columns.push({
+            offset,
+            distinct: counts.size,
+            entropy: Number(columnEntropy(counts, samples.length).toFixed(3)),
+            "varying_bits": varyingBits,
+            constant: counts.size === 1,
+            ...(counts.size === 1 ? { value: samples[0][offset] } : {})
+        });
+    }
+
+    // Group adjacent offsets whose behaviour matches. Three classes rather than a continuum,
+    // because the useful question is which offsets belong to the same field, and a numeric
+    // similarity threshold would have to be tuned against a corpus this tool never sees.
+    const classify = (c) => c.constant ? "constant" : c.distinct === samples.length ? "unique" : "varying";
+    const fields = [];
+    for (const column of columns) {
+        const kind = classify(column);
+        const last = fields[fields.length - 1];
+        if (last && last.kind === kind) {
+            last.length++;
+            last.end = column.offset;
+        } else {
+            fields.push({ kind, offset: column.offset, end: column.offset, length: 1 });
+        }
+    }
+    return {
+        columns,
+        fields: fields.map(f => ({
+            offset: f.offset,
+            length: f.length,
+            kind: f.kind,
+            note: {
+                constant: "Identical in every sample: a magic number, a version, or padding.",
+                unique: "Different in every sample: an identifier, a counter, a nonce, or a checksum.",
+                varying: "Takes a few values: an enum, a type tag, or a small counter."
+            }[f.kind]
+        }))
+    };
+}
+
+export default {
+    name: "corpus_diff",
+    title: "Corpus difference",
+    category: "Analysis",
+    description:
+        "Compute statistics ACROSS a set of samples — what a recipe cannot express, since `Fork` " +
+        "runs each branch separately and nothing combines them. Infers record structure from " +
+        "per-offset byte AND bit variance, grouping adjacent offsets into fields; finds repeated " +
+        "cipher blocks (ECB and any other diffusion-free mode) and reports WHERE they sit; and " +
+        "finds nonce reuse, emitting the XOR of the two bodies, which is both the evidence and " +
+        "the way in. Assumes fixed-length or left-aligned samples.",
+    annotations: {
+        title: "Corpus difference",
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+    },
+    inputSchema: z.object({
+        samples: z.array(z.string().min(1).max(MAX_SAMPLE_BYTES * 2)).min(2).max(MAX_SAMPLES)
+            .describe("The samples to compare. At least two; more is better for every statistic."),
+        "input_format": z.enum(["Raw", "Hex", "Base64"]).default("Hex")
+            .describe("How the samples are encoded."),
+        "block_size": z.number().int().min(4).max(256).default(16)
+            .describe("Cipher block size for the ECB check. 16 for AES; 8 for DES and Blowfish."),
+        "nonce_prefix_bytes": z.number().int().min(0).max(64).default(12)
+            .describe(
+                "Leading bytes to treat as the nonce or IV. 12 for GCM, 16 for a CBC IV, 8 for " +
+                "ChaCha20. 0 disables the check."),
+        analyses: z.array(z.enum(["fields", "ecb", "nonce_reuse"])).max(3).optional()
+            .describe("Which analyses to run. All of them by default.")
+    }),
+
+    /**
+     * @param {Object} args - Validated arguments.
+     * @returns {Promise<Object>} What the corpus shows that no single sample does.
+     */
+    async run(args) {
+        const format = args.input_format;
+        const samples = args.samples.map((s, i) => decode(s, format, i));
+        for (const [i, sample] of samples.entries()) {
+            if (sample.length > MAX_SAMPLE_BYTES) {
+                throw createInputError(
+                    `samples[${i}] is ${sample.length} bytes; the limit is ${MAX_SAMPLE_BYTES}.`,
+                    { index: i, maximum: MAX_SAMPLE_BYTES });
+            }
+            if (sample.length === 0) {
+                throw createInputError(`samples[${i}] decoded to nothing.`, { index: i });
+            }
+        }
+        const requested = args.analyses?.length ? new Set(args.analyses) : new Set(["fields", "ecb", "nonce_reuse"]);
+        const result = {
+            samples: samples.length,
+            lengths: {
+                shortest: Math.min(...samples.map(s => s.length)),
+                longest: Math.max(...samples.map(s => s.length)),
+                uniform: new Set(samples.map(s => s.length)).size === 1
+            }
+        };
+
+        if (requested.has("fields")) {
+            const { columns, fields } = await inferFields(samples);
+            result.structure = {
+                "offsets_compared": columns.length,
+                fields,
+                // The full per-offset detail is where a sub-byte field shows up, and it is also the
+                // part that gets long. Capped, with the cap stated, rather than truncated silently.
+                columns: columns.slice(0, 256),
+                ...(columns.length > 256 ? { "columns_truncated_at": 256 } : {}),
+                caveat: result.lengths.uniform ?
+                    "Samples are all the same length, which is what this analysis assumes." :
+                    `Samples differ in length (${result.lengths.shortest}-${result.lengths.longest} ` +
+                    "bytes) and only the common prefix was compared. If the records are not " +
+                    "left-aligned, these offsets do not line up and the fields are meaningless."
+            };
+        }
+
+        if (requested.has("ecb")) {
+            const size = args.block_size;
+            const findings = [];
+            for (const [index, sample] of samples.entries()) {
+                if ((index % YIELD_EVERY) === 0) await new Promise(resolve => setImmediate(resolve));
+                const seen = new Map();
+                const repeats = [];
+                for (let offset = 0; offset + size <= sample.length; offset += size) {
+                    const block = Buffer.from(sample.subarray(offset, offset + size)).toString("hex");
+                    if (seen.has(block)) repeats.push({ block, offsets: [seen.get(block), offset] });
+                    else seen.set(block, offset);
+                }
+                if (repeats.length) findings.push({ sample: index, repeats: repeats.slice(0, 16) });
+            }
+            // Blocks repeated ACROSS samples matter too, and only this tool can see them: identical
+            // blocks in two different messages mean the same key AND the same plaintext block.
+            // ONE first-sighting per distinct block, not every occurrence. Retaining every
+            // occurrence meant 512 samples of 64 KB at block_size 4 held 8,388,608 hex keys plus
+            // an object each -- well over a gigabyte of live heap for a single accepted request,
+            // on a process serving other clients, and then the filter below discarded all but 16
+            // of them. Only blocks seen in more than one SAMPLE are ever reported, so a first
+            // sighting and a lazily-recorded second is the whole requirement.
+            const firstSeen = new Map();
+            const shared = [];
+            for (const [index, sample] of samples.entries()) {
+                if ((index % YIELD_EVERY) === 0) await new Promise(resolve => setImmediate(resolve));
+                for (let offset = 0; offset + args.block_size <= sample.length; offset += args.block_size) {
+                    const block = Buffer.from(sample.subarray(offset, offset + args.block_size)).toString("hex");
+                    const seen = firstSeen.get(block);
+                    if (seen === undefined) {
+                        firstSeen.set(block, { sample: index, offset });
+                    } else if (seen.sample !== index && shared.length < 16 &&
+                        !shared.some(entry => entry.block === block)) {
+                        shared.push({ block, places: [seen, { sample: index, offset }] });
+                    }
+                }
+            }
+            result.ecb = {
+                "block_size": size,
+                "samples_with_repeats": findings.length,
+                findings,
+                "blocks_shared_between_samples": shared,
+                assessment: findings.length || shared.length ?
+                    "A repeated ciphertext block means a repeated plaintext block, which means the " +
+                    "mode has no diffusion — ECB, or a stream cipher with a reused keystream. Where " +
+                    "the repeats sit tells you the record structure." :
+                    `No repeated ${size}-byte block. That rules out ECB over data with any repetition ` +
+                    "in it, and rules out nothing at all for high-entropy or short plaintext."
+            };
+        }
+
+        if (requested.has("nonce_reuse") && args.nonce_prefix_bytes > 0) {
+            const prefix = args.nonce_prefix_bytes;
+            const groups = new Map();
+            for (const [index, sample] of samples.entries()) {
+                if (sample.length <= prefix) continue;
+                const nonce = Buffer.from(sample.subarray(0, prefix)).toString("hex");
+                if (!groups.has(nonce)) groups.set(nonce, []);
+                groups.get(nonce).push(index);
+            }
+            const collisions = [...groups.entries()].filter(([, list]) => list.length > 1);
+            Object.assign(result, { "nonce_reuse": {
+                "prefix_bytes": prefix,
+                collisions: collisions.slice(0, 16).map(([nonce, indices]) => {
+                    // One XOR per PAIR, each naming its pair. The previous shape reported every
+                    // index in `samples` beside a single `bodies_xored_hex` taken from the first
+                    // two, so a caller reading the two fields together -- which `next` tells them
+                    // to do -- attributed one pair's XOR to the whole group.
+                    const pairs = [];
+                    for (let i = 0; i < indices.length && pairs.length < 8; i++) {
+                        for (let j = i + 1; j < indices.length && pairs.length < 8; j++) {
+                            const [a, b] = [samples[indices[i]], samples[indices[j]]];
+                            const length = Math.min(a.length, b.length) - prefix;
+                            const xored = Buffer.from(
+                                Array.from({ length }, (_, k) => a[prefix + k] ^ b[prefix + k])).toString("hex");
+                            pairs.push({
+                                // The XOR is the evidence AND the exploit. Under any keystream
+                                // cipher the keystream cancels and this is P1 xor P2 -- exactly
+                                // what crib_drag takes as input.
+                                pair: [indices[i], indices[j]],
+                                "bodies_xored_hex": xored.slice(0, 512),
+                                ...(xored.length > 512 ? { truncated: true } : {})
+                            });
+                        }
+                    }
+                    return { nonce, samples: indices, pairs };
+                }),
+                assessment: collisions.length ?
+                    "Two messages share a leading prefix. Under a stream cipher or a counter mode " +
+                    "that is a total loss of confidentiality for both: the keystream cancels in " +
+                    "their XOR. The WOOT '16 survey found 184 HTTPS servers repeating GCM nonces, " +
+                    "which fully breaks authenticity as well." :
+                    `No two samples share their first ${prefix} bytes. If the real nonce is a ` +
+                    "different length, or is not at the front, re-run with nonce_prefix_bytes set to it."
+            } });
+        }
+
+        result.next =
+            "Feed a `bodies_xored_hex` straight into crib_drag as `ciphertext` with input_format " +
+            "Hex — it is already P1 xor P2, so a crib guessed in one message reads out the other.";
+        return result;
+    }
+};

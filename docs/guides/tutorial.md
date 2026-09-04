@@ -367,6 +367,7 @@ workflow yourself:
 | `extract-iocs` | You need indicators out of a document or script, defanged. |
 | `deobfuscate-script` | You have obfuscated PowerShell, JavaScript, VBScript or PHP. |
 | `identify-hash` | You have a hash and need the algorithm. |
+| `break-cipher` | You have ciphertext and no key. |
 | `decode-chain` | You know roughly what was done and want it unwrapped. |
 
 They encode the order the work is actually done in — `Magic` before guessing, defang before an

@@ -1,0 +1,118 @@
+name: "Benchmark Baseline (runner)"
+
+# WHY THIS EXISTS
+#
+# The regression gate ships at a 50% tolerance, and 50% is a stopgap rather than a judgement. The
+# baseline was captured on a developer machine; the gate RUNS on a GitHub runner. Measured across
+# three runs, that runner produced deltas from -25.5% to +99.1% against the same baseline and two
+# false failures at the 25% tolerance the local variance supported (v3.2.0 findings log F-13).
+#
+# Comparing like with like is the fix. This captures the baseline where the gate runs, so the
+# tolerance can come back down to something the measurement supports rather than something wide
+# enough to survive the mismatch.
+#
+# Manual and scheduled, never on push: a baseline that regenerates itself on every commit is not a
+# baseline, it is a moving target that can never report a regression.
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Why the baseline is being regenerated (goes in the PR body)"
+        required: true
+        type: string
+  schedule:
+    # Monthly. Runner hardware changes under you -- the point is to notice that it has, not to
+    # track it continuously.
+    - cron: "0 5 1 * *"
+
+# Read-only at the workflow level. The write-scoped token lives on ONE job that installs nothing
+# and runs no project code -- see `open-pr` below.
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    # No write scope here. This job runs `npm ci` and then executes benchmark code, which is the
+    # largest blast radius in the workflow: a compromised dependency or script would otherwise sit
+    # in the same job as a token that can push to the default branch and open pull requests.
+    # `performance-benchmarks.yml` already splits its capture and reporting jobs for the same
+    # reason; this follows it.
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '26'
+          cache: 'npm'
+
+      - name: Install
+        run: npm ci
+
+      - name: Generate OperationConfig
+        run: npx grunt configTests
+
+      # Five runs, first discarded. Same method as the local capture, for the same reason: the
+      # first bench of a cold process absorbs JIT warm-up and a baseline built from it is one that
+      # every later run beats.
+      - name: Capture
+        run: node benchmarks/capture-baseline.mjs
+
+      - name: Show what changed
+        run: git --no-pager diff --stat benchmarks/baseline.json
+
+      - name: Hand the baseline to the PR job
+        uses: actions/upload-artifact@v7
+        with:
+          name: benchmark-baseline
+          path: benchmarks/baseline.json
+          retention-days: 7
+
+  # The only job with a write-scoped token. It installs nothing, runs no project code, and touches
+  # exactly one file -- so a compromised dependency in the job above cannot reach this token.
+  open-pr:
+    needs: capture
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Take the captured baseline
+        uses: actions/download-artifact@v8
+        with:
+          name: benchmark-baseline
+          path: benchmarks/
+
+      # A PR, not a push. A baseline is the gate's reference point, and moving it silently is
+      # indistinguishable from switching the gate off -- which is the failure this whole line of
+      # work replaced. It gets reviewed like any other change to a gate.
+      - name: Open a pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: chore/benchmark-baseline
+          delete-branch: true
+          title: "chore(benchmarks): recapture the baseline on the runner"
+          commit-message: |
+            chore(benchmarks): recapture the baseline on the runner
+
+            ${{ inputs.reason || 'Scheduled monthly recapture.' }}
+
+            Captured by .github/workflows/benchmark-baseline.yml on the same runner class the
+            regression gate executes on, so the comparison is like against like.
+          body: |
+            Regenerated `benchmarks/baseline.json` on a GitHub runner.
+
+            **Reason:** ${{ inputs.reason || 'Scheduled monthly recapture.' }}
+
+            Read the diff before merging. A baseline that moves without a stated reason is a gate
+            switched off, and it looks identical to one moved for a good one — which is why this
+            arrives as a pull request rather than a push.
+
+            Once a runner-captured baseline is in place, the tolerance in `baseline.json` should
+            come back down from the 50% stopgap to what the runner's own variance supports.
+            See `docs/internal/v3.2.0-findings-log.md` F-13.

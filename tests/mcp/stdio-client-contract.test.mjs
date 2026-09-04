@@ -171,6 +171,64 @@ describe("stdio contract, via the official MCP client", () => {
         expect(res.isError).toBe(true);
         expect(res.content[0].text).toMatch(/input/);
     }, BOOT_TIMEOUT_MS);
+
+    /**
+     * A minimal valid call for every registry tool.
+     *
+     * Written out rather than generated, because a generated payload would satisfy the schema and
+     * exercise nothing -- and "the schema accepts it" is precisely the claim that was false for
+     * three releases while a green suite watched.
+     */
+    const REGISTRY_CALLS = {
+        "cyberchef_classical_cipher": [{ cipher: "polybius", input: "BAT" }, r => expect(r.output).toBe("121144")],
+        "cyberchef_corpus_diff": [{ samples: ["deadbeef", "deadbeee"] }, r => expect(r.samples).toBe(2)],
+        "cyberchef_crib_drag": [{ ciphertext: "00112233445566778899aabb", crib: "the" }, r => expect(r.mode).toBeTruthy()],
+        "cyberchef_cyclic_pattern": [{ mode: "generate", length: 64 }, r => expect(r.pattern).toBeTruthy()],
+        "cyberchef_entropy_scan": [{ input: "A".repeat(1024), "input_format": "Raw" }, r => expect(r.bytes).toBe(1024)],
+        "cyberchef_hash_crack": [{ hashes: ["5f4dcc3b5aa765d61d8327deb882cf99"] }, r => expect(r.cracked[0].plaintext).toBe("password")],
+        "cyberchef_hash_identify": [{ input: "5f4dcc3b5aa765d61d8327deb882cf99" }, r => expect(r.most_likely).toBeTruthy()],
+        "cyberchef_hash_statistics": [{ input: "a:5f4dcc3b5aa765d61d8327deb882cf99\nb:5f4dcc3b5aa765d61d8327deb882cf99" }, r => expect(r.entries).toBe(2)],
+        "cyberchef_jwt_weakness": [{ token: "eyJhbGciOiJub25lIn0.eyJzdWIiOiJhIn0." }, r => expect(r.findings.length).toBeGreaterThan(0)],
+        "cyberchef_plaintext_check": [{ input: "The quick brown fox jumps over the lazy dog." }, r => expect(r.verdict).toBe("plaintext")],
+        "cyberchef_rsa_attack": [{ modulus: "32416190071", "public_exponent": "65537" }, r => expect(r.attempted.length).toBeGreaterThan(0)],
+        "cyberchef_rsa_multi_key": [{ keys: [{ modulus: "32416190071" }, { modulus: "1000003" }] }, r => expect(r.keys_examined).toBe(2)],
+        "cyberchef_substitution_break": [{ input: "GUR DHVPX OEBJA SBK WHZCF BIRE GUR YNML QBT NAQ GURA EHAF NJNL SEBZ GUR SNEZ", restarts: 5, seed: 1 }, r => expect(r.mapping.plain_alphabet).toHaveLength(26)],
+        "cyberchef_timestamp_identify": [{ value: "1756900000" }, r => expect(r.interpretations.length).toBeGreaterThan(0)],
+        "cyberchef_vigenere_break": [{ input: "Nyw ceoni sj gsqzynob wowebmdc lokmxw gsdr dro yfcobzkdsyx drkd ofobc wicdow rkc k lyexnkbi" }, r => expect(r.key).toBeTruthy()],
+        "cyberchef_xor_key_length": [{ input: "0b1b1b0c4e0f1b0c4e0a1b1b0c4e0f1b0c4e0a1b1b0c4e0f1b0c4e0a1b1b0c4e0f1b0c4e0a", "input_format": "Hex", "preview_bytes": 0 }, r => expect(r.key_length).toBeGreaterThan(0)]
+    };
+
+    it("has a client-driven call for every registry tool, with none missing", async () => {
+        // Derived from the REGISTRY, not from the advertised list filtered by REGISTRY_CALLS.
+        // The first version did the latter -- it kept only names already in REGISTRY_CALLS and
+        // then compared that to REGISTRY_CALLS -- which is an identity, and could not fail. A new
+        // registry tool with no case here would have sailed through the test written to catch
+        // exactly that.
+        const { buildRegistry } = await import("../../src/node/tools/index.mjs");
+        const { ToolRegistry } = await import("../../src/node/tools/registry.mjs");
+        const expected = buildRegistry().list().map(tool => ToolRegistry.exposedName(tool.name));
+
+        expect(expected.sort()).toEqual(Object.keys(REGISTRY_CALLS).sort());
+        // And every one of them is actually advertised, so the fixtures cannot describe a tool
+        // the server does not serve.
+        const advertised = new Set(tools.map(t => t.name));
+        for (const name of expected) expect(advertised.has(name), name).toBe(true);
+    });
+
+    it.each(Object.keys(REGISTRY_CALLS))(
+        "%s answers through a real client, not just through run()",
+        async (name) => {
+            // The v2.1.0 lesson, applied to all sixteen rather than to one. Every test written
+            // before v2.1.0 spoke raw JSON-RPC or called handlers directly, and raw JSON-RPC does
+            // no schema validation -- so three releases shipped with every tool carrying an empty
+            // inputSchema while the suite stayed green. A direct `run()` call touches none of the
+            // schema, the capability hand-off, the timeout wrapper or the content block.
+            const [args, check] = REGISTRY_CALLS[name];
+            const res = await client.callTool({ name, arguments: args });
+            expect(res.isError, res.content?.[0]?.text).toBeFalsy();
+            const parsed = JSON.parse(res.content[0].text);
+            check(parsed);
+        }, 60000);
 });
 
 describe("stdio stream separation", () => {

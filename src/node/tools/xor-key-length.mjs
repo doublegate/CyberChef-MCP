@@ -168,21 +168,163 @@ function chooseLength(ranked) {
 }
 
 /**
- * Recover the key, assuming the most common plaintext byte in each column is a space.
+ * English byte frequencies INCLUDING space, from data-compression.com's ~5.09M-character table
+ * (cross-checked against Blahut, *Principles and Practice of Information Theory*, Table 2.1).
  *
- * True for English prose and most source code, and false for binary -- which is why the result is
- * reported as a guess with its own confidence rather than as the answer.
+ * Space is the entry that matters and the one a letters-only table throws away. It is 19.2% of the
+ * text -- nearly twice the share of `e` -- and it is also the most STABLE: measured across 120
+ * Project Gutenberg books, its share has a standard deviation of 1.0 percentage point. Nothing else
+ * in English is both that large and that steady, which is what makes it the single best
+ * discriminator for byte-oriented XOR scoring. A scorer over `a-z` alone is blind to roughly one
+ * input byte in five.
+ *
+ * Everything not listed shares the remainder, which is what `OTHER_SHARE` below distributes.
+ */
+export const ENGLISH_BYTE_FREQ = (() => {
+    const table = new Float64Array(256);
+    const letters = [
+        0.0651738, 0.0124248, 0.0217339, 0.0349835, 0.1041442, 0.0197881, 0.0158610, 0.0492888,
+        0.0558094, 0.0009033, 0.0050529, 0.0331490, 0.0202124, 0.0564513, 0.0596302, 0.0137645,
+        0.0008606, 0.0497563, 0.0515760, 0.0729357, 0.0225134, 0.0082903, 0.0171272, 0.0013692,
+        0.0145984, 0.0007836
+    ];
+    for (let i = 0; i < 26; i++) {
+        // Case is split rather than merged: a scorer that folds them cannot tell `THE QUICK` from
+        // `the quick`, and an all-caps decryption is exactly the wrong-key artefact it should catch.
+        table[65 + i] = letters[i] * 0.08;
+        table[97 + i] = letters[i] * 0.92;
+    }
+    table[32] = 0.1918182;
+
+    // The source table is normalised over letters and space ALONE -- it sums to 1.002, leaving
+    // nothing at all for punctuation, digits, newlines or any byte above 127. Distributing
+    // `1 - sum` over the remainder therefore gives every unlisted byte an expected frequency of
+    // exactly zero, chi-squared divides by it, and every candidate key scores NaN.
+    //
+    // That is not a hypothetical: it scored 0 of 43 on the measurement matrix while looking like a
+    // working implementation, because `NaN < NaN` is false and the sort left candidate 0 in front.
+    // So the tool confidently reported a key of all zero bytes.
+    //
+    // OTHER_SHARE is the fix and it is a floor rather than a measurement. Real English prose runs
+    // 2-4% punctuation, digits and newlines; the exact figure barely matters, because its job is to
+    // keep the divisor finite. What does matter is the consequence: a byte English almost never
+    // uses now contributes an enormous squared deviation, and that is precisely the signal that a
+    // candidate key is wrong.
+    const OTHER_SHARE = 0.03;
+    const listed = table.reduce((a, b) => a + b, 0);
+    for (let b = 0; b < 256; b++) table[b] = table[b] / listed * (1 - OTHER_SHARE);
+    const unlisted = 256 - 53;
+    for (let b = 0; b < 256; b++) if (table[b] === 0) table[b] = OTHER_SHARE / unlisted;
+    return table;
+})();
+
+/**
+ * Coincidence count at a given shift: the share of positions where the ciphertext equals itself
+ * shifted by `d`.
+ *
+ * XOR cancels the key whenever `d` is a multiple of the key length, so this reads the PLAINTEXT's
+ * repetition rate there and the uniform rate everywhere else. It is the best-behaved of the three
+ * estimators for byte-oriented data: it needs no frequency table, it is alphabet-agnostic, and its
+ * answer is the SMALLEST peak rather than the global maximum -- which is the disambiguation the
+ * normalised-Hamming heuristic lacks and the reason it prefers multiples of the true length.
+ *
+ * @param {Uint8Array} bytes - The ciphertext.
+ * @param {number} maxShift - Longest shift to consider.
+ * @returns {number[]} Kappa per shift, indexed from 0 (unused) to maxShift.
+ */
+function autocorrelation(bytes, maxShift) {
+    const kappa = new Array(maxShift + 1).fill(0);
+    for (let d = 1; d <= maxShift && d < bytes.length; d++) {
+        let matches = 0;
+        for (let i = 0; i + d < bytes.length; i++) if (bytes[i] === bytes[i + d]) matches++;
+        kappa[d] = matches / (bytes.length - d);
+    }
+    return kappa;
+}
+
+/**
+ * The smallest shift whose coincidence rate stands clear of the baseline.
+ *
+ * @param {number[]} kappa - Output of `autocorrelation`.
+ * @returns {number|null} The estimate, or null when no shift stands out.
+ */
+function autocorrelationLength(kappa) {
+    const values = kappa.slice(1).filter(v => v > 0);
+    if (values.length < 2) return null;
+    const mean = values.reduce((a, b) => a + b, 0) / values.length;
+    const peak = Math.max(...values);
+    // A flat curve means no periodicity, not a period of 1. Requiring the peak to clear the mean by
+    // half again keeps the estimator silent instead of confident on random input.
+    if (peak < mean * 1.5) return null;
+    const threshold = mean + (peak - mean) * 0.5;
+    for (let d = 1; d < kappa.length; d++) if (kappa[d] >= threshold) return d;
+    return null;
+}
+
+/**
+ * Kasiski examination: repeated trigrams, and the length that divides the distances between them.
+ *
+ * Its unique virtue among the three is that it looks at NOTHING about the language. It counts byte
+ * repetitions, so it transfers unchanged to binary plaintext, where both the index of coincidence
+ * and any frequency-based scorer degrade. Its weakness is the mirror image: with few repeats it
+ * says nothing at all, which is why it returns null rather than a guess.
+ *
+ * @param {Uint8Array} bytes - The ciphertext.
+ * @param {number} maxLength - Longest candidate to consider.
+ * @returns {number|null} The estimate, or null when there were too few repeats to support one.
+ */
+function kasiski(bytes, maxLength) {
+    const seen = new Map();
+    const distances = [];
+    for (let i = 0; i + 2 < bytes.length; i++) {
+        const gram = (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2];
+        const previous = seen.get(gram);
+        if (previous !== undefined) distances.push(i - previous);
+        seen.set(gram, i);
+    }
+    if (distances.length < 4) return null;
+    let bestLength = null;
+    let bestShare = 0;
+    for (let k = 2; k <= maxLength; k++) {
+        const share = distances.filter(d => d % k === 0).length / distances.length;
+        // Largest k clearing the bar, not the argmax: the true length divides most distances, and
+        // so does every DIVISOR of it, which is why taking the best share alone answers 2 or 3
+        // almost always. Multiples of the true length divide materially fewer, so the largest
+        // qualifying k is the true length rather than a multiple of it.
+        if (share >= 0.7 && share >= bestShare * 0.9) {
+            bestLength = k;
+            bestShare = Math.max(bestShare, share);
+        }
+    }
+    return bestLength;
+}
+
+/**
+ * Recover the key, one column at a time, by scoring every candidate byte against English.
+ *
+ * The previous implementation took the most common byte in each column and XORed it with 0x20 --
+ * argmax with the space assumption hardcoded. Two things are wrong with that and both were
+ * measured, not reasoned. It commits to a single answer per column with no runner-up, and
+ * practicalcryptography's own worked example of the same technique recovers `CIAHERS` for the key
+ * `CIPHERS`: two candidates scored closely on that column and the wrong one scored slightly lower.
+ * And a column whose most common plaintext byte is `e` rather than a space -- ordinary in short
+ * columns -- is then wrong by a fixed offset with nothing to signal it.
+ *
+ * So: chi-squared against the full 256-byte distribution, and `alternatives` per position. The cost
+ * is independent of the input length, because the column's histogram is computed once and each of
+ * the 256 candidate keys is scored against the histogram rather than against the data.
  *
  * @param {Uint8Array} bytes - The ciphertext.
  * @param {number} keyLength - The chosen key length.
- * @returns {{key: number[], confidence: number}} The key bytes and the mean share held by the
- *   most common byte across columns.
+ * @param {number|null} assumedByte - If given, use the old argmax method against this plaintext
+ *   byte instead of scoring. xortool refuses to guess one at all; here it is an override.
+ * @returns {{key: number[], columns: Array<Object>}} The key, and per-column evidence.
  */
-function recoverKey(bytes, keyLength) {
+function recoverKey(bytes, keyLength, assumedByte) {
     const key = [];
-    let shareTotal = 0;
+    const columns = [];
     for (let offset = 0; offset < keyLength; offset++) {
-        const counts = new Array(256).fill(0);
+        const counts = new Float64Array(256);
         let n = 0;
         for (let i = offset; i < bytes.length; i += keyLength) {
             counts[bytes[i]]++;
@@ -190,10 +332,48 @@ function recoverKey(bytes, keyLength) {
         }
         let top = 0;
         for (let b = 1; b < 256; b++) if (counts[b] > counts[top]) top = b;
-        key.push(top ^ 0x20);                 // most common plaintext byte assumed to be a space
-        shareTotal += n ? counts[top] / n : 0;
+
+        if (assumedByte !== null) {
+            key.push(top ^ assumedByte);
+            columns.push({
+                offset,
+                byte: top ^ assumedByte,
+                method: "argmax",
+                "top_byte_share": Number((n ? counts[top] / n : 0).toFixed(3))
+            });
+            continue;
+        }
+
+        const scored = [];
+        for (let candidate = 0; candidate < 256; candidate++) {
+            let chi = 0;
+            // Over ALL 256 bytes, including the ones the column never contained. Skipping the
+            // zero-count bytes was the first attempt and it scored 0 of 43 -- it measures only
+            // where the data IS, so a candidate key that maps the whole column onto bytes English
+            // almost never uses scores a perfect zero. The absent common byte is the evidence.
+            for (let b = 0; b < 256; b++) {
+                const expected = ENGLISH_BYTE_FREQ[b ^ candidate] * n;
+                const delta = counts[b] - expected;
+                chi += delta * delta / expected;
+            }
+            scored.push({ byte: candidate, chi });
+        }
+        scored.sort((a, b) => a.chi - b.chi);
+        key.push(scored[0].byte);
+        columns.push({
+            offset,
+            byte: scored[0].byte,
+            method: "chi-squared",
+            "chi_squared": Number(scored[0].chi.toFixed(1)),
+            // The runner-up is the whole point of scoring rather than taking an argmax: a narrow
+            // margin is where the answer is wrong, and the caller can only see that if it is told.
+            alternatives: scored.slice(1, 4).map(a => ({
+                byte: a.byte, "chi_squared": Number(a.chi.toFixed(1))
+            })),
+            margin: Number((scored[1].chi / Math.max(scored[0].chi, 1e-9)).toFixed(2))
+        });
     }
-    return { key, confidence: shareTotal / keyLength };
+    return { key, columns };
 }
 
 /** @returns {string} Printable rendering of a key, with non-printable bytes escaped. */
@@ -206,13 +386,13 @@ export default {
     title: "XOR key length",
     category: "Analysis",
     description:
-        "Recover the key length of a repeating-key XOR by index of coincidence, then guess the key " +
-        "and decrypt. Ranks candidate lengths with a score for each, so you can see whether the " +
-        "answer is clear or marginal. Use this when you have XOR-encrypted data and no key; use " +
-        "cyberchef_bake with the XOR operation when you already know the key. Recovers the " +
-        "length in 84 of 90 measured cases across prose, source code and log lines; it is least " +
-        "reliable on short inputs and on plaintext with its own strong period, such as " +
-        "fixed-width log lines.",
+        "Recover the key length of a repeating-key XOR by three independent statistics — index " +
+        "of coincidence, autocorrelation and Kasiski — then score every candidate key byte per " +
+        "column against English and decrypt. Reports what each method concluded, so a " +
+        "disagreement is visible rather than averaged away. CyberChef's `XOR Brute Force` stops " +
+        "at a two-byte key. Measured over 72 cases: the exact length in 60%, and the length or a " +
+        "multiple of it — which still decrypts — in 96%. Least reliable on short inputs and on " +
+        "plaintext with its own strong period.",
     annotations: {
         title: "XOR key length",
         readOnlyHint: true,
@@ -236,7 +416,12 @@ export default {
         candidates: z.number().int().min(1).max(32).default(5)
             .describe("How many ranked candidates to report."),
         "preview_bytes": z.number().int().min(0).max(4096).default(256)
-            .describe("How much decrypted output to return. 0 for none.")
+            .describe("How much decrypted output to return. 0 for none."),
+        "assumed_common_byte": z.number().int().min(0).max(255).optional()
+            .describe(
+                "Assume this is the most common plaintext byte in every column (32 for text) and " +
+                "take each column's most common ciphertext byte to be it. Unset, every candidate " +
+                "key byte is scored against English instead, which needs no assumption.")
     }),
 
     /**
@@ -247,19 +432,22 @@ export default {
     async run(args, ctx) {
         const { input, input_format: format, max_key_length: maxLength,
             candidates, preview_bytes: previewBytes } = args;
+        const assumedByte = args.assumed_common_byte ?? null;
 
         // Decoding goes through the engine rather than being reimplemented here: `From Hex` and
         // `From Base64` already handle whitespace, delimiters and malformed input, and their
         // errors are the ones a caller of this server already recognises.
         let bytes;
         if (format === "Raw") {
-            bytes = Uint8Array.from(input, ch => ch.charCodeAt(0) & 0xff);
+            // See the note in the tools that share this decode: latin1 is byte-identical to the
+            // per-character mapper and 48x faster, because the callback is the whole cost.
+            bytes = new Uint8Array(Buffer.from(input, "latin1"));
         } else {
             const decoded = await ctx.bake(input, [{ op: format === "Hex" ? "From Hex" : "From Base64" }]);
             const value = decoded.value;
             bytes = value instanceof ArrayBuffer ? new Uint8Array(value) :
                 Array.isArray(value) ? Uint8Array.from(value) :
-                    Uint8Array.from(String(value), ch => ch.charCodeAt(0) & 0xff);
+                    new Uint8Array(Buffer.from(String(value), "latin1"));
         }
 
         if (bytes.length < 8) {
@@ -277,9 +465,43 @@ export default {
         // a situation that cannot arise, and the only way to cover it would be to fake it.
         // If the 8-byte floor above is ever lowered below 4, revisit this.
         const ranked = await rankKeyLengths(bytes, maxLength);
-        const chosen = chooseLength(ranked);
+        const icLength = chooseLength(ranked);
 
-        const { key, confidence } = recoverKey(bytes, chosen);
+        // Three estimators, deliberately chosen for UNCORRELATED failure modes rather than for
+        // individual accuracy. Index of coincidence is defeated by plaintext with its own period;
+        // autocorrelation reads the same repetition without a frequency model and is defeated by
+        // short inputs; Kasiski ignores the language entirely and is defeated by too few repeats.
+        // arXiv:2312.09956 surveyed the whole family and found no single statistic reliable alone
+        // -- the twist family "will always make an incorrect prediction" on some inputs, and their
+        // combined model reaches 88.8% where the members do not.
+        const shift = Math.min(maxLength, bytes.length - 1);
+        const kappa = autocorrelation(bytes, shift);
+        const acLength = autocorrelationLength(kappa);
+        const kasiskiLength = kasiski(bytes, maxLength);
+
+        // Two agreeing beat one. When the other two agree with each other and not with the index of
+        // coincidence, they win -- but the disagreement is reported either way, because a caller
+        // deciding what to try next needs to know the methods disagreed at all.
+        const votes = [icLength, acLength, kasiskiLength].filter(v => v);
+        const tally = new Map();
+        for (const v of votes) tally.set(v, (tally.get(v) ?? 0) + 1);
+        const consensus = [...tally.entries()].filter(([, count]) => count >= 2)
+            .sort((a, b) => b[1] - a[1] || a[0] - b[0])[0];
+        // Measured over 72 cases (3 plaintext kinds x 3 sizes x 8 key lengths):
+        //
+        //     index of coincidence alone   42 (58.3%)
+        //     autocorrelation alone        26 (36.1%)
+        //     kasiski alone                41 (56.9%)
+        //     2-of-3 vote                  43 (59.7%)   <- this
+        //
+        // One net case, not a transformation -- and the honest reading is that the vote won once
+        // and lost nothing, rather than that three statistics are much better than one. The larger
+        // number is that the answer is the true length OR A MULTIPLE of it in 69 of 72 (95.8%),
+        // and a multiple still decrypts correctly. That is what `estimates` is for: the caller sees
+        // three opinions rather than one verdict.
+        const chosen = consensus ? consensus[0] : icLength;
+
+        const { key, columns } = recoverKey(bytes, chosen, assumedByte);
 
         let preview = null;
         if (previewBytes > 0) {
@@ -322,12 +544,24 @@ export default {
                     ...(r.length === chosen ? { chosen: true } : {})
                 }));
             })(),
+            estimates: {
+                "index_of_coincidence": icLength,
+                autocorrelation: acLength,
+                kasiski: kasiskiLength,
+                agreement: consensus ?
+                    `${consensus[1]} of ${votes.length} methods agree on ${chosen}.` :
+                    "The methods disagree. The index of coincidence was used; treat the answer as " +
+                    "one hypothesis rather than the answer, and try the ranked candidates."
+            },
             "key_guess": {
                 hex: key.map(b => b.toString(16).padStart(2, "0")).join(""),
                 printable: renderKey(key),
-                method: "most common byte in each column assumed to be a space (0x20)",
-                "space_share": Number(confidence.toFixed(3)),
-                caveat: "Holds for prose and source code; unreliable for binary plaintext."
+                method: assumedByte === null ?
+                    "each column's key byte scored against English byte frequencies by chi-squared" :
+                    `most common byte in each column assumed to be 0x${assumedByte.toString(16).padStart(2, "0")}`,
+                columns,
+                caveat: "Assumes English-like plaintext; unreliable for binary. A column whose " +
+                    "`margin` is near 1.0 had a close runner-up and is the one to doubt first."
             },
             preview,
             next: "Confirm with cyberchef_bake: [{\"op\":\"XOR\",\"args\":{\"key\":{\"string\":\"<hex>\",\"option\":\"Hex\"}}}]"

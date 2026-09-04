@@ -24,11 +24,13 @@ Most operations have optional arguments that map to the CyberChef configuration.
 ## Utility Tools
 
 ### cyberchef_bake
+
 Execute a complex recipe.
 *   `input`: The input data.
 *   `recipe`: JSON array of operations.
 
 ### cyberchef_search
+
 Search for an operation.
 *   `query`: Search term.
 
@@ -37,6 +39,7 @@ Search for an operation.
 ## Advanced Tools (v1.7.0)
 
 ### cyberchef_batch
+
 Execute multiple CyberChef operations in a single request with parallel or sequential execution.
 
 **Arguments:**
@@ -79,6 +82,7 @@ Execute multiple CyberChef operations in a single request with parallel or seque
 ```
 
 ### cyberchef_telemetry_export
+
 Export collected telemetry metrics for monitoring and analysis.
 
 **Arguments:**
@@ -109,6 +113,7 @@ Export collected telemetry metrics for monitoring and analysis.
 ```
 
 ### cyberchef_cache_stats
+
 Get real-time cache statistics including size, items, and limits.
 
 **Arguments:** None
@@ -132,6 +137,7 @@ Get real-time cache statistics including size, items, and limits.
 ```
 
 ### cyberchef_cache_clear
+
 Clear all cached operation results. Useful for freeing memory or forcing fresh execution.
 
 **Arguments:** None
@@ -153,6 +159,7 @@ Clear all cached operation results. Useful for freeing memory or forcing fresh e
 ```
 
 ### cyberchef_quota_info
+
 Get current resource quota information including concurrent operations, data sizes, and limits.
 
 **Arguments:** None
@@ -190,17 +197,19 @@ Get current resource quota information including concurrent operations, data siz
 
 ---
 
-## Analysis Tools (v2.4.0)
+## Analysis Tools (v2.4.0, expanded v3.3.0)
 
 Tools that are not CyberChef operations. An operation is a pure `run(input, args)` over one input,
 which cannot express an *analysis* — scoring dozens of candidate key lengths, or composing several
 operations and comparing the results. `cyberchef_bake` does not help, because a recipe is a linear
-pipeline, not a loop.
+pipeline, not a loop. Four were added in v2.4.0; twelve more joined in v3.3.0, for a total of
+sixteen.
 
 These are always exposed, at every tool surface, because they are few and each replaces a separate
 command-line tool.
 
 ### cyberchef_xor_key_length
+
 Recover the key length of a repeating-key XOR by index of coincidence, then guess the key and
 decrypt.
 
@@ -223,6 +232,7 @@ winner's ratio to random. The method is least reliable on short inputs and on pl
 strong period of its own, so read that block before trusting the answer.
 
 ### cyberchef_cyclic_pattern
+
 Generate a De Bruijn pattern, and find the offset of a fragment within one. This is how you locate
 the return-address bytes in a stack overflow: send the pattern, crash the target, then look up the
 bytes that landed in the instruction pointer.
@@ -247,6 +257,7 @@ back a plausible wrong number. Generating a pattern longer than the alphabet can
 refused rather than truncated: past that point every offset is ambiguous.
 
 ### cyberchef_hash_identify
+
 Identify a password hash by its structure, and return the hashcat mode and John format name so the
 output is a command you can run.
 
@@ -282,6 +293,7 @@ characters is MD5, NTLM, MD4, LM and RIPEMD-128, `confidence` is `length only`, 
 `true`. Context decides between them: an NTLM hash comes from Windows, an MD5 from anywhere.
 
 ### cyberchef_rsa_attack
+
 Test an RSA public key for the generation flaws that make it breakable, and recover the private key
 when one applies.
 
@@ -325,6 +337,69 @@ output, so expect PKCS#1 or OAEP padding ahead of the message.
 
 ---
 
+## Analysis Tools Added in v3.3.0
+
+Twelve more registry tools, for the same reason as the first four: each closes a gap an operation
+cannot express, whether that is a loop with a decision inside it, a statistic computed across
+several inputs, or a cipher upstream simply does not have.
+
+### cyberchef_classical_cipher
+
+Solves Playfair, Polybius, ADFGVX and Baudot/ITA2 ciphers, none of which exists as a CyberChef
+operation.
+
+### cyberchef_corpus_diff
+
+Compares several samples and reports per-offset byte and bit variance across them, ECB detection
+with offsets, and nonce-reuse detection.
+
+### cyberchef_crib_drag
+
+Drags a guessed plaintext fragment along a XOR ciphertext — against two ciphertexts under one key,
+or one ciphertext with a known fragment.
+
+### cyberchef_entropy_scan
+
+Reports where a file's entropy is high, as regions with offsets, plus the Lyda-Hamrock
+two-threshold packed test.
+
+### cyberchef_hash_crack
+
+Cracks MD5, SHA-1, SHA-2 and NTLM hashes from a wordlist; refuses bcrypt, scrypt, Argon2 and
+yescrypt by name rather than attempting them.
+
+### cyberchef_hash_statistics
+
+Corpus-level hash analysis: shared passwords, the weakest format present, and placeholder values.
+
+### cyberchef_jwt_weakness
+
+Reports everything decidable about a JWT from the token alone, with server-dependent checks listed
+separately.
+
+### cyberchef_plaintext_check
+
+Answers whether a candidate is plaintext yet, as a verdict together with its supporting evidence.
+
+### cyberchef_rsa_multi_key
+
+Batch RSA attacks across several keys: batch GCD, common modulus, Hastad broadcast and
+Franklin-Reiter.
+
+### cyberchef_substitution_break
+
+Recovers a monoalphabetic substitution mapping by hill-climbing on trigram fitness.
+
+### cyberchef_timestamp_identify
+
+Ranks every timestamp format a given number could plausibly be.
+
+### cyberchef_vigenere_break
+
+Recovers a Vigenère key from ciphertext alone.
+
+---
+
 ## Operation Tools (By Category)
 
 ### Favourites
@@ -332,6 +407,7 @@ output, so expect PKCS#1 or OAEP padding ahead of the message.
 ### Data format
 
 #### To Hexdump (`cyberchef_to_hexdump`)
+
 Creates a hexdump of the input data, displaying both the hexadecimal values of each byte and an ASCII representation alongside.
 
 The 'UNIX format' argument defines which subset of printable characters are displayed in the preview column.
@@ -350,6 +426,7 @@ The 'UNIX format' argument defines which subset of printable characters are disp
 ---
 
 #### From Hexdump (`cyberchef_from_hexdump`)
+
 Attempts to convert a hexdump back into raw data. This operation supports many different hexdump variations, but probably not all. Make sure you verify that the data it gives you is correct before continuing analysis.
 
 **Example:**
@@ -360,6 +437,7 @@ Attempts to convert a hexdump back into raw data. This operation supports many d
 ---
 
 #### To Hex (`cyberchef_to_hex`)
+
 Converts the input string to hexadecimal bytes separated by the specified delimiter.
 
 e.g. The UTF-8 encoded string Γειά σου becomes ce 93 ce b5 ce b9 ce ac 20 cf 83 ce bf cf 85 0a
@@ -376,6 +454,7 @@ e.g. The UTF-8 encoded string Γειά σου becomes ce 93 ce b5 ce b9 ce ac 20
 ---
 
 #### From Hex (`cyberchef_from_hex`)
+
 Converts a hexadecimal byte string back into its raw value.
 
 e.g. ce 93 ce b5 ce b9 ce ac 20 cf 83 ce bf cf 85 0a becomes the UTF-8 encoded string Γειά σου
@@ -391,6 +470,7 @@ e.g. ce 93 ce b5 ce b9 ce ac 20 cf 83 ce bf cf 85 0a becomes the UTF-8 encoded s
 ---
 
 #### To Charcode (`cyberchef_to_charcode`)
+
 Converts text to its unicode character code equivalent.
 
 e.g. Γειά σου becomes 0393 03b5 03b9 03ac 20 03c3 03bf 03c5
@@ -407,6 +487,7 @@ e.g. Γειά σου becomes 0393 03b5 03b9 03ac 20 03c3 03bf 03c5
 ---
 
 #### From Charcode (`cyberchef_from_charcode`)
+
 Converts unicode character codes back into text.
 
 e.g. 0393 03b5 03b9 03ac 20 03c3 03bf 03c5 becomes Γειά σου
@@ -423,6 +504,7 @@ e.g. 0393 03b5 03b9 03ac 20 03c3 03bf 03c5 becomes Γειά σου
 ---
 
 #### To Decimal (`cyberchef_to_decimal`)
+
 Converts the input data to an ordinal integer array.
 
 e.g. Hello becomes 72 101 108 108 111
@@ -439,6 +521,7 @@ e.g. Hello becomes 72 101 108 108 111
 ---
 
 #### From Decimal (`cyberchef_from_decimal`)
+
 Converts the data from an ordinal integer array back into its raw form.
 
 e.g. 72 101 108 108 111 becomes Hello
@@ -455,6 +538,7 @@ e.g. 72 101 108 108 111 becomes Hello
 ---
 
 #### To Float (`cyberchef_to_float`)
+
 Convert to IEEE754 Floating Point Numbers
 
 **Arguments:**
@@ -470,6 +554,7 @@ Convert to IEEE754 Floating Point Numbers
 ---
 
 #### From Float (`cyberchef_from_float`)
+
 Convert from IEEE754 Floating Point Numbers
 
 **Arguments:**
@@ -485,6 +570,7 @@ Convert from IEEE754 Floating Point Numbers
 ---
 
 #### To Binary (`cyberchef_to_binary`)
+
 Displays the input data as a binary string.
 
 e.g. Hi becomes 01001000 01101001
@@ -501,6 +587,7 @@ e.g. Hi becomes 01001000 01101001
 ---
 
 #### From Binary (`cyberchef_from_binary`)
+
 Converts a binary string back into its raw form.
 
 e.g. 01001000 01101001 becomes Hi
@@ -517,6 +604,7 @@ e.g. 01001000 01101001 becomes Hi
 ---
 
 #### To Octal (`cyberchef_to_octal`)
+
 Converts the input string to octal bytes separated by the specified delimiter.
 
 e.g. The UTF-8 encoded string Γειά σου becomes 316 223 316 265 316 271 316 254 40 317 203 316 277 317 205
@@ -532,6 +620,7 @@ e.g. The UTF-8 encoded string Γειά σου becomes 316 223 316 265 316 271 31
 ---
 
 #### From Octal (`cyberchef_from_octal`)
+
 Converts an octal byte string back into its raw value.
 
 e.g. 316 223 316 265 316 271 316 254 40 317 203 316 277 317 205 becomes the UTF-8 encoded string Γειά σου
@@ -547,6 +636,7 @@ e.g. 316 223 316 265 316 271 316 254 40 317 203 316 277 317 205 becomes the UTF-
 ---
 
 #### To Base32 (`cyberchef_to_base32`)
+
 Base32 is a notation for encoding arbitrary byte data using a restricted set of symbols that can be conveniently used by humans and processed by computers. It uses a smaller set of characters than Base64, usually the uppercase alphabet and the numbers 2 to 7.
 
 **Arguments:**
@@ -560,6 +650,7 @@ Base32 is a notation for encoding arbitrary byte data using a restricted set of 
 ---
 
 #### From Base32 (`cyberchef_from_base32`)
+
 Base32 is a notation for encoding arbitrary byte data using a restricted set of symbols that can be conveniently used by humans and processed by computers. It uses a smaller set of characters than Base64, usually the uppercase alphabet and the numbers 2 to 7.
 
 **Arguments:**
@@ -574,6 +665,7 @@ Base32 is a notation for encoding arbitrary byte data using a restricted set of 
 ---
 
 #### To Base45 (`cyberchef_to_base45`)
+
 Base45 is a notation for encoding arbitrary byte data using a restricted set of symbols that can be conveniently used by humans and processed by computers. The high number base results in shorter strings than with the decimal or hexadecimal system. Base45 is optimized for usage with QR codes.
 
 **Arguments:**
@@ -587,6 +679,7 @@ Base45 is a notation for encoding arbitrary byte data using a restricted set of 
 ---
 
 #### From Base45 (`cyberchef_from_base45`)
+
 Base45 is a notation for encoding arbitrary byte data using a restricted set of symbols that can be conveniently used by humans and processed by computers. The high number base results in shorter strings than with the decimal or hexadecimal system. Base45 is optimized for usage with QR codes.
 
 **Arguments:**
@@ -601,6 +694,7 @@ Base45 is a notation for encoding arbitrary byte data using a restricted set of 
 ---
 
 #### To Base58 (`cyberchef_to_base58`)
+
 Base58 (similar to Base64) is a notation for encoding arbitrary byte data. It differs from Base64 by removing easily misread characters (i.e. l, I, 0 and O) to improve human readability.
 
 This operation encodes data in an ASCII string (with an alphabet of your choosing, presets included).
@@ -620,6 +714,7 @@ Base58 is commonly used in cryptocurrencies (Bitcoin, Ripple, etc).
 ---
 
 #### From Base58 (`cyberchef_from_base58`)
+
 Base58 (similar to Base64) is a notation for encoding arbitrary byte data. It differs from Base64 by removing easily misread characters (i.e. l, I, 0 and O) to improve human readability.
 
 This operation decodes data from an ASCII string (with an alphabet of your choosing, presets included) back into its raw form.
@@ -640,6 +735,7 @@ Base58 is commonly used in cryptocurrencies (Bitcoin, Ripple, etc).
 ---
 
 #### To Base62 (`cyberchef_to_base62`)
+
 Base62 is a notation for encoding arbitrary byte data using a restricted set of symbols that can be conveniently used by humans and processed by computers. The high number base results in shorter strings than with the decimal or hexadecimal system.
 
 **Arguments:**
@@ -653,6 +749,7 @@ Base62 is a notation for encoding arbitrary byte data using a restricted set of 
 ---
 
 #### From Base62 (`cyberchef_from_base62`)
+
 Base62 is a notation for encoding arbitrary byte data using a restricted set of symbols that can be conveniently used by humans and processed by computers. The high number base results in shorter strings than with the decimal or hexadecimal system.
 
 **Arguments:**
@@ -666,6 +763,7 @@ Base62 is a notation for encoding arbitrary byte data using a restricted set of 
 ---
 
 #### To Base64 (`cyberchef_to_base64`)
+
 Base64 is a notation for encoding arbitrary byte data using a restricted set of symbols that can be conveniently used by humans and processed by computers.
 
 This operation encodes raw data into an ASCII Base64 string.
@@ -683,6 +781,7 @@ e.g. hello becomes aGVsbG8=
 ---
 
 #### From Base64 (`cyberchef_from_base64`)
+
 Base64 is a notation for encoding arbitrary byte data using a restricted set of symbols that can be conveniently used by humans and processed by computers.
 
 This operation decodes data from an ASCII Base64 string back into its raw format.
@@ -702,6 +801,7 @@ e.g. aGVsbG8= becomes hello
 ---
 
 #### Show Base64 offsets (`cyberchef_show_base64_offsets`)
+
 When a string is within a block of data and the whole block is Base64'd, the string itself could be represented in Base64 in three distinct ways depending on its offset within the block.
 
 This operation shows all possible offsets for a given string so that each possible encoding can be considered.
@@ -719,6 +819,7 @@ This operation shows all possible offsets for a given string so that each possib
 ---
 
 #### To Base92 (`cyberchef_to_base92`)
+
 Base92 is a notation for encoding arbitrary byte data using a restricted set of symbols that can be conveniently used by humans and processed by computers.
 
 **Example:**
@@ -729,6 +830,7 @@ Base92 is a notation for encoding arbitrary byte data using a restricted set of 
 ---
 
 #### From Base92 (`cyberchef_from_base92`)
+
 Base92 is a notation for encoding arbitrary byte data using a restricted set of symbols that can be conveniently used by humans and processed by computers.
 
 **Example:**
@@ -739,6 +841,7 @@ Base92 is a notation for encoding arbitrary byte data using a restricted set of 
 ---
 
 #### To Base85 (`cyberchef_to_base85`)
+
 Base85 (also called Ascii85) is a notation for encoding arbitrary byte data. It is usually more efficient that Base64.
 
 This operation encodes data in an ASCII string (with an alphabet of your choosing, presets included).
@@ -763,6 +866,7 @@ Adds a '' delimiter to the start and end of the data. This is standard for Adobe
 ---
 
 #### From Base85 (`cyberchef_from_base85`)
+
 Base85 (also called Ascii85) is a notation for encoding arbitrary byte data. It is usually more efficient that Base64.
 
 This operation decodes data from an ASCII string (with an alphabet of your choosing, presets included).
@@ -784,6 +888,7 @@ Base85 is commonly used in Adobe's PostScript and PDF file formats.
 ---
 
 #### To Base (`cyberchef_to_base`)
+
 Converts a decimal number to a given numerical base.
 
 **Arguments:**
@@ -797,6 +902,7 @@ Converts a decimal number to a given numerical base.
 ---
 
 #### From Base (`cyberchef_from_base`)
+
 Converts a number to decimal from a given numerical base.
 
 **Arguments:**
@@ -810,6 +916,7 @@ Converts a number to decimal from a given numerical base.
 ---
 
 #### To BCD (`cyberchef_to_bcd`)
+
 Binary-Coded Decimal (BCD) is a class of binary encodings of decimal numbers where each decimal digit is represented by a fixed number of bits, usually four or eight. Special bit patterns are sometimes used for a sign
 
 **Arguments:**
@@ -826,6 +933,7 @@ Binary-Coded Decimal (BCD) is a class of binary encodings of decimal numbers whe
 ---
 
 #### From BCD (`cyberchef_from_bcd`)
+
 Binary-Coded Decimal (BCD) is a class of binary encodings of decimal numbers where each decimal digit is represented by a fixed number of bits, usually four or eight. Special bit patterns are sometimes used for a sign.
 
 **Arguments:**
@@ -842,6 +950,7 @@ Binary-Coded Decimal (BCD) is a class of binary encodings of decimal numbers whe
 ---
 
 #### To HTML Entity (`cyberchef_to_html_entity`)
+
 Converts characters to HTML entities
 
 e.g. &amp; becomes &amp;amp;
@@ -858,6 +967,7 @@ e.g. &amp; becomes &amp;amp;
 ---
 
 #### From HTML Entity (`cyberchef_from_html_entity`)
+
 Converts HTML entities back to characters
 
 e.g. &amp;amp; becomes &amp;
@@ -870,6 +980,7 @@ e.g. &amp;amp; becomes &amp;
 ---
 
 #### URL Encode (`cyberchef_url_encode`)
+
 Encodes problematic characters into percent-encoding, a format supported by URIs/URLs.
 
 e.g. = becomes %3d
@@ -885,6 +996,7 @@ e.g. = becomes %3d
 ---
 
 #### URL Decode (`cyberchef_url_decode`)
+
 Converts URI/URL percent-encoded characters back to their raw values.
 
 e.g. %3d becomes =
@@ -900,6 +1012,7 @@ e.g. %3d becomes =
 ---
 
 #### Escape Unicode Characters (`cyberchef_escape_unicode_characters`)
+
 Converts characters to their unicode-escaped notations.
 
 Supports the prefixes:\u%uU+e.g. σου becomes \u03C3\u03BF\u03C5
@@ -918,6 +1031,7 @@ Supports the prefixes:\u%uU+e.g. σου becomes \u03C3\u03BF\u03C5
 ---
 
 #### Unescape Unicode Characters (`cyberchef_unescape_unicode_characters`)
+
 Converts unicode-escaped character notation back into raw characters.
 
 Supports the prefixes:\u%uU+e.g. \u03c3\u03bf\u03c5 becomes σου
@@ -933,6 +1047,7 @@ Supports the prefixes:\u%uU+e.g. \u03c3\u03bf\u03c5 becomes σου
 ---
 
 #### Normalise Unicode (`cyberchef_normalise_unicode`)
+
 Transform Unicode characters to one of the Normalisation Forms
 
 **Arguments:**
@@ -946,6 +1061,7 @@ Transform Unicode characters to one of the Normalisation Forms
 ---
 
 #### To Quoted Printable (`cyberchef_to_quoted_printable`)
+
 Quoted-Printable, or QP encoding, is an encoding using printable ASCII characters (alphanumeric and the equals sign '=') to transmit 8-bit data over a 7-bit data path or, generally, over a medium which is not 8-bit clean. It is defined as a MIME content transfer encoding for use in e-mail.
 
 QP works by using the equals sign '=' as an escape character. It also limits line length to 76, as some software has limits on line length.
@@ -958,6 +1074,7 @@ QP works by using the equals sign '=' as an escape character. It also limits lin
 ---
 
 #### From Quoted Printable (`cyberchef_from_quoted_printable`)
+
 Converts QP-encoded text back to standard text.
 
 e.g. The quoted-printable encoded string hello=20world becomes hello world
@@ -970,6 +1087,7 @@ e.g. The quoted-printable encoded string hello=20world becomes hello world
 ---
 
 #### To Punycode (`cyberchef_to_punycode`)
+
 Punycode is a way to represent Unicode with the limited character subset of ASCII supported by the Domain Name System.
 
 e.g. münchen encodes to mnchen-3ya
@@ -985,6 +1103,7 @@ e.g. münchen encodes to mnchen-3ya
 ---
 
 #### From Punycode (`cyberchef_from_punycode`)
+
 Punycode is a way to represent Unicode with the limited character subset of ASCII supported by the Domain Name System.
 
 e.g. mnchen-3ya decodes to münchen
@@ -1000,6 +1119,7 @@ e.g. mnchen-3ya decodes to münchen
 ---
 
 #### AMF Encode (`cyberchef_amf_encode`)
+
 Action Message Format (AMF) is a binary format used to serialize object graphs such as ActionScript objects and XML, or send messages between an Adobe Flash client and a remote service, usually a Flash Media Server or third party alternatives.
 
 **Arguments:**
@@ -1013,6 +1133,7 @@ Action Message Format (AMF) is a binary format used to serialize object graphs s
 ---
 
 #### AMF Decode (`cyberchef_amf_decode`)
+
 Action Message Format (AMF) is a binary format used to serialize object graphs such as ActionScript objects and XML, or send messages between an Adobe Flash client and a remote service, usually a Flash Media Server or third party alternatives.
 
 **Arguments:**
@@ -1026,6 +1147,7 @@ Action Message Format (AMF) is a binary format used to serialize object graphs s
 ---
 
 #### To Hex Content (`cyberchef_to_hex_content`)
+
 Converts special characters in a string to hexadecimal. This format is used by SNORT for representing hex within ASCII text.
 
 e.g. foo=bar becomes foo|3d|bar.
@@ -1042,6 +1164,7 @@ e.g. foo=bar becomes foo|3d|bar.
 ---
 
 #### From Hex Content (`cyberchef_from_hex_content`)
+
 Translates hexadecimal bytes in text back to raw bytes. This format is used by SNORT for representing hex within ASCII text.
 
 e.g. foo|3d|bar becomes foo=bar.
@@ -1054,6 +1177,7 @@ e.g. foo|3d|bar becomes foo=bar.
 ---
 
 #### PEM to Hex (`cyberchef_pem_to_hex`)
+
 Converts PEM (Privacy Enhanced Mail) format to a hexadecimal DER (Distinguished Encoding Rules) string.
 
 **Example:**
@@ -1064,6 +1188,7 @@ Converts PEM (Privacy Enhanced Mail) format to a hexadecimal DER (Distinguished 
 ---
 
 #### Hex to PEM (`cyberchef_hex_to_pem`)
+
 Converts a hexadecimal DER (Distinguished Encoding Rules) string into PEM (Privacy Enhanced Mail) format.
 
 **Arguments:**
@@ -1077,6 +1202,7 @@ Converts a hexadecimal DER (Distinguished Encoding Rules) string into PEM (Priva
 ---
 
 #### Parse ASN.1 hex string (`cyberchef_parse_asn_1_hex_string`)
+
 Abstract Syntax Notation One (ASN.1) is a standard and notation that describes rules and structures for representing, encoding, transmitting, and decoding data in telecommunications and computer networking.
 
 This operation parses arbitrary ASN.1 data (encoded as an hex string: use the 'To Hex' operation if necessary) and presents the resulting tree.
@@ -1093,6 +1219,7 @@ This operation parses arbitrary ASN.1 data (encoded as an hex string: use the 'T
 ---
 
 #### Change IP format (`cyberchef_change_ip_format`)
+
 Convert an IP address from one format to another, e.g. 172.20.23.54 to ac141736
 
 **Arguments:**
@@ -1107,6 +1234,7 @@ Convert an IP address from one format to another, e.g. 172.20.23.54 to ac141736
 ---
 
 #### Encode text (`cyberchef_encode_text`)
+
 Encodes text into the chosen character encoding.
 
 
@@ -1278,6 +1406,7 @@ Simplified Chinese GB18030 (54936)
 ---
 
 #### Decode text (`cyberchef_decode_text`)
+
 Decodes text from the chosen character encoding.
 
 
@@ -1449,6 +1578,7 @@ Simplified Chinese GB18030 (54936)
 ---
 
 #### Text Encoding Brute Force (`cyberchef_text_encoding_brute_force`)
+
 Enumerates all supported text encodings for the input, allowing you to quickly spot the correct one.
 
 
@@ -1620,6 +1750,7 @@ Simplified Chinese GB18030 (54936)
 ---
 
 #### Swap endianness (`cyberchef_swap_endianness`)
+
 Switches the data from big-endian to little-endian or vice-versa. Data can be read in as hexadecimal or raw bytes. It will be returned in the same format as it is entered.
 
 **Arguments:**
@@ -1635,6 +1766,7 @@ Switches the data from big-endian to little-endian or vice-versa. Data can be re
 ---
 
 #### To MessagePack (`cyberchef_to_messagepack`)
+
 Converts JSON to MessagePack encoded byte buffer. MessagePack is a computer data interchange format. It is a binary form for representing simple data structures like arrays and associative arrays.
 
 **Example:**
@@ -1645,6 +1777,7 @@ Converts JSON to MessagePack encoded byte buffer. MessagePack is a computer data
 ---
 
 #### From MessagePack (`cyberchef_from_messagepack`)
+
 Converts MessagePack encoded data to JSON. MessagePack is a computer data interchange format. It is a binary form for representing simple data structures like arrays and associative arrays.
 
 **Example:**
@@ -1655,6 +1788,7 @@ Converts MessagePack encoded data to JSON. MessagePack is a computer data interc
 ---
 
 #### To Braille (`cyberchef_to_braille`)
+
 Converts text to six-dot braille symbols.
 
 **Example:**
@@ -1665,6 +1799,7 @@ Converts text to six-dot braille symbols.
 ---
 
 #### From Braille (`cyberchef_from_braille`)
+
 Converts six-dot braille symbols to text.
 
 **Example:**
@@ -1675,6 +1810,7 @@ Converts six-dot braille symbols to text.
 ---
 
 #### Parse TLV (`cyberchef_parse_tlv`)
+
 Converts a Type-Length-Value (TLV) encoded string into a JSON object.  Can optionally include a Key / Type entry. 
 
 Tags: Key-Length-Value, KLV, Length-Value, LV
@@ -1692,6 +1828,7 @@ Tags: Key-Length-Value, KLV, Length-Value, LV
 ---
 
 #### CSV to JSON (`cyberchef_csv_to_json`)
+
 Converts a CSV file to JSON format.
 
 **Arguments:**
@@ -1707,6 +1844,7 @@ Converts a CSV file to JSON format.
 ---
 
 #### JSON to CSV (`cyberchef_json_to_csv`)
+
 Converts JSON data to a CSV based on the definition in RFC 4180.
 
 **Arguments:**
@@ -1721,6 +1859,7 @@ Converts JSON data to a CSV based on the definition in RFC 4180.
 ---
 
 #### Avro to JSON (`cyberchef_avro_to_json`)
+
 Converts Avro encoded data into JSON.
 
 **Arguments:**
@@ -1734,6 +1873,7 @@ Converts Avro encoded data into JSON.
 ---
 
 #### CBOR Encode (`cyberchef_cbor_encode`)
+
 Concise Binary Object Representation (CBOR) is a binary data serialization format loosely based on JSON. Like JSON it allows the transmission of data objects that contain name–value pairs, but in a more concise manner. This increases processing and transfer speeds at the cost of human readability. It is defined in IETF RFC 8949.
 
 **Example:**
@@ -1744,6 +1884,7 @@ Concise Binary Object Representation (CBOR) is a binary data serialization forma
 ---
 
 #### CBOR Decode (`cyberchef_cbor_decode`)
+
 Concise Binary Object Representation (CBOR) is a binary data serialization format loosely based on JSON. Like JSON it allows the transmission of data objects that contain name–value pairs, but in a more concise manner. This increases processing and transfer speeds at the cost of human readability. It is defined in IETF RFC 8949.
 
 **Example:**
@@ -1754,6 +1895,7 @@ Concise Binary Object Representation (CBOR) is a binary data serialization forma
 ---
 
 #### YAML to JSON (`cyberchef_yaml_to_json`)
+
 Convert YAML to JSON
 
 **Example:**
@@ -1764,6 +1906,7 @@ Convert YAML to JSON
 ---
 
 #### JSON to YAML (`cyberchef_json_to_yaml`)
+
 Format a JSON object into YAML
 
 **Example:**
@@ -1774,6 +1917,7 @@ Format a JSON object into YAML
 ---
 
 #### Caret/M-decode (`cyberchef_caret_m_decode`)
+
 Decodes caret or M-encoded strings, i.e. ^M turns into a newline, M-^] turns into 0x9d. Sources such as `cat -v`.
 
 Please be aware that when using `cat -v` ^_ (caret-underscore) will not be encoded, but represents a valid encoding (namely that of 0x1f).
@@ -1786,6 +1930,7 @@ Please be aware that when using `cat -v` ^_ (caret-underscore) will not be encod
 ---
 
 #### Rison Encode (`cyberchef_rison_encode`)
+
 Rison, a data serialization format optimized for compactness in URIs. Rison is a slight variation of JSON that looks vastly superior after URI encoding. Rison still expresses exactly the same set of data structures as JSON, so data can be translated back and forth without loss or guesswork.
 
 **Arguments:**
@@ -1799,6 +1944,7 @@ Rison, a data serialization format optimized for compactness in URIs. Rison is a
 ---
 
 #### Rison Decode (`cyberchef_rison_decode`)
+
 Rison, a data serialization format optimized for compactness in URIs. Rison is a slight variation of JSON that looks vastly superior after URI encoding. Rison still expresses exactly the same set of data structures as JSON, so data can be translated back and forth without loss or guesswork.
 
 **Arguments:**
@@ -1812,6 +1958,7 @@ Rison, a data serialization format optimized for compactness in URIs. Rison is a
 ---
 
 #### To Modhex (`cyberchef_to_modhex`)
+
 Converts the input string to modhex bytes separated by the specified delimiter.
 
 **Arguments:**
@@ -1826,6 +1973,7 @@ Converts the input string to modhex bytes separated by the specified delimiter.
 ---
 
 #### From Modhex (`cyberchef_from_modhex`)
+
 Converts a modhex byte string back into its raw value.
 
 **Arguments:**
@@ -1839,6 +1987,7 @@ Converts a modhex byte string back into its raw value.
 ---
 
 #### MIME Decoding (`cyberchef_mime_decoding`)
+
 Enables the decoding of MIME message header extensions for non-ASCII text
 
 **Example:**
@@ -1851,6 +2000,7 @@ Enables the decoding of MIME message header extensions for non-ASCII text
 ### Encryption / Encoding
 
 #### AES Encrypt (`cyberchef_aes_encrypt`)
+
 Advanced Encryption Standard (AES) is a U.S. Federal Information Processing Standard (FIPS). It was selected after a 5-year process where 15 competing designs were evaluated.
 
 Key: The following algorithms will be used based on the size of the key:16 bytes = AES-12824 bytes = AES-19232 bytes = AES-256You can generate a password-based key using one of the KDF operations.
@@ -1875,6 +2025,7 @@ Padding: In CBC and ECB mode, PKCS#7 padding will be used.
 ---
 
 #### AES Decrypt (`cyberchef_aes_decrypt`)
+
 Advanced Encryption Standard (AES) is a U.S. Federal Information Processing Standard (FIPS). It was selected after a 5-year process where 15 competing designs were evaluated.
 
 Key: The following algorithms will be used based on the size of the key:16 bytes = AES-12824 bytes = AES-19232 bytes = AES-256
@@ -1902,6 +2053,7 @@ GCM Tag: This field is ignored unless 'GCM' mode is used.
 ---
 
 #### Blowfish Encrypt (`cyberchef_blowfish_encrypt`)
+
 Blowfish is a symmetric-key block cipher designed in 1993 by Bruce Schneier and included in a large number of cipher suites and encryption products. AES now receives more attention.
 
 IV: The Initialization Vector should be 8 bytes long. If not entered, it will default to 8 null bytes.
@@ -1921,6 +2073,7 @@ IV: The Initialization Vector should be 8 bytes long. If not entered, it will de
 ---
 
 #### Blowfish Decrypt (`cyberchef_blowfish_decrypt`)
+
 Blowfish is a symmetric-key block cipher designed in 1993 by Bruce Schneier and included in a large number of cipher suites and encryption products. AES now receives more attention.
 
 IV: The Initialization Vector should be 8 bytes long. If not entered, it will default to 8 null bytes.
@@ -1940,6 +2093,7 @@ IV: The Initialization Vector should be 8 bytes long. If not entered, it will de
 ---
 
 #### DES Encrypt (`cyberchef_des_encrypt`)
+
 DES is a previously dominant algorithm for encryption, and was published as an official U.S. Federal Information Processing Standard (FIPS). It is now considered to be insecure due to its small key size.
 
 Key: DES uses a key length of 8 bytes (64 bits).
@@ -1965,6 +2119,7 @@ Padding: In CBC and ECB mode, PKCS#7 padding will be used.
 ---
 
 #### DES Decrypt (`cyberchef_des_decrypt`)
+
 DES is a previously dominant algorithm for encryption, and was published as an official U.S. Federal Information Processing Standard (FIPS). It is now considered to be insecure due to its small key size.
 
 Key: DES uses a key length of 8 bytes (64 bits).
@@ -1988,6 +2143,7 @@ Padding: In CBC and ECB mode, PKCS#7 padding will be used as a default.
 ---
 
 #### Triple DES Encrypt (`cyberchef_triple_des_encrypt`)
+
 Triple DES applies DES three times to each block to increase key size.
 
 Key: Triple DES uses a key length of 24 bytes (192 bits).
@@ -2013,6 +2169,7 @@ Padding: In CBC and ECB mode, PKCS#7 padding will be used.
 ---
 
 #### Triple DES Decrypt (`cyberchef_triple_des_decrypt`)
+
 Triple DES applies DES three times to each block to increase key size.
 
 Key: Triple DES uses a key length of 24 bytes (192 bits).
@@ -2036,6 +2193,7 @@ Padding: In CBC and ECB mode, PKCS#7 padding will be used as a default.
 ---
 
 #### Fernet Encrypt (`cyberchef_fernet_encrypt`)
+
 Fernet is a symmetric encryption method which makes sure that the message encrypted cannot be manipulated/read without the key. It uses URL safe encoding for the keys. Fernet uses 128-bit AES in CBC mode and PKCS7 padding, with HMAC using SHA256 for authentication. The IV is created from os.random().
 
 Key: The key must be 32 bytes (256 bits) encoded with Base64.
@@ -2051,6 +2209,7 @@ Key: The key must be 32 bytes (256 bits) encoded with Base64.
 ---
 
 #### Fernet Decrypt (`cyberchef_fernet_decrypt`)
+
 Fernet is a symmetric encryption method which makes sure that the message encrypted cannot be manipulated/read without the key. It uses URL safe encoding for the keys. Fernet uses 128-bit AES in CBC mode and PKCS7 padding, with HMAC using SHA256 for authentication. The IV is created from os.random().
 
 Key: The key must be 32 bytes (256 bits) encoded with Base64.
@@ -2066,6 +2225,7 @@ Key: The key must be 32 bytes (256 bits) encoded with Base64.
 ---
 
 #### LS47 Encrypt (`cyberchef_ls47_encrypt`)
+
 This is a slight improvement of the ElsieFour cipher as described by Alan Kaminsky. We use 7x7 characters instead of original (barely fitting) 6x6, to be able to encrypt some structured information. We also describe a simple key-expansion algorithm, because remembering passwords is popular. Similar security considerations as with ElsieFour hold.
 The LS47 alphabet consists of following characters: _abcdefghijklmnopqrstuvwxyz.0123456789,-+*/:?!'()
 A LS47 key is a permutation of the alphabet that is then represented in a 7x7 grid used for the encryption or decryption.
@@ -2083,6 +2243,7 @@ A LS47 key is a permutation of the alphabet that is then represented in a 7x7 gr
 ---
 
 #### LS47 Decrypt (`cyberchef_ls47_decrypt`)
+
 This is a slight improvement of the ElsieFour cipher as described by Alan Kaminsky. We use 7x7 characters instead of original (barely fitting) 6x6, to be able to encrypt some structured information. We also describe a simple key-expansion algorithm, because remembering passwords is popular. Similar security considerations as with ElsieFour hold.
 The LS47 alphabet consists of following characters: _abcdefghijklmnopqrstuvwxyz.0123456789,-+*/:?!'()
 An LS47 key is a permutation of the alphabet that is then represented in a 7x7 grid used for the encryption or decryption.
@@ -2099,6 +2260,7 @@ An LS47 key is a permutation of the alphabet that is then represented in a 7x7 g
 ---
 
 #### RC2 Encrypt (`cyberchef_rc2_encrypt`)
+
 RC2 (also known as ARC2) is a symmetric-key block cipher designed by Ron Rivest in 1987. 'RC' stands for 'Rivest Cipher'.
 
 Key: RC2 uses a variable size key.
@@ -2123,6 +2285,7 @@ Padding: In both CBC and ECB mode, PKCS#7 padding will be used.
 ---
 
 #### RC2 Decrypt (`cyberchef_rc2_decrypt`)
+
 RC2 (also known as ARC2) is a symmetric-key block cipher designed by Ron Rivest in 1987. 'RC' stands for 'Rivest Cipher'.
 
 Key: RC2 uses a variable size key.
@@ -2145,6 +2308,7 @@ Padding: In both CBC and ECB mode, PKCS#7 padding will be used.
 ---
 
 #### RC4 (`cyberchef_rc4`)
+
 RC4 (also known as ARC4) is a widely-used stream cipher designed by Ron Rivest. It is used in popular protocols such as SSL and WEP. Although remarkable for its simplicity and speed, the algorithm's history doesn't inspire confidence in its security.
 
 **Arguments:**
@@ -2160,6 +2324,7 @@ RC4 (also known as ARC4) is a widely-used stream cipher designed by Ron Rivest. 
 ---
 
 #### RC4 Drop (`cyberchef_rc4_drop`)
+
 It was discovered that the first few bytes of the RC4 keystream are strongly non-random and leak information about the key. We can defend against this attack by discarding the initial portion of the keystream. This modified algorithm is traditionally called RC4-drop.
 
 **Arguments:**
@@ -2176,6 +2341,7 @@ It was discovered that the first few bytes of the RC4 keystream are strongly non
 ---
 
 #### ChaCha (`cyberchef_chacha`)
+
 ChaCha is a stream cipher designed by Daniel J. Bernstein. It is a variant of the Salsa stream cipher. Several parameterizations exist; 'ChaCha' may refer to the original construction, or to the variant as described in RFC-8439. ChaCha is often used with Poly1305, in the ChaCha20-Poly1305 AEAD construction.
 
 Key: ChaCha uses a key of 16 or 32 bytes (128 or 256 bits).
@@ -2200,6 +2366,7 @@ Counter: ChaCha uses a counter of 4 or 8 bytes (32 or 64 bits); together, the no
 ---
 
 #### Salsa20 (`cyberchef_salsa20`)
+
 Salsa20 is a stream cipher designed by Daniel J. Bernstein and submitted to the eSTREAM project; Salsa20/8 and Salsa20/12 are round-reduced variants. It is closely related to the ChaCha stream cipher.
 
 Key: Salsa20 uses a key of 16 or 32 bytes (128 or 256 bits).
@@ -2224,6 +2391,7 @@ Counter: Salsa uses a counter of 8 bytes (64 bits). The counter starts at zero a
 ---
 
 #### XSalsa20 (`cyberchef_xsalsa20`)
+
 XSalsa20 is a variant of the Salsa20 stream cipher designed by Daniel J. Bernstein; XSalsa uses longer nonces.
 
 Key: XSalsa20 uses a key of 16 or 32 bytes (128 or 256 bits).
@@ -2248,6 +2416,7 @@ Counter: XSalsa uses a counter of 8 bytes (64 bits). The counter starts at zero 
 ---
 
 #### Rabbit (`cyberchef_rabbit`)
+
 Rabbit is a high-speed stream cipher introduced in 2003 and defined in RFC 4503.
 
 The cipher uses a 128-bit key and an optional 64-bit initialization vector (IV).
@@ -2270,6 +2439,7 @@ little-endian: compatible with Crypto++
 ---
 
 #### SM4 Encrypt (`cyberchef_sm4_encrypt`)
+
 SM4 is a 128-bit block cipher, currently established as a national standard (GB/T 32907-2016) of China. Multiple block cipher modes are supported. When using CBC or ECB mode, the PKCS#7 padding scheme is used.
 
 **Arguments:**
@@ -2287,6 +2457,7 @@ SM4 is a 128-bit block cipher, currently established as a national standard (GB/
 ---
 
 #### SM4 Decrypt (`cyberchef_sm4_decrypt`)
+
 SM4 is a 128-bit block cipher, currently established as a national standard (GB/T 32907-2016) of China.
 
 **Arguments:**
@@ -2304,6 +2475,7 @@ SM4 is a 128-bit block cipher, currently established as a national standard (GB/
 ---
 
 #### GOST Encrypt (`cyberchef_gost_encrypt`)
+
 The GOST block cipher (Magma), defined in the standard GOST 28147-89 (RFC 5830), is a Soviet and Russian government standard symmetric key block cipher with a block size of 64 bits. The original standard, published in 1989, did not give the cipher any name, but the most recent revision of the standard, GOST R 34.12-2015 (RFC 7801, RFC 8891), specifies that it may be referred to as Magma. The GOST hash function is based on this cipher. The new standard also specifies a new 128-bit block cipher called Kuznyechik.
 
 Developed in the 1970s, the standard had been marked 'Top Secret' and then downgraded to 'Secret' in 1990. Shortly after the dissolution of the USSR, it was declassified and it was released to the public in 1994. GOST 28147 was a Soviet alternative to the United States standard algorithm, DES. Thus, the two are very similar in structure.
@@ -2327,6 +2499,7 @@ Developed in the 1970s, the standard had been marked 'Top Secret' and then downg
 ---
 
 #### GOST Decrypt (`cyberchef_gost_decrypt`)
+
 The GOST block cipher (Magma), defined in the standard GOST 28147-89 (RFC 5830), is a Soviet and Russian government standard symmetric key block cipher with a block size of 64 bits. The original standard, published in 1989, did not give the cipher any name, but the most recent revision of the standard, GOST R 34.12-2015 (RFC 7801, RFC 8891), specifies that it may be referred to as Magma. The GOST hash function is based on this cipher. The new standard also specifies a new 128-bit block cipher called Kuznyechik.
 
 Developed in the 1970s, the standard had been marked 'Top Secret' and then downgraded to 'Secret' in 1990. Shortly after the dissolution of the USSR, it was declassified and it was released to the public in 1994. GOST 28147 was a Soviet alternative to the United States standard algorithm, DES. Thus, the two are very similar in structure.
@@ -2350,6 +2523,7 @@ Developed in the 1970s, the standard had been marked 'Top Secret' and then downg
 ---
 
 #### GOST Sign (`cyberchef_gost_sign`)
+
 Sign a plaintext message using one of the GOST block ciphers.
 
 **Arguments:**
@@ -2369,6 +2543,7 @@ Sign a plaintext message using one of the GOST block ciphers.
 ---
 
 #### GOST Verify (`cyberchef_gost_verify`)
+
 Verify the signature of a plaintext message using one of the GOST block ciphers. Enter the signature in the MAC field.
 
 **Arguments:**
@@ -2387,6 +2562,7 @@ Verify the signature of a plaintext message using one of the GOST block ciphers.
 ---
 
 #### GOST Key Wrap (`cyberchef_gost_key_wrap`)
+
 A key wrapping algorithm for protecting keys in untrusted storage using one of the GOST block cipers.
 
 **Arguments:**
@@ -2406,6 +2582,7 @@ A key wrapping algorithm for protecting keys in untrusted storage using one of t
 ---
 
 #### GOST Key Unwrap (`cyberchef_gost_key_unwrap`)
+
 A decryptor for keys wrapped using one of the GOST block ciphers.
 
 **Arguments:**
@@ -2425,6 +2602,7 @@ A decryptor for keys wrapped using one of the GOST block ciphers.
 ---
 
 #### ROT13 (`cyberchef_rot13`)
+
 A simple caesar substitution cipher which rotates alphabet characters by the specified amount (default 13).
 
 **Arguments:**
@@ -2441,6 +2619,7 @@ A simple caesar substitution cipher which rotates alphabet characters by the spe
 ---
 
 #### ROT13 Brute Force (`cyberchef_rot13_brute_force`)
+
 Try all meaningful amounts for ROT13.
 
 Optionally you can enter your known plaintext (crib) to filter the result.
@@ -2462,6 +2641,7 @@ Optionally you can enter your known plaintext (crib) to filter the result.
 ---
 
 #### ROT47 (`cyberchef_rot47`)
+
 A slightly more complex variation of a caesar cipher, which includes ASCII characters from 33 '!' to 126 '~'. Default rotation: 47.
 
 **Arguments:**
@@ -2475,6 +2655,7 @@ A slightly more complex variation of a caesar cipher, which includes ASCII chara
 ---
 
 #### ROT47 Brute Force (`cyberchef_rot47_brute_force`)
+
 Try all meaningful amounts for ROT47.
 
 Optionally you can enter your known plaintext (crib) to filter the result.
@@ -2493,6 +2674,7 @@ Optionally you can enter your known plaintext (crib) to filter the result.
 ---
 
 #### ROT8000 (`cyberchef_rot8000`)
+
 The simple Caesar-cypher encryption that replaces each Unicode character with the one 0x8000 places forward or back along the alphabet.
 
 **Example:**
@@ -2503,6 +2685,7 @@ The simple Caesar-cypher encryption that replaces each Unicode character with th
 ---
 
 #### XOR (`cyberchef_xor`)
+
 XOR the input with the given key.
 e.g. fe023da5
 
@@ -2524,6 +2707,7 @@ Scheme:Standard - key is unchanged after each roundInput differential - key is s
 ---
 
 #### XOR Brute Force (`cyberchef_xor_brute_force`)
+
 Enumerate all possible XOR solutions. Current maximum key length is 2 due to browser performance.
 
 Optionally enter a string that you expect to find in the plaintext to filter results (crib).
@@ -2546,6 +2730,7 @@ Optionally enter a string that you expect to find in the plaintext to filter res
 ---
 
 #### Vigenère Encode (`cyberchef_vigen_re_encode`)
+
 The Vigenere cipher is a method of encrypting alphabetic text by using a series of different Caesar ciphers based on the letters of a keyword. It is a simple form of polyalphabetic substitution.
 
 **Arguments:**
@@ -2559,6 +2744,7 @@ The Vigenere cipher is a method of encrypting alphabetic text by using a series 
 ---
 
 #### Vigenère Decode (`cyberchef_vigen_re_decode`)
+
 The Vigenere cipher is a method of encrypting alphabetic text by using a series of different Caesar ciphers based on the letters of a keyword. It is a simple form of polyalphabetic substitution.
 
 **Arguments:**
@@ -2572,6 +2758,7 @@ The Vigenere cipher is a method of encrypting alphabetic text by using a series 
 ---
 
 #### XXTEA Encrypt (`cyberchef_xxtea_encrypt`)
+
 Corrected Block TEA (often referred to as XXTEA) is a block cipher designed to correct weaknesses in the original Block TEA. XXTEA operates on variable-length blocks that are some arbitrary multiple of 32 bits in size (minimum 64 bits). The number of full cycles depends on the block size, but there are at least six (rising to 32 for small block sizes). The original Block TEA applies the XTEA round function to each word in the block and combines it additively with its leftmost neighbour. Slow diffusion rate of the decryption process was immediately exploited to break the cipher. Corrected Block TEA uses a more involved round function which makes use of both immediate neighbours in processing each word in the block.
 
 **Arguments:**
@@ -2585,6 +2772,7 @@ Corrected Block TEA (often referred to as XXTEA) is a block cipher designed to c
 ---
 
 #### XXTEA Decrypt (`cyberchef_xxtea_decrypt`)
+
 Corrected Block TEA (often referred to as XXTEA) is a block cipher designed to correct weaknesses in the original Block TEA. XXTEA operates on variable-length blocks that are some arbitrary multiple of 32 bits in size (minimum 64 bits). The number of full cycles depends on the block size, but there are at least six (rising to 32 for small block sizes). The original Block TEA applies the XTEA round function to each word in the block and combines it additively with its leftmost neighbour. Slow diffusion rate of the decryption process was immediately exploited to break the cipher. Corrected Block TEA uses a more involved round function which makes use of both immediate neighbours in processing each word in the block.
 
 **Arguments:**
@@ -2598,6 +2786,7 @@ Corrected Block TEA (often referred to as XXTEA) is a block cipher designed to c
 ---
 
 #### To Morse Code (`cyberchef_to_morse_code`)
+
 Translates alphanumeric characters into International Morse Code.
 
 Ignores non-Morse characters.
@@ -2617,6 +2806,7 @@ e.g. SOS becomes ... --- ...
 ---
 
 #### From Morse Code (`cyberchef_from_morse_code`)
+
 Translates Morse Code into (upper case) alphanumeric characters.
 
 **Arguments:**
@@ -2631,6 +2821,7 @@ Translates Morse Code into (upper case) alphanumeric characters.
 ---
 
 #### Bacon Cipher Encode (`cyberchef_bacon_cipher_encode`)
+
 Bacon's cipher or the Baconian cipher is a method of steganography devised by Francis Bacon in 1605. A message is concealed in the presentation of text, rather than its content.
 
 **Arguments:**
@@ -2647,6 +2838,7 @@ Bacon's cipher or the Baconian cipher is a method of steganography devised by Fr
 ---
 
 #### Bacon Cipher Decode (`cyberchef_bacon_cipher_decode`)
+
 Bacon's cipher or the Baconian cipher is a method of steganography devised by Francis Bacon in 1605. A message is concealed in the presentation of text, rather than its content.
 
 **Arguments:**
@@ -2662,6 +2854,7 @@ Bacon's cipher or the Baconian cipher is a method of steganography devised by Fr
 ---
 
 #### Bifid Cipher Encode (`cyberchef_bifid_cipher_encode`)
+
 The Bifid cipher is a cipher which uses a Polybius square in conjunction with transposition, which can be fairly difficult to decipher without knowing the alphabet keyword.
 
 **Arguments:**
@@ -2675,6 +2868,7 @@ The Bifid cipher is a cipher which uses a Polybius square in conjunction with tr
 ---
 
 #### Bifid Cipher Decode (`cyberchef_bifid_cipher_decode`)
+
 The Bifid cipher is a cipher which uses a Polybius square in conjunction with transposition, which can be fairly difficult to decipher without knowing the alphabet keyword.
 
 **Arguments:**
@@ -2688,6 +2882,7 @@ The Bifid cipher is a cipher which uses a Polybius square in conjunction with tr
 ---
 
 #### Caesar Box Cipher (`cyberchef_caesar_box_cipher`)
+
 Caesar Box is a transposition cipher used in the Roman Empire, in which letters of the message are written in rows in a square (or a rectangle) and then, read by column.
 
 **Arguments:**
@@ -2701,6 +2896,7 @@ Caesar Box is a transposition cipher used in the Roman Empire, in which letters 
 ---
 
 #### Affine Cipher Encode (`cyberchef_affine_cipher_encode`)
+
 The Affine cipher is a type of monoalphabetic substitution cipher, wherein each letter in an alphabet is mapped to its numeric equivalent, encrypted using simple mathematical function, (ax + b) % 26, and converted back to a letter.
 
 **Arguments:**
@@ -2715,6 +2911,7 @@ The Affine cipher is a type of monoalphabetic substitution cipher, wherein each 
 ---
 
 #### Affine Cipher Decode (`cyberchef_affine_cipher_decode`)
+
 The Affine cipher is a type of monoalphabetic substitution cipher. To decrypt, each letter in an alphabet is mapped to its numeric equivalent, decrypted by a mathematical function, and converted back to a letter.
 
 **Arguments:**
@@ -2729,6 +2926,7 @@ The Affine cipher is a type of monoalphabetic substitution cipher. To decrypt, e
 ---
 
 #### A1Z26 Cipher Encode (`cyberchef_a1z26_cipher_encode`)
+
 Converts alphabet characters into their corresponding alphabet order number.
 
 e.g. a becomes 1 and b becomes 2.
@@ -2746,6 +2944,7 @@ Non-alphabet characters are dropped.
 ---
 
 #### A1Z26 Cipher Decode (`cyberchef_a1z26_cipher_decode`)
+
 Converts alphabet order numbers into their corresponding  alphabet character.
 
 e.g. 1 becomes a and 2 becomes b.
@@ -2761,6 +2960,7 @@ e.g. 1 becomes a and 2 becomes b.
 ---
 
 #### Rail Fence Cipher Encode (`cyberchef_rail_fence_cipher_encode`)
+
 Encodes Strings using the Rail fence Cipher provided a key and an offset
 
 **Arguments:**
@@ -2775,6 +2975,7 @@ Encodes Strings using the Rail fence Cipher provided a key and an offset
 ---
 
 #### Rail Fence Cipher Decode (`cyberchef_rail_fence_cipher_decode`)
+
 Decodes Strings that were created using the Rail fence Cipher provided a key and an offset
 
 **Arguments:**
@@ -2789,6 +2990,7 @@ Decodes Strings that were created using the Rail fence Cipher provided a key and
 ---
 
 #### Atbash Cipher (`cyberchef_atbash_cipher`)
+
 Atbash is a mono-alphabetic substitution cipher originally used to encode the Hebrew alphabet. It has been modified here for use with the Latin alphabet.
 
 **Example:**
@@ -2799,6 +3001,7 @@ Atbash is a mono-alphabetic substitution cipher originally used to encode the He
 ---
 
 #### CipherSaber2 Encrypt (`cyberchef_ciphersaber2_encrypt`)
+
 CipherSaber is a simple symmetric encryption protocol based on the RC4 stream cipher. It gives reasonably strong protection of message confidentiality, yet it's designed to be simple enough that even novice programmers can memorize the algorithm and implement it from scratch.
 
 **Arguments:**
@@ -2813,6 +3016,7 @@ CipherSaber is a simple symmetric encryption protocol based on the RC4 stream ci
 ---
 
 #### CipherSaber2 Decrypt (`cyberchef_ciphersaber2_decrypt`)
+
 CipherSaber is a simple symmetric encryption protocol based on the RC4 stream cipher. It gives reasonably strong protection of message confidentiality, yet it's designed to be simple enough that even novice programmers can memorize the algorithm and implement it from scratch.
 
 **Arguments:**
@@ -2827,6 +3031,7 @@ CipherSaber is a simple symmetric encryption protocol based on the RC4 stream ci
 ---
 
 #### Cetacean Cipher Encode (`cyberchef_cetacean_cipher_encode`)
+
 Converts any input into Cetacean Cipher. e.g. hi becomes EEEEEEEEEeeEeEEEEEEEEEEEEeeEeEEe
 
 **Example:**
@@ -2837,6 +3042,7 @@ Converts any input into Cetacean Cipher. e.g. hi becomes EEEEEEEEEeeEeEEEEEEEEEE
 ---
 
 #### Cetacean Cipher Decode (`cyberchef_cetacean_cipher_decode`)
+
 Decode Cetacean Cipher input. e.g. EEEEEEEEEeeEeEEEEEEEEEEEEeeEeEEe becomes hi
 
 **Example:**
@@ -2847,6 +3053,7 @@ Decode Cetacean Cipher input. e.g. EEEEEEEEEeeEeEEEEEEEEEEEEeeEeEEe becomes hi
 ---
 
 #### Substitute (`cyberchef_substitute`)
+
 A substitution cipher allowing you to specify bytes to replace with other byte values. This can be used to create Caesar ciphers but is more powerful as any byte value can be substituted, not just letters, and the substitution values need not be in order.
 
 Enter the bytes you want to replace in the Plaintext field and the bytes to replace them with in the Ciphertext field.
@@ -2870,6 +3077,7 @@ Note that blackslash characters are used to escape special characters, so will n
 ---
 
 #### Derive PBKDF2 key (`cyberchef_derive_pbkdf2_key`)
+
 PBKDF2 is a password-based key derivation function. It is part of RSA Laboratories' Public-Key Cryptography Standards (PKCS) series, specifically PKCS #5 v2.0, also published as Internet Engineering Task Force's RFC 2898.
 
 In many applications of cryptography, user security is ultimately dependent on a password, and because a password usually can't be used directly as a cryptographic key, some processing is required.
@@ -2893,6 +3101,7 @@ If you leave the salt argument empty, a random salt will be generated.
 ---
 
 #### Derive EVP key (`cyberchef_derive_evp_key`)
+
 This operation performs a password-based key derivation function (PBKDF) used extensively in OpenSSL. In many applications of cryptography, user security is ultimately dependent on a password, and because a password usually can't be used directly as a cryptographic key, some processing is required.
 
 A salt provides a large set of keys for any given password, and an iteration count increases the cost of producing keys from a password, thereby also increasing the difficulty of attack.
@@ -2914,6 +3123,7 @@ If you leave the salt argument empty, a random salt will be generated.
 ---
 
 #### Derive HKDF key (`cyberchef_derive_hkdf_key`)
+
 A simple Hashed Message Authenticaton Code (HMAC)-based key derivation function (HKDF), defined in RFC5869.
 
 **Arguments:**
@@ -2931,6 +3141,7 @@ A simple Hashed Message Authenticaton Code (HMAC)-based key derivation function 
 ---
 
 #### Bcrypt (`cyberchef_bcrypt`)
+
 bcrypt is a password hashing function designed by Niels Provos and David Mazières, based on the Blowfish cipher, and presented at USENIX in 1999. Besides incorporating a salt to protect against rainbow table attacks, bcrypt is an adaptive function: over time, the iteration count (rounds) can be increased to make it slower, so it remains resistant to brute-force search attacks even with increasing computation power.
 
 Enter the password in the input to generate its hash.
@@ -2946,6 +3157,7 @@ Enter the password in the input to generate its hash.
 ---
 
 #### Scrypt (`cyberchef_scrypt`)
+
 scrypt is a password-based key derivation function (PBKDF) created by Colin Percival. The algorithm was specifically designed to make it costly to perform large-scale custom hardware attacks by requiring large amounts of memory. In 2016, the scrypt algorithm was published by IETF as RFC 7914.
 
 Enter the password in the input to generate its hash.
@@ -2965,6 +3177,7 @@ Enter the password in the input to generate its hash.
 ---
 
 #### JWT Sign (`cyberchef_jwt_sign`)
+
 Signs a JSON object as a JSON Web Token using a provided secret / private key.
 
 The key should be either the secret for HMAC algorithms or the PEM-encoded private key for RSA and ECDSA.
@@ -2982,6 +3195,7 @@ The key should be either the secret for HMAC algorithms or the PEM-encoded priva
 ---
 
 #### JWT Verify (`cyberchef_jwt_verify`)
+
 Verifies that a JSON Web Token is valid and has been signed with the provided secret / private key.
 
 The key should be either the secret for HMAC algorithms or the PEM-encoded public key for RSA and ECDSA.
@@ -2997,6 +3211,7 @@ The key should be either the secret for HMAC algorithms or the PEM-encoded publi
 ---
 
 #### JWT Decode (`cyberchef_jwt_decode`)
+
 Decodes a JSON Web Token without checking whether the provided secret / private key is valid. Use 'JWT Verify' to check if the signature is valid as well.
 
 **Example:**
@@ -3007,6 +3222,7 @@ Decodes a JSON Web Token without checking whether the provided secret / private 
 ---
 
 #### Citrix CTX1 Encode (`cyberchef_citrix_ctx1_encode`)
+
 Encodes strings to Citrix CTX1 password format.
 
 **Example:**
@@ -3017,6 +3233,7 @@ Encodes strings to Citrix CTX1 password format.
 ---
 
 #### Citrix CTX1 Decode (`cyberchef_citrix_ctx1_decode`)
+
 Decodes strings in a Citrix CTX1 password format to plaintext.
 
 **Example:**
@@ -3027,6 +3244,7 @@ Decodes strings in a Citrix CTX1 password format to plaintext.
 ---
 
 #### AES Key Wrap (`cyberchef_aes_key_wrap`)
+
 A key wrapping algorithm defined in RFC3394, which is used to protect keys in untrusted storage or communications, using AES.
 
 This algorithm uses an AES key (KEK: key-encryption key) and a 64-bit IV to encrypt 64-bit blocks.
@@ -3045,6 +3263,7 @@ This algorithm uses an AES key (KEK: key-encryption key) and a 64-bit IV to encr
 ---
 
 #### AES Key Unwrap (`cyberchef_aes_key_unwrap`)
+
 Decryptor for a key wrapping algorithm defined in RFC3394, which is used to protect keys in untrusted storage or communications, using AES.
 
 This algorithm uses an AES key (KEK: key-encryption key) and a 64-bit IV to decrypt 64-bit blocks.
@@ -3063,6 +3282,7 @@ This algorithm uses an AES key (KEK: key-encryption key) and a 64-bit IV to decr
 ---
 
 #### Pseudo-Random Number Generator (`cyberchef_pseudo_random_number_generator`)
+
 A cryptographically-secure pseudo-random number generator (PRNG).
 
 This operation uses the browser's built-in crypto.getRandomValues() method if available. If this cannot be found, it falls back to a Fortuna-based PRNG algorithm.
@@ -3079,6 +3299,7 @@ This operation uses the browser's built-in crypto.getRandomValues() method if av
 ---
 
 #### Enigma (`cyberchef_enigma`)
+
 Encipher/decipher with the WW2 Enigma machine.
 
 Enigma was used by the German military, among others, around the WW2 era as a portable cipher machine to protect sensitive military, diplomatic and commercial communications.
@@ -3114,6 +3335,7 @@ More detailed descriptions of the Enigma, Typex and Bombe operations can be foun
 ---
 
 #### Bombe (`cyberchef_bombe`)
+
 Emulation of the Bombe machine used at Bletchley Park to attack Enigma, based on work by Polish and British cryptanalysts.
 
 To run this you need to have a 'crib', which is some known plaintext for a chunk of the target ciphertext, and know the rotors used. (See the 'Bombe (multiple runs)' operation if you don't know the rotors.) The machine will suggest possible configurations of the Enigma. Each suggestion has the rotor start positions (left to right) and known plugboard pairs.
@@ -3145,6 +3367,7 @@ More detailed descriptions of the Enigma, Typex and Bombe operations can be foun
 ---
 
 #### Multiple Bombe (`cyberchef_multiple_bombe`)
+
 Emulation of the Bombe machine used to attack Enigma. This version carries out multiple Bombe runs to handle unknown rotor configurations.
 
 You should test your menu on the single Bombe operation before running it here. See the description of the Bombe operation for instructions on choosing a crib.
@@ -3168,6 +3391,7 @@ More detailed descriptions of the Enigma, Typex and Bombe operations can be foun
 ---
 
 #### Typex (`cyberchef_typex`)
+
 Encipher/decipher with the WW2 Typex machine.
 
 Typex was originally built by the British Royal Air Force prior to WW2, and is based on the Enigma machine with some improvements made, including using five rotors with more stepping points and interchangeable wiring cores. It was used across the British and Commonwealth militaries. A number of later variants were produced; here we simulate a WW2 era Mark 22 Typex with plugboards for the reflector and input. Typex rotors were changed regularly and none are public: a random example set are provided.
@@ -3210,6 +3434,7 @@ More detailed descriptions of the Enigma, Typex and Bombe operations can be foun
 ---
 
 #### Lorenz (`cyberchef_lorenz`)
+
 The Lorenz SZ40/42 cipher attachment was a WW2 German rotor cipher machine with twelve rotors which attached in-line between remote teleprinters.
 
 It used the Vernam cipher with two groups of five rotors (named the psi(ψ) wheels and chi(χ) wheels at Bletchley Park) to create two pseudorandom streams of five bits, encoded in ITA2, which were XOR added to the plaintext. Two other rotors, dubbed the mu(μ) or motor wheels, could hold up the stepping of the psi wheels meaning they stepped intermittently.
@@ -3265,6 +3490,7 @@ A more detailed description of this operation can be found here.
 ---
 
 #### Colossus (`cyberchef_colossus`)
+
 Colossus is the name of the world's first electronic computer. Ten Colossi were designed by Tommy Flowers and built at the Post Office Research Labs at Dollis Hill in 1943 during World War 2. They assisted with the breaking of the German Lorenz cipher attachment, a machine created to encipher communications between Hitler and his generals on the front lines.
 
 To learn more, Virtual Colossus, an online, browser based simulation of a Colossus computer is available at virtualcolossus.co.uk.
@@ -3338,6 +3564,7 @@ A more detailed description of this operation can be found here.
 ---
 
 #### SIGABA (`cyberchef_sigaba`)
+
 Encipher/decipher with the WW2 SIGABA machine. 
 
 SIGABA, otherwise known as ECM Mark II, was used by the United States for message encryption during WW2 up to the 1950s. It was developed in the 1930s by the US Army and Navy, and has up to this day never been broken. Consisting of 15 rotors: 5 cipher rotors and 10 rotors (5 control rotors and 5 index rotors) controlling the stepping of the cipher rotors, the rotor stepping for SIGABA is much more complex than other rotor machines of its time, such as Enigma. All example rotor wirings are random example sets.
@@ -3399,6 +3626,7 @@ To configure rotor wirings, for the cipher and control rotors enter a string of 
 ### Public Key
 
 #### Parse X.509 certificate (`cyberchef_parse_x_509_certificate`)
+
 X.509 is an ITU-T standard for a public key infrastructure (PKI) and Privilege Management Infrastructure (PMI). It is commonly involved with SSL/TLS security.
 
 This operation displays the contents of a certificate in a human readable format, similar to the openssl command line tool.
@@ -3416,6 +3644,7 @@ Tags: X509, server hello, handshake
 ---
 
 #### Parse X.509 CRL (`cyberchef_parse_x_509_crl`)
+
 Parse Certificate Revocation List (CRL)
 
 **Arguments:**
@@ -3429,6 +3658,7 @@ Parse Certificate Revocation List (CRL)
 ---
 
 #### Parse ASN.1 hex string (`cyberchef_parse_asn_1_hex_string`)
+
 Abstract Syntax Notation One (ASN.1) is a standard and notation that describes rules and structures for representing, encoding, transmitting, and decoding data in telecommunications and computer networking.
 
 This operation parses arbitrary ASN.1 data (encoded as an hex string: use the 'To Hex' operation if necessary) and presents the resulting tree.
@@ -3445,6 +3675,7 @@ This operation parses arbitrary ASN.1 data (encoded as an hex string: use the 'T
 ---
 
 #### PEM to Hex (`cyberchef_pem_to_hex`)
+
 Converts PEM (Privacy Enhanced Mail) format to a hexadecimal DER (Distinguished Encoding Rules) string.
 
 **Example:**
@@ -3455,6 +3686,7 @@ Converts PEM (Privacy Enhanced Mail) format to a hexadecimal DER (Distinguished 
 ---
 
 #### Hex to PEM (`cyberchef_hex_to_pem`)
+
 Converts a hexadecimal DER (Distinguished Encoding Rules) string into PEM (Privacy Enhanced Mail) format.
 
 **Arguments:**
@@ -3468,6 +3700,7 @@ Converts a hexadecimal DER (Distinguished Encoding Rules) string into PEM (Priva
 ---
 
 #### Hex to Object Identifier (`cyberchef_hex_to_object_identifier`)
+
 Converts a hexadecimal string into an object identifier (OID).
 
 **Example:**
@@ -3478,6 +3711,7 @@ Converts a hexadecimal string into an object identifier (OID).
 ---
 
 #### Object Identifier to Hex (`cyberchef_object_identifier_to_hex`)
+
 Converts an object identifier (OID) into a hexadecimal string.
 
 **Example:**
@@ -3488,6 +3722,7 @@ Converts an object identifier (OID) into a hexadecimal string.
 ---
 
 #### PEM to JWK (`cyberchef_pem_to_jwk`)
+
 Converts Keys in PEM format to a JSON Web Key format.
 
 **Example:**
@@ -3498,6 +3733,7 @@ Converts Keys in PEM format to a JSON Web Key format.
 ---
 
 #### JWK to PEM (`cyberchef_jwk_to_pem`)
+
 Converts Keys in JSON Web Key format to PEM format (PKCS#8).
 
 **Example:**
@@ -3508,6 +3744,7 @@ Converts Keys in JSON Web Key format to PEM format (PKCS#8).
 ---
 
 #### Generate PGP Key Pair (`cyberchef_generate_pgp_key_pair`)
+
 Generates a new public/private PGP key pair. Supports RSA and Eliptic Curve (EC) keys.
 
 WARNING: Cryptographic operations in CyberChef should not be relied upon to provide security in any situation. No guarantee is offered for their correctness. We advise you not to use keys generated from CyberChef in operational contexts.
@@ -3526,6 +3763,7 @@ WARNING: Cryptographic operations in CyberChef should not be relied upon to prov
 ---
 
 #### PGP Encrypt (`cyberchef_pgp_encrypt`)
+
 Input: the message you want to encrypt.
 
 
@@ -3551,6 +3789,7 @@ This function uses the Keybase implementation of PGP.
 ---
 
 #### PGP Decrypt (`cyberchef_pgp_decrypt`)
+
 Input: the ASCII-armoured PGP message you want to decrypt.
 
 
@@ -3578,6 +3817,7 @@ This function uses the Keybase implementation of PGP.
 ---
 
 #### PGP Verify (`cyberchef_pgp_verify`)
+
 Input: the ASCII-armoured encrypted PGP message you want to verify.
 
 
@@ -3607,6 +3847,7 @@ This function uses the Keybase implementation of PGP.
 ---
 
 #### PGP Encrypt and Sign (`cyberchef_pgp_encrypt_and_sign`)
+
 Input: the cleartext you want to sign.
 
 
@@ -3639,6 +3880,7 @@ This function uses the Keybase implementation of PGP.
 ---
 
 #### PGP Decrypt and Verify (`cyberchef_pgp_decrypt_and_verify`)
+
 Input: the ASCII-armoured encrypted PGP message you want to verify.
 
 
@@ -3671,6 +3913,7 @@ This function uses the Keybase implementation of PGP.
 ---
 
 #### Generate RSA Key Pair (`cyberchef_generate_rsa_key_pair`)
+
 Generate an RSA key pair with a given number of bits.
 
 WARNING: Cryptographic operations in CyberChef should not be relied upon to provide security in any situation. No guarantee is offered for their correctness. We advise you not to use keys generated from CyberChef in operational contexts.
@@ -3687,6 +3930,7 @@ WARNING: Cryptographic operations in CyberChef should not be relied upon to prov
 ---
 
 #### RSA Sign (`cyberchef_rsa_sign`)
+
 Sign a plaintext message with a PEM encoded RSA key.
 
 **Arguments:**
@@ -3702,6 +3946,7 @@ Sign a plaintext message with a PEM encoded RSA key.
 ---
 
 #### RSA Verify (`cyberchef_rsa_verify`)
+
 Verify a message against a signature and a public PEM encoded RSA key.
 
 **Arguments:**
@@ -3718,6 +3963,7 @@ Verify a message against a signature and a public PEM encoded RSA key.
 ---
 
 #### RSA Encrypt (`cyberchef_rsa_encrypt`)
+
 Encrypt a message with a PEM encoded RSA public key.
 
 **Arguments:**
@@ -3733,6 +3979,7 @@ Encrypt a message with a PEM encoded RSA public key.
 ---
 
 #### RSA Decrypt (`cyberchef_rsa_decrypt`)
+
 Decrypt an RSA encrypted message with a PEM encoded private key.
 
 **Arguments:**
@@ -3749,6 +3996,7 @@ Decrypt an RSA encrypted message with a PEM encoded private key.
 ---
 
 #### Generate ECDSA Key Pair (`cyberchef_generate_ecdsa_key_pair`)
+
 Generate an ECDSA key pair with a given Curve.
 
 WARNING: Cryptographic operations in CyberChef should not be relied upon to provide security in any situation. No guarantee is offered for their correctness. We advise you not to use keys generated from CyberChef in operational contexts.
@@ -3765,6 +4013,7 @@ WARNING: Cryptographic operations in CyberChef should not be relied upon to prov
 ---
 
 #### ECDSA Signature Conversion (`cyberchef_ecdsa_signature_conversion`)
+
 Convert an ECDSA signature between hex, asn1 and json.
 
 **Arguments:**
@@ -3779,6 +4028,7 @@ Convert an ECDSA signature between hex, asn1 and json.
 ---
 
 #### ECDSA Sign (`cyberchef_ecdsa_sign`)
+
 Sign a plaintext message with a PEM encoded EC key.
 
 **Arguments:**
@@ -3794,6 +4044,7 @@ Sign a plaintext message with a PEM encoded EC key.
 ---
 
 #### ECDSA Verify (`cyberchef_ecdsa_verify`)
+
 Verify a message against a signature and a public PEM encoded EC key.
 
 **Arguments:**
@@ -3811,6 +4062,7 @@ Verify a message against a signature and a public PEM encoded EC key.
 ---
 
 #### Parse SSH Host Key (`cyberchef_parse_ssh_host_key`)
+
 Parses a SSH host key and extracts fields from it.
 The key type can be:ssh-rsassh-dssecdsa-sha2ssh-ed25519The key format can be either Hex or Base64.
 
@@ -3825,6 +4077,7 @@ The key type can be:ssh-rsassh-dssecdsa-sha2ssh-ed25519The key format can be eit
 ---
 
 #### Parse CSR (`cyberchef_parse_csr`)
+
 Parse Certificate Signing Request (CSR) for an X.509 certificate
 
 **Arguments:**
@@ -3838,6 +4091,7 @@ Parse Certificate Signing Request (CSR) for an X.509 certificate
 ---
 
 #### Public Key from Certificate (`cyberchef_public_key_from_certificate`)
+
 Extracts the Public Key from a Certificate.
 
 **Example:**
@@ -3848,6 +4102,7 @@ Extracts the Public Key from a Certificate.
 ---
 
 #### Public Key from Private Key (`cyberchef_public_key_from_private_key`)
+
 Extracts the Public Key from a Private Key.
 
 **Example:**
@@ -3858,6 +4113,7 @@ Extracts the Public Key from a Private Key.
 ---
 
 #### SM2 Encrypt (`cyberchef_sm2_encrypt`)
+
 Encrypts a message utilizing the SM2 standard
 
 **Arguments:**
@@ -3874,6 +4130,7 @@ Encrypts a message utilizing the SM2 standard
 ---
 
 #### SM2 Decrypt (`cyberchef_sm2_decrypt`)
+
 Decrypts a message utilizing the SM2 standard
 
 **Arguments:**
@@ -3891,6 +4148,7 @@ Decrypts a message utilizing the SM2 standard
 ### Arithmetic / Logic
 
 #### Set Union (`cyberchef_set_union`)
+
 Calculates the union of two sets.
 
 **Arguments:**
@@ -3905,6 +4163,7 @@ Calculates the union of two sets.
 ---
 
 #### Set Intersection (`cyberchef_set_intersection`)
+
 Calculates the intersection of two sets.
 
 **Arguments:**
@@ -3919,6 +4178,7 @@ Calculates the intersection of two sets.
 ---
 
 #### Set Difference (`cyberchef_set_difference`)
+
 Calculates the difference, or relative complement, of two sets.
 
 **Arguments:**
@@ -3933,6 +4193,7 @@ Calculates the difference, or relative complement, of two sets.
 ---
 
 #### Symmetric Difference (`cyberchef_symmetric_difference`)
+
 Calculates the symmetric difference of two sets.
 
 **Arguments:**
@@ -3947,6 +4208,7 @@ Calculates the symmetric difference of two sets.
 ---
 
 #### Cartesian Product (`cyberchef_cartesian_product`)
+
 Calculates the cartesian product of multiple sets of data, returning all possible combinations.
 
 **Arguments:**
@@ -3961,6 +4223,7 @@ Calculates the cartesian product of multiple sets of data, returning all possibl
 ---
 
 #### Power Set (`cyberchef_power_set`)
+
 Calculates all the subsets of a set.
 
 **Arguments:**
@@ -3974,6 +4237,7 @@ Calculates all the subsets of a set.
 ---
 
 #### XOR (`cyberchef_xor`)
+
 XOR the input with the given key.
 e.g. fe023da5
 
@@ -3995,6 +4259,7 @@ Scheme:Standard - key is unchanged after each roundInput differential - key is s
 ---
 
 #### XOR Brute Force (`cyberchef_xor_brute_force`)
+
 Enumerate all possible XOR solutions. Current maximum key length is 2 due to browser performance.
 
 Optionally enter a string that you expect to find in the plaintext to filter results (crib).
@@ -4017,6 +4282,7 @@ Optionally enter a string that you expect to find in the plaintext to filter res
 ---
 
 #### OR (`cyberchef_or`)
+
 OR the input with the given key.
 e.g. fe023da5
 
@@ -4031,6 +4297,7 @@ e.g. fe023da5
 ---
 
 #### NOT (`cyberchef_not`)
+
 Returns the inverse of each byte.
 
 **Example:**
@@ -4041,6 +4308,7 @@ Returns the inverse of each byte.
 ---
 
 #### AND (`cyberchef_and`)
+
 AND the input with the given key.
 e.g. fe023da5
 
@@ -4055,6 +4323,7 @@ e.g. fe023da5
 ---
 
 #### ADD (`cyberchef_add`)
+
 ADD the input with the given key (e.g. fe023da5), MOD 255
 
 **Arguments:**
@@ -4068,6 +4337,7 @@ ADD the input with the given key (e.g. fe023da5), MOD 255
 ---
 
 #### SUB (`cyberchef_sub`)
+
 SUB the input with the given key (e.g. fe023da5), MOD 255
 
 **Arguments:**
@@ -4081,6 +4351,7 @@ SUB the input with the given key (e.g. fe023da5), MOD 255
 ---
 
 #### Sum (`cyberchef_sum`)
+
 Adds together a list of numbers. If an item in the string is not a number it is excluded from the list.
 
 e.g. 0x0a 8 .5 becomes 18.5
@@ -4096,6 +4367,7 @@ e.g. 0x0a 8 .5 becomes 18.5
 ---
 
 #### Subtract (`cyberchef_subtract`)
+
 Subtracts a list of numbers. If an item in the string is not a number it is excluded from the list.
 
 e.g. 0x0a 8 .5 becomes 1.5
@@ -4111,6 +4383,7 @@ e.g. 0x0a 8 .5 becomes 1.5
 ---
 
 #### Multiply (`cyberchef_multiply`)
+
 Multiplies a list of numbers. If an item in the string is not a number it is excluded from the list.
 
 e.g. 0x0a 8 .5 becomes 40
@@ -4126,6 +4399,7 @@ e.g. 0x0a 8 .5 becomes 40
 ---
 
 #### Divide (`cyberchef_divide`)
+
 Divides a list of numbers. If an item in the string is not a number it is excluded from the list.
 
 e.g. 0x0a 8 .5 becomes 2.5
@@ -4141,6 +4415,7 @@ e.g. 0x0a 8 .5 becomes 2.5
 ---
 
 #### Mean (`cyberchef_mean`)
+
 Computes the mean (average) of a number list. If an item in the string is not a number it is excluded from the list.
 
 e.g. 0x0a 8 .5 .5 becomes 4.75
@@ -4156,6 +4431,7 @@ e.g. 0x0a 8 .5 .5 becomes 4.75
 ---
 
 #### Median (`cyberchef_median`)
+
 Computes the median of a number list. If an item in the string is not a number it is excluded from the list.
 
 e.g. 0x0a 8 1 .5 becomes 4.5
@@ -4171,6 +4447,7 @@ e.g. 0x0a 8 1 .5 becomes 4.5
 ---
 
 #### Standard Deviation (`cyberchef_standard_deviation`)
+
 Computes the standard deviation of a number list. If an item in the string is not a number it is excluded from the list.
 
 e.g. 0x0a 8 .5 becomes 4.089281382128433
@@ -4186,6 +4463,7 @@ e.g. 0x0a 8 .5 becomes 4.089281382128433
 ---
 
 #### Bit shift left (`cyberchef_bit_shift_left`)
+
 Shifts the bits in each byte towards the left by the specified amount.
 
 **Arguments:**
@@ -4199,6 +4477,7 @@ Shifts the bits in each byte towards the left by the specified amount.
 ---
 
 #### Bit shift right (`cyberchef_bit_shift_right`)
+
 Shifts the bits in each byte towards the right by the specified amount.
 
 Logical shifts replace the leftmost bits with zeros.
@@ -4216,6 +4495,7 @@ Arithmetic shifts preserve the most significant bit (MSB) of the original byte k
 ---
 
 #### Rotate left (`cyberchef_rotate_left`)
+
 Rotates each byte to the left by the number of bits specified, optionally carrying the excess bits over to the next byte. Currently only supports 8-bit values.
 
 **Arguments:**
@@ -4230,6 +4510,7 @@ Rotates each byte to the left by the number of bits specified, optionally carryi
 ---
 
 #### Rotate right (`cyberchef_rotate_right`)
+
 Rotates each byte to the right by the number of bits specified, optionally carrying the excess bits over to the next byte. Currently only supports 8-bit values.
 
 **Arguments:**
@@ -4244,6 +4525,7 @@ Rotates each byte to the right by the number of bits specified, optionally carry
 ---
 
 #### ROT13 (`cyberchef_rot13`)
+
 A simple caesar substitution cipher which rotates alphabet characters by the specified amount (default 13).
 
 **Arguments:**
@@ -4260,6 +4542,7 @@ A simple caesar substitution cipher which rotates alphabet characters by the spe
 ---
 
 #### ROT8000 (`cyberchef_rot8000`)
+
 The simple Caesar-cypher encryption that replaces each Unicode character with the one 0x8000 places forward or back along the alphabet.
 
 **Example:**
@@ -4272,6 +4555,7 @@ The simple Caesar-cypher encryption that replaces each Unicode character with th
 ### Networking
 
 #### HTTP request (`cyberchef_http_request`)
+
 Makes an HTTP request and returns the response.
 
 
@@ -4301,6 +4585,7 @@ The status code of the response, along with a limited selection of exposed heade
 ---
 
 #### DNS over HTTPS (`cyberchef_dns_over_https`)
+
 Takes a single domain name and performs a DNS lookup using DNS over HTTPS.
 
 
@@ -4325,6 +4610,7 @@ Can be used with any service that supports the GET parameters name and type.
 ---
 
 #### Strip HTTP headers (`cyberchef_strip_http_headers`)
+
 Removes HTTP headers from a request or response by looking for the first instance of a double newline.
 
 **Example:**
@@ -4335,6 +4621,7 @@ Removes HTTP headers from a request or response by looking for the first instanc
 ---
 
 #### Dechunk HTTP response (`cyberchef_dechunk_http_response`)
+
 Parses an HTTP response transferred using Transfer-Encoding: Chunked
 
 **Example:**
@@ -4345,6 +4632,7 @@ Parses an HTTP response transferred using Transfer-Encoding: Chunked
 ---
 
 #### Parse User Agent (`cyberchef_parse_user_agent`)
+
 Attempts to identify and categorise information contained in a user-agent string.
 
 **Example:**
@@ -4355,6 +4643,7 @@ Attempts to identify and categorise information contained in a user-agent string
 ---
 
 #### Parse IP range (`cyberchef_parse_ip_range`)
+
 Given a CIDR range (e.g. 10.0.0.0/24), hyphenated range (e.g. 10.0.0.0 - 10.0.1.0), or a list of IPs and/or CIDR ranges (separated by a new line), this operation provides network information and enumerates all IP addresses in the range.
 
 IPv6 is supported but will not be enumerated.
@@ -4372,6 +4661,7 @@ IPv6 is supported but will not be enumerated.
 ---
 
 #### Parse IPv6 address (`cyberchef_parse_ipv6_address`)
+
 Displays the longhand and shorthand versions of a valid IPv6 address.
 
 Recognises all reserved ranges and parses encapsulated or tunnelled addresses including Teredo and 6to4.
@@ -4384,6 +4674,7 @@ Recognises all reserved ranges and parses encapsulated or tunnelled addresses in
 ---
 
 #### IPv6 Transition Addresses (`cyberchef_ipv6_transition_addresses`)
+
 Converts IPv4 addresses to their IPv6 Transition addresses. IPv6 Transition addresses can also be converted back into their original IPv4 address. MAC addresses can also be converted into the EUI-64 format, this can them be appended to your IPv6 /64 range to obtain a full /128 address.
 
 Transition technologies enable translation between IPv4 and IPv6 addresses or tunneling to allow traffic to pass through the incompatible network, allowing the two standards to coexist.
@@ -4402,6 +4693,7 @@ Only /24 ranges and currently handled. Remove headers to easily copy out results
 ---
 
 #### Parse IPv4 header (`cyberchef_parse_ipv4_header`)
+
 Given an IPv4 header, this operations parses and displays each field in an easily readable format.
 
 **Arguments:**
@@ -4415,6 +4707,7 @@ Given an IPv4 header, this operations parses and displays each field in an easil
 ---
 
 #### Strip IPv4 header (`cyberchef_strip_ipv4_header`)
+
 Strips the IPv4 header from an IPv4 packet, outputting the payload.
 
 **Example:**
@@ -4425,6 +4718,7 @@ Strips the IPv4 header from an IPv4 packet, outputting the payload.
 ---
 
 #### Parse TCP (`cyberchef_parse_tcp`)
+
 Parses a TCP header and payload (if present).
 
 **Arguments:**
@@ -4438,6 +4732,7 @@ Parses a TCP header and payload (if present).
 ---
 
 #### Strip TCP header (`cyberchef_strip_tcp_header`)
+
 Strips the TCP header from a TCP segment, outputting the payload.
 
 **Example:**
@@ -4448,6 +4743,7 @@ Strips the TCP header from a TCP segment, outputting the payload.
 ---
 
 #### Parse TLS record (`cyberchef_parse_tls_record`)
+
 Parses one or more TLS records
 
 **Example:**
@@ -4458,6 +4754,7 @@ Parses one or more TLS records
 ---
 
 #### Parse UDP (`cyberchef_parse_udp`)
+
 Parses a UDP header and payload (if present).
 
 **Arguments:**
@@ -4471,6 +4768,7 @@ Parses a UDP header and payload (if present).
 ---
 
 #### Strip UDP header (`cyberchef_strip_udp_header`)
+
 Strips the UDP header from a UDP datagram, outputting the payload.
 
 **Example:**
@@ -4481,6 +4779,7 @@ Strips the UDP header from a UDP datagram, outputting the payload.
 ---
 
 #### Parse SSH Host Key (`cyberchef_parse_ssh_host_key`)
+
 Parses a SSH host key and extracts fields from it.
 The key type can be:ssh-rsassh-dssecdsa-sha2ssh-ed25519The key format can be either Hex or Base64.
 
@@ -4495,6 +4794,7 @@ The key type can be:ssh-rsassh-dssecdsa-sha2ssh-ed25519The key format can be eit
 ---
 
 #### Parse URI (`cyberchef_parse_uri`)
+
 Pretty prints complicated Uniform Resource Identifier (URI) strings for ease of reading. Particularly useful for Uniform Resource Locators (URLs) with a lot of arguments.
 
 **Example:**
@@ -4505,6 +4805,7 @@ Pretty prints complicated Uniform Resource Identifier (URI) strings for ease of 
 ---
 
 #### URL Encode (`cyberchef_url_encode`)
+
 Encodes problematic characters into percent-encoding, a format supported by URIs/URLs.
 
 e.g. = becomes %3d
@@ -4520,6 +4821,7 @@ e.g. = becomes %3d
 ---
 
 #### URL Decode (`cyberchef_url_decode`)
+
 Converts URI/URL percent-encoded characters back to their raw values.
 
 e.g. %3d becomes =
@@ -4535,6 +4837,7 @@ e.g. %3d becomes =
 ---
 
 #### Protobuf Decode (`cyberchef_protobuf_decode`)
+
 Decodes any Protobuf encoded data to a JSON representation of the data using the field number as the field key.
 
 If a .proto schema is defined, the encoded data will be decoded with reference to the schema. Only one message instance will be decoded. 
@@ -4558,6 +4861,7 @@ Show the type of a field next to its name. For undefined fields, the wiretype an
 ---
 
 #### Protobuf Encode (`cyberchef_protobuf_encode`)
+
 Encodes a valid JSON object into a protobuf byte array using the input .proto schema.
 
 **Arguments:**
@@ -4571,6 +4875,7 @@ Encodes a valid JSON object into a protobuf byte array using the input .proto sc
 ---
 
 #### VarInt Encode (`cyberchef_varint_encode`)
+
 Encodes a Vn integer as a VarInt. VarInt is an efficient way of encoding variable length integers and is commonly used with Protobuf.
 
 **Example:**
@@ -4581,6 +4886,7 @@ Encodes a Vn integer as a VarInt. VarInt is an efficient way of encoding variabl
 ---
 
 #### VarInt Decode (`cyberchef_varint_decode`)
+
 Decodes a VarInt encoded integer. VarInt is an efficient way of encoding variable length integers and is commonly used with Protobuf.
 
 **Example:**
@@ -4591,6 +4897,7 @@ Decodes a VarInt encoded integer. VarInt is an efficient way of encoding variabl
 ---
 
 #### JA3 Fingerprint (`cyberchef_ja3_fingerprint`)
+
 Generates a JA3 fingerprint to help identify TLS clients based on hashing together values from the Client Hello.
 
 Input: A hex stream of the TLS Client Hello packet application layer.
@@ -4607,6 +4914,7 @@ Input: A hex stream of the TLS Client Hello packet application layer.
 ---
 
 #### JA3S Fingerprint (`cyberchef_ja3s_fingerprint`)
+
 Generates a JA3S fingerprint to help identify TLS servers based on hashing together values from the Server Hello.
 
 Input: A hex stream of the TLS Server Hello record application layer.
@@ -4623,6 +4931,7 @@ Input: A hex stream of the TLS Server Hello record application layer.
 ---
 
 #### JA4 Fingerprint (`cyberchef_ja4_fingerprint`)
+
 Generates a JA4 fingerprint to help identify TLS clients based on hashing together values from the Client Hello.
 
 Input: A hex stream of the TLS or QUIC Client Hello packet application layer.
@@ -4639,6 +4948,7 @@ Input: A hex stream of the TLS or QUIC Client Hello packet application layer.
 ---
 
 #### JA4Server Fingerprint (`cyberchef_ja4server_fingerprint`)
+
 Generates a JA4Server Fingerprint (JA4S) to help identify TLS servers or sessions based on hashing together values from the Server Hello.
 
 Input: A hex stream of the TLS or QUIC Server Hello packet application layer.
@@ -4655,6 +4965,7 @@ Input: A hex stream of the TLS or QUIC Server Hello packet application layer.
 ---
 
 #### HASSH Client Fingerprint (`cyberchef_hassh_client_fingerprint`)
+
 Generates a HASSH fingerprint to help identify SSH clients based on hashing together values from the Client Key Exchange Init message.
 
 Input: A hex stream of the SSH_MSG_KEXINIT packet application layer from Client to Server.
@@ -4671,6 +4982,7 @@ Input: A hex stream of the SSH_MSG_KEXINIT packet application layer from Client 
 ---
 
 #### HASSH Server Fingerprint (`cyberchef_hassh_server_fingerprint`)
+
 Generates a HASSH fingerprint to help identify SSH servers based on hashing together values from the Server Key Exchange Init message.
 
 Input: A hex stream of the SSH_MSG_KEXINIT packet application layer from Server to Client.
@@ -4687,6 +4999,7 @@ Input: A hex stream of the SSH_MSG_KEXINIT packet application layer from Server 
 ---
 
 #### Format MAC addresses (`cyberchef_format_mac_addresses`)
+
 Displays given MAC addresses in multiple different formats.
 
 Expects addresses in a list separated by newlines, spaces or commas.
@@ -4709,6 +5022,7 @@ WARNING: There are no validity checks.
 ---
 
 #### Change IP format (`cyberchef_change_ip_format`)
+
 Convert an IP address from one format to another, e.g. 172.20.23.54 to ac141736
 
 **Arguments:**
@@ -4723,6 +5037,7 @@ Convert an IP address from one format to another, e.g. 172.20.23.54 to ac141736
 ---
 
 #### Group IP addresses (`cyberchef_group_ip_addresses`)
+
 Groups a list of IP addresses into subnets. Supports both IPv4 and IPv6 addresses.
 
 **Arguments:**
@@ -4738,6 +5053,7 @@ Groups a list of IP addresses into subnets. Supports both IPv4 and IPv6 addresse
 ---
 
 #### Encode NetBIOS Name (`cyberchef_encode_netbios_name`)
+
 NetBIOS names as seen across the client interface to NetBIOS are exactly 16 bytes long. Within the NetBIOS-over-TCP protocols, a longer representation is used.
 
 There are two levels of encoding. The first level maps a NetBIOS name into a domain system name.  The second level maps the domain system name into the 'compressed' representation required for interaction with the domain name system.
@@ -4755,6 +5071,7 @@ This operation carries out the first level of encoding. See RFC 1001 for full de
 ---
 
 #### Decode NetBIOS Name (`cyberchef_decode_netbios_name`)
+
 NetBIOS names as seen across the client interface to NetBIOS are exactly 16 bytes long. Within the NetBIOS-over-TCP protocols, a longer representation is used.
 
 There are two levels of encoding. The first level maps a NetBIOS name into a domain system name.  The second level maps the domain system name into the 'compressed' representation required for interaction with the domain name system.
@@ -4772,6 +5089,7 @@ This operation decodes the first level of encoding. See RFC 1001 for full detail
 ---
 
 #### Defang URL (`cyberchef_defang_url`)
+
 Takes a Universal Resource Locator (URL) and 'Defangs' it; meaning the URL becomes invalid, neutralising the risk of accidentally clicking on a malicious link.
 
 This is often used when dealing with malicious links or IOCs.
@@ -4792,6 +5110,7 @@ Works well when combined with the 'Extract URLs' operation.
 ---
 
 #### Fang URL (`cyberchef_fang_url`)
+
 Takes a 'Defanged' Universal Resource Locator (URL) and 'Fangs' it. Meaning, it removes the alterations (defanged) that render it useless so that it can be used again.
 
 **Arguments:**
@@ -4807,6 +5126,7 @@ Takes a 'Defanged' Universal Resource Locator (URL) and 'Fangs' it. Meaning, it 
 ---
 
 #### Defang IP Addresses (`cyberchef_defang_ip_addresses`)
+
 Takes a IPv4 or IPv6 address and 'Defangs' it, meaning the IP becomes invalid, removing the risk of accidentally utilising it as an IP address.
 
 **Example:**
@@ -4819,6 +5139,7 @@ Takes a IPv4 or IPv6 address and 'Defangs' it, meaning the IP becomes invalid, r
 ### Language
 
 #### Encode text (`cyberchef_encode_text`)
+
 Encodes text into the chosen character encoding.
 
 
@@ -4990,6 +5311,7 @@ Simplified Chinese GB18030 (54936)
 ---
 
 #### Decode text (`cyberchef_decode_text`)
+
 Decodes text from the chosen character encoding.
 
 
@@ -5161,6 +5483,7 @@ Simplified Chinese GB18030 (54936)
 ---
 
 #### Unicode Text Format (`cyberchef_unicode_text_format`)
+
 Adds Unicode combining characters to change formatting of plaintext.
 
 **Arguments:**
@@ -5175,6 +5498,7 @@ Adds Unicode combining characters to change formatting of plaintext.
 ---
 
 #### Remove Diacritics (`cyberchef_remove_diacritics`)
+
 Replaces accented characters with their latin character equivalent. Accented characters are made up of Unicode combining characters, so unicode text formatting such as strikethroughs and underlines will also be removed.
 
 **Example:**
@@ -5185,6 +5509,7 @@ Replaces accented characters with their latin character equivalent. Accented cha
 ---
 
 #### Unescape Unicode Characters (`cyberchef_unescape_unicode_characters`)
+
 Converts unicode-escaped character notation back into raw characters.
 
 Supports the prefixes:\u%uU+e.g. \u03c3\u03bf\u03c5 becomes σου
@@ -5200,6 +5525,7 @@ Supports the prefixes:\u%uU+e.g. \u03c3\u03bf\u03c5 becomes σου
 ---
 
 #### Convert to NATO alphabet (`cyberchef_convert_to_nato_alphabet`)
+
 Converts characters to their representation in the NATO phonetic alphabet.
 
 **Example:**
@@ -5210,6 +5536,7 @@ Converts characters to their representation in the NATO phonetic alphabet.
 ---
 
 #### Convert Leet Speak (`cyberchef_convert_leet_speak`)
+
 Converts to and from Leet Speak.
 
 **Arguments:**
@@ -5225,6 +5552,7 @@ Converts to and from Leet Speak.
 ### Utils
 
 #### Diff (`cyberchef_diff`)
+
 Compares two inputs (separated by the specified delimiter) and highlights the differences between them.
 
 **Arguments:**
@@ -5243,6 +5571,7 @@ Compares two inputs (separated by the specified delimiter) and highlights the di
 ---
 
 #### Remove whitespace (`cyberchef_remove_whitespace`)
+
 Optionally removes all spaces, carriage returns, line feeds, tabs and form feeds from the input data.
 
 This operation also supports the removal of full stops which are sometimes used to represent non-printable bytes in ASCII output.
@@ -5263,6 +5592,7 @@ This operation also supports the removal of full stops which are sometimes used 
 ---
 
 #### Remove null bytes (`cyberchef_remove_null_bytes`)
+
 Removes all null bytes (0x00) from the input.
 
 **Example:**
@@ -5273,6 +5603,7 @@ Removes all null bytes (0x00) from the input.
 ---
 
 #### To Upper case (`cyberchef_to_upper_case`)
+
 Converts the input string to upper case, optionally limiting scope to only the first character in each word, sentence or paragraph.
 
 **Arguments:**
@@ -5286,6 +5617,7 @@ Converts the input string to upper case, optionally limiting scope to only the f
 ---
 
 #### To Lower case (`cyberchef_to_lower_case`)
+
 Converts every character in the input to lower case.
 
 **Example:**
@@ -5296,6 +5628,7 @@ Converts every character in the input to lower case.
 ---
 
 #### Swap case (`cyberchef_swap_case`)
+
 Converts uppercase letters to lowercase ones, and lowercase ones to uppercase ones.
 
 **Example:**
@@ -5306,6 +5639,7 @@ Converts uppercase letters to lowercase ones, and lowercase ones to uppercase on
 ---
 
 #### Alternating Caps (`cyberchef_alternating_caps`)
+
 Alternating caps, also known as studly caps, sticky caps, or spongecase is a form of text notation in which the capitalization of letters varies by some pattern, or arbitrarily. An example of this would be spelling 'alternative caps' as 'aLtErNaTiNg CaPs'.
 
 **Example:**
@@ -5316,6 +5650,7 @@ Alternating caps, also known as studly caps, sticky caps, or spongecase is a for
 ---
 
 #### To Case Insensitive Regex (`cyberchef_to_case_insensitive_regex`)
+
 Converts a case-sensitive regex string into a case-insensitive regex string in case the i flag is unavailable to you.
 
 e.g. Mozilla/[0-9].[0-9] .* becomes [mM][oO][zZ][iI][lL][lL][aA]/[0-9].[0-9] .*
@@ -5328,6 +5663,7 @@ e.g. Mozilla/[0-9].[0-9] .* becomes [mM][oO][zZ][iI][lL][lL][aA]/[0-9].[0-9] .*
 ---
 
 #### From Case Insensitive Regex (`cyberchef_from_case_insensitive_regex`)
+
 Converts a case-insensitive regex string to a case sensitive regex string (no guarantee on it being the proper original casing) in case the i flag wasn't available at the time but now is, or you need it to be case-sensitive again.
 
 e.g. [mM][oO][zZ][iI][lL][lL][aA]/[0-9].[0-9] .* becomes Mozilla/[0-9].[0-9] .*
@@ -5340,6 +5676,7 @@ e.g. [mM][oO][zZ][iI][lL][lL][aA]/[0-9].[0-9] .* becomes Mozilla/[0-9].[0-9] .*
 ---
 
 #### Add line numbers (`cyberchef_add_line_numbers`)
+
 Adds line numbers to the output.
 
 **Arguments:**
@@ -5353,6 +5690,7 @@ Adds line numbers to the output.
 ---
 
 #### Remove line numbers (`cyberchef_remove_line_numbers`)
+
 Removes line numbers from the output if they can be trivially detected.
 
 **Example:**
@@ -5363,6 +5701,7 @@ Removes line numbers from the output if they can be trivially detected.
 ---
 
 #### Get All Casings (`cyberchef_get_all_casings`)
+
 Outputs all possible casing variations of a string.
 
 **Example:**
@@ -5373,6 +5712,7 @@ Outputs all possible casing variations of a string.
 ---
 
 #### To Table (`cyberchef_to_table`)
+
 Data can be split on different characters and rendered as an HTML, ASCII or Markdown table with an optional header row.
 
 Supports the CSV (Comma Separated Values) file format by default. Change the cell delimiter argument to \t to support TSV (Tab Separated Values) or | for PSV (Pipe Separated Values).
@@ -5393,6 +5733,7 @@ You can enter as many delimiters as you like. Each character will be treat as a 
 ---
 
 #### Reverse (`cyberchef_reverse`)
+
 Reverses the input string.
 
 **Arguments:**
@@ -5406,6 +5747,7 @@ Reverses the input string.
 ---
 
 #### Sort (`cyberchef_sort`)
+
 Alphabetically sorts strings separated by the specified delimiter.
 
 The IP address option supports IPv4 only.
@@ -5423,6 +5765,7 @@ The IP address option supports IPv4 only.
 ---
 
 #### Shuffle (`cyberchef_shuffle`)
+
 Randomly reorders input elements.
 
 **Arguments:**
@@ -5436,6 +5779,7 @@ Randomly reorders input elements.
 ---
 
 #### Unique (`cyberchef_unique`)
+
 Removes duplicate strings from the input.
 
 **Arguments:**
@@ -5450,6 +5794,7 @@ Removes duplicate strings from the input.
 ---
 
 #### Split (`cyberchef_split`)
+
 Splits a string into sections around a given delimiter.
 
 **Arguments:**
@@ -5464,6 +5809,7 @@ Splits a string into sections around a given delimiter.
 ---
 
 #### Filter (`cyberchef_filter`)
+
 Splits up the input using the specified delimiter and then filters each branch based on a regular expression.
 
 **Arguments:**
@@ -5479,6 +5825,7 @@ Splits up the input using the specified delimiter and then filters each branch b
 ---
 
 #### Head (`cyberchef_head`)
+
 Like the UNIX head utility.
 Gets the first n lines.
 You can select all but the last n lines by entering a negative value for n.
@@ -5496,6 +5843,7 @@ The delimiter can be changed so that instead of lines, fields (i.e. commas) are 
 ---
 
 #### Tail (`cyberchef_tail`)
+
 Like the UNIX tail utility.
 Gets the last n lines.
 Optionally you can select all lines after line n by entering a negative value for n.
@@ -5513,6 +5861,7 @@ The delimiter can be changed so that instead of lines, fields (i.e. commas) are 
 ---
 
 #### Count occurrences (`cyberchef_count_occurrences`)
+
 Counts the number of times the provided string occurs in the input.
 
 **Arguments:**
@@ -5526,6 +5875,7 @@ Counts the number of times the provided string occurs in the input.
 ---
 
 #### Expand alphabet range (`cyberchef_expand_alphabet_range`)
+
 Expand an alphabet range string into a list of the characters in that range.
 
 e.g. a-z becomes abcdefghijklmnopqrstuvwxyz.
@@ -5541,6 +5891,7 @@ e.g. a-z becomes abcdefghijklmnopqrstuvwxyz.
 ---
 
 #### Drop bytes (`cyberchef_drop_bytes`)
+
 Cuts a slice of the specified number of bytes out of the data. Negative values are allowed.
 
 **Arguments:**
@@ -5556,6 +5907,7 @@ Cuts a slice of the specified number of bytes out of the data. Negative values a
 ---
 
 #### Take bytes (`cyberchef_take_bytes`)
+
 Takes a slice of the specified number of bytes from the data. Negative values are allowed.
 
 **Arguments:**
@@ -5571,6 +5923,7 @@ Takes a slice of the specified number of bytes from the data. Negative values ar
 ---
 
 #### Pad lines (`cyberchef_pad_lines`)
+
 Add the specified number of the specified character to the beginning or end of each line
 
 **Arguments:**
@@ -5586,6 +5939,7 @@ Add the specified number of the specified character to the beginning or end of e
 ---
 
 #### Find / Replace (`cyberchef_find_replace`)
+
 Replaces all occurrences of the first string with the second.
 
 Includes support for regular expressions (regex), simple strings and extended strings (which support \n, \r, \t, \b, \f and escaped hex bytes using \x notation, e.g. \x00 for a null byte).
@@ -5606,6 +5960,7 @@ Includes support for regular expressions (regex), simple strings and extended st
 ---
 
 #### Regular expression (`cyberchef_regular_expression`)
+
 Define your own regular expression (regex) to search the input data with, optionally choosing from a list of pre-defined patterns.
 
 Supports extended regex syntax including the 'dot matches all' flag, named capture groups, full unicode coverage (including \p{} categories and scripts as well as astral codes) and recursive matching.
@@ -5629,6 +5984,7 @@ Supports extended regex syntax including the 'dot matches all' flag, named captu
 ---
 
 #### Fuzzy Match (`cyberchef_fuzzy_match`)
+
 Conducts a fuzzy search to find a pattern within the input based on weighted criteria.
 
 e.g. A search for dpan will match on Don't Panic
@@ -5651,6 +6007,7 @@ e.g. A search for dpan will match on Don't Panic
 ---
 
 #### Offset checker (`cyberchef_offset_checker`)
+
 Compares multiple inputs (separated by the specified delimiter) and highlights matching characters which appear at the same position in all samples.
 
 **Arguments:**
@@ -5664,6 +6021,7 @@ Compares multiple inputs (separated by the specified delimiter) and highlights m
 ---
 
 #### Hamming Distance (`cyberchef_hamming_distance`)
+
 In information theory, the Hamming distance between two strings of equal length is the number of positions at which the corresponding symbols are different. In other words, it measures the minimum number of substitutions required to change one string into the other, or the minimum number of errors that could have transformed one string into the other. In a more general context, the Hamming distance is one of several string metrics for measuring the edit distance between two sequences.
 
 **Arguments:**
@@ -5679,6 +6037,7 @@ In information theory, the Hamming distance between two strings of equal length 
 ---
 
 #### Levenshtein Distance (`cyberchef_levenshtein_distance`)
+
 Levenshtein Distance (also known as Edit Distance) is a string metric to measure a difference between two strings that counts operations (insertions, deletions, and substitutions) on single character that are required to change one string to another.
 
 **Arguments:**
@@ -5695,6 +6054,7 @@ Levenshtein Distance (also known as Edit Distance) is a string metric to measure
 ---
 
 #### Convert distance (`cyberchef_convert_distance`)
+
 Converts a unit of distance to another format.
 
 **Arguments:**
@@ -5709,6 +6069,7 @@ Converts a unit of distance to another format.
 ---
 
 #### Convert area (`cyberchef_convert_area`)
+
 Converts a unit of area to another format.
 
 **Arguments:**
@@ -5723,6 +6084,7 @@ Converts a unit of area to another format.
 ---
 
 #### Convert mass (`cyberchef_convert_mass`)
+
 Converts a unit of mass to another format.
 
 **Arguments:**
@@ -5737,6 +6099,7 @@ Converts a unit of mass to another format.
 ---
 
 #### Convert speed (`cyberchef_convert_speed`)
+
 Converts a unit of speed to another format.
 
 **Arguments:**
@@ -5751,6 +6114,7 @@ Converts a unit of speed to another format.
 ---
 
 #### Convert data units (`cyberchef_convert_data_units`)
+
 Converts a unit of data to another format.
 
 **Arguments:**
@@ -5765,6 +6129,7 @@ Converts a unit of data to another format.
 ---
 
 #### Convert co-ordinate format (`cyberchef_convert_co_ordinate_format`)
+
 Converts geographical coordinates between different formats.
 
 Supported formats:Degrees Minutes Seconds (DMS)Degrees Decimal Minutes (DDM)Decimal Degrees (DD)GeohashMilitary Grid Reference System (MGRS)Ordnance Survey National Grid (OSNG)Universal Transverse Mercator (UTM)
@@ -5786,6 +6151,7 @@ The operation can try to detect the input co-ordinate format and delimiter autom
 ---
 
 #### Show on map (`cyberchef_show_on_map`)
+
 Displays co-ordinates on a slippy map.
 
 Co-ordinates will be converted to decimal degrees before being shown on the map.
@@ -5806,6 +6172,7 @@ This operation will not work offline.
 ---
 
 #### Parse UNIX file permissions (`cyberchef_parse_unix_file_permissions`)
+
 Given a UNIX/Linux file permission string in octal or textual format, this operation explains which permissions are granted to which user groups.
 
 Input should be in either octal (e.g. 755) or textual (e.g. drwxr-xr-x) format.
@@ -5818,6 +6185,7 @@ Input should be in either octal (e.g. 755) or textual (e.g. drwxr-xr-x) format.
 ---
 
 #### Parse ObjectID timestamp (`cyberchef_parse_objectid_timestamp`)
+
 Parse timestamp from MongoDB/BSON ObjectID hex string.
 
 **Example:**
@@ -5828,6 +6196,7 @@ Parse timestamp from MongoDB/BSON ObjectID hex string.
 ---
 
 #### Swap endianness (`cyberchef_swap_endianness`)
+
 Switches the data from big-endian to little-endian or vice-versa. Data can be read in as hexadecimal or raw bytes. It will be returned in the same format as it is entered.
 
 **Arguments:**
@@ -5843,6 +6212,7 @@ Switches the data from big-endian to little-endian or vice-versa. Data can be re
 ---
 
 #### Parse colour code (`cyberchef_parse_colour_code`)
+
 Converts a colour code in a standard format to other standard formats and displays the colour itself.
 
 Example inputs#d9edf7rgba(217,237,247,1)hsla(200,65%,91%,1)cmyk(0.12, 0.04, 0.00, 0.03)
@@ -5855,6 +6225,7 @@ Example inputs#d9edf7rgba(217,237,247,1)hsla(200,65%,91%,1)cmyk(0.12, 0.04, 0.00
 ---
 
 #### Escape string (`cyberchef_escape_string`)
+
 Escapes special characters in a string so that they do not cause conflicts. For example, Don't stop me now becomes Don\'t stop me now.
 
 Supports the following escape sequences:\n (Line feed/newline)\r (Carriage return)\t (Horizontal tab)\b (Backspace)\f (Form feed)\xnn (Hex, where n is 0-f)\\ (Backslash)\' (Single quote)\&quot; (Double quote)\unnnn (Unicode character)\u{nnnnnn} (Unicode code point)
@@ -5874,6 +6245,7 @@ Supports the following escape sequences:\n (Line feed/newline)\r (Carriage retur
 ---
 
 #### Unescape string (`cyberchef_unescape_string`)
+
 Unescapes characters in a string that have been escaped. For example, Don\'t stop me now becomes Don't stop me now.
 
 Supports the following escape sequences:\n (Line feed/newline)\r (Carriage return)\t (Horizontal tab)\b (Backspace)\f (Form feed)\nnn (Octal, where n is 0-7)\xnn (Hex, where n is 0-f)\\ (Backslash)\' (Single quote)\&quot; (Double quote)\unnnn (Unicode character)\u{nnnnnn} (Unicode code point)
@@ -5886,6 +6258,7 @@ Supports the following escape sequences:\n (Line feed/newline)\r (Carriage retur
 ---
 
 #### Pseudo-Random Number Generator (`cyberchef_pseudo_random_number_generator`)
+
 A cryptographically-secure pseudo-random number generator (PRNG).
 
 This operation uses the browser's built-in crypto.getRandomValues() method if available. If this cannot be found, it falls back to a Fortuna-based PRNG algorithm.
@@ -5902,6 +6275,7 @@ This operation uses the browser's built-in crypto.getRandomValues() method if av
 ---
 
 #### Sleep (`cyberchef_sleep`)
+
 Sleep causes the recipe to wait for a specified number of milliseconds before continuing execution.
 
 **Arguments:**
@@ -5915,6 +6289,7 @@ Sleep causes the recipe to wait for a specified number of milliseconds before co
 ---
 
 #### File Tree (`cyberchef_file_tree`)
+
 Creates a file tree from a list of file paths (similar to the tree command in Linux)
 
 **Arguments:**
@@ -5929,6 +6304,7 @@ Creates a file tree from a list of file paths (similar to the tree command in Li
 ---
 
 #### Take nth bytes (`cyberchef_take_nth_bytes`)
+
 Takes every nth byte starting with a given byte.
 
 **Arguments:**
@@ -5944,6 +6320,7 @@ Takes every nth byte starting with a given byte.
 ---
 
 #### Drop nth bytes (`cyberchef_drop_nth_bytes`)
+
 Drops every nth byte starting with a given byte.
 
 **Arguments:**
@@ -5961,6 +6338,7 @@ Drops every nth byte starting with a given byte.
 ### Date / Time
 
 #### Parse DateTime (`cyberchef_parse_datetime`)
+
 Parses a DateTime string in your specified format and displays it in whichever timezone you choose with the following information:DateTimePeriod (AM/PM)TimezoneUTC offsetDaylight Saving TimeLeap yearDays in this monthDay of yearWeek numberQuarterRun with no input to see format string examples if required.
 
 **Arguments:**
@@ -5976,6 +6354,7 @@ Parses a DateTime string in your specified format and displays it in whichever t
 ---
 
 #### Translate DateTime Format (`cyberchef_translate_datetime_format`)
+
 Parses a datetime string in one format and re-writes it in another.
 
 Run with no input to see the relevant format string examples.
@@ -5995,6 +6374,7 @@ Run with no input to see the relevant format string examples.
 ---
 
 #### From UNIX Timestamp (`cyberchef_from_unix_timestamp`)
+
 Converts a UNIX timestamp to a datetime string.
 
 e.g. 978346800 becomes Mon 1 January 2001 11:00:00 UTC
@@ -6012,6 +6392,7 @@ A UNIX timestamp is a 32-bit value representing the number of seconds since Janu
 ---
 
 #### To UNIX Timestamp (`cyberchef_to_unix_timestamp`)
+
 Parses a datetime string in UTC and returns the corresponding UNIX timestamp.
 
 e.g. Mon 1 January 2001 11:00:00 becomes 978346800
@@ -6031,6 +6412,7 @@ A UNIX timestamp is a 32-bit value representing the number of seconds since Janu
 ---
 
 #### Windows Filetime to UNIX Timestamp (`cyberchef_windows_filetime_to_unix_timestamp`)
+
 Converts a Windows Filetime value to a UNIX timestamp.
 
 A Windows Filetime is a 64-bit value representing the number of 100-nanosecond intervals since January 1, 1601 UTC.
@@ -6051,6 +6433,7 @@ This operation also supports UNIX timestamps in milliseconds, microseconds and n
 ---
 
 #### UNIX Timestamp to Windows Filetime (`cyberchef_unix_timestamp_to_windows_filetime`)
+
 Converts a UNIX timestamp to a Windows Filetime value.
 
 A Windows Filetime is a 64-bit value representing the number of 100-nanosecond intervals since January 1, 1601 UTC.
@@ -6071,6 +6454,7 @@ This operation also supports UNIX timestamps in milliseconds, microseconds and n
 ---
 
 #### DateTime Delta (`cyberchef_datetime_delta`)
+
 Calculates a new DateTime value given an input DateTime value and a time difference (delta) from the input DateTime value.
 
 **Arguments:**
@@ -6090,6 +6474,7 @@ Calculates a new DateTime value given an input DateTime value and a time differe
 ---
 
 #### Extract dates (`cyberchef_extract_dates`)
+
 Extracts dates in the following formatsyyyy-mm-dddd/mm/yyyymm/dd/yyyyDividers can be any of /, -, . or space
 
 **Arguments:**
@@ -6103,6 +6488,7 @@ Extracts dates in the following formatsyyyy-mm-dddd/mm/yyyymm/dd/yyyyDividers ca
 ---
 
 #### Get Time (`cyberchef_get_time`)
+
 Generates a timestamp showing the amount of time since the UNIX epoch (1970-01-01 00:00:00 UTC). Uses the W3C High Resolution Time API.
 
 **Arguments:**
@@ -6116,6 +6502,7 @@ Generates a timestamp showing the amount of time since the UNIX epoch (1970-01-0
 ---
 
 #### Sleep (`cyberchef_sleep`)
+
 Sleep causes the recipe to wait for a specified number of milliseconds before continuing execution.
 
 **Arguments:**
@@ -6131,6 +6518,7 @@ Sleep causes the recipe to wait for a specified number of milliseconds before co
 ### Extractors
 
 #### Strings (`cyberchef_strings`)
+
 Extracts all strings from the input.
 
 **Arguments:**
@@ -6149,6 +6537,7 @@ Extracts all strings from the input.
 ---
 
 #### Extract IP addresses (`cyberchef_extract_ip_addresses`)
+
 Extracts all IPv4 and IPv6 addresses.
 
 Warning: Given a string 1.2.3.4.5.6.7.8, this will match 1.2.3.4 and 5.6.7.8 so always check the original input!
@@ -6169,6 +6558,7 @@ Warning: Given a string 1.2.3.4.5.6.7.8, this will match 1.2.3.4 and 5.6.7.8 so 
 ---
 
 #### Extract email addresses (`cyberchef_extract_email_addresses`)
+
 Extracts all email addresses from the input.
 
 **Arguments:**
@@ -6184,6 +6574,7 @@ Extracts all email addresses from the input.
 ---
 
 #### Extract MAC addresses (`cyberchef_extract_mac_addresses`)
+
 Extracts all Media Access Control (MAC) addresses from the input.
 
 **Arguments:**
@@ -6199,6 +6590,7 @@ Extracts all Media Access Control (MAC) addresses from the input.
 ---
 
 #### Extract URLs (`cyberchef_extract_urls`)
+
 Extracts Uniform Resource Locators (URLs) from the input. The protocol (http, ftp etc.) is required otherwise there will be far too many false positives.
 
 **Arguments:**
@@ -6214,6 +6606,7 @@ Extracts Uniform Resource Locators (URLs) from the input. The protocol (http, ft
 ---
 
 #### Extract domains (`cyberchef_extract_domains`)
+
 Extracts fully qualified domain names.
 Note that this will not include paths. Use Extract URLs to find entire URLs.
 
@@ -6231,6 +6624,7 @@ Note that this will not include paths. Use Extract URLs to find entire URLs.
 ---
 
 #### Extract file paths (`cyberchef_extract_file_paths`)
+
 Extracts anything that looks like a Windows or UNIX file path.
 
 Note that if UNIX is selected, there will likely be a lot of false positives.
@@ -6250,6 +6644,7 @@ Note that if UNIX is selected, there will likely be a lot of false positives.
 ---
 
 #### Extract dates (`cyberchef_extract_dates`)
+
 Extracts dates in the following formatsyyyy-mm-dddd/mm/yyyymm/dd/yyyyDividers can be any of /, -, . or space
 
 **Arguments:**
@@ -6263,6 +6658,7 @@ Extracts dates in the following formatsyyyy-mm-dddd/mm/yyyymm/dd/yyyyDividers ca
 ---
 
 #### Extract hashes (`cyberchef_extract_hashes`)
+
 Extracts potential hashes based on hash character length
 
 **Arguments:**
@@ -6278,6 +6674,7 @@ Extracts potential hashes based on hash character length
 ---
 
 #### Regular expression (`cyberchef_regular_expression`)
+
 Define your own regular expression (regex) to search the input data with, optionally choosing from a list of pre-defined patterns.
 
 Supports extended regex syntax including the 'dot matches all' flag, named capture groups, full unicode coverage (including \p{} categories and scripts as well as astral codes) and recursive matching.
@@ -6301,6 +6698,7 @@ Supports extended regex syntax including the 'dot matches all' flag, named captu
 ---
 
 #### XPath expression (`cyberchef_xpath_expression`)
+
 Extract information from an XML document with an XPath query
 
 **Arguments:**
@@ -6315,6 +6713,7 @@ Extract information from an XML document with an XPath query
 ---
 
 #### JPath expression (`cyberchef_jpath_expression`)
+
 Extract information from a JSON object with a JPath query.
 
 **Arguments:**
@@ -6329,6 +6728,7 @@ Extract information from a JSON object with a JPath query.
 ---
 
 #### Jsonata Query (`cyberchef_jsonata_query`)
+
 Query and transform JSON data with a jsonata query.
 
 **Arguments:**
@@ -6342,6 +6742,7 @@ Query and transform JSON data with a jsonata query.
 ---
 
 #### CSS selector (`cyberchef_css_selector`)
+
 Extract information from an HTML document with a CSS selector
 
 **Arguments:**
@@ -6356,6 +6757,7 @@ Extract information from an HTML document with a CSS selector
 ---
 
 #### Extract EXIF (`cyberchef_extract_exif`)
+
 Extracts EXIF data from an image.
 
 
@@ -6374,6 +6776,7 @@ EXIF data from photos usually contains information about the image file itself a
 ---
 
 #### Extract ID3 (`cyberchef_extract_id3`)
+
 This operation extracts ID3 metadata from an MP3 file.
 
 ID3 is a metadata container most often used in conjunction with the MP3 audio file format. It allows information such as the title, artist, album, track number, and other information about the file to be stored in the file itself.
@@ -6386,6 +6789,7 @@ ID3 is a metadata container most often used in conjunction with the MP3 audio fi
 ---
 
 #### Extract Files (`cyberchef_extract_files`)
+
 Performs file carving to attempt to extract files from the input.
 
 This operation is currently capable of carving out the following formats:
@@ -6414,6 +6818,7 @@ This operation is currently capable of carving out the following formats:
 ---
 
 #### RAKE (`cyberchef_rake`)
+
 Rapid Keyword Extraction (RAKE)
 
 
@@ -6437,6 +6842,7 @@ The list of stop words are from the NLTK python package
 ---
 
 #### Template (`cyberchef_template`)
+
 Render a template with Handlebars/Mustache substituting variables using JSON input. Templates will be rendered to plain-text only, to prevent XSS.
 
 **Arguments:**
@@ -6452,6 +6858,7 @@ Render a template with Handlebars/Mustache substituting variables using JSON inp
 ### Compression
 
 #### Raw Deflate (`cyberchef_raw_deflate`)
+
 Compresses data using the deflate algorithm with no headers.
 
 **Arguments:**
@@ -6465,6 +6872,7 @@ Compresses data using the deflate algorithm with no headers.
 ---
 
 #### Raw Inflate (`cyberchef_raw_inflate`)
+
 Decompresses data which has been compressed using the deflate algorithm with no headers.
 
 **Arguments:**
@@ -6482,6 +6890,7 @@ Decompresses data which has been compressed using the deflate algorithm with no 
 ---
 
 #### Zlib Deflate (`cyberchef_zlib_deflate`)
+
 Compresses data using the deflate algorithm adding zlib headers.
 
 **Arguments:**
@@ -6495,6 +6904,7 @@ Compresses data using the deflate algorithm adding zlib headers.
 ---
 
 #### Zlib Inflate (`cyberchef_zlib_inflate`)
+
 Decompresses data which has been compressed using the deflate algorithm with zlib headers.
 
 **Arguments:**
@@ -6512,6 +6922,7 @@ Decompresses data which has been compressed using the deflate algorithm with zli
 ---
 
 #### Gzip (`cyberchef_gzip`)
+
 Compresses data using the deflate algorithm with gzip headers.
 
 **Arguments:**
@@ -6528,6 +6939,7 @@ Compresses data using the deflate algorithm with gzip headers.
 ---
 
 #### Gunzip (`cyberchef_gunzip`)
+
 Decompresses data which has been compressed using the deflate algorithm with gzip headers.
 
 **Example:**
@@ -6538,6 +6950,7 @@ Decompresses data which has been compressed using the deflate algorithm with gzi
 ---
 
 #### Zip (`cyberchef_zip`)
+
 Compresses data using the PKZIP algorithm with the given filename.
 
 No support for multiple files at this time.
@@ -6558,6 +6971,7 @@ No support for multiple files at this time.
 ---
 
 #### Unzip (`cyberchef_unzip`)
+
 Decompresses data using the PKZIP algorithm and displays it per file, with support for passwords.
 
 **Arguments:**
@@ -6572,6 +6986,7 @@ Decompresses data using the PKZIP algorithm and displays it per file, with suppo
 ---
 
 #### Bzip2 Decompress (`cyberchef_bzip2_decompress`)
+
 Decompresses data using the Bzip2 algorithm.
 
 **Arguments:**
@@ -6585,6 +7000,7 @@ Decompresses data using the Bzip2 algorithm.
 ---
 
 #### Bzip2 Compress (`cyberchef_bzip2_compress`)
+
 Bzip2 is a compression library developed by Julian Seward (of GHC fame) that uses the Burrows-Wheeler algorithm. It only supports compressing single files and its compression is slow, however is more effective than Deflate (.gz & .zip).
 
 **Arguments:**
@@ -6599,6 +7015,7 @@ Bzip2 is a compression library developed by Julian Seward (of GHC fame) that use
 ---
 
 #### Tar (`cyberchef_tar`)
+
 Packs the input into a tarball.
 
 No support for multiple files at this time.
@@ -6614,6 +7031,7 @@ No support for multiple files at this time.
 ---
 
 #### Untar (`cyberchef_untar`)
+
 Unpacks a tarball and displays it per file.
 
 **Example:**
@@ -6624,6 +7042,7 @@ Unpacks a tarball and displays it per file.
 ---
 
 #### LZString Decompress (`cyberchef_lzstring_decompress`)
+
 Decompresses data that was compressed with lz-string.
 
 **Arguments:**
@@ -6637,6 +7056,7 @@ Decompresses data that was compressed with lz-string.
 ---
 
 #### LZString Compress (`cyberchef_lzstring_compress`)
+
 Compress the input with lz-string.
 
 **Arguments:**
@@ -6650,6 +7070,7 @@ Compress the input with lz-string.
 ---
 
 #### LZMA Decompress (`cyberchef_lzma_decompress`)
+
 Decompresses data using the Lempel-Ziv-Markov chain Algorithm.
 
 **Example:**
@@ -6660,6 +7081,7 @@ Decompresses data using the Lempel-Ziv-Markov chain Algorithm.
 ---
 
 #### LZMA Compress (`cyberchef_lzma_compress`)
+
 Compresses data using the Lempel–Ziv–Markov chain algorithm. Compression mode determines the speed and effectiveness of the compression: 1 is fastest and less effective, 9 is slowest and most effective
 
 **Arguments:**
@@ -6673,6 +7095,7 @@ Compresses data using the Lempel–Ziv–Markov chain algorithm. Compression mod
 ---
 
 #### LZ4 Decompress (`cyberchef_lz4_decompress`)
+
 LZ4 is a lossless data compression algorithm that is focused on compression and decompression speed. It belongs to the LZ77 family of byte-oriented compression schemes.
 
 **Example:**
@@ -6683,6 +7106,7 @@ LZ4 is a lossless data compression algorithm that is focused on compression and 
 ---
 
 #### LZ4 Compress (`cyberchef_lz4_compress`)
+
 LZ4 is a lossless data compression algorithm that is focused on compression and decompression speed. It belongs to the LZ77 family of byte-oriented compression schemes.
 
 **Example:**
@@ -6693,6 +7117,7 @@ LZ4 is a lossless data compression algorithm that is focused on compression and 
 ---
 
 #### LZNT1 Decompress (`cyberchef_lznt1_decompress`)
+
 Decompresses data using the LZNT1 algorithm.
 
 Similar to the Windows API RtlDecompressBuffer.
@@ -6707,6 +7132,7 @@ Similar to the Windows API RtlDecompressBuffer.
 ### Hashing
 
 #### Analyse hash (`cyberchef_analyse_hash`)
+
 Tries to determine information about a given hash and suggests which algorithm may have been used to generate it based on its length.
 
 **Example:**
@@ -6717,6 +7143,7 @@ Tries to determine information about a given hash and suggests which algorithm m
 ---
 
 #### Generate all checksums (`cyberchef_generate_all_checksums`)
+
 Generates all available checksums for the input.
 
 **Arguments:**
@@ -6731,6 +7158,7 @@ Generates all available checksums for the input.
 ---
 
 #### Generate all hashes (`cyberchef_generate_all_hashes`)
+
 Generates all available hashes and checksums for the input.
 
 **Arguments:**
@@ -6745,6 +7173,7 @@ Generates all available hashes and checksums for the input.
 ---
 
 #### MD2 (`cyberchef_md2`)
+
 The MD2 (Message-Digest 2) algorithm is a cryptographic hash function developed by Ronald Rivest in 1989. The algorithm is optimized for 8-bit computers.
 
 Although MD2 is no longer considered secure, even as of 2014, it remains in use in public key infrastructures as part of certificates generated with MD2 and RSA. The message digest algorithm consists, by default, of 18 rounds.
@@ -6760,6 +7189,7 @@ Although MD2 is no longer considered secure, even as of 2014, it remains in use 
 ---
 
 #### MD4 (`cyberchef_md4`)
+
 The MD4 (Message-Digest 4) algorithm is a cryptographic hash function developed by Ronald Rivest in 1990. The digest length is 128 bits. The algorithm has influenced later designs, such as the MD5, SHA-1 and RIPEMD algorithms.
 
 The security of MD4 has been severely compromised.
@@ -6772,6 +7202,7 @@ The security of MD4 has been severely compromised.
 ---
 
 #### MD5 (`cyberchef_md5`)
+
 MD5 (Message-Digest 5) is a widely used hash function. It has been used in a variety of security applications and is also commonly used to check the integrity of files.
 
 However, MD5 is not collision resistant and it isn't suitable for applications like SSL/TLS certificates or digital signatures that rely on this property.
@@ -6784,6 +7215,7 @@ However, MD5 is not collision resistant and it isn't suitable for applications l
 ---
 
 #### MD6 (`cyberchef_md6`)
+
 The MD6 (Message-Digest 6) algorithm is a cryptographic hash function. It uses a Merkle tree-like structure to allow for immense parallel computation of hashes for very long inputs.
 
 **Arguments:**
@@ -6799,6 +7231,7 @@ The MD6 (Message-Digest 6) algorithm is a cryptographic hash function. It uses a
 ---
 
 #### SHA0 (`cyberchef_sha0`)
+
 SHA-0 is a retronym applied to the original version of the 160-bit hash function published in 1993 under the name 'SHA'. It was withdrawn shortly after publication due to an undisclosed 'significant flaw' and replaced by the slightly revised version SHA-1. The message digest algorithm consists, by default, of 80 rounds.
 
 **Arguments:**
@@ -6812,6 +7245,7 @@ SHA-0 is a retronym applied to the original version of the 160-bit hash function
 ---
 
 #### SHA1 (`cyberchef_sha1`)
+
 The SHA (Secure Hash Algorithm) hash functions were designed by the NSA. SHA-1 is the most established of the existing SHA hash functions and it is used in a variety of security applications and protocols.
 
 However, SHA-1's collision resistance has been weakening as new attacks are discovered or improved. The message digest algorithm consists, by default, of 80 rounds.
@@ -6827,6 +7261,7 @@ However, SHA-1's collision resistance has been weakening as new attacks are disc
 ---
 
 #### SHA2 (`cyberchef_sha2`)
+
 The SHA-2 (Secure Hash Algorithm 2) hash functions were designed by the NSA. SHA-2 includes significant changes from its predecessor, SHA-1. The SHA-2 family consists of hash functions with digests (hash values) that are 224, 256, 384 or 512 bits: SHA224, SHA256, SHA384, SHA512.
 
 SHA-512 operates on 64-bit words.SHA-256 operates on 32-bit words.SHA-384 is largely identical to SHA-512 but is truncated to 384 bytes.SHA-224 is largely identical to SHA-256 but is truncated to 224 bytes.SHA-512/224 and SHA-512/256 are truncated versions of SHA-512, but the initial values are generated using the method described in Federal Information Processing Standards (FIPS) PUB 180-4. The message digest algorithm for SHA256 variants consists, by default, of 64 rounds, and for SHA512 variants, it is, by default, 160.
@@ -6844,6 +7279,7 @@ SHA-512 operates on 64-bit words.SHA-256 operates on 32-bit words.SHA-384 is lar
 ---
 
 #### SHA3 (`cyberchef_sha3`)
+
 The SHA-3 (Secure Hash Algorithm 3) hash functions were released by NIST on August 5, 2015. Although part of the same series of standards, SHA-3 is internally quite different from the MD5-like structure of SHA-1 and SHA-2.
 
 SHA-3 is a subset of the broader cryptographic primitive family Keccak designed by Guido Bertoni, Joan Daemen, Michaël Peeters, and Gilles Van Assche, building upon RadioGatún.
@@ -6859,6 +7295,7 @@ SHA-3 is a subset of the broader cryptographic primitive family Keccak designed 
 ---
 
 #### SM3 (`cyberchef_sm3`)
+
 SM3 is a cryptographic hash function used in the Chinese National Standard. SM3 is mainly used in digital signatures, message authentication codes, and pseudorandom number generators. The message digest algorithm consists, by default, of 64 rounds and length of 256.
 
 **Arguments:**
@@ -6873,6 +7310,7 @@ SM3 is a cryptographic hash function used in the Chinese National Standard. SM3 
 ---
 
 #### Keccak (`cyberchef_keccak`)
+
 The Keccak hash algorithm was designed by Guido Bertoni, Joan Daemen, Michaël Peeters, and Gilles Van Assche, building upon RadioGatún. It was selected as the winner of the SHA-3 design competition.
 
 This version of the algorithm is Keccak[c=2d] and differs from the SHA-3 specification.
@@ -6888,6 +7326,7 @@ This version of the algorithm is Keccak[c=2d] and differs from the SHA-3 specifi
 ---
 
 #### Shake (`cyberchef_shake`)
+
 Shake is an Extendable Output Function (XOF) of the SHA-3 hash algorithm, part of the Keccak family, allowing for variable output length/size.
 
 **Arguments:**
@@ -6902,6 +7341,7 @@ Shake is an Extendable Output Function (XOF) of the SHA-3 hash algorithm, part o
 ---
 
 #### RIPEMD (`cyberchef_ripemd`)
+
 RIPEMD (RACE Integrity Primitives Evaluation Message Digest) is a family of cryptographic hash functions developed in Leuven, Belgium, by Hans Dobbertin, Antoon Bosselaers and Bart Preneel at the COSIC research group at the Katholieke Universiteit Leuven, and first published in 1996.
 
 RIPEMD was based upon the design principles used in MD4, and is similar in performance to the more popular SHA-1.
@@ -6919,6 +7359,7 @@ RIPEMD was based upon the design principles used in MD4, and is similar in perfo
 ---
 
 #### HAS-160 (`cyberchef_has_160`)
+
 HAS-160 is a cryptographic hash function designed for use with the Korean KCDSA digital signature algorithm. It is derived from SHA-1, with assorted changes intended to increase its security. It produces a 160-bit output.
 
 HAS-160 is used in the same way as SHA-1. First it divides input in blocks of 512 bits each and pads the final block. A digest function updates the intermediate hash value by processing the input blocks in turn.
@@ -6936,6 +7377,7 @@ The message digest algorithm consists, by default, of 80 rounds.
 ---
 
 #### Whirlpool (`cyberchef_whirlpool`)
+
 Whirlpool is a cryptographic hash function designed by Vincent Rijmen (co-creator of AES) and Paulo S. L. M. Barreto, who first described it in 2000.
 
 Several variants exist:Whirlpool-0 is the original version released in 2000.Whirlpool-T is the first revision, released in 2001, improving the generation of the s-box.Whirlpool is the latest revision, released in 2003, fixing a flaw in the diffusion matrix.
@@ -6952,6 +7394,7 @@ Several variants exist:Whirlpool-0 is the original version released in 2000.Whir
 ---
 
 #### Snefru (`cyberchef_snefru`)
+
 Snefru is a cryptographic hash function invented by Ralph Merkle in 1990 while working at Xerox PARC. The function supports 128-bit and 256-bit output. It was named after the Egyptian Pharaoh Sneferu, continuing the tradition of the Khufu and Khafre block ciphers.
 
 The original design of Snefru was shown to be insecure by Eli Biham and Adi Shamir who were able to use differential cryptanalysis to find hash collisions. The design was then modified by increasing the number of iterations of the main pass of the algorithm from two to eight.
@@ -6968,6 +7411,7 @@ The original design of Snefru was shown to be insecure by Eli Biham and Adi Sham
 ---
 
 #### BLAKE2b (`cyberchef_blake2b`)
+
 Performs BLAKE2b hashing on the input.  
         
 
@@ -6989,6 +7433,7 @@ Performs BLAKE2b hashing on the input.
 ---
 
 #### BLAKE2s (`cyberchef_blake2s`)
+
 Performs BLAKE2s hashing on the input.  
         
 
@@ -7010,6 +7455,7 @@ Supports the use of an optional key.
 ---
 
 #### BLAKE3 (`cyberchef_blake3`)
+
 Hashes the input using BLAKE3 (UTF-8 encoded), with an optional key (also UTF-8), and outputs the result in hexadecimal format.
 
 **Arguments:**
@@ -7024,6 +7470,7 @@ Hashes the input using BLAKE3 (UTF-8 encoded), with an optional key (also UTF-8)
 ---
 
 #### GOST Hash (`cyberchef_gost_hash`)
+
 The GOST hash function, defined in the standards GOST R 34.11-94 and GOST 34.311-95 is a 256-bit cryptographic hash function. It was initially defined in the Russian national standard GOST R 34.11-94 Information Technology – Cryptographic Information Security – Hash Function. The equivalent standard used by other member-states of the CIS is GOST 34.311-95.
 
 This function must not be confused with a different Streebog hash function, which is defined in the new revision of the standard GOST R 34.11-2012.
@@ -7043,6 +7490,7 @@ The GOST hash function is based on the GOST block cipher.
 ---
 
 #### Streebog (`cyberchef_streebog`)
+
 Streebog is a cryptographic hash function defined in the Russian national standard GOST R 34.11-2012 Information Technology – Cryptographic Information Security – Hash Function. It was created to replace an obsolete GOST hash function defined in the old standard GOST R 34.11-94, and as an asymmetric reply to SHA-3 competition by the US National Institute of Standards and Technology.
 
 **Arguments:**
@@ -7056,6 +7504,7 @@ Streebog is a cryptographic hash function defined in the Russian national standa
 ---
 
 #### SSDEEP (`cyberchef_ssdeep`)
+
 SSDEEP is a program for computing context triggered piecewise hashes (CTPH). Also called fuzzy hashes, CTPH can match inputs that have homologies. Such inputs have sequences of identical bytes in the same order, although bytes in between these sequences may be different in both content and length.
 
 SSDEEP hashes are now widely used for simple identification purposes (e.g. the 'Basic Properties' section in VirusTotal). Although 'better' fuzzy hashes are available, SSDEEP is still one of the primary choices because of its speed and being a de facto standard.
@@ -7070,6 +7519,7 @@ This operation is fundamentally the same as the CTPH operation, however their ou
 ---
 
 #### CTPH (`cyberchef_ctph`)
+
 Context Triggered Piecewise Hashing, also called Fuzzy Hashing, can match inputs that have homologies. Such inputs have sequences of identical bytes in the same order, although bytes in between these sequences may be different in both content and length.
 
 CTPH was originally based on the work of Dr. Andrew Tridgell and a spam email detector called SpamSum. This method was adapted by Jesse Kornblum and published at the DFRWS conference in 2006 in a paper 'Identifying Almost Identical Files Using Context Triggered Piecewise Hashing'.
@@ -7082,6 +7532,7 @@ CTPH was originally based on the work of Dr. Andrew Tridgell and a spam email de
 ---
 
 #### Compare SSDEEP hashes (`cyberchef_compare_ssdeep_hashes`)
+
 Compares two SSDEEP fuzzy hashes to determine the similarity between them on a scale of 0 to 100.
 
 **Arguments:**
@@ -7095,6 +7546,7 @@ Compares two SSDEEP fuzzy hashes to determine the similarity between them on a s
 ---
 
 #### Compare CTPH hashes (`cyberchef_compare_ctph_hashes`)
+
 Compares two Context Triggered Piecewise Hashing (CTPH) fuzzy hashes to determine the similarity between them on a scale of 0 to 100.
 
 **Arguments:**
@@ -7108,6 +7560,7 @@ Compares two Context Triggered Piecewise Hashing (CTPH) fuzzy hashes to determin
 ---
 
 #### HMAC (`cyberchef_hmac`)
+
 Keyed-Hash Message Authentication Codes (HMAC) are a mechanism for message authentication using cryptographic hash functions.
 
 **Arguments:**
@@ -7122,6 +7575,7 @@ Keyed-Hash Message Authentication Codes (HMAC) are a mechanism for message authe
 ---
 
 #### CMAC (`cyberchef_cmac`)
+
 CMAC is a block-cipher based message authentication code algorithm.
 
 RFC4493 defines AES-CMAC that uses AES encryption with a 128-bit key.
@@ -7139,6 +7593,7 @@ NIST SP 800-38B suggests usages of AES with other key lengths and Triple DES.
 ---
 
 #### Bcrypt (`cyberchef_bcrypt`)
+
 bcrypt is a password hashing function designed by Niels Provos and David Mazières, based on the Blowfish cipher, and presented at USENIX in 1999. Besides incorporating a salt to protect against rainbow table attacks, bcrypt is an adaptive function: over time, the iteration count (rounds) can be increased to make it slower, so it remains resistant to brute-force search attacks even with increasing computation power.
 
 Enter the password in the input to generate its hash.
@@ -7154,6 +7609,7 @@ Enter the password in the input to generate its hash.
 ---
 
 #### Bcrypt compare (`cyberchef_bcrypt_compare`)
+
 Tests whether the input matches the given bcrypt hash. To test multiple possible passwords, use the 'Fork' operation.
 
 **Arguments:**
@@ -7167,6 +7623,7 @@ Tests whether the input matches the given bcrypt hash. To test multiple possible
 ---
 
 #### Bcrypt parse (`cyberchef_bcrypt_parse`)
+
 Parses a bcrypt hash to determine the number of rounds used, the salt, and the password hash.
 
 **Example:**
@@ -7177,6 +7634,7 @@ Parses a bcrypt hash to determine the number of rounds used, the salt, and the p
 ---
 
 #### Argon2 (`cyberchef_argon2`)
+
 Argon2 is a key derivation function that was selected as the winner of the Password Hashing Competition in July 2015. It was designed by Alex Biryukov, Daniel Dinu, and Dmitry Khovratovich from the University of Luxembourg.
 
 Enter the password in the input to generate its hash.
@@ -7198,6 +7656,7 @@ Enter the password in the input to generate its hash.
 ---
 
 #### Argon2 compare (`cyberchef_argon2_compare`)
+
 Tests whether the input matches the given Argon2 hash. To test multiple possible passwords, use the 'Fork' operation.
 
 **Arguments:**
@@ -7211,6 +7670,7 @@ Tests whether the input matches the given Argon2 hash. To test multiple possible
 ---
 
 #### Scrypt (`cyberchef_scrypt`)
+
 scrypt is a password-based key derivation function (PBKDF) created by Colin Percival. The algorithm was specifically designed to make it costly to perform large-scale custom hardware attacks by requiring large amounts of memory. In 2016, the scrypt algorithm was published by IETF as RFC 7914.
 
 Enter the password in the input to generate its hash.
@@ -7230,6 +7690,7 @@ Enter the password in the input to generate its hash.
 ---
 
 #### NT Hash (`cyberchef_nt_hash`)
+
 An NT Hash, sometimes referred to as an NTLM hash, is a method of storing passwords on Windows systems. It works by running MD4 on UTF-16LE encoded input. NTLM hashes are considered weak because they can be brute-forced very easily with modern hardware.
 
 **Example:**
@@ -7240,6 +7701,7 @@ An NT Hash, sometimes referred to as an NTLM hash, is a method of storing passwo
 ---
 
 #### LM Hash (`cyberchef_lm_hash`)
+
 An LM Hash, or LAN Manager Hash, is a deprecated way of storing passwords on old Microsoft operating systems. It is particularly weak and can be cracked in seconds on modern hardware using rainbow tables.
 
 **Example:**
@@ -7250,6 +7712,7 @@ An LM Hash, or LAN Manager Hash, is a deprecated way of storing passwords on old
 ---
 
 #### MurmurHash3 (`cyberchef_murmurhash3`)
+
 Generates a MurmurHash v3 for a string input and an optional seed input
 
 **Arguments:**
@@ -7264,6 +7727,7 @@ Generates a MurmurHash v3 for a string input and an optional seed input
 ---
 
 #### Fletcher-8 Checksum (`cyberchef_fletcher_8_checksum`)
+
 The Fletcher checksum is an algorithm for computing a position-dependent checksum devised by John Gould Fletcher at Lawrence Livermore Labs in the late 1970s.
 
 The objective of the Fletcher checksum was to provide error-detection properties approaching those of a cyclic redundancy check but with the lower computational effort associated with summation techniques.
@@ -7276,6 +7740,7 @@ The objective of the Fletcher checksum was to provide error-detection properties
 ---
 
 #### Fletcher-16 Checksum (`cyberchef_fletcher_16_checksum`)
+
 The Fletcher checksum is an algorithm for computing a position-dependent checksum devised by John Gould Fletcher at Lawrence Livermore Labs in the late 1970s.
 
 The objective of the Fletcher checksum was to provide error-detection properties approaching those of a cyclic redundancy check but with the lower computational effort associated with summation techniques.
@@ -7288,6 +7753,7 @@ The objective of the Fletcher checksum was to provide error-detection properties
 ---
 
 #### Fletcher-32 Checksum (`cyberchef_fletcher_32_checksum`)
+
 The Fletcher checksum is an algorithm for computing a position-dependent checksum devised by John Gould Fletcher at Lawrence Livermore Labs in the late 1970s.
 
 The objective of the Fletcher checksum was to provide error-detection properties approaching those of a cyclic redundancy check but with the lower computational effort associated with summation techniques.
@@ -7300,6 +7766,7 @@ The objective of the Fletcher checksum was to provide error-detection properties
 ---
 
 #### Fletcher-64 Checksum (`cyberchef_fletcher_64_checksum`)
+
 The Fletcher checksum is an algorithm for computing a position-dependent checksum devised by John Gould Fletcher at Lawrence Livermore Labs in the late 1970s.
 
 The objective of the Fletcher checksum was to provide error-detection properties approaching those of a cyclic redundancy check but with the lower computational effort associated with summation techniques.
@@ -7312,6 +7779,7 @@ The objective of the Fletcher checksum was to provide error-detection properties
 ---
 
 #### Adler-32 Checksum (`cyberchef_adler_32_checksum`)
+
 Adler-32 is a checksum algorithm which was invented by Mark Adler in 1995, and is a modification of the Fletcher checksum. Compared to a cyclic redundancy check of the same length, it trades reliability for speed (preferring the latter).
 
 Adler-32 is more reliable than Fletcher-16, and slightly less reliable than Fletcher-32.
@@ -7324,6 +7792,7 @@ Adler-32 is more reliable than Fletcher-16, and slightly less reliable than Flet
 ---
 
 #### Luhn Checksum (`cyberchef_luhn_checksum`)
+
 The Luhn mod N algorithm using the english alphabet. The Luhn mod N algorithm is an extension to the Luhn algorithm (also known as mod 10 algorithm) that allows it to work with sequences of values in any even-numbered base. This can be useful when a check digit is required to validate an identification string composed of letters, a combination of letters and digits or any arbitrary set of N characters where N is divisible by 2.
 
 **Arguments:**
@@ -7337,6 +7806,7 @@ The Luhn mod N algorithm using the english alphabet. The Luhn mod N algorithm is
 ---
 
 #### CRC Checksum (`cyberchef_crc_checksum`)
+
 A Cyclic Redundancy Check (CRC) is an error-detecting code commonly used in digital networks and storage devices to detect accidental changes to raw data.
 
 **Arguments:**
@@ -7356,6 +7826,7 @@ A Cyclic Redundancy Check (CRC) is an error-detecting code commonly used in digi
 ---
 
 #### TCP/IP Checksum (`cyberchef_tcp_ip_checksum`)
+
 Calculates the checksum for a TCP (Transport Control Protocol) or IP (Internet Protocol) header from an input of raw bytes.
 
 **Example:**
@@ -7366,6 +7837,7 @@ Calculates the checksum for a TCP (Transport Control Protocol) or IP (Internet P
 ---
 
 #### XOR Checksum (`cyberchef_xor_checksum`)
+
 XOR Checksum splits the input into blocks of a configurable size and performs the XOR operation on these blocks.
 
 **Arguments:**
@@ -7381,6 +7853,7 @@ XOR Checksum splits the input into blocks of a configurable size and performs th
 ### Code tidy
 
 #### Syntax highlighter (`cyberchef_syntax_highlighter`)
+
 Adds syntax highlighting to a range of source code languages. Note that this will not indent the code. Use one of the 'Beautify' operations for that.
 
 **Arguments:**
@@ -7394,6 +7867,7 @@ Adds syntax highlighting to a range of source code languages. Note that this wil
 ---
 
 #### Generic Code Beautify (`cyberchef_generic_code_beautify`)
+
 Attempts to pretty print C-style languages such as C, C++, C#, Java, PHP, JavaScript etc.
 
 This will not do a perfect job, and the resulting code may not work any more. This operation is designed purely to make obfuscated or minified code more easy to read and understand.
@@ -7408,6 +7882,7 @@ Things which will not work properly:For loop formattingDo-While loop formattingS
 ---
 
 #### JavaScript Parser (`cyberchef_javascript_parser`)
+
 Returns an Abstract Syntax Tree for valid JavaScript code.
 
 **Arguments:**
@@ -7425,6 +7900,7 @@ Returns an Abstract Syntax Tree for valid JavaScript code.
 ---
 
 #### JavaScript Beautify (`cyberchef_javascript_beautify`)
+
 Parses and pretty prints valid JavaScript code. Also works with JavaScript Object Notation (JSON).
 
 **Arguments:**
@@ -7441,6 +7917,7 @@ Parses and pretty prints valid JavaScript code. Also works with JavaScript Objec
 ---
 
 #### JavaScript Minify (`cyberchef_javascript_minify`)
+
 Compresses JavaScript code.
 
 **Example:**
@@ -7451,6 +7928,7 @@ Compresses JavaScript code.
 ---
 
 #### JSON Beautify (`cyberchef_json_beautify`)
+
 Indents and pretty prints JavaScript Object Notation (JSON) code.
 
 Tags: json viewer, prettify, syntax highlighting
@@ -7468,6 +7946,7 @@ Tags: json viewer, prettify, syntax highlighting
 ---
 
 #### JSON Minify (`cyberchef_json_minify`)
+
 Compresses JavaScript Object Notation (JSON) code.
 
 **Example:**
@@ -7478,6 +7957,7 @@ Compresses JavaScript Object Notation (JSON) code.
 ---
 
 #### XML Beautify (`cyberchef_xml_beautify`)
+
 Indents and prettifies eXtensible Markup Language (XML) code.
 
 **Arguments:**
@@ -7491,6 +7971,7 @@ Indents and prettifies eXtensible Markup Language (XML) code.
 ---
 
 #### XML Minify (`cyberchef_xml_minify`)
+
 Compresses eXtensible Markup Language (XML) code.
 
 **Arguments:**
@@ -7504,6 +7985,7 @@ Compresses eXtensible Markup Language (XML) code.
 ---
 
 #### SQL Beautify (`cyberchef_sql_beautify`)
+
 Indents and prettifies Structured Query Language (SQL) code.
 
 **Arguments:**
@@ -7517,6 +7999,7 @@ Indents and prettifies Structured Query Language (SQL) code.
 ---
 
 #### SQL Minify (`cyberchef_sql_minify`)
+
 Compresses Structured Query Language (SQL) code.
 
 **Example:**
@@ -7527,6 +8010,7 @@ Compresses Structured Query Language (SQL) code.
 ---
 
 #### CSS Beautify (`cyberchef_css_beautify`)
+
 Indents and prettifies Cascading Style Sheets (CSS) code.
 
 **Arguments:**
@@ -7540,6 +8024,7 @@ Indents and prettifies Cascading Style Sheets (CSS) code.
 ---
 
 #### CSS Minify (`cyberchef_css_minify`)
+
 Compresses Cascading Style Sheets (CSS) code.
 
 **Arguments:**
@@ -7553,6 +8038,7 @@ Compresses Cascading Style Sheets (CSS) code.
 ---
 
 #### XPath expression (`cyberchef_xpath_expression`)
+
 Extract information from an XML document with an XPath query
 
 **Arguments:**
@@ -7567,6 +8053,7 @@ Extract information from an XML document with an XPath query
 ---
 
 #### JPath expression (`cyberchef_jpath_expression`)
+
 Extract information from a JSON object with a JPath query.
 
 **Arguments:**
@@ -7581,6 +8068,7 @@ Extract information from a JSON object with a JPath query.
 ---
 
 #### Jq (`cyberchef_jq`)
+
 jq is a lightweight and flexible command-line JSON processor.
 
 **Arguments:**
@@ -7594,6 +8082,7 @@ jq is a lightweight and flexible command-line JSON processor.
 ---
 
 #### CSS selector (`cyberchef_css_selector`)
+
 Extract information from an HTML document with a CSS selector
 
 **Arguments:**
@@ -7608,6 +8097,7 @@ Extract information from an HTML document with a CSS selector
 ---
 
 #### PHP Deserialize (`cyberchef_php_deserialize`)
+
 Deserializes PHP serialized data, outputting keyed arrays as JSON.
 
 This function does not support object tags.
@@ -7630,6 +8120,7 @@ Output valid JSON: JSON doesn't support integers as keys, whereas PHP serializat
 ---
 
 #### PHP Serialize (`cyberchef_php_serialize`)
+
 Performs PHP serialization on JSON data.
 
 This function does not support object tags.
@@ -7649,6 +8140,7 @@ a:3:{i:0;i:5;i:1;s:3:&quot;abc&quot;;i:2;b:1;}
 ---
 
 #### Microsoft Script Decoder (`cyberchef_microsoft_script_decoder`)
+
 Decodes Microsoft Encoded Script files that have been encoded with Microsoft's custom encoding. These are often VBS (Visual Basic Script) files that are encoded and renamed with a '.vbe' extention or JS (JScript) files renamed with a '.jse' extention.
 
 Sample
@@ -7669,6 +8161,7 @@ VScript.Echo(my_msg);
 ---
 
 #### Strip HTML tags (`cyberchef_strip_html_tags`)
+
 Removes all HTML tags from the input.
 
 **Arguments:**
@@ -7683,6 +8176,7 @@ Removes all HTML tags from the input.
 ---
 
 #### Diff (`cyberchef_diff`)
+
 Compares two inputs (separated by the specified delimiter) and highlights the differences between them.
 
 **Arguments:**
@@ -7701,6 +8195,7 @@ Compares two inputs (separated by the specified delimiter) and highlights the di
 ---
 
 #### To Snake case (`cyberchef_to_snake_case`)
+
 Converts the input string to snake case.
 
 
@@ -7726,6 +8221,7 @@ e.g. this_is_snake_case
 ---
 
 #### To Camel case (`cyberchef_to_camel_case`)
+
 Converts the input string to camel case.
 
 
@@ -7751,6 +8247,7 @@ e.g. thisIsCamelCase
 ---
 
 #### To Kebab case (`cyberchef_to_kebab_case`)
+
 Converts the input string to kebab case.
 
 
@@ -7776,6 +8273,7 @@ e.g. this-is-kebab-case
 ---
 
 #### BSON serialise (`cyberchef_bson_serialise`)
+
 BSON is a computer data interchange format used mainly as a data storage and network transfer format in the MongoDB database. It is a binary form for representing simple data structures, associative arrays (called objects or documents in MongoDB), and various data types of specific interest to MongoDB. The name 'BSON' is based on the term JSON and stands for 'Binary JSON'.
 
 Input data should be valid JSON.
@@ -7788,6 +8286,7 @@ Input data should be valid JSON.
 ---
 
 #### BSON deserialise (`cyberchef_bson_deserialise`)
+
 BSON is a computer data interchange format used mainly as a data storage and network transfer format in the MongoDB database. It is a binary form for representing simple data structures, associative arrays (called objects or documents in MongoDB), and various data types of specific interest to MongoDB. The name 'BSON' is based on the term JSON and stands for 'Binary JSON'.
 
 Input data should be in a raw bytes format.
@@ -7800,6 +8299,7 @@ Input data should be in a raw bytes format.
 ---
 
 #### To MessagePack (`cyberchef_to_messagepack`)
+
 Converts JSON to MessagePack encoded byte buffer. MessagePack is a computer data interchange format. It is a binary form for representing simple data structures like arrays and associative arrays.
 
 **Example:**
@@ -7810,6 +8310,7 @@ Converts JSON to MessagePack encoded byte buffer. MessagePack is a computer data
 ---
 
 #### From MessagePack (`cyberchef_from_messagepack`)
+
 Converts MessagePack encoded data to JSON. MessagePack is a computer data interchange format. It is a binary form for representing simple data structures like arrays and associative arrays.
 
 **Example:**
@@ -7820,6 +8321,7 @@ Converts MessagePack encoded data to JSON. MessagePack is a computer data interc
 ---
 
 #### Render Markdown (`cyberchef_render_markdown`)
+
 Renders input Markdown as HTML. HTML rendering is disabled to avoid XSS.
 
 **Arguments:**
@@ -7836,6 +8338,7 @@ Renders input Markdown as HTML. HTML rendering is disabled to avoid XSS.
 ### Forensics
 
 #### Detect File Type (`cyberchef_detect_file_type`)
+
 Attempts to guess the MIME (Multipurpose Internet Mail Extensions) type of the data based on 'magic bytes'.
 
 Currently supports the following file types: 123d, 7z, B64, abcdp, accda, accdb, accde, accdu, ace, ai, aif, aifc, alz, amr, arj, arw, au, auf, avi, axf, bash, bct, bin, bitlocker, bk!, bmp, bplist, bz2, cab, cat, cer, chi, chm, chw, class, com, cr2, crl, crt, crw, crx, db, dbx, deb, der, dex, dll, dmf, dmg, dmp, doc, docx, dot, drv, dwg, dwt, dylib, edb, elf, eot, eps, epub, evt, evtx, exe, f4v, fdb, flac, flv, fon, gif, gpg, gz, hbin, hdr, heic, heif, hqx, ichat, ico, ipmeta, iso, jar, job, jpe, jpeg, jpg, jxr, keychain, kgb, lnk, luac, lzo, lzop, m4a, m4v, mda, mdb, mdbackup, mde, mdi, mdinfo, mdt, midi, mkv, mov, mp3, mp4, mpg, mpo, mrw, msg, msi, nib, o, ocx, ogg, ogm, ogv, ogx, ole2, one, opus, ost, otf, p7b, p7c, p7m, p7s, pab, pdf, pf, pfa, pgd, phar, php, php-s, php3, php4, php5, php7, phps, pht, phtml, pkr, pl, plist, pm, png, pod, pot, ppa, pps, ppt, pptx, prx, ps, psa, psb, psd, psp, pst, pwl, py, pyc, pyd, pyo, pyw, pyz, qtz, raf, rar, rb, registry, rgs, rsa, rtf, scr, sdw, sh, skr, sml, so, sqlite, strings, swf, swz, sys, t, tar, tar.z, tcp, tga, thm, tif, torrent, ttf, txt, udp, utf16le, utf32le, vbx, vhd, vmdk, vsd, vxd, wallet, wasm, wav, wcm, webbookmark, webhistory, webm, webp, wmv, woff, woff2, wp, wp5, wp6, wpd, wpp, xcf, xla, xls, xlsx, xz, zip, zlib.
@@ -7857,6 +8360,7 @@ Currently supports the following file types: 123d, 7z, B64, abcdp, accda, accdb,
 ---
 
 #### Scan for Embedded Files (`cyberchef_scan_for_embedded_files`)
+
 Scans the data for potential embedded files by looking for magic bytes at all offsets. This operation is prone to false positives.
 
 WARNING: Files over about 100KB in size will take a VERY long time to process.
@@ -7878,6 +8382,7 @@ WARNING: Files over about 100KB in size will take a VERY long time to process.
 ---
 
 #### Extract Files (`cyberchef_extract_files`)
+
 Performs file carving to attempt to extract files from the input.
 
 This operation is currently capable of carving out the following formats:
@@ -7906,6 +8411,7 @@ This operation is currently capable of carving out the following formats:
 ---
 
 #### YARA Rules (`cyberchef_yara_rules`)
+
 YARA is a tool developed at VirusTotal, primarily aimed at helping malware researchers to identify and classify malware samples. It matches based on rules specified by the user containing textual or binary patterns and a boolean expression. For help on writing rules, see the YARA documentation.
 
 **Arguments:**
@@ -7925,6 +8431,7 @@ YARA is a tool developed at VirusTotal, primarily aimed at helping malware resea
 ---
 
 #### Remove EXIF (`cyberchef_remove_exif`)
+
 Removes EXIF data from a JPEG image.
 
 
@@ -7939,6 +8446,7 @@ EXIF data embedded in photos usually contains information about the image file i
 ---
 
 #### Extract EXIF (`cyberchef_extract_exif`)
+
 Extracts EXIF data from an image.
 
 
@@ -7957,6 +8465,7 @@ EXIF data from photos usually contains information about the image file itself a
 ---
 
 #### Extract RGBA (`cyberchef_extract_rgba`)
+
 Extracts each pixel's RGBA value in an image. These are sometimes used in Steganography to hide text or data.
 
 **Arguments:**
@@ -7971,6 +8480,7 @@ Extracts each pixel's RGBA value in an image. These are sometimes used in Stegan
 ---
 
 #### View Bit Plane (`cyberchef_view_bit_plane`)
+
 Extracts and displays a bit plane of any given image. These show only a single bit from each pixel, and can be used to hide messages in Steganography.
 
 **Arguments:**
@@ -7985,6 +8495,7 @@ Extracts and displays a bit plane of any given image. These show only a single b
 ---
 
 #### Randomize Colour Palette (`cyberchef_randomize_colour_palette`)
+
 Randomizes each colour in an image's colour palette. This can often reveal text or symbols that were previously a very similar colour to their surroundings, a technique sometimes used in Steganography.
 
 **Arguments:**
@@ -7998,6 +8509,7 @@ Randomizes each colour in an image's colour palette. This can often reveal text 
 ---
 
 #### Extract LSB (`cyberchef_extract_lsb`)
+
 Extracts the Least Significant Bit data from each pixel in an image. This is a common way to hide data in Steganography.
 
 **Arguments:**
@@ -8016,6 +8528,7 @@ Extracts the Least Significant Bit data from each pixel in an image. This is a c
 ---
 
 #### ELF Info (`cyberchef_elf_info`)
+
 Implements readelf-like functionality. This operation will extract the ELF Header, Program Headers, Section Headers and Symbol Table for an ELF file.
 
 **Example:**
@@ -8028,6 +8541,7 @@ Implements readelf-like functionality. This operation will extract the ELF Heade
 ### Multimedia
 
 #### Render Image (`cyberchef_render_image`)
+
 Displays the input as an image. Supports the following formats:
 
 jpg/jpegpnggifwebpbmpico
@@ -8043,6 +8557,7 @@ jpg/jpegpnggifwebpbmpico
 ---
 
 #### Play Media (`cyberchef_play_media`)
+
 Plays the input as audio or video depending on the type.
 
 Tags: sound, movie, mp3, mp4, mov, webm, wav, ogg
@@ -8058,6 +8573,7 @@ Tags: sound, movie, mp3, mp4, mov, webm, wav, ogg
 ---
 
 #### Generate Image (`cyberchef_generate_image`)
+
 Generates an image using the input as pixel values.
 
 **Arguments:**
@@ -8073,6 +8589,7 @@ Generates an image using the input as pixel values.
 ---
 
 #### Optical Character Recognition (`cyberchef_optical_character_recognition`)
+
 Optical character recognition or optical character reader (OCR) is the mechanical or electronic conversion of images of typed, handwritten or printed text into machine-encoded text.
 
 Supported image formats: png, jpg, bmp, pbm.
@@ -8089,6 +8606,7 @@ Supported image formats: png, jpg, bmp, pbm.
 ---
 
 #### Remove EXIF (`cyberchef_remove_exif`)
+
 Removes EXIF data from a JPEG image.
 
 
@@ -8103,6 +8621,7 @@ EXIF data embedded in photos usually contains information about the image file i
 ---
 
 #### Extract EXIF (`cyberchef_extract_exif`)
+
 Extracts EXIF data from an image.
 
 
@@ -8121,6 +8640,7 @@ EXIF data from photos usually contains information about the image file itself a
 ---
 
 #### Split Colour Channels (`cyberchef_split_colour_channels`)
+
 Splits the given image into its red, green and blue colour channels.
 
 **Example:**
@@ -8131,6 +8651,7 @@ Splits the given image into its red, green and blue colour channels.
 ---
 
 #### Rotate Image (`cyberchef_rotate_image`)
+
 Rotates an image by the specified number of degrees.
 
 **Arguments:**
@@ -8144,6 +8665,7 @@ Rotates an image by the specified number of degrees.
 ---
 
 #### Resize Image (`cyberchef_resize_image`)
+
 Resizes an image to the specified width and height values.
 
 **Arguments:**
@@ -8161,6 +8683,7 @@ Resizes an image to the specified width and height values.
 ---
 
 #### Blur Image (`cyberchef_blur_image`)
+
 Applies a blur effect to the image.
 
 Gaussian blur is much slower than fast blur, but produces better results.
@@ -8177,6 +8700,7 @@ Gaussian blur is much slower than fast blur, but produces better results.
 ---
 
 #### Dither Image (`cyberchef_dither_image`)
+
 Apply a dither effect to an image.
 
 **Example:**
@@ -8187,6 +8711,7 @@ Apply a dither effect to an image.
 ---
 
 #### Invert Image (`cyberchef_invert_image`)
+
 Invert the colours of an image.
 
 **Example:**
@@ -8197,6 +8722,7 @@ Invert the colours of an image.
 ---
 
 #### Flip Image (`cyberchef_flip_image`)
+
 Flips an image along its X or Y axis.
 
 **Arguments:**
@@ -8210,6 +8736,7 @@ Flips an image along its X or Y axis.
 ---
 
 #### Crop Image (`cyberchef_crop_image`)
+
 Crops an image to the specified region, or automatically crops edges.
 
 Autocrop
@@ -8246,6 +8773,7 @@ The number of pixels of border to leave around the image.
 ---
 
 #### Image Brightness / Contrast (`cyberchef_image_brightness_contrast`)
+
 Adjust the brightness or contrast of an image.
 
 **Arguments:**
@@ -8260,6 +8788,7 @@ Adjust the brightness or contrast of an image.
 ---
 
 #### Image Opacity (`cyberchef_image_opacity`)
+
 Adjust the opacity of an image.
 
 **Arguments:**
@@ -8273,6 +8802,7 @@ Adjust the opacity of an image.
 ---
 
 #### Image Filter (`cyberchef_image_filter`)
+
 Applies a greyscale or sepia filter to an image.
 
 **Arguments:**
@@ -8286,6 +8816,7 @@ Applies a greyscale or sepia filter to an image.
 ---
 
 #### Contain Image (`cyberchef_contain_image`)
+
 Scales an image to the specified width and height, maintaining the aspect ratio. The image may be letterboxed.
 
 **Arguments:**
@@ -8304,6 +8835,7 @@ Scales an image to the specified width and height, maintaining the aspect ratio.
 ---
 
 #### Cover Image (`cyberchef_cover_image`)
+
 Scales the image to the given width and height, keeping the aspect ratio. The image may be clipped.
 
 **Arguments:**
@@ -8321,6 +8853,7 @@ Scales the image to the given width and height, keeping the aspect ratio. The im
 ---
 
 #### Image Hue/Saturation/Lightness (`cyberchef_image_hue_saturation_lightness`)
+
 Adjusts the hue / saturation / lightness (HSL) values of an image.
 
 **Arguments:**
@@ -8336,6 +8869,7 @@ Adjusts the hue / saturation / lightness (HSL) values of an image.
 ---
 
 #### Sharpen Image (`cyberchef_sharpen_image`)
+
 Sharpens an image (Unsharp mask)
 
 **Arguments:**
@@ -8351,6 +8885,7 @@ Sharpens an image (Unsharp mask)
 ---
 
 #### Normalise Image (`cyberchef_normalise_image`)
+
 Normalise the image colours.
 
 **Example:**
@@ -8361,6 +8896,7 @@ Normalise the image colours.
 ---
 
 #### Convert Image Format (`cyberchef_convert_image_format`)
+
 Converts an image between different formats. Supported formats:
 Joint Photographic Experts Group (JPEG)Portable Network Graphics (PNG)Bitmap (BMP)Tagged Image File Format (TIFF)
 Note: GIF files are supported for input, but cannot be outputted.
@@ -8379,6 +8915,7 @@ Note: GIF files are supported for input, but cannot be outputted.
 ---
 
 #### Add Text To Image (`cyberchef_add_text_to_image`)
+
 Adds text onto an image.
 
 Text can be horizontally or vertically aligned, or the position can be manually specified.
@@ -8405,6 +8942,7 @@ Variants of the Roboto font face are available in any size or colour.
 ---
 
 #### Hex Density chart (`cyberchef_hex_density_chart`)
+
 Hex density charts are used in a similar way to scatter charts, however rather than rendering tens of thousands of points, it groups the points into a few hundred hexagons to show the distribution.
 
 **Arguments:**
@@ -8428,6 +8966,7 @@ Hex density charts are used in a similar way to scatter charts, however rather t
 ---
 
 #### Scatter chart (`cyberchef_scatter_chart`)
+
 Plots two-variable data as single points on a graph.
 
 **Arguments:**
@@ -8448,6 +8987,7 @@ Plots two-variable data as single points on a graph.
 ---
 
 #### Series chart (`cyberchef_series_chart`)
+
 A time series graph is a line graph of repeated measurements taken over regular time intervals.
 
 **Arguments:**
@@ -8465,6 +9005,7 @@ A time series graph is a line graph of repeated measurements taken over regular 
 ---
 
 #### Heatmap chart (`cyberchef_heatmap_chart`)
+
 A heatmap is a graphical representation of data where the individual values contained in a matrix are represented as colors.
 
 **Arguments:**
@@ -8489,6 +9030,7 @@ A heatmap is a graphical representation of data where the individual values cont
 ### Other
 
 #### Entropy (`cyberchef_entropy`)
+
 Shannon Entropy, in the context of information theory, is a measure of the rate at which information is produced by a source of data. It can be used, in a broad sense, to detect whether data is likely to be structured or unstructured. 8 is the maximum, representing highly unstructured, 'random' data. English language text usually falls somewhere between 3.5 and 5. Properly encrypted or compressed data should have an entropy of over 7.5.
 
 **Arguments:**
@@ -8502,6 +9044,7 @@ Shannon Entropy, in the context of information theory, is a measure of the rate 
 ---
 
 #### Frequency distribution (`cyberchef_frequency_distribution`)
+
 Displays the distribution of bytes in the data as a graph.
 
 **Arguments:**
@@ -8516,6 +9059,7 @@ Displays the distribution of bytes in the data as a graph.
 ---
 
 #### Index of Coincidence (`cyberchef_index_of_coincidence`)
+
 Index of Coincidence (IC) is the probability of two randomly selected characters being the same. This can be used to determine whether text is readable or random, with English text having an IC of around 0.066. IC can therefore be a sound method to automate frequency analysis.
 
 **Example:**
@@ -8526,6 +9070,7 @@ Index of Coincidence (IC) is the probability of two randomly selected characters
 ---
 
 #### Chi Square (`cyberchef_chi_square`)
+
 Calculates the Chi Square distribution of values.
 
 **Example:**
@@ -8536,6 +9081,7 @@ Calculates the Chi Square distribution of values.
 ---
 
 #### P-list Viewer (`cyberchef_p_list_viewer`)
+
 In the macOS, iOS, NeXTSTEP, and GNUstep programming frameworks, property list files are files that store serialized objects. Property list files use the filename extension .plist, and thus are often referred to as p-list files.
 
 This operation displays plist files in a human readable format.
@@ -8548,6 +9094,7 @@ This operation displays plist files in a human readable format.
 ---
 
 #### Disassemble x86 (`cyberchef_disassemble_x86`)
+
 Disassembly is the process of translating machine language into assembly language.
 
 This operation supports 64-bit, 32-bit and 16-bit code written for Intel or AMD x86 processors. It is particularly useful for reverse engineering shellcode.
@@ -8570,6 +9117,7 @@ Input should be in hexadecimal.
 ---
 
 #### Pseudo-Random Number Generator (`cyberchef_pseudo_random_number_generator`)
+
 A cryptographically-secure pseudo-random number generator (PRNG).
 
 This operation uses the browser's built-in crypto.getRandomValues() method if available. If this cannot be found, it falls back to a Fortuna-based PRNG algorithm.
@@ -8586,6 +9134,7 @@ This operation uses the browser's built-in crypto.getRandomValues() method if av
 ---
 
 #### Generate De Bruijn Sequence (`cyberchef_generate_de_bruijn_sequence`)
+
 Generates rolling keycode combinations given a certain alphabet size and key length.
 
 **Arguments:**
@@ -8600,6 +9149,7 @@ Generates rolling keycode combinations given a certain alphabet size and key len
 ---
 
 #### Generate UUID (`cyberchef_generate_uuid`)
+
 Generates an RFC 9562 (formerly RFC 4122) compliant Universally Unique Identifier (UUID), also known as a Globally Unique Identifier (GUID).
 
 We currently support generating the following UUID versions:
@@ -8618,6 +9168,7 @@ v1: Timestamp-basedv3: Namespace w/ MD5v4: Random (default)v5: Namespace w/ SHA-
 ---
 
 #### Analyse UUID (`cyberchef_analyse_uuid`)
+
 Tries to determine information about a given UUID and suggests which version may have been used to generate it
 
 **Example:**
@@ -8628,6 +9179,7 @@ Tries to determine information about a given UUID and suggests which version may
 ---
 
 #### Generate TOTP (`cyberchef_generate_totp`)
+
 The Time-based One-Time Password algorithm (TOTP) is an algorithm that computes a one-time password from a shared secret key and the current time. It has been adopted as Internet Engineering Task Force standard RFC 6238, is the cornerstone of Initiative For Open Authentication (OAUTH), and is used in a number of two-factor authentication systems. A TOTP is an HOTP where the counter is the current time.
 
 Enter the secret as the input or leave it blank for a random secret to be generated. T0 and T1 are in seconds.
@@ -8646,6 +9198,7 @@ Enter the secret as the input or leave it blank for a random secret to be genera
 ---
 
 #### Generate HOTP (`cyberchef_generate_hotp`)
+
 The HMAC-based One-Time Password algorithm (HOTP) is an algorithm that computes a one-time password from a shared secret key and an incrementing counter. It has been adopted as Internet Engineering Task Force standard RFC 4226, is the cornerstone of Initiative For Open Authentication (OAUTH), and is used in a number of two-factor authentication systems.
 
 Enter the secret as the input or leave it blank for a random secret to be generated.
@@ -8663,6 +9216,7 @@ Enter the secret as the input or leave it blank for a random secret to be genera
 ---
 
 #### Generate QR Code (`cyberchef_generate_qr_code`)
+
 Generates a Quick Response (QR) code from the input text.
 
 A QR code is a type of matrix barcode (or two-dimensional barcode) first designed in 1994 for the automotive industry in Japan. A barcode is a machine-readable optical label that contains information about the item to which it is attached.
@@ -8681,6 +9235,7 @@ A QR code is a type of matrix barcode (or two-dimensional barcode) first designe
 ---
 
 #### Parse QR Code (`cyberchef_parse_qr_code`)
+
 Reads an image file and attempts to detect and read a Quick Response (QR) code from the image.
 
 Normalise Image
@@ -8697,6 +9252,7 @@ Attempts to normalise the image before parsing it to improve detection of a QR c
 ---
 
 #### Haversine distance (`cyberchef_haversine_distance`)
+
 Returns the distance between two pairs of GPS latitude and longitude co-ordinates in metres.
 
 e.g. 51.487263,-0.124323, 38.9517,-77.1467
@@ -8709,6 +9265,7 @@ e.g. 51.487263,-0.124323, 38.9517,-77.1467
 ---
 
 #### HTML To Text (`cyberchef_html_to_text`)
+
 Converts an HTML output from an operation to a readable string instead of being rendered in the DOM.
 
 **Example:**
@@ -8719,6 +9276,7 @@ Converts an HTML output from an operation to a readable string instead of being 
 ---
 
 #### Generate Lorem Ipsum (`cyberchef_generate_lorem_ipsum`)
+
 Generate varying length lorem ipsum placeholder text.
 
 **Arguments:**
@@ -8733,6 +9291,7 @@ Generate varying length lorem ipsum placeholder text.
 ---
 
 #### Numberwang (`cyberchef_numberwang`)
+
 Based on the popular gameshow by Mitchell and Webb.
 
 **Example:**
@@ -8743,6 +9302,7 @@ Based on the popular gameshow by Mitchell and Webb.
 ---
 
 #### XKCD Random Number (`cyberchef_xkcd_random_number`)
+
 RFC 1149.5 specifies 4 as the standard IEEE-vetted random number.
 
 **Example:**
@@ -8755,6 +9315,7 @@ RFC 1149.5 specifies 4 as the standard IEEE-vetted random number.
 ### Flow control
 
 #### Magic (`cyberchef_magic`)
+
 The Magic operation attempts to detect various properties of the input data and suggests which operations could help to make more sense of it.
 
 Options
@@ -8780,6 +9341,7 @@ Optionally enter a regular expression to match a string you expect to find to fi
 ---
 
 #### Fork (`cyberchef_fork`)
+
 Split the input data up based on the specified delimiter and run all subsequent operations on each branch separately.
 
 For example, to decode multiple Base64 strings, enter them all on separate lines then add the 'Fork' and 'From Base64' operations to the recipe. Each string will be decoded separately.
@@ -8797,6 +9359,7 @@ For example, to decode multiple Base64 strings, enter them all on separate lines
 ---
 
 #### Subsection (`cyberchef_subsection`)
+
 Select a part of the input data using a regular expression (regex), and run all subsequent operations on each match separately.
 
 You can use up to one capture group, where the recipe will only be run on the data in the capture group. If there's more than one capture group, only the first one will be operated on.
@@ -8817,6 +9380,7 @@ Use the Merge operation to reset the effects of subsection.
 ---
 
 #### Merge (`cyberchef_merge`)
+
 Consolidate all branches back into a single trunk. The opposite of Fork. Unticking the Merge All checkbox will only consolidate all branches up to the nearest Fork/Subsection.
 
 **Arguments:**
@@ -8830,6 +9394,7 @@ Consolidate all branches back into a single trunk. The opposite of Fork. Unticki
 ---
 
 #### Register (`cyberchef_register`)
+
 Extract data from the input and store it in registers which can then be passed into subsequent operations as arguments. Regular expression capture groups are used to select the data to extract.
 
 To use registers in arguments, refer to them using the notation $Rn where n is the register number, starting at 0.
@@ -8855,6 +9420,7 @@ Registers can be escaped in arguments using a backslash. e.g. \$R0 would become 
 ---
 
 #### Label (`cyberchef_label`)
+
 Provides a location for conditional and fixed jumps to redirect execution to.
 
 **Arguments:**
@@ -8868,6 +9434,7 @@ Provides a location for conditional and fixed jumps to redirect execution to.
 ---
 
 #### Jump (`cyberchef_jump`)
+
 Jump forwards or backwards to the specified Label
 
 **Arguments:**
@@ -8882,6 +9449,7 @@ Jump forwards or backwards to the specified Label
 ---
 
 #### Conditional Jump (`cyberchef_conditional_jump`)
+
 Conditionally jump forwards or backwards to the specified Label  based on whether the data matches the specified regular expression.
 
 **Arguments:**
@@ -8898,6 +9466,7 @@ Conditionally jump forwards or backwards to the specified Label  based on whethe
 ---
 
 #### Return (`cyberchef_return`)
+
 End execution of operations at this point in the recipe.
 
 **Example:**
@@ -8908,6 +9477,7 @@ End execution of operations at this point in the recipe.
 ---
 
 #### Comment (`cyberchef_comment`)
+
 Provides a place to write comments within the flow of the recipe. This operation has no computational effect.
 
 **Arguments:**
