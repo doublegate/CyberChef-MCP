@@ -20,12 +20,12 @@
 <<< MC-PROJECT-START >>>
 ## Project: CyberChef
 
-**CyberChef MCP Server** (v3.6.0) - Fork of GCHQ CyberChef wrapping the Node.js API into an MCP
+**CyberChef MCP Server** (v3.7.0) - Fork of GCHQ CyberChef wrapping the Node.js API into an MCP
 server. Exposes 504 operations (encryption, encoding, compression, forensics) as AI assistant tools.
 
 | Metric | Value |
 |--------|-------|
-| MCP Version | 3.6.0 (single source: `package.json` `version`, read by `src/node/lib/config.mjs`). `mcpVersion` was removed in v2.2.0 -- npm requires `version` to be the published version, so the upstream base moved to `cyberchefUpstreamVersion`. |
+| MCP Version | 3.7.0 (single source: `package.json` `version`, read by `src/node/lib/config.mjs`). `mcpVersion` was removed in v2.2.0 -- npm requires `version` to be the published version, so the upstream base moved to `cyberchefUpstreamVersion`. |
 | Upstream base | CyberChef **v11.4.0** |
 | Operations / tools | 504 operations **plus 17 registry tools** that are not operations. `tools/list` is an **index** by default (41 tools, **42,901 bytes**); `CYBERCHEF_TOOL_SURFACE=curated\|all` for 119 (106,147) or all 544 (423,305). Every figure here was 325 bytes low through v3.3.0 -- recorded during its development and never re-measured before the tag, which is this row's own warning happening to this row. The index **doubled in v3.3.0** and that is the cost of twelve new registry tools: a registry tool has no navigation path, so one that is not listed cannot be called at all, and listing must never be stricter than dispatch. Bytes, not tokens: no tokenizer has ever been in this repo and every historical `~N tokens` figure was bytes/4. Re-measure with `npm run measure:surfaces` rather than trusting this row -- every number in `tool-catalog.mjs`'s header had drifted by v3.1.0. All 504 reachable via `cyberchef_bake` + the three navigation tools. Every tool carries annotations + a title. |
 | Licence | **GPL-3.0-or-later** (from v2.0.0; v1.9.x and earlier are Apache-2.0) |
@@ -233,7 +233,13 @@ nine places, and the last three are the ones that get missed:
 version wrong while the note above told the author not to, which is the point at which a checklist
 has to become a gate. `scripts/check-version-consistency.mjs` runs in both CI workflows, checks
 every location here, and fails when a location matches *nothing* as well as when it disagrees -- a
-pattern that has stopped matching is how a consistency check silently stops checking. The list is
+pattern that has stopped matching is how a consistency check silently stops checking. Its
+operation-count half **discovers** the files it checks rather than listing them: v3.7.0 found that a
+hand-written four-file list had reported `ok` for two releases while **nine** live occurrences said
+505, including a Grafana alert annotation and a Helm memory-request comment. Coverage 7 -> 37.
+Use `node scripts/bump-version.mjs <version>` to bump -- it edits version FIELDS, never doing a
+blanket string replace, because that silently rewrote `server.json`'s recorded history for two
+releases and destroyed 32 historical README links on its first attempt at a fix. The list is
 kept as documentation of what is covered, not as the mechanism.
 
 **The Docker Hub namespace is `parobek`, not `doublegate`, and `check:versions` now asserts it.**
@@ -312,7 +318,7 @@ perfectly good tag and would be ignored within a release or two.
 | Planning | `docs/planning/v3/` (**current**: the v3.0.0 plan, `RE-MEASURE.md`, and one-page charters through v4.0.0), `docs/planning/ROADMAP.md`. `docs/planning/future-releases/` and `phases/` are **historical** -- every file carries a dated banner saying what replaced it. |
 | Security | `docs/security/audit.md` |
 | Reference | `docs/reference/mcp-2026-07-28-conformance.md`, `agent-tool-design.md`, `mcp-eval-benchmarks.md`, `mcp-threat-model-2026.md` -- written summaries with citations and retrieval dates, not vendored PDFs |
-| Releases | `docs/releases/v3.6.0.md` (latest), then `v3.5.0.md`, `v3.4.0.md`, `v3.3.0.md`, `v3.2.0.md`, `v3.1.0.md`, `v3.0.0.md`, `v2.10.0.md` ... `v2.0.0.md`, `v1.9.0.md` ... `v1.0.0.md` |
+| Releases | `docs/releases/v3.7.0.md` (latest), then `v3.6.0.md`, `v3.5.0.md`, `v3.4.0.md`, `v3.3.0.md`, `v3.2.0.md`, `v3.1.0.md`, `v3.0.0.md`, `v2.10.0.md` ... `v2.0.0.md`, `v1.9.0.md` ... `v1.0.0.md` |
 | Internal | `docs/internal/tech-debt-analysis-v1.6.1.md` (project health: 8.9/10) |
 | Measurement | `conformance/README.md` (the external oracle and why its baseline is a baseline); `benchmarks/README.md` (`measure:surfaces`, `measure:results`, `benchmark:check` and the variance study behind the tolerance, including why 20% did not hold); `docs/internal/measurements/v3.5.0-same-host-comparison.md` (why the calibration-task idea was tested and discarded, what replaced it, and in v3.6.0 the noise floor AND detection curve that made it a gate), `v3.4.0-runner-baseline.md` (the runner-captured baseline, its cross-instance study AND the CI runs that disproved the 20% tolerance it argued for), `v3.1.0-baseline.md` (the superseded developer-machine study). Everything is in BYTES: no tokenizer has ever been in this repo. |
 

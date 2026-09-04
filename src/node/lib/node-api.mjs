@@ -3,7 +3,7 @@
  *
  * Deferred access to the CyberChef Node API (`src/node/index.mjs`).
  *
- * That module imports **every one of the 505 operation implementations** eagerly, and importing it
+ * That module imports **every one of the 504 operation implementations** eagerly, and importing it
  * is essentially the entire cost of starting this server. Measured on Node 26, five runs, launch
  * to first `tools/list` response:
  *
@@ -25,7 +25,7 @@
  *   3. `bake()` for recipe execute/test           -- recipe-manager.mjs
  *
  * So a server that is launched and then asked to list tools -- which is what every editor does,
- * on stdio, on every session -- paid 1.15 s to import 505 operation implementations it had not
+ * on stdio, on every session -- paid 1.15 s to import 504 operation implementations it had not
  * been asked to run.
  *
  * Two things make deferring it safe rather than merely faster:

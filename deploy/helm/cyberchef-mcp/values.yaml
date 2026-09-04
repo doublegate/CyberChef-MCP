@@ -26,11 +26,11 @@ image:
   pullPolicy: IfNotPresent
   # Pinned rather than "latest". A chart that floats its tag cannot be rolled back to a known
   # state, and `latest` moves on every release.
-  tag: "3.6.0"
+  tag: "3.7.0"
   # A TAG IS NOT A DIGEST. GHCR tags are mutable, so the line above is a promise about which bytes
   # were pushed, not a guarantee about which bytes you get. Set this and it wins over `tag`:
   #
-  #   docker buildx imagetools inspect ghcr.io/doublegate/cyberchef-mcp_v3:3.6.0 \
+  #   docker buildx imagetools inspect ghcr.io/doublegate/cyberchef-mcp_v3:3.7.0 \
   #     --format '{{.Manifest.Digest}}'
   #   digest: "sha256:..."
   #
@@ -74,7 +74,7 @@ ingress:
 
 resources:
   requests:
-    # The server loads 505 operation implementations on first use of the Node API. Measured
+    # The server loads 504 operation implementations on first use of the Node API. Measured
     # resident set after that load is well under 512Mi, but a limit below it will OOM on the
     # first cyberchef_search rather than at startup, which is a confusing place to find out.
     memory: 256Mi

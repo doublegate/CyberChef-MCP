@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.7.0] - 2026-09-04
+
+**A gate that checked four of eleven files.** v3.2.0 said it fixed the operation-count discrepancy;
+nine live occurrences still said 505, and `check:versions` reported every location `ok` throughout.
+Details in [the release notes](docs/releases/v3.7.0.md) and
+[the findings log](docs/internal/v3.7.0-findings-log.md).
+
+### Fixed
+
+- **Nine live occurrences of "505 operations"**, two releases after the fix that claimed to correct
+  them — in `mcp-server.mjs`, `node-api.mjs` (twice), a test, the edge-deployment guide, and four
+  operator-facing files: a Grafana alert annotation, a dashboard panel description, the Grafana
+  README, and the comment explaining a Helm memory request.
+- **`check:versions` discovers the files it checks** instead of carrying a hand-written four-entry
+  list. Coverage **7 → 37 locations**, and discovery immediately found two files that reading the
+  tree by hand had missed. Exclusions are short and about *history*: release notes, findings logs
+  and the CHANGELOG record what was true when written, and `docs/reference/cyberchef-upstream.md`
+  documents upstream's tree at v10.19.4 where the count genuinely was 463.
+- **A third phrasing anchor**, chosen by measurement. A deliberately wide pattern was run over the
+  tree first and flagged twenty legitimate non-504 counts — the batch limit, upstream's 463, an
+  external reference's "over 300", `HAS-160 operation` — so a wide pattern would have meant a
+  denylist that grows forever. All nine wrong occurrences share the phrase "operation
+  implementations"; none of the twenty false positives does.
+
+### Added
+
+- **`tests/mcp/meta-tool-parity.test.mjs`** asserts that every advertised meta-tool is dispatched
+  and every dispatched meta-tool is advertised. The v3.0.0 plan recorded this duplication and it was
+  carried unmeasured for six releases; measured now, the two lists agree (23 and 23), so this guards
+  a latent hazard rather than fixing a defect. The hazard is credible because the same tripwire on
+  registry tools earned its keep in v3.4.0. Verified by injecting a declared-but-undispatched tool.
+- **`scripts/bump-version.mjs`**, added in v3.6.0, gets its first real use — 12 lines changed, the
+  32 historical release links and `server.json`'s history untouched.
+
+### Measured, and still deferred
+
+Nine carried-forward items were checked against the code. **Two were already done and still being
+carried.** Task-level scoring still needs its "must not be a flaky gate" answer in writing; the
+shell-free base image's trigger has not fired (`latest-slim` is still Node v25.9.0); arm64
+performance still needs hardware; `cert_chain` remains a genuine gap. Measuring what fraction of
+deployments enable opt-in features is recorded as **permanently deferred** — it needs telemetry this
+project deliberately does not collect.
+
 ## [3.6.0] - 2026-09-04
 
 **The same-host benchmark comparison becomes a gate, at 25% per task.** That sentence has been

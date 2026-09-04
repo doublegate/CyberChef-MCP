@@ -12,7 +12,7 @@
  * @license GPL-3.0-or-later
  */
 
-// `help` is NOT imported eagerly. src/node/index.mjs pulls all 505 operation implementations
+// `help` is NOT imported eagerly. src/node/index.mjs pulls all 504 operation implementations
 // and costs ~1150 ms -- 88% of this server's startup -- for a function used by exactly one
 // tool. See lib/node-api.mjs for the measurement.
 // FIRST, and it must stay first. Settings are read at module load into constants, so

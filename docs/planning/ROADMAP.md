@@ -1,6 +1,6 @@
 # CyberChef MCP Server - Product Roadmap
 
-**Current version:** **v3.6.0** (released 2026-09-04) · **Upstream base:** CyberChef v11.4.0
+**Current version:** **v3.7.0** (released 2026-09-04) · **Upstream base:** CyberChef v11.4.0
 **Charted through:** v4.0.0 — as one plan plus five charters, not five plans
 **Timeline:** January 2026 - present
 **Last Updated:** 2026-09-04
@@ -44,7 +44,7 @@ Extend the platform with binary/image handling, WebSocket/SSE transports, and a 
 
 Deploy enterprise-grade features including OAuth 2.1 authentication, RBAC authorization, horizontal scaling with Kubernetes, and comprehensive OpenTelemetry observability. This phase enables production deployment at scale.
 
-### Phase 6: Evolution (v2.8.0 - v3.6.0) - shipped September 2026
+### Phase 6: Evolution (v2.8.0 - v3.7.0) - shipped September 2026
 
 > **Corrected 2026-09-03.** This phase listed "v2.9.x Pre-v3.0.0 Polish", whose primary goal was
 > deprecation warnings for v3.0.0's breaking changes. Measured against the server, that goal is
@@ -100,6 +100,7 @@ gantt
     v3.4.0 Operations That Never Ran    :done, 2026-09-04, 1d
     v3.5.0 Measuring, Not Estimating    :done, 2026-09-04, 1d
     v3.6.0 The Gate, Measured          :done, 2026-09-04, 1d
+    v3.7.0 Four Of Eleven Files        :done, 2026-09-04, 1d
 ```
 
 ## Release Overview
@@ -153,7 +154,7 @@ gantt
 > The curated tool surface **did** ship, in v2.1.0, alongside an index surface that goes further.
 > The SDK v2 migration did not, and moves to Phase 4.
 
-### Phase 4-6 (v2.2.0 - v3.6.0)
+### Phase 4-6 (v2.2.0 - v3.7.0)
 
 | Release | Theme | Key Features | Effort | Risk |
 |---------|-------|--------------|--------|------|
@@ -174,6 +175,7 @@ gantt
 | **v3.4.0** | Operations that never ran | **Released 2026-09-04.** `Unzip`, `Untar` and `Extract Files` had been dead since v1.0.0 -- advertised throughout, returning either an error from inside the presenter or an archive listing with the right names and zero bytes each. Two stacked defects: `Utils.readFile` rejected the `File` its own JSDoc passes it (`patches/fork/11`), and five operations construct a **bare global `File`** that only the eagerly-unimported bridge provided. The second **cannot be reproduced in-process**, which is why eleven green releases missed it. Also: `ecdsa_recover`; `server.json` validated for the first time by anything (it declared one schema while written to another) and both registry ownership proofs added, having been absent; and the benchmark baseline finally captured on the runner (the tolerance was cut to 20% on that basis and **put back to 50% the same day**, when four CI runs swung -41.8% to +28.2% on untouched tasks -- the pool is heterogeneous and the fix is a calibration task, not a number). **Measured and declined:** the shell-free base image (works, ships Node 25 against the current 26), conformance `--requirements`, and a stdio era 'downgrade' that turned out to be correct. | M | Low |
 | **v3.5.0** | Measuring, not estimating | **Released 2026-09-04.** Two of v3.4.0's conclusions were tested before being built on and both were wrong. The `server.json` gate it added was **a schema version behind on the day it shipped** (2025-09-29 against a current 2025-12-11), which the official `mcp-publisher validate` reports in one line -- so CI now runs the registry's own validator as an oracle beside the transcribed offline gate, the arrangement the conformance suite already had. And the benchmark fix it recorded, normalising against a calibration task, **would not have worked**: dividing out each run's median leaves a -44% residual against a raw -42%, because the hosts differ in profile rather than by a scale factor. Replaced by benchmarking the merge base and the head in one job on one runner -- tenfold tighter, and deliberately **not gating** until the same-host spread is measured on a runner. Also the **MCP registry listing**, which v3.4.0's ownership proofs made possible and nothing had used. | S | Low |
 | **v3.6.0** | The gate, measured | **Released 2026-09-04.** The same-host benchmark comparison becomes a gate at **25% per task** -- a sentence written twice before here with a number that was wrong within days both times, so this release is mostly the measurement that makes it stick. Two halves: a **-7.6%** worst-case noise floor over four runs on unchanged code, and the detection curve no previous attempt ever measured -- a deliberate tunable slowdown in `To Hex` giving -8.2% at 10% extra work, -20.2% at 25%, -32.8% at 50%, with every untouched task inside the noise floor (which is what makes a PER-TASK threshold meaningful). Reach stated rather than implied: it fires above 25% slower, so **a quarter more work does not fail** and is printed instead. Also: a task with no usable measurement now fails rather than being dropped. First findings log in nine releases that opens "the plan was right". | S | Low |
+| **v3.7.0** | Four of eleven files | **Released 2026-09-04.** v3.2.0 said it fixed the operation-count discrepancy; **nine live occurrences still said 505** two releases later, and `check:versions` reported every location `ok` throughout -- because it carried a hand-written **four-file list** and the claim appears in eleven. The check now DISCOVERS the files it checks (7 -> 37 locations), immediately finding two that reading by hand had missed, both operator-facing. The third phrasing anchor was chosen by measurement: a wide pattern flags twenty legitimate non-504 counts, while all nine wrong ones share the phrase "operation implementations". Also a guard for the meta-tool `META_TOOLS`/dispatch duplication the v3.0.0 plan recorded and six releases carried -- measured at 23 and 23, no drift, so a tripwire rather than a rewrite. **Nine carried-forward items were measured; two were already done and still being carried.** | S | Low |
 
 > **v2.9.x "Pre-v3.0.0 Polish" was dropped**, not deferred. Its primary goal was deprecation
 > warnings for v3.0.0's breaking changes, and there was nothing left to warn about: the tool-name

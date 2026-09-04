@@ -46,7 +46,7 @@ heapUsed  22 MB
 ```
 
 **Expect a one-time step of roughly 100–200 MB** the first time `cyberchef_search`, batch search, or
-a saved recipe runs. That is the Node API loading all 505 operation implementations, deferred in
+a saved recipe runs. That is the Node API loading all 504 operation implementations, deferred in
 v2.6.0 so that cold start could be ~185 ms. It happens once per process and is not a leak — but a
 memory limit sized for the idle figure will OOM at that moment rather than at startup, which is a
 confusing place to discover it.
