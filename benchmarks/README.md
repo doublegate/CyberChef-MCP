@@ -12,7 +12,7 @@ counting Claude tokens with a GPT tokenizer would swap one unvalidated proxy for
 | `npm run benchmark:baseline` | Regenerates `baseline.json` from five runs | — |
 | `npm run measure:surfaces` | `tools/list` payload per tool surface | no |
 | `npm run measure:results` | Tool **result** payloads across representative cases | no |
-| `node benchmarks/compare-runs.mjs <base> <head>` | Two runs measured on the **same** machine | not yet |
+| `node benchmarks/compare-runs.mjs <base> <head>` | Two runs measured on the **same** machine | **yes**, on PRs |
 
 ## The regression gate
 
@@ -99,11 +99,48 @@ tasks compared: 30      median -0.2%      worst -5.5%      best +3.6%
 
 against the cross-host range of -42% to +101%. Roughly tenfold tighter.
 
-**It does not gate yet, deliberately.** One measurement on one machine is exactly the evidence base
-that set the 20% tolerance in v3.4.0, and that number survived a few hours. The same-host spread
-*on a runner* has not been measured; until it has, `compare-runs.mjs` reports, the numbers
-accumulate in pull-request comments above the fold, and `check-regression.mjs` stays the blocking
-gate. The threshold gets set from that data in a later release and not before.
+### It gates, since v3.6.0, at 25% per task
+
+v3.5.0 shipped it reporting-only because the tolerance it justifies had not been measured. v3.6.0
+measured both halves — and the second half is the one no previous attempt at this gate ever did.
+
+**The noise floor.** Four same-host runs on v3.5.0's pull request, all on code that changes nothing
+in the benchmarked path: worst slower `-2.2%`, `-1.7%`, `-6.9%`, `-7.6%`. Plus `-1.8%` from two runs
+of identical code on a developer machine. So **-7.6% worst observed**.
+
+**The detection curve.** A noise floor says what will *not* fire and nothing about what will — which
+is how the previous two thresholds came to be quoted as if they caught everything. So `To Hex` was
+given a deliberate, tunable slowdown (redoing a measured fraction of its own work, so the slowdown
+carries the operation's real profile) and compared against the same worktree unmodified:
+
+```text
+nominal extra work    To Hex 100KB    worst UNTOUCHED task
+              10%          -8.2%            -3.7%
+              25%         -20.2%            -3.1%
+              50%         -32.8%            -2.5%
+```
+
+It detects roughly linearly, and — the property that makes a *per-task* threshold meaningful — the
+regression stays **localised**: every untouched task stays inside the noise floor at every
+magnitude.
+
+25% is 3.3x the worst observed noise, matching the 2.5-3x margin this project's precedent uses.
+
+**What it catches, stated in both framings, because conflating them is how reach gets overstated:**
+
+```text
+the gate fires when a task is MORE THAN 25% SLOWER
+in the experiment that took ~33% extra work
+```
+
+Verified by running the gate over the experiment's own fixtures: identical code passes, two runner
+captures pass, 10% extra work passes (reported at -8.2%), **25% extra work passes** (reported at
+-20.2%), 50% fails, and a task with no usable measurement fails because a broken run is not a clean
+one.
+
+**A quarter of the work added to an operation does not fail this build.** The full comparison prints
+on every run, pass or fail, so the numbers below the threshold are readable. A pass is not proof
+there is no regression.
 
 Two limits worth knowing:
 

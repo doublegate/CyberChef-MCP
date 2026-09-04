@@ -104,7 +104,7 @@ jobs:
           node benchmarks/operation-benchmarks.mjs --json > benchmark-results.json
           node benchmarks/check-regression.mjs benchmark-results.json
 
-      # THE SAME-HOST COMPARISON. Reporting only -- see the note at the end of this step.
+      # THE SAME-HOST COMPARISON, and since v3.6.0 a GATE.
       #
       # The gate above compares this run against a STORED baseline, and across GitHub's runner pool
       # that comparison is dominated by which host the job landed on. Measured across four runs in
@@ -118,6 +118,12 @@ jobs:
       #
       # So this removes the host from the comparison instead of estimating it: benchmark the merge
       # base and the head in ONE job on ONE runner. Whatever that host is, both sides got it.
+      #
+      # v3.5.0 shipped it reporting-only because the tolerance it justifies had not been measured.
+      # v3.6.0 measured both halves -- a -7.6% worst-case noise floor over four runs on unchanged
+      # code, and a detection curve from a deliberate tunable slowdown -- and it now fails at 25%
+      # per task. What that does and does not catch is stated in benchmarks/compare-runs.mjs and
+      # printed in its own output on every run.
       - name: Benchmark the merge base on this same runner
         id: base_bench
         # `always()`, because the regression gate above fails the job on a suspected regression --
@@ -175,6 +181,10 @@ jobs:
           node benchmarks/operation-benchmarks.mjs --json > "$GITHUB_WORKSPACE/base-results.json"
           echo "skipped=" >> "$GITHUB_OUTPUT"
 
+      # `tee` keeps the report even when the comparison fails, and `set -o pipefail` makes the
+      # step's exit status the COMPARISON's rather than tee's -- without it a regression would be
+      # printed and the job would go green, which is the exact defect this whole line of work
+      # replaced.
       - name: Compare head against the merge base
         if: always() && github.event_name == 'pull_request' && steps.base_bench.outputs.skipped == ''
         run: |
@@ -299,10 +309,11 @@ jobs:
               "",
               `Benchmark job: **${{ needs.benchmark.result }}**`,
               "",
-              // FIRST, above the fold. Against a stored baseline the runner pool swamps the
-              // signal -- measured across four v3.4.0 runs, the median delta ranged from -2.3%
-              // to +101.4%. This block compares the merge base and the head on the SAME runner
-              // in the same job, so that variance cancels instead of being estimated.
+              // FIRST, above the fold, and since v3.6.0 this is the block that can fail the
+              // build. Against a stored baseline the runner pool swamps the signal -- measured
+              // across four v3.4.0 runs, the median delta ranged from -2.3% to +101.4%. This
+              // compares the merge base and the head on the SAME runner in the same job, so that
+              // variance cancels instead of being estimated.
               ...(sameHost ? [
                 "### Same-host comparison (merge base vs head)",
                 "",

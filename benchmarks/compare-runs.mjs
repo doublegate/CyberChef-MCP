@@ -23,23 +23,64 @@
  * comparison entirely: benchmark the merge base and the head **in one job, on one runner**, and
  * compare those. Whatever that host is, both sides got it.
  *
- * WHAT IT DOES NOT DO YET
- * -----------------------
- * It does not fail a build, and that is deliberate rather than timid. The tolerance a same-host
- * comparison justifies has **not been measured** -- v3.4.0 measured 15.2% worst-case across four
- * separate process runs on one instance, which is suggestive and is not the same experiment. Every
- * previous threshold in this project was set from thin evidence and moved within days; setting this
- * one before the data exists would be that mistake a fourth time.
+ * WHY THE THRESHOLD IS 25%, AND WHAT IT DOES NOT CATCH
+ * ----------------------------------------------------
+ * v3.5.0 shipped this as reporting only, on the grounds that the tolerance a same-host comparison
+ * justifies had not been measured. v3.6.0 measured it, in two halves -- and the second half is the
+ * one no previous attempt at this gate ever did.
  *
- * So it reports, the numbers accumulate in pull-request comments, and the threshold gets set from
- * them. `check-regression.mjs` remains the blocking gate in the meantime. When this becomes the
- * gate, say so here and in `benchmarks/README.md` together.
+ * THE NOISE FLOOR. Four same-host runs on v3.5.0's own pull request, all on code that changes
+ * nothing in the benchmarked path:
+ *
+ *     worst slower  -2.2%   -1.7%   -6.9%   -7.6%
+ *
+ * plus -1.8% from two runs of identical code on a developer machine. So: **-7.6% worst observed**.
+ *
+ * THE DETECTION CURVE. A noise floor answers "what will not fire" and says nothing about "what
+ * will", which is how the previous two thresholds came to be quoted as if they caught everything.
+ * So `To Hex` was given a deliberate, tunable slowdown -- redoing a measured fraction of its own
+ * work, so the slowdown carries the operation's real profile -- and compared against the same
+ * worktree unmodified:
+ *
+ *     nominal extra work    To Hex 100KB    worst UNTOUCHED task
+ *                   10%          -8.2%            -3.7%
+ *                   25%         -20.2%            -3.1%
+ *                   50%         -32.8%            -2.5%
+ *
+ * Two things follow. It detects roughly linearly; and the regression stays LOCALISED -- every
+ * untouched task stays inside the noise floor at every magnitude, which is what makes a per-task
+ * threshold meaningful rather than a suite-wide smear.
+ *
+ * 25% sits above the -7.6% floor by 3.3x, matching the 2.5-3x margin this project's precedent uses.
+ *
+ * SO WHAT DOES IT ACTUALLY CATCH. Stated in both framings, because the two are easy to conflate and
+ * conflating them is how a gate's reach gets overstated:
+ *
+ *     the gate fires when a task is MORE THAN 25% SLOWER
+ *     in the experiment that took ~33% extra work (interpolating -20.2% at 25% and -32.8% at 50%)
+ *
+ * Verified against the experiment's own data rather than asserted: 50% extra work FAILS, 25% extra
+ * work PASSES and is reported at -20.2%, 10% PASSES and is reported at -8.2%.
+ *
+ * That is a narrower claim than the previous two thresholds made for themselves, and it is the
+ * accurate one. **A quarter of the work added to an operation does not fail this build.** It is
+ * printed with its number for a human to read, which is why the comparison is reported in full on
+ * every run and not only on failure. A gate whose reach is overstated is how this project came to
+ * cite, as evidence, gates that could not fail at all.
  *
  * @author DoubleGate
  * @license GPL-3.0-or-later
  */
 
 import { readFileSync } from "node:fs";
+
+/**
+ * Per-task slowdown that fails the build, as a percentage.
+ *
+ * See the header for the measurement. Changing it means redoing that measurement, not adjusting a
+ * number until CI is quiet -- which is what happened to the stored-baseline tolerance three times.
+ */
+const TOLERANCE_PCT = 25;
 
 const [basePath, headPath] = process.argv.slice(2);
 if (!basePath || !headPath) {
@@ -151,9 +192,44 @@ if (unmeasured.length) {
         "  compares while the count above still looked complete.\n");
 }
 
+// THE GATE. Per task, not on the median: a real regression is localised -- measured, see the
+// header -- so a suite-wide statistic would dilute exactly the signal worth failing on.
+const regressions = rows.filter(row => row.deltaPct < -TOLERANCE_PCT);
+
 process.stdout.write(
-    "\nBoth runs measured on the same runner in the same job, so host variance cancels rather than\n" +
-    "being estimated and subtracted. This does NOT fail the build: the tolerance a same-host\n" +
-    "comparison justifies has not been measured yet, and setting one before the data exists is the\n" +
-    "mistake that moved this project's threshold three times already. The numbers here are that\n" +
-    "data. See benchmarks/README.md.\n");
+    `\nBoth runs measured on the same machine, so host variance cancels rather than being estimated\n` +
+    `and subtracted. Fails on any task slower by more than ${TOLERANCE_PCT}%.\n\n` +
+    "Measured reach, stated precisely: the noise floor on unchanged code is -7.6% worst observed;\n" +
+    "25% extra work in an operation reads at -20.2% and PASSES; 50% reads at -32.8% and fails. So\n" +
+    "adding a quarter to an operation's work does NOT fail this build -- it is printed above with\n" +
+    "its number. Read those numbers; a pass is not proof there is no regression.\n" +
+    "See benchmarks/README.md.\n");
+
+// `process.exitCode` rather than `process.exit()`, for two reasons that both bite here.
+//
+// Ordering: with BOTH an unmeasured task and a regression, an immediate exit in the first block
+// would suppress the second, so the report would name one problem and hide the other -- in the run
+// where a reader most needs both.
+//
+// Truncation: `process.exit()` tears the process down without waiting for queued stdout, and this
+// output is piped through `tee` in CI. A pipe is asynchronous, so the very diagnostics being written
+// are the ones at risk of being cut off. Setting the code and letting Node exit naturally flushes
+// first.
+if (unmeasured.length) {
+    // A task that could not be compared is not a task that passed. Failing rather than reporting:
+    // silently shrinking coverage is the failure this project keeps finding, and a benchmark that
+    // produced no measurement on one side is broken rather than unchanged.
+    process.stdout.write(
+        `\n${unmeasured.length} task(s) had no usable measurement. That is a broken run, not a\n` +
+        "clean one -- investigate before trusting anything above.\n");
+    process.exitCode = 1;
+}
+
+if (regressions.length) {
+    process.stdout.write(`\nREGRESSIONS (${regressions.length}), same host, vs the merge base:\n`);
+    for (const row of regressions) process.stdout.write(`${fmt(row)}\n`);
+    process.stdout.write(
+        "\nBoth sides ran on the same machine in the same job, so this is not host variance -- that\n" +
+        "is the whole point of comparing this way. If it is intentional, say so in the pull request.\n");
+    process.exitCode = 1;
+}
