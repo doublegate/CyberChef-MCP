@@ -73,12 +73,29 @@ jobs:
 
   # The only job with a write-scoped token. It installs nothing, runs no project code, and touches
   # exactly one file -- so a compromised dependency in the job above cannot reach this token.
+  # PUSHES A BRANCH; DOES NOT OPEN THE PULL REQUEST.
+  #
+  # It used to call `peter-evans/create-pull-request`, and the first time this workflow was ever
+  # run -- in v3.4.0, months after it was written -- that step failed:
+  #
+  #     ##[error]GitHub Actions is not permitted to create or approve pull requests.
+  #
+  # Confirmed at the source: `can_approve_pull_request_reviews` is false on this repository, which
+  # is the same setting, and `upstream-sync.yml` and `upstream-monitor.yml` had already hit it.
+  #
+  # The setting is not flipped to make this work. That checkbox grants Actions the right to APPROVE
+  # pull requests as well as open them, which is a review bypass, and this workflow's whole purpose
+  # is to keep a gate's reference point under review.
+  #
+  # Nothing of value is lost, because the PR was never the safety property. The property is that
+  # this **never pushes to master**: the baseline moves only when a person merges the branch. The
+  # branch is pushed, the summary below links straight to the compare view, and the last step is
+  # one click instead of zero.
   open-pr:
     needs: capture
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      pull-requests: write
     steps:
       - uses: actions/checkout@v6
 
@@ -88,31 +105,50 @@ jobs:
           name: benchmark-baseline
           path: benchmarks/
 
-      # A PR, not a push. A baseline is the gate's reference point, and moving it silently is
-      # indistinguishable from switching the gate off -- which is the failure this whole line of
-      # work replaced. It gets reviewed like any other change to a gate.
-      - name: Open a pull request
-        uses: peter-evans/create-pull-request@v7
-        with:
-          branch: chore/benchmark-baseline
-          delete-branch: true
-          title: "chore(benchmarks): recapture the baseline on the runner"
-          commit-message: |
-            chore(benchmarks): recapture the baseline on the runner
+      - name: Push the baseline to a branch
+        id: push
+        env:
+          REASON: ${{ inputs.reason || 'Scheduled monthly recapture.' }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- benchmarks/baseline.json; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "The captured baseline is identical to the committed one. Nothing to review."
+            exit 0
+          fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b chore/benchmark-baseline
+          git add benchmarks/baseline.json
+          git commit -m "chore(benchmarks): recapture the baseline on the runner" -m "$REASON" -m \
+            "Captured by .github/workflows/benchmark-baseline.yml on the same runner class the regression gate executes on, so the comparison is like against like."
+          # --force-with-lease over a plain --force: a stale local ref must not silently discard a
+          # capture someone else pushed while this one was running.
+          git push --force-with-lease origin chore/benchmark-baseline
 
-            ${{ inputs.reason || 'Scheduled monthly recapture.' }}
-
-            Captured by .github/workflows/benchmark-baseline.yml on the same runner class the
-            regression gate executes on, so the comparison is like against like.
-          body: |
-            Regenerated `benchmarks/baseline.json` on a GitHub runner.
-
-            **Reason:** ${{ inputs.reason || 'Scheduled monthly recapture.' }}
-
-            Read the diff before merging. A baseline that moves without a stated reason is a gate
-            switched off, and it looks identical to one moved for a good one — which is why this
-            arrives as a pull request rather than a push.
-
-            Once a runner-captured baseline is in place, the tolerance in `baseline.json` should
-            come back down from the 50% stopgap to what the runner's own variance supports.
-            See `docs/internal/v3.2.0-findings-log.md` F-13.
+      - name: Say what to do with it
+        env:
+          REASON: ${{ inputs.reason || 'Scheduled monthly recapture.' }}
+        run: |
+          {
+            if [ "${{ steps.push.outputs.changed }}" != "true" ]; then
+              echo "### Baseline unchanged"
+              echo
+              echo "The runner captured the same numbers as the committed baseline. No branch pushed."
+              exit 0
+            fi
+            echo "### A recaptured baseline is waiting on \`chore/benchmark-baseline\`"
+            echo
+            echo "**Reason:** $REASON"
+            echo
+            echo "[Open the pull request](${{ github.server_url }}/${{ github.repository }}/compare/chore/benchmark-baseline?expand=1)"
+            echo
+            echo "Read the diff before merging. A baseline that moves without a stated reason is a"
+            echo "gate switched off, and it looks identical to one moved for a good reason — which is"
+            echo "why this stops at a branch rather than pushing to master."
+            echo
+            echo "Once a runner-captured baseline is in place, the tolerance in \`baseline.json\`"
+            echo "should come down from the 50% stopgap to what the runner's own variance supports."
+            echo "See \`docs/internal/v3.4.0-findings-log.md\` F-01 and F-02."
+          } >> "$GITHUB_STEP_SUMMARY"
