@@ -20,12 +20,12 @@
 <<< MC-PROJECT-START >>>
 ## Project: CyberChef
 
-**CyberChef MCP Server** (v3.4.0) - Fork of GCHQ CyberChef wrapping the Node.js API into an MCP
+**CyberChef MCP Server** (v3.5.0) - Fork of GCHQ CyberChef wrapping the Node.js API into an MCP
 server. Exposes 504 operations (encryption, encoding, compression, forensics) as AI assistant tools.
 
 | Metric | Value |
 |--------|-------|
-| MCP Version | 3.4.0 (single source: `package.json` `version`, read by `src/node/lib/config.mjs`). `mcpVersion` was removed in v2.2.0 -- npm requires `version` to be the published version, so the upstream base moved to `cyberchefUpstreamVersion`. |
+| MCP Version | 3.5.0 (single source: `package.json` `version`, read by `src/node/lib/config.mjs`). `mcpVersion` was removed in v2.2.0 -- npm requires `version` to be the published version, so the upstream base moved to `cyberchefUpstreamVersion`. |
 | Upstream base | CyberChef **v11.4.0** |
 | Operations / tools | 504 operations **plus 17 registry tools** that are not operations. `tools/list` is an **index** by default (41 tools, **42,901 bytes**); `CYBERCHEF_TOOL_SURFACE=curated\|all` for 119 (106,147) or all 544 (423,305). Every figure here was 325 bytes low through v3.3.0 -- recorded during its development and never re-measured before the tag, which is this row's own warning happening to this row. The index **doubled in v3.3.0** and that is the cost of twelve new registry tools: a registry tool has no navigation path, so one that is not listed cannot be called at all, and listing must never be stricter than dispatch. Bytes, not tokens: no tokenizer has ever been in this repo and every historical `~N tokens` figure was bytes/4. Re-measure with `npm run measure:surfaces` rather than trusting this row -- every number in `tool-catalog.mjs`'s header had drifted by v3.1.0. All 504 reachable via `cyberchef_bake` + the three navigation tools. Every tool carries annotations + a title. |
 | Licence | **GPL-3.0-or-later** (from v2.0.0; v1.9.x and earlier are Apache-2.0) |
@@ -51,6 +51,7 @@ server. Exposes 504 operations (encryption, encoding, compression, forensics) as
 | Fork patches | 10 in `patches/fork/` (01, 03-11). A patch that stops applying **fails the sync** -- that is the alarm SafeRegex never had. |
 | Vendored | `src/vendor/crypto-api/` (MIT -- the published package cannot be loaded: no `main` file in its tarball, extensionless ESM imports) and `src/vendor/bmfonts/` (Apache-2.0, for `Add Text To Image`). Both are lint- and coverage-exempt and carry a README explaining when to delete them. |
 | Registry tools | **17** in `src/node/tools/`, for analyses an operation cannot express. v2.4.0: `xor_key_length`, `cyclic_pattern`, `hash_identify`, `rsa_attack`. v3.3.0 adds twelve: `classical_cipher`, `corpus_diff`, `crib_drag`, `entropy_scan`, `hash_crack`, `hash_statistics`, `jwt_weakness`, `plaintext_check`, `rsa_multi_key`, `substitution_break`, `timestamp_identify`, `vigenere_break`. v3.4.0 adds `ecdsa_recover`. Three kinds of gap: a **loop with a decision** inside it (the two cipher solvers), a statistic computed **across inputs** (`corpus_diff`, `rsa_multi_key`, `hash_statistics`, `ecdsa_recover`), and a cipher upstream simply lacks (`classical_cipher`) -- which is a registry tool rather than an operation because `src/core/**` is mirrored, so each would be a `patches/fork` patch that has to keep applying forever. `src/node/tools/lib/english.mjs` is the shared language model; its trigram table is **generated** by `scripts/build-english-trigrams.mjs` from this repository's own prose and must stay regenerable byte-for-byte (the generator once read its own base64 output back in as English -- base64 contains `//`). Loading is an explicit import list in `src/node/tools/index.mjs` (**not** `src/node/index.mjs`, which is the generated operation bridge) -- **no loader, no directory scan, no path from configuration.** `node:vm` is not a security boundary and this was measured: a capability passed into a vm context reaches the real `process` via `constructor`. Registration **throws** if a tool would shadow an operation or meta-tool. [ADR 0002](docs/adr/0002-tool-registry-is-not-a-plugin-loader.md). |
+| MCP registry | **Listed from v3.5.0**, published by `publish-mcp.yml` on the version tag with GitHub **OIDC** -- no registry credential is stored. v3.4.0 added both ownership proofs (`mcpName` in `package.json`, the `io.modelcontextprotocol.server.name` LABEL on the image) and never used them; the registry returned `count: 0` until this release. The job waits for the npm package the listing points at, because the registry hosts METADATA and a listing published before its artefacts resolves to nothing -- and it reads the registry back afterwards, because `publish` exiting 0 is not evidence. |
 | npm | **Published since 2.5.0** as `cyberchef-mcp` -- seven versions, verified with `npm view cyberchef-mcp versions`. Four documents said otherwise until v3.0.0 (this row, `docs/wiki/Installation.md`, `docs/wiki/FAQ.md` and `server.json`'s own comment), because the claim was written when it was true and nothing re-checked it after the first publish succeeded. `server.json` now carries the npm record and is in `check:versions`. |
 
 **Focus:** MCP server (`src/node/mcp-server.mjs` + `src/node/lib/**`), not the web app.
@@ -201,6 +202,7 @@ Tool naming: operations are sanitized to snake_case with a `cyberchef_` prefix
 | `pull_requests.yml` | PRs | PR validation |
 | `performance-benchmarks.yml` | Push | Performance regression testing |
 | `codeql.yml` | Push/PR/weekly | CodeQL security scanning |
+| `publish-mcp.yml` | Tags `v*` | Publish `server.json` to the MCP registry (GitHub OIDC) |
 
 **Version bump locations.** `package.json` is the single source at RUNTIME, but a release touches
 nine places, and the last three are the ones that get missed:
@@ -225,7 +227,7 @@ nine places, and the last three are the ones that get missed:
    `repository` with a bumped `tag`, which resolves to an image that will never be pushed while
    `check:versions` reported ok. It now asserts the major as well as the version.
 
-`npm run check:server-json` is the sibling gate: it validates `server.json` against the schema it declares and asserts that `mcpName` in `package.json` and the `io.modelcontextprotocol.server.name` LABEL in `Dockerfile.mcp` both equal `server.json`'s `name` -- one identifier in three files, and the registry rejects a publish if any disagrees. It fails when `$schema` names a version whose rules it does not carry, rather than checking the wrong rules quietly.
+`npm run check:server-json` is the sibling gate: it validates `server.json` against the schema it declares (**2025-12-11**; it was 2025-09-29 and already a version behind on the day v3.4.0 shipped it, which is why CI ALSO runs the registry's own `mcp-publisher validate` as an oracle -- the transcribed checker stays the blocking gate because it runs offline, the oracle is the only thing that can contradict its author) and asserts that `mcpName` in `package.json` and the `io.modelcontextprotocol.server.name` LABEL in `Dockerfile.mcp` both equal `server.json`'s `name` -- one identifier in three files, and the registry rejects a publish if any disagrees. It fails when `$schema` names a version whose rules it does not carry, rather than checking the wrong rules quietly.
 
 **Do not rely on this list. Run `npm run check:versions`.** Three consecutive releases got the
 version wrong while the note above told the author not to, which is the point at which a checklist
@@ -310,8 +312,8 @@ perfectly good tag and would be ignored within a release or two.
 | Planning | `docs/planning/v3/` (**current**: the v3.0.0 plan, `RE-MEASURE.md`, and one-page charters through v4.0.0), `docs/planning/ROADMAP.md`. `docs/planning/future-releases/` and `phases/` are **historical** -- every file carries a dated banner saying what replaced it. |
 | Security | `docs/security/audit.md` |
 | Reference | `docs/reference/mcp-2026-07-28-conformance.md`, `agent-tool-design.md`, `mcp-eval-benchmarks.md`, `mcp-threat-model-2026.md` -- written summaries with citations and retrieval dates, not vendored PDFs |
-| Releases | `docs/releases/v3.4.0.md` (latest), then `v3.3.0.md`, `v3.2.0.md`, `v3.1.0.md`, `v3.0.0.md`, `v2.10.0.md` ... `v2.0.0.md`, `v1.9.0.md` ... `v1.0.0.md` |
+| Releases | `docs/releases/v3.5.0.md` (latest), then `v3.4.0.md`, `v3.3.0.md`, `v3.2.0.md`, `v3.1.0.md`, `v3.0.0.md`, `v2.10.0.md` ... `v2.0.0.md`, `v1.9.0.md` ... `v1.0.0.md` |
 | Internal | `docs/internal/tech-debt-analysis-v1.6.1.md` (project health: 8.9/10) |
-| Measurement | `conformance/README.md` (the external oracle and why its baseline is a baseline); `benchmarks/README.md` (`measure:surfaces`, `measure:results`, `benchmark:check` and the variance study behind the tolerance, including why 20% did not hold); `docs/internal/measurements/v3.4.0-runner-baseline.md` (the runner-captured baseline and the cross-instance study that set the tolerance), `v3.1.0-baseline.md` (the superseded developer-machine study). Everything is in BYTES: no tokenizer has ever been in this repo. |
+| Measurement | `conformance/README.md` (the external oracle and why its baseline is a baseline); `benchmarks/README.md` (`measure:surfaces`, `measure:results`, `benchmark:check` and the variance study behind the tolerance, including why 20% did not hold); `docs/internal/measurements/v3.5.0-same-host-comparison.md` (why the calibration-task idea was tested and discarded, and what replaced it), `v3.4.0-runner-baseline.md` (the runner-captured baseline, its cross-instance study AND the CI runs that disproved the 20% tolerance it argued for), `v3.1.0-baseline.md` (the superseded developer-machine study). Everything is in BYTES: no tokenizer has ever been in this repo. |
 
 <<< MC-PROJECT-END >>>

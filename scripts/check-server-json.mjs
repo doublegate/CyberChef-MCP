@@ -39,6 +39,19 @@
  * rather than passing. A checker that silently checks the wrong rules is exactly what produced
  * the defect above, and it is not repeated here.
  *
+ * THIS IS NOT THE ORACLE, AND v3.5.0 IS WHY
+ * -----------------------------------------
+ * That mitigation catches the document drifting from the checker. It cannot catch **both** drifting
+ * from the registry, which is what happened: this file shipped in v3.4.0 encoding 2025-09-29 while
+ * 2025-12-11 was already current, and nothing here could have noticed. The official
+ * `mcp-publisher validate` reports it in one line.
+ *
+ * So CI runs the official validator too, in `.github/workflows/pull_requests.yml`. That is the
+ * arrangement the conformance suite already has and for the same reason -- an in-tree check
+ * verifies what its author believed; only an external oracle can contradict them. This script
+ * remains the BLOCKING gate because it runs offline, which the product's air-gapped posture
+ * requires and a downloaded binary does not.
+ *
  * @author DoubleGate
  * @license GPL-3.0-or-later
  */
@@ -52,19 +65,27 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 /**
  * The schema version whose rules are encoded below.
  *
- * Transcribed from https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json,
- * retrieved 2026-09-04. Bumping `$schema` in `server.json` without updating this constant and the
+ * Transcribed from https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json,
+ * retrieved 2026-09-05. Bumping `$schema` in `server.json` without updating this constant and the
  * rules under it is a deliberate failure, not an oversight -- see the header.
  */
-const KNOWN_SCHEMA = "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json";
+const KNOWN_SCHEMA = "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json";
 
-/** `Server.required`, from the schema. */
+/**
+ * `ServerDetail.required`, from the schema.
+ *
+ * 2025-12-11 merged the old `Server` definition into `ServerDetail`; the three required fields and
+ * their constraints are unchanged by that merge.
+ */
 const REQUIRED = ["name", "description", "version"];
 
-/** `Server.properties.<field>.maxLength`, from the schema. */
-const MAX_LENGTH = { name: 200, description: 100, version: 255 };
+/** `ServerDetail.properties.<field>.maxLength`, from the schema. `title` is new in 2025-12-11. */
+const MAX_LENGTH = { name: 200, description: 100, version: 255, title: 100 };
 
-/** `Server.properties.name.pattern`, from the schema. */
+/** Optional top-level fields, checked only when present. */
+const OPTIONAL_TOP_LEVEL = new Set(["title"]);
+
+/** `ServerDetail.properties.name.pattern`, from the schema. */
 const NAME_PATTERN = /^[a-zA-Z0-9.-]+\/[a-zA-Z0-9._-]+$/;
 
 /**
@@ -79,9 +100,19 @@ const NAME_PATTERN = /^[a-zA-Z0-9.-]+\/[a-zA-Z0-9._-]+$/;
 const PACKAGE_REQUIRED = {
     "registryType": "string",
     identifier: "string",
-    version: "string",
     transport: "object"
 };
+
+/**
+ * Fields the schema does not require but constrains when present.
+ *
+ * `version` moved out of `Package.required` in 2025-12-11 (optional for MCPB packages, where the
+ * version is embedded in the download URL). It is still a string when given, and this repository's
+ * own packages always give it -- `check:versions` asserts the value, this asserts the type.
+ * Encoded as optional-but-typed rather than dropped, because a checker that is STRICTER than the
+ * schema fails documents the registry would accept, which is its own kind of wrong answer.
+ */
+const PACKAGE_OPTIONAL = { version: "string" };
 
 /**
  * The transport shapes, from the schema's `StdioTransport` / `StreamableHttpTransport` /
@@ -159,10 +190,11 @@ for (const field of REQUIRED) {
 }
 
 for (const [field, limit] of Object.entries(MAX_LENGTH)) {
-    // The type check is not decoration. This used to `continue` on a non-string, so
-    // `"version": 3.4` skipped its own length check silently and the run still said "validates".
-    // A check that quietly opts out of checking is the shape of defect this whole script exists
-    // for.
+    // Optional fields are skipped when absent and checked when present -- not the same as the old
+    // `continue` on a non-string, which skipped a REQUIRED field's length check silently so
+    // `"version": 3.4` passed while the run still said "validates". A check that quietly opts out
+    // of checking is the shape of defect this whole script exists for.
+    if (doc[field] === undefined && OPTIONAL_TOP_LEVEL.has(field)) continue;
     if (!assert(typeof doc[field] === "string", `${field} is a string`, typeof doc[field])) continue;
     assert(doc[field].length <= limit, `${field} length (limit ${limit})`, String(doc[field].length));
 }
@@ -175,10 +207,17 @@ assert(Array.isArray(doc.packages) && doc.packages.length > 0,
     "packages is a non-empty array", Array.isArray(doc.packages) ? `${doc.packages.length} entries` : "not an array");
 
 for (const [index, pkg] of (doc.packages ?? []).entries()) {
+    const shapeOf = (value) => value === undefined ? "missing" :
+        (Array.isArray(value) ? "array" : typeof value);
     for (const [field, wanted] of Object.entries(PACKAGE_REQUIRED)) {
-        const seen = pkg[field] === undefined ? "missing" :
-            (Array.isArray(pkg[field]) ? "array" : typeof pkg[field]);
+        const seen = shapeOf(pkg[field]);
         assert(seen === wanted, `packages[${index}].${field} (${wanted})`,
+            seen === wanted ? JSON.stringify(pkg[field]) : seen);
+    }
+    for (const [field, wanted] of Object.entries(PACKAGE_OPTIONAL)) {
+        if (pkg[field] === undefined) continue;
+        const seen = shapeOf(pkg[field]);
+        assert(seen === wanted, `packages[${index}].${field} (optional, ${wanted})`,
             seen === wanted ? JSON.stringify(pkg[field]) : seen);
     }
     // The transport's own shape. `{"type": "stdio"}` and `{"type": "sse", "url": ...}` are

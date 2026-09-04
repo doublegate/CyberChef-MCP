@@ -26,11 +26,11 @@ image:
   pullPolicy: IfNotPresent
   # Pinned rather than "latest". A chart that floats its tag cannot be rolled back to a known
   # state, and `latest` moves on every release.
-  tag: "3.4.0"
+  tag: "3.5.0"
   # A TAG IS NOT A DIGEST. GHCR tags are mutable, so the line above is a promise about which bytes
   # were pushed, not a guarantee about which bytes you get. Set this and it wins over `tag`:
   #
-  #   docker buildx imagetools inspect ghcr.io/doublegate/cyberchef-mcp_v3:3.4.0 \
+  #   docker buildx imagetools inspect ghcr.io/doublegate/cyberchef-mcp_v3:3.5.0 \
   #     --format '{{.Manifest.Digest}}'
   #   digest: "sha256:..."
   #

@@ -12,6 +12,7 @@ counting Claude tokens with a GPT tokenizer would swap one unvalidated proxy for
 | `npm run benchmark:baseline` | Regenerates `baseline.json` from five runs | — |
 | `npm run measure:surfaces` | `tools/list` payload per tool surface | no |
 | `npm run measure:results` | Tool **result** payloads across representative cases | no |
+| `node benchmarks/compare-runs.mjs <base> <head>` | Two runs measured on the **same** machine | not yet |
 
 ## The regression gate
 
@@ -70,17 +71,49 @@ allowed. Being aware of a bias is not being protected from it.
 So **50%**, which covers the −41.8% actually observed. Full study and disproof:
 [`../docs/internal/measurements/v3.4.0-runner-baseline.md`](../docs/internal/measurements/v3.4.0-runner-baseline.md).
 
-**The number is not the lever worth pulling.** Widening it further would not help either. Two
-mechanisms would, and both are follow-ups with their own validation:
-
-1. **A median of several runs in CI**, matching what the baseline already is — it is a median of
-   four and the gate compares a *single* run against it, which is asymmetric. Cuts within-instance
-   noise, not host-to-host difference, and triples the job.
-2. **Normalising against a calibration task** — measure one fixed operation each run and scale the
-   rest by it. Targets host-class difference directly, which is what actually broke this.
+**The number is not the lever worth pulling**, and v3.5.0 stopped pulling it. See below.
 
 The missing-task check is unaffected and stays exact: a benchmark that disappears is a fact, not a
 measurement.
+
+## The same-host comparison (v3.5.0)
+
+The tolerance argument above is really an argument about comparing across machines. v3.5.0 stopped
+doing that.
+
+v3.4.0 proposed **normalising against a calibration task**. v3.5.0 tested that proposal on the four
+runs that motivated it, before building it, and it does not work: dividing out each run's median
+leaves a residual spread of **-39.7%** and **-44.3%** against raw deltas of -38.6% and -42.1%. The
+correction is worth about two percentage points, because the hosts differ in *profile* rather than
+by a scale factor — memory-bound tasks collapse while a CPU-bound one improves on the same run, and
+no single constant corrects two directions at once.
+
+So the host is removed from the comparison instead of estimated. On a pull request,
+`performance-benchmarks.yml` now benchmarks the **merge base** and the **head** in one job on one
+runner and compares those two. Whatever that host is, both sides got it. First measurement, on a
+branch whose benchmarked paths are unchanged:
+
+```text
+tasks compared: 30      median -0.2%      worst -5.5%      best +3.6%
+```
+
+against the cross-host range of -42% to +101%. Roughly tenfold tighter.
+
+**It does not gate yet, deliberately.** One measurement on one machine is exactly the evidence base
+that set the 20% tolerance in v3.4.0, and that number survived a few hours. The same-host spread
+*on a runner* has not been measured; until it has, `compare-runs.mjs` reports, the numbers
+accumulate in pull-request comments above the fold, and `check-regression.mjs` stays the blocking
+gate. The threshold gets set from that data in a later release and not before.
+
+Two limits worth knowing:
+
+- `node_modules` is shared between the two checkouts, so the comparison is **skipped with a notice**
+  when `package.json` or `package-lock.json` differs between base and head. Benchmarking the base
+  against the head's dependency tree would measure neither commit.
+- It exists only on pull requests. A push to `master` has no merge base, so the stored-baseline gate
+  is the only check there.
+
+Full detail: [`../docs/internal/measurements/v3.5.0-same-host-comparison.md`](../docs/internal/measurements/v3.5.0-same-host-comparison.md).
 
 ### What the gate does not catch
 

@@ -34,6 +34,10 @@ jobs:
 
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          # Full history: the same-host comparison below benchmarks the MERGE BASE as well as the
+          # head, and depth 1 cannot reach it.
+          fetch-depth: 0
 
       - name: Setup Node.js 26
         uses: actions/setup-node@v7
@@ -100,6 +104,71 @@ jobs:
           node benchmarks/operation-benchmarks.mjs --json > benchmark-results.json
           node benchmarks/check-regression.mjs benchmark-results.json
 
+      # THE SAME-HOST COMPARISON. Reporting only -- see the note at the end of this step.
+      #
+      # The gate above compares this run against a STORED baseline, and across GitHub's runner pool
+      # that comparison is dominated by which host the job landed on. Measured across four runs in
+      # v3.4.0: the median delta against one stored baseline ranged from -2.3% to +101.4%, and on
+      # the worst runs individual tasks moved -42% and +29% at the same time.
+      #
+      # v3.4.0 proposed fixing that by normalising against a calibration task. v3.5.0 tested the
+      # proposal on those four runs before building it and it does not work -- dividing out each
+      # run's median leaves a residual of -44%, because the hosts differ in profile rather than by
+      # a scale factor.
+      #
+      # So this removes the host from the comparison instead of estimating it: benchmark the merge
+      # base and the head in ONE job on ONE runner. Whatever that host is, both sides got it.
+      - name: Benchmark the merge base on this same runner
+        id: base_bench
+        # `always()`, because the regression gate above fails the job on a suspected regression --
+        # and that is exactly the moment this comparison earns its keep: it is the evidence that
+        # separates a real regression from a slow host. Running it only on success would withhold
+        # the number in the only case anyone needs it.
+        if: always() && github.event_name == 'pull_request'
+        run: |
+          set -o pipefail
+          BASE_SHA="$(git merge-base origin/${{ github.base_ref }} HEAD)"
+          echo "merge base: $BASE_SHA"
+
+          # A worktree rather than a second clone: same object store, no network, and the head
+          # checkout is left untouched.
+          git worktree add --detach ../base "$BASE_SHA"
+
+          # node_modules is REUSED, and only when it is provably valid for both sides. If the
+          # lockfile differs between base and head then the installed tree describes the head's
+          # dependencies, and benchmarking the base against them measures neither commit. There is
+          # no honest cheap fix for that, so the comparison is skipped and says so -- a comparison
+          # that silently measures the wrong thing is worse than none.
+          if ! git diff --quiet "$BASE_SHA" HEAD -- package-lock.json package.json; then
+            echo "skipped=lockfile-changed" >> "$GITHUB_OUTPUT"
+            echo "::notice::Dependencies differ between the merge base and the head, so the"
+            echo "::notice::same-host comparison is skipped: reusing this checkout's node_modules"
+            echo "::notice::would benchmark the base against the head's dependency tree."
+            exit 0
+          fi
+          ln -s "$PWD/node_modules" ../base/node_modules
+
+          cd ../base
+          npx grunt configTests
+          node benchmarks/operation-benchmarks.mjs --json > "$GITHUB_WORKSPACE/base-results.json"
+          echo "skipped=" >> "$GITHUB_OUTPUT"
+
+      - name: Compare head against the merge base
+        if: always() && github.event_name == 'pull_request' && steps.base_bench.outputs.skipped == ''
+        run: |
+          set -o pipefail
+          node benchmarks/compare-runs.mjs base-results.json benchmark-results.json \
+            | tee same-host-comparison.txt
+
+      - name: Upload the same-host comparison
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v7
+        with:
+          name: same-host-comparison
+          path: same-host-comparison.txt
+          retention-days: 7
+          if-no-files-found: ignore
+
       # Hand the output to the reporting job as an artifact. `if: always()` so a FAILING
       # benchmark still gets reported -- the output of a failure is the most useful comment
       # this workflow can post, and it was previously discarded.
@@ -135,6 +204,16 @@ jobs:
           name: benchmark-output
         continue-on-error: true
 
+      # The same-host comparison, which is the number a reviewer actually needs: the gate above
+      # compares against a stored baseline and is dominated by which host the job landed on.
+      # `continue-on-error` because it is absent by design on a push, and when the dependency
+      # lockfile changed.
+      - name: Download the same-host comparison
+        uses: actions/download-artifact@v8
+        with:
+          name: same-host-comparison
+        continue-on-error: true
+
       # Reporting must never fail the workflow. Before this split, a 403 in the comment step
       # turned a fully green benchmark run into a red check and blocked unrelated PRs.
       - name: Comment benchmark results on PR
@@ -153,9 +232,15 @@ jobs:
             // ... check the workflow logs", spending an API call and a PR comment to report
             // that a thing had happened.
             let output;
+            let sameHost = null;
             try {
               const fs = require("fs");
               output = fs.readFileSync("benchmark-output.txt", "utf8").trim();
+              // Optional and separate: absent on a push, and absent when the lockfile changed
+              // between the merge base and the head. Its absence must not cost the whole comment.
+              try {
+                sameHost = fs.readFileSync("same-host-comparison.txt", "utf8").trim();
+              } catch { sameHost = null; }
             } catch (err) {
               // Logged, not swallowed: if the artifact is missing, the reason belongs in the
               // job log rather than being replaced silently by a placeholder.
@@ -192,6 +277,22 @@ jobs:
               "",
               `Benchmark job: **${{ needs.benchmark.result }}**`,
               "",
+              // FIRST, above the fold. Against a stored baseline the runner pool swamps the
+              // signal -- measured across four v3.4.0 runs, the median delta ranged from -2.3%
+              // to +101.4%. This block compares the merge base and the head on the SAME runner
+              // in the same job, so that variance cancels instead of being estimated.
+              ...(sameHost ? [
+                "### Same-host comparison (merge base vs head)",
+                "",
+                "```text",
+                sameHost,
+                "```",
+                "",
+              ] : [
+                "_No same-host comparison: this was a push, or the dependency lockfile differs_",
+                "_between the merge base and the head, which would make the two runs incomparable._",
+                "",
+              ]),
               ...(truncated ? ["_Output truncated to the last 60,000 characters._", ""] : []),
               "<details><summary>Full benchmark output</summary>",
               "",

@@ -31,7 +31,7 @@ import { dirname, resolve, join } from "node:path";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "../..");
 const SCRIPT = resolve(ROOT, "scripts/check-server-json.mjs");
-const SCHEMA = "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json";
+const SCHEMA = "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json";
 const NAME = "io.github.doublegate/cyberchef-mcp";
 
 /** A document that passes, as the starting point every case mutates. */
@@ -151,12 +151,35 @@ describe("check-server-json", () => {
     it("refuses a schema version whose rules it does not carry", () => {
         // The design decision that matters most: the rules are transcribed from one schema
         // version, so a document declaring another must FAIL rather than be checked against rules
-        // it was not written to.
+        // it was not written to. The version used here is the one this repository declared until
+        // v3.5.0 -- a real, still-resolvable schema, which is the case that matters: an obviously
+        // bogus URL would fail for the wrong reason.
         const doc = clone();
-        doc.$schema = "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json";
+        doc.$schema = "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json";
         const { code, out } = run(doc);
         expect(code).toBe(1);
         expect(out).toContain("does not know");
+    });
+
+    it("accepts a package with no version, which 2025-12-11 made optional", () => {
+        // The one behaviour change in the migration. Until 2025-12-11 `version` was in
+        // `Package.required`; it is now optional, because an MCPB package carries its version in
+        // the download URL. A checker STRICTER than the schema rejects documents the registry
+        // accepts, which is its own kind of wrong answer.
+        const doc = clone();
+        delete doc.packages[0].version;
+        const { code, out } = run(doc);
+        expect(out).toContain("server.json validates");
+        expect(code).toBe(0);
+    });
+
+    it("still rejects a package version that is present but not a string", () => {
+        // Optional does not mean unconstrained.
+        const doc = clone();
+        doc.packages[0].version = 9;
+        const { code, out } = run(doc);
+        expect(code).toBe(1);
+        expect(out).toContain("version (optional, string)");
     });
 
     it("rejects a mismatched npm ownership proof", () => {

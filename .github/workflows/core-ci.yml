@@ -92,6 +92,37 @@ jobs:
     - name: server.json validity
       run: npm run check:server-json
 
+    # THE ORACLE, alongside the offline gate above.
+    #
+    # The transcribed checker verifies what its author believed the schema says. Only the registry's
+    # own tool can contradict them, and in v3.5.0 it did: `check-server-json.mjs` shipped in v3.4.0
+    # encoding the 2025-09-29 schema while 2025-12-11 was already current, and nothing in the tree
+    # could have noticed. `mcp-publisher validate` reports it in one line.
+    #
+    # This is the same arrangement `npm run conformance` has with the in-tree protocol tests, for
+    # the same reason -- and the reason it was not applied here sooner is that `server.json` did not
+    # look like the kind of file that has an oracle.
+    #
+    # It needs the network, so it cannot replace the offline gate; it is additive. `continue-on-
+    # error` is deliberately NOT set: a validation failure here is a `server.json` the registry
+    # would reject, which is worth failing a pull request for. A deprecation WARNING does not fail
+    # the tool, and is surfaced in the log rather than swallowed.
+    - name: server.json against the registry's own validator
+      run: |
+        set -o pipefail
+        curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" \
+          | tar xz mcp-publisher
+        ./mcp-publisher validate 2>&1 | tee validation.txt
+        # The tool exits 0 on a deprecated schema. Treat that as a failure here, because shipping a
+        # deprecated declaration is exactly what this step exists to catch -- and it is how v3.4.0's
+        # gate came to be a version behind on the day it shipped.
+        if grep -q "Deprecated schema detected" validation.txt; then
+          echo "::error::server.json declares a deprecated schema. Update it AND the KNOWN_SCHEMA"
+          echo "::error::constant in scripts/check-server-json.mjs together, then re-check the"
+          echo "::error::transcribed rules against the new schema -- they are not always the same."
+          exit 1
+        fi
+
     - name: Config Tests (Generate Configs)
       run: npx grunt configTests
 

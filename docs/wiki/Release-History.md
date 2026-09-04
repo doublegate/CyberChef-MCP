@@ -5,6 +5,26 @@ Full notes for every version live in
 [releases page](https://github.com/doublegate/CyberChef-MCP/releases). This is the shape of the
 2.x and 3.x lines, and what each release was actually *about*.
 
+## v3.5.0 — measuring the thing instead of estimating it
+
+Two of v3.4.0's conclusions were tested before being built on, and both were wrong.
+
+The `server.json` gate v3.4.0 added was **a schema version behind on the day it shipped** — 2025-09-29
+against a current 2025-12-11 — and the official `mcp-publisher validate` says so in one line. The
+lesson was already written down for the conformance suite ("the official suite is the oracle, not the
+in-tree tests") and simply was not applied here, because `server.json` did not look like the kind of
+file that has an oracle. CI now runs both: the transcribed checker as the blocking offline gate, the
+registry's own validator as the thing that can contradict it.
+
+And the benchmark fix v3.4.0 recorded — normalise against a calibration task — **would not have
+worked**. Tested against the four runs that motivated it, dividing out each run's median leaves a
+residual of -44% against a raw -42%: the hosts differ in profile, not by a scale factor. So the host
+is removed from the comparison instead of estimated, by benchmarking the merge base and the head in
+one job on one runner. First measurement is tenfold tighter — and it deliberately does not gate yet,
+because one measurement on one machine is exactly what set the tolerance that failed last time.
+
+Also: the MCP registry listing, which v3.4.0's ownership proofs made possible and nothing had used.
+
 ## v3.4.0 — three operations that had never worked
 
 `Unzip`, `Untar` and `Extract Files` had been dead since v1.0.0. Advertised the whole time,
