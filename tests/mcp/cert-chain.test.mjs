@@ -34,6 +34,13 @@ const ROOT = pem("root");
 const INTER = pem("inter");
 const LEAF = pem("leaf");
 const IMPOSTER = pem("imposter");
+// The adversary that refuted this tool's original design claim. Minted with the real
+// intermediate's subject AND a subjectKeyIdentifier equal to the leaf's authorityKeyIdentifier,
+// over a DIFFERENT key -- so `checkIssued` accepts it and `verify` rejects it. `cert-imposter.pem`
+// above does not have that property: its key identifier differs, which is the only reason
+// `checkIssued` rejected it, and mistaking that for a signature check is what produced the wrong
+// claim in the first place.
+const SKID_IMPOSTER = pem("skid-imposter");
 
 // Inside the leaf's validity window, fixed so the suite does not depend on the calendar.
 const WITHIN = new Date(new Date(new X509Certificate(LEAF).validFrom).getTime() + 86400000)
@@ -178,6 +185,56 @@ describe("cert_chain", () => {
     it("rejects an unparseable as_of instead of silently using now", async () => {
         await expect(tool.run({ input: LEAF, "as_of": "last Tuesday" }))
             .rejects.toThrow(/not a date/);
+    });
+
+    it("proves checkIssued does NOT verify signatures", async () => {
+        // The measurement this tool's design was originally, and wrongly, built on. Kept as a test
+        // rather than a comment because the whole defect came from asserting this without checking
+        // it: an imposter was rejected, the rejection was attributed to cryptography, and it was
+        // actually a key-identifier mismatch.
+        const leaf = new X509Certificate(LEAF);
+        const evil = new X509Certificate(SKID_IMPOSTER);
+
+        expect(evil.subject).toBe(new X509Certificate(INTER).subject);
+        expect(leaf.checkIssued(evil)).toBe(true);          // metadata says yes
+        expect(leaf.verify(evil.publicKey)).toBe(false);    // cryptography says no
+    });
+
+    it("prefers the issuer whose signature verifies over one that merely looks right", async () => {
+        // THE DEFECT. The first draft took the first `checkIssued` match and stopped, so this
+        // hostile certificate captured the edge and the real intermediate -- present in the same
+        // bundle -- was never considered. A good bundle with one hostile certificate in it was
+        // reported as a broken chain.
+        const out = await tool.run({ input: LEAF + SKID_IMPOSTER + INTER + ROOT, "as_of": WITHIN });
+
+        expect(out.chain.map(entry => entry.subject))
+            .toEqual(["CN=example.test", "CN=Test Intermediate", "CN=Test Root CA"]);
+        // Every link in the selected chain verifies, because the real issuer won.
+        expect(out.links.every(link => link.signature_verifies)).toBe(true);
+        // And the hostile certificate is named rather than quietly dropped.
+        const orphan = out.not_in_chain.find(e => e.subject === "CN=Test Intermediate");
+        expect(orphan).toBeDefined();
+        expect(orphan.claims_an_issuer_name_in_this_chain).toBe(true);
+    });
+
+    it("reports a substituted issuer as a broken link when the real one is absent", async () => {
+        // The fallback path: nothing in the bundle verifies, so the metadata-only match is kept so
+        // the failure is REPORTED. Dropping it would turn a substitution into a silent orphan.
+        const out = await tool.run({ input: LEAF + SKID_IMPOSTER, "as_of": WITHIN });
+
+        const link = out.links.find(l => l.from === "CN=example.test");
+        expect(link).toBeDefined();
+        expect(link.names_match).toBe(true);
+        expect(link.signature_verifies).toBe(false);
+        expect(link.warning).toContain("SUBSTITUTED");
+        expect(out.self_consistent).toBe(false);
+        expect(out.problems.join(" ")).toContain("do not verify cryptographically");
+    });
+
+    it("reports whether each issuer is permitted to be one", async () => {
+        const out = await tool.run({ input: LEAF + INTER + ROOT, "as_of": WITHIN });
+        expect(out.links.every(link => link.issuer_is_ca)).toBe(true);
+        expect(out.links.every(link => link.ca_warning === undefined)).toBe(true);
     });
 
     it("is registered and does not shadow an operation or meta-tool", async () => {

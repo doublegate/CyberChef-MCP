@@ -22,21 +22,35 @@
  * The tempting implementation matches `issuer` against `subject` as text. That accepts a forgery
  * trivially: anyone can mint a certificate whose `issuer` string says whatever they like.
  *
- * `checkIssued()` is used instead, and it was MEASURED rather than assumed -- an earlier draft of
- * this file claimed the interesting case was "names match, signature does not" and reported it as a
- * link-level warning. That branch is unreachable. Given a real intermediate and an imposter minted
- * with the identical subject:
+ * `checkIssued()` alone is NOT enough, and this file claimed otherwise for most of its life. The
+ * claim was that "names match, signature does not" is unreachable because `checkIssued` verifies
+ * cryptographically, and it was supported by a measurement:
  *
  *     real.subject === imposter.subject      true
  *     leaf.checkIssued(real)                 true
  *     leaf.checkIssued(imposter)             FALSE
  *
- * `checkIssued` already goes beyond the name, so an imposter never becomes a link and cannot be
- * reported as a broken one. `verify()` against the issuer's public key is kept alongside it as
- * defence in depth -- cheap, and it does not depend on `checkIssued`'s semantics staying as they
- * are -- but it is a confirmation rather than the discriminator.
+ * That measurement is real and the conclusion drawn from it was wrong. `checkIssued` compares
+ * issuer/subject names, authority and subject KEY IDENTIFIERS, and key usage. It never checks the
+ * signature. The imposter was rejected because its subjectKeyIdentifier did not match the leaf's
+ * authorityKeyIdentifier -- a metadata mismatch, mistaken for cryptography.
  *
- * Where the imposter DOES surface is `not_in_chain`. Getting THAT question right took a second
+ * A reviewer disputed it, and the disproof is a certificate carrying the real intermediate's
+ * subject AND a subjectKeyIdentifier equal to the leaf's authorityKeyIdentifier, over a different
+ * key (`tests/mcp/fixtures/cert-skid-imposter.pem`):
+ *
+ *     leaf.checkIssued(skidImposter)         true
+ *     leaf.verify(skidImposter.publicKey)    FALSE
+ *
+ * So the branch is REACHABLE, it is the substitution signature this tool exists to surface, and
+ * `verify()` is the discriminator rather than a confirmation. Edge selection requires it; see the
+ * selection loop. The lesson is not about X.509: a single negative result was taken as proof of a
+ * mechanism, when it only ruled out one way of failing.
+ *
+ * An imposter therefore surfaces in one of two places, depending on whether the real issuer is also
+ * present: as a rejected candidate listed in `not_in_chain` (the real issuer won the edge), or as a
+ * link whose `signature_verifies` is false (nothing in the bundle signed the child). Both are
+ * reported. Getting the `not_in_chain` question right took a further
  * correction, caught by a real bundle rather than by review. The first attempt asked whether an
  * orphan shared a subject with a certificate already IN the chain -- which finds nothing in exactly
  * the case that matters, because when an imposter has replaced the real intermediate the real one
@@ -118,12 +132,11 @@ export default {
     // shape, and that is what it now says.
     description:
         "Order a PEM bundle of X.509 certificates into a chain and report where it breaks: wrong " +
-        "order, a missing intermediate, an expired link, or a certificate carrying the name of an " +
-        "issuer the chain is looking for that issued nothing in the bundle — the shape of a " +
-        "substituted certificate. Every link is verified CRYPTOGRAPHICALLY, not by comparing " +
-        "issuer and subject strings — anyone can mint a certificate whose issuer field says what " +
-        "they like, and such a certificate simply never becomes a link. The three X.509 " +
-        "operations each parse ONE certificate and nothing relates two.",
+        "order, a missing intermediate, an expired link, an issuer not permitted to sign, or an " +
+        "issuer whose name and key identifier match while its SIGNATURE does not — the shape of a " +
+        "substituted certificate. Every link is verified CRYPTOGRAPHICALLY: matching names and key " +
+        "identifiers are metadata, and anyone can mint a certificate carrying the ones they like. " +
+        "The three X.509 operations each parse ONE certificate and nothing relates two.",
     annotations: {
         title: "Order and validate an X.509 certificate chain",
         readOnlyHint: true,
@@ -188,8 +201,31 @@ export default {
         // ORDERING. A leaf is a certificate that issues nothing else in the bundle. Determined by
         // asking every certificate whether it issued every other, rather than by trusting the order
         // they arrived in -- an out-of-order bundle is one of the things this exists to detect.
+        //
+        // SELECTION REQUIRES A VERIFIED SIGNATURE, and getting this wrong was this tool's most
+        // serious defect. `checkIssued()` does NOT verify the signature -- it compares issuer/
+        // subject names, authority/subject key identifiers and key usage. That was established by
+        // measurement after a reviewer disputed the original claim, using a certificate minted with
+        // the real intermediate's subject AND a subjectKeyIdentifier equal to the leaf's authority
+        // key identifier, over a different key:
+        //
+        //     leaf.checkIssued(skidImposter)         true
+        //     leaf.verify(skidImposter.publicKey)    FALSE
+        //
+        // The earlier draft took the FIRST `checkIssued` match and stopped. A certificate shaped
+        // like that therefore captured the edge, and the real issuer sitting in the same bundle was
+        // never considered -- so a good bundle containing one hostile certificate was reported as a
+        // broken chain. `tests/mcp/fixtures/cert-skid-imposter.pem` is that certificate, committed
+        // so the case stays pinned.
+        //
+        // Every candidate is now evaluated. One whose signature verifies always wins. A
+        // metadata-only match is kept ONLY as a fallback when nothing verifies, because dropping it
+        // would turn a substituted certificate into a silent orphan -- the link has to be reported
+        // as broken, not omitted.
         const issuedBy = new Map();
+        const metadataOnlyLink = new Set();
         for (const [i, cert] of certs.entries()) {
+            let fallback;
             for (const [j, candidate] of certs.entries()) {
                 if (i === j) continue;
                 let issued;
@@ -200,10 +236,25 @@ export default {
                     // than thrown: one bad member of a bundle must not stop the rest being ordered.
                     issued = false;
                 }
-                if (issued) {
+                if (!issued) continue;
+
+                let verifies;
+                try {
+                    verifies = cert.verify(candidate.publicKey);
+                } catch {
+                    // An unsupported key type cannot be confirmed, so it is not a verified issuer.
+                    verifies = false;
+                }
+                if (verifies) {
                     issuedBy.set(i, j);
+                    fallback = undefined;
                     break;
                 }
+                if (fallback === undefined) fallback = j;
+            }
+            if (!issuedBy.has(i) && fallback !== undefined) {
+                issuedBy.set(i, fallback);
+                metadataOnlyLink.add(i);
             }
         }
         const issuers = new Set(issuedBy.values());
@@ -221,7 +272,9 @@ export default {
         const orphans = certs.map((_, i) => i).filter(i => !seen.has(i));
 
         // LINK VERIFICATION. Name agreement and signature agreement are reported separately,
-        // because the case where they disagree is the whole point of checking cryptographically.
+        // because the case where they disagree is the whole point of checking cryptographically --
+        // and it is REACHABLE, contrary to what this file claimed until it was measured. See the
+        // selection loop above.
         const links = [];
         for (let step = 0; step + 1 < order.length; step++) {
             const child = certs[order[step]];
@@ -240,10 +293,20 @@ export default {
                 to: parent.subject.replace(/\n/g, ", "),
                 "names_match": namesMatch,
                 "signature_verifies": signatureVerifies,
+                // Whether the issuer is even allowed to be one. A non-CA certificate that appears
+                // as an issuer is a defect regardless of whether the signature verifies.
+                "issuer_is_ca": parent.ca === true,
                 ...(!signatureVerifies ? {
-                    warning: "`checkIssued` accepted this link and an explicit signature check did " +
-                        "not. That should not happen and means one of the two is wrong about this " +
-                        "certificate — do not treat the chain as verified."
+                    warning: "This certificate's issuer metadata points at the one above it — " +
+                        "matching issuer name and authority key identifier — but the signature " +
+                        "does NOT verify against that certificate's key. Nothing else in the " +
+                        "bundle signed it either. That is what a SUBSTITUTED issuer looks like: " +
+                        "anyone can mint a certificate carrying a chosen subject and key " +
+                        "identifier. Do not treat this chain as verified."
+                } : {}),
+                ...(parent.ca !== true ? {
+                    "ca_warning": "The issuer is not marked as a CA (basicConstraints CA:TRUE), so " +
+                        "it is not permitted to sign certificates even if the signature verifies."
                 } : {})
             });
         }
@@ -286,7 +349,33 @@ export default {
                 "that would join them is missing.");
         }
         if (broken.length) {
-            problems.push(`${broken.length} link(s) do not verify cryptographically.`);
+            problems.push(
+                `${broken.length} link(s) do not verify cryptographically. See each link's ` +
+                "`warning`: an issuer whose metadata matches while its signature does not is the " +
+                "shape of a substituted certificate.");
+        }
+        const nonCaIssuers = links.filter(link => !link.issuer_is_ca);
+        if (nonCaIssuers.length) {
+            problems.push(
+                `${nonCaIssuers.length} issuer(s) are not marked as a CA (basicConstraints ` +
+                "CA:TRUE) and are not permitted to sign certificates.");
+        }
+        // A self-signed top must actually be self-signed. Its name says so; only its own key can
+        // establish it, and a certificate whose subject equals its issuer while failing its own
+        // signature is malformed or tampered with.
+        if (rootIsSelfSigned) {
+            let selfVerifies;
+            try {
+                selfVerifies = top.verify(top.publicKey);
+            } catch {
+                selfVerifies = false;
+            }
+            if (!selfVerifies) {
+                problems.push(
+                    "The certificate at the top of the chain names itself as its own issuer, but " +
+                    "its signature does not verify against its own key. It is malformed or has " +
+                    "been altered.");
+            }
         }
         if (described.some(entry => entry.expired)) problems.push("A certificate in the chain has expired.");
         if (described.some(entry => entry.not_yet_valid)) problems.push("A certificate is not yet valid.");

@@ -29,15 +29,32 @@ exercise, and the item leaves the list either way.
 
 **`cert_chain`** is the release's new capability and the 18th registry tool. Three operations parse
 a single certificate each; nothing relates two, and every real question about a bundle is
-relational. Its design changed twice under measurement. A first draft claimed to report "the issuer
-name matches but the signature does not" — unreachable, because `checkIssued` already verifies
-cryptographically, established against a purpose-built imposter carrying the real intermediate's
-subject. The replacement imposter check was wrong too: it compared an orphan's subject against
-subjects **in** the chain, which finds nothing precisely when an imposter has *replaced* the real
-intermediate. It now asks about the issuer name the chain is **looking for**.
+relational.
 
-A missing root is reported as normal rather than as a defect, because a server's `fullchain.pem`
-legitimately omits it, and a tool that cries wolf on the common case gets ignored.
+Its design changed four times before shipping, every time because something outside the author's
+head said so — a measurement, a real bundle, or a reviewer. The important one was the last.
+
+The tool claimed that `X509Certificate.checkIssued()` verifies signatures, and built on it: a first
+draft's "the issuer name matches but the signature does not" warning was **withdrawn as
+unreachable** on the strength of an imposter that `checkIssued` rejected. A reviewer disputed it and
+was right. `checkIssued` compares names, authority/subject **key identifiers** and key usage; it
+never touches the signature. The imposter had been rejected for a key-identifier mismatch, and that
+was mistaken for cryptography — a single negative result read as proof of a mechanism, when it only
+ruled out one way of failing.
+
+The disproof is a certificate carrying the real intermediate's subject *and* a matching
+`subjectKeyIdentifier`, over a different key: `checkIssued` says yes, `verify` says no. Worse, edge
+selection took the first `checkIssued` match and stopped — so such a certificate captured the link
+while the genuine issuer sat unconsidered in the same bundle, and a good chain with one hostile
+certificate in it was reported as broken. Selection now requires a verifying signature, the
+withdrawn warning is restored because it is exactly the substitution signature, and the adversary is
+committed as a fixture with a test that fails against the old logic.
+
+Two earlier corrections: the replacement imposter check compared an orphan's subject against
+subjects **in** the chain, which finds nothing precisely when an imposter has *replaced* the real
+intermediate — it now asks about the issuer name the chain is **looking for**. And a missing root
+was counted as a defect, so an ordinary `fullchain.pem` came back `self_consistent: false` beside an
+assessment saying a missing root is not a defect; notes and problems are now separate fields.
 
 ## v3.7.0 — the gate that checked four of eleven files
 

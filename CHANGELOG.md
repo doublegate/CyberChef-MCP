@@ -40,13 +40,28 @@ Details in [the release notes](docs/releases/v3.8.0.md) and
   nothing in the case that matters: when an imposter replaces the real intermediate, the real one is
   absent, so its subject is not in the chain either. It now compares against the issuer names the
   chain is **looking for**. An earlier draft also claimed to report "names match but signature
-  fails"; that branch is unreachable — `checkIssued` verifies cryptographically, measured against a
-  purpose-built imposter — and the claim was removed rather than left standing.
+  fails". That claim was withdrawn on a measurement and **the withdrawal was wrong**: `checkIssued`
+  compares names and key identifiers, never the signature, and the imposter had been rejected for a
+  `subjectKeyIdentifier` mismatch mistaken for cryptography. Caught in review. See the
+  security fix below.
 
 - **`cert_chain` reported `self_consistent: false` for an ordinary `fullchain.pem`**, beside its own
   assessment saying a missing root is not a defect — it contradicted itself in a single response,
   because the missing-root note was pushed into `problems` and `self_consistent` counted them. Notes
   and problems are now separate fields. The tests had encoded the defect rather than catching it.
+- **`cert_chain` could be induced to report a valid chain as broken, and its cryptographic claim was
+  false.** `X509Certificate.checkIssued()` verifies issuer/subject names, authority and subject key
+  identifiers and key usage — **never the signature**. The tool claimed the opposite, and selected
+  the first `checkIssued` match as the chain edge, so a certificate minted with the real
+  intermediate's subject *and* a matching `subjectKeyIdentifier` over a different key captured the
+  link while the genuine issuer sat unconsidered in the same bundle. Disproof:
+  `leaf.checkIssued(skidImposter)` is `true` and `leaf.verify(skidImposter.publicKey)` is `false`.
+  Selection now evaluates every candidate and a verifying signature always wins, with a
+  metadata-only match kept only as a fallback so a substitution is reported rather than dropped. The
+  "names match, signature does not" warning is restored, because it is reachable and is the
+  substitution signature. Issuers must now also carry `basicConstraints CA:TRUE`, and a self-signed
+  top must verify against its own key. Adversary committed as
+  `tests/mcp/fixtures/cert-skid-imposter.pem`; the test fails against the old logic.
 - **`cert_chain`'s model-visible description advertised a finding the tool cannot make** — "an
   issuer whose name matches but whose signature does not", the branch this same release established
   as unreachable and removed from the implementation and the header comment. A stale comment misleads
