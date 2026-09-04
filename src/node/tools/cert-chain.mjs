@@ -36,9 +36,16 @@
  * defence in depth -- cheap, and it does not depend on `checkIssued`'s semantics staying as they
  * are -- but it is a confirmation rather than the discriminator.
  *
- * Where the imposter DOES surface is `not_in_chain`, and a certificate sharing a subject with a
- * chain member while signing nothing is worth naming rather than leaving as a bare count. It is
- * called out explicitly for that reason.
+ * Where the imposter DOES surface is `not_in_chain`. Getting THAT question right took a second
+ * correction, caught by a real bundle rather than by review. The first attempt asked whether an
+ * orphan shared a subject with a certificate already IN the chain -- which finds nothing in exactly
+ * the case that matters, because when an imposter has replaced the real intermediate the real one
+ * is absent, so its subject is not in the chain either. It returned `false` for the very
+ * certificate it was written to catch.
+ *
+ * The question that works is about the name the chain is LOOKING FOR: every certificate names its
+ * issuer, the top of the chain names one that is not present, and that is the slot an imposter
+ * occupies. See `wantedIssuers` below.
  *
  * ## No dependency
  *
