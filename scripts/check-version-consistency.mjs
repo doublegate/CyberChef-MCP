@@ -54,6 +54,20 @@ function read(relative) {
 const expected = JSON.parse(read("package.json")).version;
 const expectedMajor = expected.split(".")[0];
 
+// The operation COUNT, which is a derived number that appeared in prose and drifted. Three live
+// documents said 505 where `OperationConfig` has 504, including the alert description an operator
+// reads while diagnosing a restart loop. `check:versions` covered versions and package majors and
+// nothing else, so nothing was looking.
+//
+// Read from the generated config rather than hardcoded: the number moves when upstream adds an
+// operation, and a check that has to be edited on every sync is a check that gets edited wrongly.
+// Absent before `grunt configTests` runs, so the count locations are skipped rather than failed --
+// this script must stay runnable on a fresh clone.
+let operationCount = null;
+try {
+    operationCount = Object.keys(JSON.parse(read("src/core/config/OperationConfig.json"))).length;
+} catch { /* not generated yet; see below */ }
+
 /**
  * Every place the release version appears, and how to find it.
  *
@@ -158,6 +172,26 @@ const LOCATIONS = [
         find: text => [...text.matchAll(/\*\*Latest Release:\*\*\s*v([0-9]+\.[0-9]+\.[0-9]+)/g)]
             .map(m => ({ what: "Latest Release banner", value: m[1] }))
     },
+    ...(operationCount === null ? [] : [
+        {
+            file: "deploy/helm/cyberchef-mcp/templates/prometheusrule.yaml",
+            find: text => [...text.matchAll(/loads all ([0-9]{3}) operations/g)]
+                .map((m, i) => ({ what: `operation count ${i + 1}`, value: m[1],
+                    compare: String(operationCount) }))
+        },
+        {
+            file: "README.md",
+            find: text => [...text.matchAll(/import of all ([0-9]{3}) operations/g)]
+                .map((m, i) => ({ what: `operation count ${i + 1}`, value: m[1],
+                    compare: String(operationCount) }))
+        },
+        {
+            file: "docs/wiki/Release-History.md",
+            find: text => [...text.matchAll(/440 \u2192 ([0-9]{3}) operations/g)]
+                .map((m, i) => ({ what: `operation count ${i + 1}`, value: m[1],
+                    compare: String(operationCount) }))
+        }
+    ]),
     {
         file: "README.md",
         find: text => [...text.matchAll(/releases\/download\/v([0-9]+\.[0-9]+\.[0-9]+)\//g)]

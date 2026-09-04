@@ -1,0 +1,86 @@
+name: "Helm Chart"
+
+# WHY THIS EXISTS
+#
+# Nothing lints, renders or installs `deploy/helm/cyberchef-mcp` -- found in v3.1.0 while adding
+# `image.digest`, whose two branches were verified by rendering the chart through a container BY
+# HAND. That is precisely the manual step a gate exists to replace, and the chart is a published
+# artefact with its own version: a template error here reaches an operator before it reaches a
+# build.
+#
+# WHAT THIS DOES NOT DO, and why the debt statement was corrected rather than left overstated:
+# it does not INSTALL. `--dry-run=server` and a kind cluster catch a different class -- admission
+# and API-version rejections -- but this chart's ServiceMonitor needs the Prometheus operator CRDs,
+# so a bare cluster would reject a valid manifest and the gate would be teaching people to disable
+# it within a release. Rendering every values path is the honest coverage until there is a reason
+# to stand up the CRDs too.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'deploy/helm/**'
+      - '.github/workflows/helm-chart.yml'
+  pull_request:
+    paths:
+      - 'deploy/helm/**'
+      - '.github/workflows/helm-chart.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  chart:
+    name: lint and render
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.19.0
+
+      - name: helm lint
+        run: helm lint deploy/helm/cyberchef-mcp --strict
+
+      # Every values path, because a template error only appears on the branch that renders it.
+      # The default path passing says nothing about `image.digest`, which is exactly how the
+      # v3.1.0 branch could have shipped broken.
+      - name: helm template — default values
+        run: helm template t deploy/helm/cyberchef-mcp > /dev/null
+
+      - name: helm template — digest pinning
+        run: |
+          set -o pipefail
+          out=$(helm template t deploy/helm/cyberchef-mcp --set image.digest=sha256:deadbeef)
+          echo "$out" | grep -q 'image: "ghcr.io/doublegate/cyberchef-mcp_v3@sha256:deadbeef"' || {
+            echo "::error::image.digest did not win over image.tag"
+            echo "$out" | grep -n 'image:' || true
+            exit 1
+          }
+          # And the default must still render the TAG when no digest is set -- a template that
+          # always renders a digest would pass the check above and be wrong.
+          helm template t deploy/helm/cyberchef-mcp \
+            | grep -q 'image: "ghcr.io/doublegate/cyberchef-mcp_v3:' || {
+            echo "::error::default values no longer render the tag"; exit 1; }
+
+      - name: helm template — optional subsystems on
+        run: |
+          helm template t deploy/helm/cyberchef-mcp \
+            --set autoscaling.enabled=true \
+            --set podDisruptionBudget.enabled=true \
+            --set metrics.enabled=true \
+            --set metrics.serviceMonitor.enabled=true \
+            --set ingress.enabled=true > /dev/null
+
+      # The chart's appVersion is asserted against package.json by `npm run check:versions` in
+      # core-ci; this job deliberately does not repeat that. What it does check is the pairing the
+      # version gate cannot see: that the rendered image reference is a single coherent string.
+      - name: rendered image reference is well formed
+        run: |
+          ref=$(helm template t deploy/helm/cyberchef-mcp | grep -m1 -oP '(?<=image: ")[^"]+')
+          echo "rendered: $ref"
+          echo "$ref" | grep -Eq '^ghcr\.io/doublegate/cyberchef-mcp_v[0-9]+:[0-9]+\.[0-9]+\.[0-9]+$' || {
+            echo "::error::unexpected image reference shape: $ref"; exit 1; }

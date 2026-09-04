@@ -167,7 +167,7 @@ one of 524 tools carrying an empty `inputSchema`**, with the suite green through
 
 ## v2.0.0 — the major
 
-Upstream catch-up **v10.19.4 → v11.4.0** (440 → 505 operations). Relicensed to
+Upstream catch-up **v10.19.4 → v11.4.0** (440 → 504 operations). Relicensed to
 **GPL-3.0-or-later**. Per-session HTTP transport. 272 security findings closed. The `cyberchef_`
 prefix removal was **withdrawn** after measurement: it saved 2.6% of the payload against breaking
 every integration and creating 19 colliding names.
