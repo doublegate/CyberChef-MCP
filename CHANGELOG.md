@@ -31,10 +31,11 @@ the benchmark fix it recorded would not have worked. Details in
   used them.
 - **A same-host benchmark comparison.** On a pull request the benchmark job now measures the
   **merge base** and the **head** in one job on one runner, via a git worktree, and reports the
-  difference above the fold in the PR comment. First measurement: median **-0.2%**, worst **-5.5%**,
-  best **+3.6%**, against a cross-host range of -42% to +101% — roughly tenfold tighter. It
-  **does not gate**: the same-host spread on a runner has not been measured, and setting a
-  threshold before the data exists is the mistake that moved this project's tolerance three times.
+  difference above the fold in the PR comment. Measured on a GitHub runner — the environment that
+  produced the -42% to +101% range — median **+0.5%**, worst **-2.2%**, best **+6.0%**.
+  `To Hex (100KB)` reads **-41.8%** against a stored baseline and **-2.0%** same-host, on identical
+  code. It **does not gate**: one runner measurement is not a distribution, and setting a threshold
+  from the first plausible number is the mistake that moved this project's tolerance three times.
 
 ### Changed
 
