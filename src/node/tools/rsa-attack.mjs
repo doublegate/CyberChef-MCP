@@ -49,7 +49,7 @@ import { createInputError } from "../errors.mjs";
  * beyond anything in use; RSA-4096 is already unusual. Above that the input is not a key, so
  * refusing it costs no real capability.
  */
-const MAX_OPERAND_CHARS = 5000;
+export const MAX_OPERAND_CHARS = 5000;
 
 /** Bit length above which an operand is not a key, whatever it claims to be. */
 const MAX_MODULUS_BITS = 16384;
@@ -141,7 +141,7 @@ const isPerfectSquare = (n) => {
 };
 
 /** @returns {bigint} The greatest common divisor. */
-const gcd = (a, b) => {
+export const gcd = (a, b) => {
     while (b) [a, b] = [b, a % b];
     /* v8 ignore next -- both arguments are moduli, so the result is never negative here. */
     return a < 0n ? -a : a;
@@ -154,7 +154,7 @@ const gcd = (a, b) => {
  * @param {bigint} mod - The modulus.
  * @returns {bigint|null} The inverse, or null if a and mod are not coprime.
  */
-function modInverse(a, mod) {
+export function modInverse(a, mod) {
     let [oldR, r] = [((a % mod) + mod) % mod, mod];
     let [oldS, s] = [1n, 0n];
     while (r) {
@@ -167,7 +167,7 @@ function modInverse(a, mod) {
 }
 
 /** @returns {bigint} base^exp mod m, by square-and-multiply. */
-function modPow(base, exp, m) {
+export function modPow(base, exp, m) {
     let result = 1n;
     let b = ((base % m) + m) % m;
     let e = exp;
@@ -180,7 +180,7 @@ function modPow(base, exp, m) {
 }
 
 /** @returns {bigint} The floor of the k-th root of n, by binary search. */
-function integerRoot(n, k) {
+export function integerRoot(n, k) {
     if (n < 2n) return n;
     let lo = 1n;
     let hi = 2n;
@@ -491,7 +491,7 @@ async function wiener(e, n, deadline) {
  * @param {string} label - Field name, for the error message.
  * @returns {bigint} The value.
  */
-function parseInteger(value, label) {
+export function parseInteger(value, label) {
     const cleaned = String(value).trim().replace(/[\s_:]/g, "");
     try {
         if (/^0x/i.test(cleaned)) return BigInt(cleaned);
@@ -504,7 +504,7 @@ function parseInteger(value, label) {
 }
 
 /** @returns {string} A bigint rendered as text if it looks like ASCII, else as hex. */
-function asMessage(m) {
+export function asMessage(m) {
     let hex = m.toString(16);
     if (hex.length % 2) hex = "0" + hex;
     const bytes = hex.match(/../g)?.map(h => parseInt(h, 16)) ?? [];
