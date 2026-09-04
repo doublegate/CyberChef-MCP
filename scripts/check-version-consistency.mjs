@@ -90,12 +90,16 @@ try {
  *   - **Except the two registry prefixes**, which ARE followed by a real namespace. Listed
  *     explicitly rather than carved out of the lookbehind, so what they are is visible.
  *
+ * The tag class includes `-`. Without it `:3.3.0-rc.1` captured as `3.3.0`, which then passed the
+ * release-version comparison and reported **ok** for a document pointing at a release candidate --
+ * a truncation that manufactures agreement rather than finding it.
+ *
  * @param {string} text - File contents.
  * @returns {Array<{namespace: string, tag: string|undefined}>} Every occurrence, in order.
  */
 const dockerHubRefs = (text) =>
     [...text.matchAll(
-        /(?:hub\.docker\.com\/r\/|docker\.io\/|(?<![\w./-]))([a-z0-9][a-z0-9._-]*)\/cyberchef-mcp(?![\w-])(?::([\w.]+))?/g)]
+        /(?:hub\.docker\.com\/r\/|docker\.io\/|(?<![\w./-]))([a-z0-9][a-z0-9._-]*)\/cyberchef-mcp(?![\w-])(?::([\w][\w.-]*))?/g)]
         .map(m => ({ namespace: m[1], tag: m[2] }));
 
 // The Docker Hub namespace, which no file in this repository derives and `package.json` does not
@@ -265,24 +269,37 @@ const LOCATIONS = [
     }] : [
         DOCKERHUB_SOURCE,
         "README.md",
+        "AGENTS.md",
         "docs/guides/user_guide.md",
         "docs/wiki/Installation.md"
     ].map(file => ({
         file,
-        // Required, not optional. These four are where a user looks for the pull command, and one
-        // of them quietly ceasing to name the image is exactly the "stopped matching" case the
-        // rule below is for -- the failure message tells the next person to update this list,
-        // which is the correct outcome for a deliberate removal too.
+        // Required, not optional. These are where a reader looks for the pull command, and one of
+        // them quietly ceasing to name the image is exactly the "stopped matching" case the rule
+        // below is for -- the failure message tells the next person to update this list, which is
+        // the correct outcome for a deliberate removal too.
         //
-        // CHANGELOG.md and the findings logs are excluded on purpose: they are historical, and a
-        // past release's text was true when written.
+        // AGENTS.md is here because THIS CHANGE put the namespace in it, in the note explaining
+        // that the two registries differ. Writing the name into a document and leaving it out of
+        // the check is precisely the drift the check exists to stop, committed while adding it.
+        //
+        // CHANGELOG.md and the findings logs are excluded on purpose, and not only because they
+        // are historical: the v2.6.0 entry deliberately names BOTH the right image and the wrong
+        // one it was mistaken for, so including it would fail on text that is correct.
         find: (text) => dockerHubRefs(text).flatMap(({ namespace, tag }, i) => [
             { what: `Docker Hub namespace ${i + 1}`, value: namespace, compare: dockerHubNamespace },
             // A versioned reference gets its version checked too. Folded into the same occurrence
             // rather than given its own location, because every reference today is `:latest` and a
             // separate entry would match nothing and fail by the rule below -- a check that is
             // wrong until someone happens to add the thing it looks for.
-            ...(tag && /^[0-9]+\.[0-9]+\.[0-9]+$/.test(tag) ?
+            //
+            // Exactly `X.Y.Z`, or `X.Y.Z-suffix`, and nothing else. `:latest`, `:3` and `:3.3` are
+            // legitimate floating tags on this repository and are not release versions, so they
+            // are not compared -- the same rule the compose-file entry above applies. A PRERELEASE
+            // tag is compared and therefore fails, which is the point: `:3.3.0-rc.1` in a live
+            // document is never right for a released one, and it used to be truncated to `3.3.0`
+            // and reported ok.
+            ...(tag && /^[0-9]+\.[0-9]+\.[0-9]+(?:[-+].*)?$/.test(tag) ?
                 [{ what: `Docker Hub tag ${i + 1}`, value: tag }] : [])
         ])
     }))),

@@ -233,6 +233,10 @@ Docker Hub publish was broken when it had never failed once. The check derives t
 namespace from `docs/registry/dockerhub-description.md`, which the release workflow pushes as that
 repository's description, and asserts every live document agrees.
 
+`AGENTS.md` is one of the checked documents, because this paragraph is where the namespace is
+written down -- putting a name in a file and leaving that file out of the check is the drift the
+check exists to stop.
+
 It cannot see the secret, so it establishes that the documents agree with each other and not that
 they agree with the repository the workflow pushes to. That half is already covered by
 construction: the release workflow pulls `$DOCKERHUB_IMAGE_NAME:latest` back for the tarball

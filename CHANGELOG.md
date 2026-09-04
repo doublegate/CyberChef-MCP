@@ -15,8 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the tree connected the name in README and the wiki to the image actually published. The check
   derives the expected namespace from `docs/registry/dockerhub-description.md`, which the release
   workflow pushes as that repository's description, and fails when a live document disagrees or
-  stops naming it at all. It cannot read the secret; the release workflow already covers that half
-  by pulling the pushed tag back for the tarball.
+  stops naming it at all. A version-shaped tag is checked too, including a prerelease suffix:
+  `:3.3.0-rc.1` used to be truncated to `3.3.0` and reported as agreeing. It cannot read the
+  secret; the release workflow already covers that half by pulling the pushed tag back for the
+  tarball.
 
 ## [3.3.0] - 2026-09-04
 
