@@ -258,8 +258,11 @@ describe("input bounds: what stops a tool blocking the server", () => {
     it("still accepts a modulus the size of a real RSA-4096 key", async () => {
         // The bound has to be loose enough to be useless to nobody. RSA-4096 is already unusual,
         // and this is one of them.
+        // Scoped to fermat because this test is about the SIZE BOUND, not about which attack
+        // applies. Unscoped it now factors: v3.3.0 added trial division, and this fixture -- a
+        // number chosen for its length rather than its factors -- has a small prime in it.
         const out = await run("rsa_attack",
-            { modulus: "c" + "f".repeat(1023), "fermat_iterations": 50 });
+            { modulus: "c" + "f".repeat(1023), "fermat_iterations": 50, attacks: ["fermat"] });
         expect(out.factored).toBe(false);
     });
 
@@ -308,9 +311,12 @@ describe("input bounds: what stops a tool blocking the server", () => {
         // 100,000 now finishes in ~3.5 s after the isqrt work, so the budget has to be provoked
         // with the maximum to be exercised at all -- which is the right shape: the deadline is a
         // backstop for the pathological case, not something ordinary calls meet.
+        // Scoped to fermat for the same reason as the size-bound test above: this measures the
+        // DEADLINE, and letting trial division answer first would mean measuring nothing.
         const big = (2n ** 16384n - 1n) - 12345678n;
         const started = Date.now();
-        const out = await run("rsa_attack", { modulus: big.toString(), "fermat_iterations": 10000000 });
+        const out = await run("rsa_attack",
+            { modulus: big.toString(), "fermat_iterations": 10000000, attacks: ["fermat"] });
         const elapsed = Date.now() - started;
         expect(out.factored).toBe(false);
         expect(elapsed).toBeLessThan(20000);
@@ -323,7 +329,7 @@ describe("input bounds: what stops a tool blocking the server", () => {
         // 16,384 bits the default 100,000 iterations used to extrapolate to ~37 minutes. If this
         // starts hitting the 10-second budget, the isqrt fast paths have been undone.
         const big = (2n ** 16384n - 1n) - 12345678n;
-        const out = await run("rsa_attack", { modulus: big.toString() });
+        const out = await run("rsa_attack", { modulus: big.toString(), attacks: ["fermat"] });
         expect(out.attempted.join(" ")).toMatch(/fermat \(up to 100000 iterations\)/);
         expect(out.attempted.join(" ")).not.toMatch(/stopped at the/);
     }, 60000);
@@ -652,6 +658,100 @@ describe("rsa_attack", () => {
         return ((s % m) + m) % m;
     };
 
+    /** Deterministic Miller-Rabin, valid well past every size used in these tests. */
+    const isPrime = (n) => {
+        if (n < 2n) return false;
+        for (const s of [2n, 3n, 5n, 7n, 11n, 13n, 17n, 19n, 23n, 29n, 31n, 37n]) {
+            if (n === s) return true;
+            if (n % s === 0n) return false;
+        }
+        let d = n - 1n, r = 0n;
+        while (d % 2n === 0n) {
+            d /= 2n;
+            r += 1n;
+        }
+        for (const a2 of [2n, 3n, 5n, 7n, 11n, 13n, 17n, 19n, 23n, 29n, 31n, 37n]) {
+            let x = 1n, b2 = a2 % n, e = d;
+            while (e > 0n) {
+                if (e & 1n) x = x * b2 % n;
+                b2 = b2 * b2 % n;
+                e >>= 1n;
+            }
+            if (x === 1n || x === n - 1n) continue;
+            let ok = false;
+            for (let i = 1n; i < r; i++) {
+                x = x * x % n;
+                if (x === n - 1n) {
+                    ok = true;
+                    break;
+                }
+            }
+            if (!ok) return false;
+        }
+        return true;
+    };
+    const nextPrime = (x) => {
+        let c = x | 1n;
+        while (!isPrime(c)) c += 2n;
+        return c;
+    };
+
+    it("finds a prime under 100,000 by trial division (small_factors)", async () => {
+        // Not an RSA key in any meaningful sense, and the cheapest thing to rule out -- which is
+        // why it runs before every search.
+        const p = 65537n, q = nextPrime(1n << 200n);
+        const out = await run({ modulus: (p * q).toString(), attacks: ["small_factors"] });
+
+        expect(out.factored).toBe(true);
+        expect(out.via).toBe("small_factors");
+        expect([out.p, out.q]).toContain(p.toString());
+        expect(out.assessment).toMatch(/one of the two 'primes' is tiny/);
+    }, 30000);
+
+    it("finds a short prime by random walk (pollard_rho)", async () => {
+        // 40 bits against a 256-bit partner. Fermat cannot see this -- the primes are as far
+        // apart as they can be -- and trial division stops at 100,000, so rho is the only one of
+        // the seven that applies.
+        const p = nextPrime(1n << 40n), q = nextPrime(1n << 255n);
+        const out = await run({ modulus: (p * q).toString(), attacks: ["pollard_rho"] });
+
+        expect(out.factored).toBe(true);
+        expect(out.via).toBe("pollard_rho");
+        expect([out.p, out.q]).toContain(p.toString());
+    }, 60000);
+
+    it("finds a prime whose predecessor is smooth (pollard_pm1)", async () => {
+        // p - 1 built from primes below 100 only. This is the flaw safe-prime generation exists
+        // to prevent, and no amount of primality testing on p detects it.
+        let smooth = 1n;
+        for (const x of [2n, 2n, 2n, 3n, 3n, 5n, 7n, 11n, 13n, 17n, 19n, 23n, 29n, 31n, 37n,
+                         41n, 43n, 47n, 53n, 59n, 61n, 67n, 71n, 73n, 79n, 83n, 89n, 97n]) smooth *= x;
+        let k = 1n;
+        while (!isPrime(smooth * k + 1n)) k += 1n;
+        const p = smooth * k + 1n;
+        const q = nextPrime(1n << 255n);
+
+        const out = await run({ modulus: (p * q).toString(), attacks: ["pollard_pm1"] });
+
+        expect(out.factored).toBe(true);
+        expect(out.via).toBe("pollard_pm1");
+        expect([out.p, out.q]).toContain(p.toString());
+        expect(out.assessment).toMatch(/smooth p-1/);
+    }, 60000);
+
+    it("leaves a soundly generated key alone, and says what that does not prove", async () => {
+        // The negative result is the common one and the one most easily over-read. Two 512-bit
+        // primes far apart, neither short nor smooth: all seven attacks are attempted and none
+        // applies, which rules out those flaws and nothing else.
+        const p = nextPrime(1n << 511n);
+        const q = nextPrime((1n << 511n) + (1n << 400n));
+        const out = await run({ modulus: (p * q).toString() });
+
+        expect(out.factored).toBe(false);
+        expect(out.attempted.length).toBeGreaterThanOrEqual(6);
+        expect(out.assessment).toMatch(/NOT proof the key is strong/);
+    }, 120000);
+
     it("factors a modulus whose primes are close together (Fermat)", async () => {
         const p = 1000000007n, q = 1000000009n;
         const out = await run({ modulus: (p * q).toString() });
@@ -714,11 +814,15 @@ describe("rsa_attack", () => {
     });
 
     it("reports a key it cannot break as unbroken, without claiming it is strong", async () => {
-        // Distant primes, so Fermat will not reach it in the iteration budget. The wording matters
-        // as much as the result: four ruled-out flaws is not a proof of strength, and a tool that
-        // implies otherwise is worse than one that says nothing.
+        // The wording matters as much as the result: a handful of ruled-out flaws is not a proof
+        // of strength, and a tool that implies otherwise is worse than one that says nothing.
+        //
+        // The fixture was 1000003 * 32416190071 until v3.3.0 -- two primes under 40 bits, chosen
+        // because Fermat could not reach them in a small budget. Pollard's rho now factors it in
+        // milliseconds, so the test needed a modulus that is actually hard rather than one that
+        // was merely hard for the one attack that existed when it was written.
         const out = await run({
-            modulus: (1000003n * 32416190071n).toString(),
+            modulus: (nextPrime(1n << 511n) * nextPrime((1n << 511n) + (1n << 400n))).toString(),
             "fermat_iterations": 500
         });
         expect(out.factored).toBe(false);
@@ -784,9 +888,15 @@ describe("rsa_attack", () => {
     });
 
     it("does not suggest supplying a second modulus when one was already given", async () => {
+        // The moduli here were 1000003 * 32416190071 until v3.3.0, and Pollard's rho now factors
+        // that in milliseconds -- both primes are under 40 bits. The fixture had to become a real
+        // key for the test to still be about its wording. That is the release working: four tests
+        // asserting "cannot break" were asserting it about numbers that are now breakable.
+        const p1 = nextPrime(1n << 511n), q1 = nextPrime((1n << 511n) + (1n << 400n));
+        const p2 = nextPrime((1n << 511n) + (1n << 300n)), q2 = nextPrime((1n << 511n) + (1n << 350n));
         const out = await run({
-            modulus: (1000003n * 32416190071n).toString(),
-            "other_modulus": (1000033n * 32416187567n).toString(),
+            modulus: (p1 * q1).toString(),
+            "other_modulus": (p2 * q2).toString(),
             "fermat_iterations": 200
         });
         expect(out.factored).toBe(false);

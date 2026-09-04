@@ -248,6 +248,189 @@ const FERMAT_BUDGET_MS = 10000;
 /** The same, for the convergent walk. Measured worst case is ~1.5s, so this is a wide backstop. */
 const WIENER_BUDGET_MS = 5000;
 
+/** Budgets for the two search-based factorisations added in v3.3.0. */
+const RHO_BUDGET_MS = 10000;
+const PM1_BUDGET_MS = 10000;
+
+/**
+ * Primes below 100,000, sieved once at load.
+ *
+ * Used by trial division and as the exponent ladder for Pollard's p-1. 9,592 primes; the sieve
+ * costs under a millisecond and the array is ~40 KB, which is cheaper than recomputing it inside
+ * either attack.
+ *
+ * @type {number[]}
+ */
+const SMALL_PRIMES = (() => {
+    const limit = 100000;
+    const composite = new Uint8Array(limit + 1);
+    const out = [];
+    for (let i = 2; i <= limit; i++) {
+        if (composite[i]) continue;
+        out.push(i);
+        for (let j = i * i; j <= limit; j += i) composite[j] = 1;
+    }
+    return out;
+})();
+
+/**
+ * Trial division by small primes, in BLOCKS.
+ *
+ * The obvious loop is `n % p` for each prime, which is 9,592 full-width modulo operations on a
+ * number that may be 16,384 bits. Multiplying the primes into blocks about as wide as the modulus
+ * and taking ONE gcd per block replaces most of that with a single gcd over operands of similar
+ * size, which is where BigInt is fast.
+ *
+ * A hit tells you the block contains a factor, not which one, so the block is then re-walked
+ * prime by prime -- paid once, only when there is something to find.
+ *
+ * @param {bigint} n - The modulus.
+ * @returns {{p: bigint, q: bigint}|null} The factors, or null if no small prime divides n.
+ */
+function smallFactors(n) {
+    const width = BigInt(n.toString(16).length * 4);
+    let block = 1n;
+    let members = [];
+    const flush = () => {
+        if (!members.length) return null;
+        const g = gcd(block, n);
+        block = 1n;
+        const walked = members;
+        members = [];
+        if (g === 1n) return null;
+        for (const prime of walked) {
+            const big = BigInt(prime);
+            if (n % big === 0n) return { p: big, q: n / big };
+        }
+        /* v8 ignore next -- unreachable: a non-trivial gcd with the block means one of the block's
+           primes divides n, and the walk above finds it. Kept so a future change to how blocks are
+           built cannot turn a silent wrong answer into the failure mode. */
+        return null;
+    };
+    for (const prime of SMALL_PRIMES) {
+        block *= BigInt(prime);
+        members.push(prime);
+        if (BigInt(block.toString(16).length * 4) < width) continue;
+        const found = flush();
+        if (found) return found;
+    }
+    return flush();
+}
+
+/**
+ * Pollard's rho, Brent's variant, with batched gcds.
+ *
+ * Finds a factor in expected O(n^(1/4)) time, which in BigInt reaches factors of roughly 60-70
+ * bits -- so it covers keys whose smaller prime is far too short, a class Fermat (primes too
+ * CLOSE) and p-1 (primes too SMOOTH) both miss.
+ *
+ * The batching is what makes it usable. A gcd per step would dominate; instead the differences are
+ * multiplied together mod n over a run of 128 and one gcd is taken. When that gcd comes back as n
+ * itself the batch swallowed every factor at once, so the run is replayed step by step -- paid
+ * only in the rare case that needs it.
+ *
+ * @param {bigint} n - The modulus.
+ * @param {number} deadline - Absolute time in ms after which to give up.
+ * @returns {Promise<{p: bigint, q: bigint}|null>} The factors, or null.
+ */
+async function pollardRho(n, deadline) {
+    if (n % 2n === 0n) return { p: 2n, q: n / 2n };
+    const batch = 128n;
+    // RsaCtfTool sets this batch size to a random value, which defeats the batching entirely --
+    // `min(m, r - k)` then always resolves to `r - k`. The constant is the point.
+    for (let attempt = 0n; attempt < 8n; attempt++) {
+        const c = 1n + attempt;
+        let y = 2n + attempt;
+        let r = 1n;
+        let q = 1n;
+        let g = 1n;
+        let x = y;
+        let ys = y;
+        const f = (v) => (v * v + c) % n;
+        while (g === 1n) {
+            x = y;
+            for (let i = 0n; i < r; i++) y = f(y);
+            let k = 0n;
+            while (k < r && g === 1n) {
+                ys = y;
+                const span = batch < r - k ? batch : r - k;
+                for (let i = 0n; i < span; i++) {
+                    y = f(y);
+                    const diff = x > y ? x - y : y - x;
+                    q = (q * diff) % n;
+                }
+                g = gcd(q, n);
+                k += span;
+                if (Date.now() > deadline) return null;
+                await new Promise(resolve => setImmediate(resolve));
+            }
+            r *= 2n;
+        }
+        if (g === n) {
+            // The batch multiplied every factor in at once. Replay it one step at a time; the
+            // first non-trivial gcd is the answer.
+            g = 1n;
+            let step = ys;
+            while (g === 1n) {
+                step = f(step);
+                const diff = x > step ? x - step : step - x;
+                g = gcd(diff, n);
+                if (Date.now() > deadline) return null;
+            }
+        }
+        if (g > 1n && g < n) return { p: g, q: n / g };
+        // g === n again: this polynomial found nothing usable. A different c is a different
+        // sequence, which is the whole reason the constant is a parameter.
+    }
+    return null;
+}
+
+/**
+ * Pollard's p-1: factors n when p-1 is composed only of small primes.
+ *
+ * The flaw it detects is a prime chosen without checking that p-1 has a large factor. Stage 1
+ * raises a base through every prime power below the bound; if p-1 divides that product then
+ * a^(p-1) === 1 (mod p) by Fermat, so gcd(a - 1, n) exposes p.
+ *
+ * Two details that decide whether it works at all:
+ *
+ *   - gcd every ~100 primes rather than every prime. RsaCtfTool takes one per exponentiation,
+ *     which costs more than the exponentiation.
+ *   - on gcd === 1, RAISE the bound and continue from the current base rather than restarting.
+ *     Restarting repeats every exponentiation already done.
+ *
+ * @param {bigint} n - The modulus.
+ * @param {number} bound - Stage-1 smoothness bound.
+ * @param {number} deadline - Absolute time in ms after which to give up.
+ * @returns {Promise<{p: bigint, q: bigint}|null>} The factors, or null.
+ */
+async function pollardPMinus1(n, bound, deadline) {
+    if (n % 2n === 0n) return { p: 2n, q: n / 2n };
+    for (const base of [2n, 3n, 5n, 7n]) {
+        let a = base;
+        let sinceGcd = 0;
+        const logBound = Math.log(bound);
+        for (const prime of SMALL_PRIMES) {
+            if (prime > bound) break;
+            const power = BigInt(prime) ** BigInt(Math.max(1, Math.floor(logBound / Math.log(prime))));
+            a = modPow(a, power, n);
+            if (++sinceGcd < 100) continue;
+            sinceGcd = 0;
+            if (Date.now() > deadline) return null;
+            await new Promise(resolve => setImmediate(resolve));
+            const g = gcd(a - 1n, n);
+            if (g === n) break;
+            if (g > 1n) return { p: g, q: n / g };
+        }
+        const g = gcd(a - 1n, n);
+        if (g > 1n && g < n) return { p: g, q: n / g };
+        // g === n means this base swallowed every factor; a different base is a different
+        // subgroup. g === 1 means p-1 is not smooth enough for this bound, and another base
+        // will not change that -- but the loop is four bases, so the cost of being wrong is small.
+    }
+    return null;
+}
+
 /**
  * Wiener's attack: recovers a private exponent that was chosen small.
  *
@@ -339,11 +522,12 @@ export default {
     category: "Analysis",
     description:
         "Test an RSA public key for the generation flaws that make it breakable, and recover the " +
-        "private key when one applies: Fermat (primes too close), shared factors between two " +
-        "moduli, Wiener (private exponent too small) and unpadded small-e. None of these threatens " +
-        "a correctly generated key — a sound 2048-bit modulus defeats all four — so a negative " +
-        "result is evidence the key is not weak in these specific ways. Decrypts a supplied " +
-        "ciphertext when the key is recovered.",
+        "private key when one applies: trial division, Fermat (primes too close), shared factors " +
+        "between two moduli, Wiener (private exponent too small), Pollard's rho (one prime too " +
+        "short), Pollard's p-1 (a prime whose predecessor is smooth) and unpadded small-e. None " +
+        "threatens a correctly generated key — a sound 2048-bit modulus defeats all of them — so " +
+        "a negative result is evidence the key is not weak in these specific ways, and not that " +
+        "it is strong. Decrypts a supplied ciphertext when the key is recovered.",
     annotations: {
         title: "RSA key attack",
         readOnlyHint: true,
@@ -362,8 +546,18 @@ export default {
             .describe("Optional. Decrypted if the private key is recovered."),
         "other_modulus": z.string().max(MAX_OPERAND_CHARS).optional()
             .describe("A second modulus, to test for a shared prime factor. Breaks both keys if one exists."),
-        attacks: z.array(z.enum(["fermat", "common_factor", "wiener", "small_e"])).optional()
-            .describe("Which attacks to try. All of them by default."),
+        attacks: z.array(z.enum([
+            "fermat", "common_factor", "wiener", "small_e",
+            "small_factors", "pollard_rho", "pollard_pm1"
+        ])).optional()
+            .describe(
+                "Which attacks to try. All of them by default. `small_factors` is trial division " +
+                "and costs nothing; `pollard_rho` finds a short prime; `pollard_pm1` finds a prime " +
+                "whose predecessor is smooth."),
+        "pm1_bound": z.number().int().min(100).max(100000).default(50000)
+            .describe(
+                "Smoothness bound for pollard_pm1. Higher finds primes whose p-1 has a larger " +
+                "factor, and takes proportionally longer."),
         "fermat_iterations": z.number().int().min(1).max(10000000).default(100000)
             .describe("Bound on the Fermat search. Higher finds primes that are further apart, and takes longer.")
     }),
@@ -390,13 +584,27 @@ export default {
 
         const requested = args.attacks?.length ?
             new Set(args.attacks) :
-            new Set(["fermat", "common_factor", "wiener", "small_e"]);
+            new Set([
+                "small_factors", "common_factor", "wiener", "fermat",
+                "pollard_rho", "pollard_pm1", "small_e"
+            ]);
         const attempted = [];
         let factors = null;
         let via = null;
 
+        // Cheapest of all: does a prime under 100,000 divide it? A few gcds over blocks of
+        // primes, and it costs nothing to try before anything that searches.
+        if (requested.has("small_factors")) {
+            attempted.push("small_factors");
+            const found = smallFactors(n);
+            if (found) {
+                factors = found;
+                via = "small_factors";
+            }
+        }
+
         // Cheapest first, and cheapest by a wide margin: one gcd against a second modulus.
-        if (requested.has("common_factor") && args.other_modulus) {
+        if (!factors && requested.has("common_factor") && args.other_modulus) {
             const other = parseInteger(args.other_modulus, "other_modulus");
             const common = gcd(n, other);
             attempted.push("common_factor");
@@ -404,7 +612,7 @@ export default {
                 factors = { p: common, q: n / common };
                 via = "common_factor";
             }
-        } else if (requested.has("common_factor")) {
+        } else if (!factors && requested.has("common_factor")) {
             attempted.push("common_factor (skipped: no other_modulus given)");
         }
 
@@ -433,6 +641,27 @@ export default {
             }
         }
 
+        // Both searches, and the order is deliberate: p-1 is cheap when it applies and useless
+        // when it does not, while rho pays regardless. Neither threatens a well-generated key --
+        // rho reaches ~70-bit factors and p-1 needs a prime whose predecessor is smooth.
+        if (!factors && requested.has("pollard_pm1")) {
+            attempted.push(`pollard_pm1 (bound ${args.pm1_bound})`);
+            const found = await pollardPMinus1(n, args.pm1_bound, Date.now() + PM1_BUDGET_MS);
+            if (found) {
+                factors = found;
+                via = "pollard_pm1";
+            }
+        }
+
+        if (!factors && requested.has("pollard_rho")) {
+            attempted.push("pollard_rho");
+            const found = await pollardRho(n, Date.now() + RHO_BUDGET_MS);
+            if (found) {
+                factors = found;
+                via = "pollard_rho";
+            }
+        }
+
         // Needs no factorisation at all: if m^e never exceeded n, the ciphertext is a plain power.
         let smallE = null;
         if (requested.has("small_e") && args.ciphertext && e <= MAX_SMALL_E) {
@@ -458,7 +687,9 @@ export default {
                     "the message was short enough that m^e never wrapped the modulus. That is a " +
                     "padding failure rather than a key failure." :
                     "None of these attacks applies. That is NOT proof the key is strong — it rules " +
-                    "out four specific generation flaws, and says nothing about the rest.",
+                    "out specific generation flaws (primes too close, too short, shared, with a " +
+                    "smooth predecessor, or a private exponent too small) and says nothing about " +
+                    "the rest.",
                 next: args.other_modulus ?
                     "Try a larger fermat_iterations if you suspect the primes are close." :
                     "If you hold other keys from the same source, pass one as other_modulus: devices " +
@@ -490,7 +721,15 @@ export default {
                     "prime and searched upward for the next.",
                 "common_factor": "This modulus shares a prime with the other one. BOTH keys are " +
                     "broken, and every other key from the same source should be treated as suspect.",
-                wiener: "The private exponent is small enough to recover from the public key alone."
+                wiener: "The private exponent is small enough to recover from the public key alone.",
+                "small_factors": "A prime below 100,000 divides this modulus. It is not an RSA key " +
+                    "in any meaningful sense — one of the two 'primes' is tiny.",
+                "pollard_rho": "One prime is short enough to find by random walk — on the order of " +
+                    "70 bits against the 1024 a 2048-bit key needs. The key generator did not use " +
+                    "primes of the size it claims.",
+                "pollard_pm1": "One prime p has a smooth p-1: it is a product of small factors " +
+                    "only. Prime generation checked primality and not this, which is the flaw " +
+                    "safe-prime generation exists to avoid."
             }[via] ?? "Factored."
         };
 
