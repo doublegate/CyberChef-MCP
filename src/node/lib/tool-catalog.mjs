@@ -9,9 +9,9 @@
  * numbers now come from `npm run measure:surfaces`, which drives a real client and counts the
  * exact bytes of the result, rather than from a comment:
  *
- *     all       543 tools   421,041 bytes   411 KB
- *     curated   118 tools   103,883 bytes   101 KB
- *     index      40 tools    40,637 bytes    39 KB
+ *     all       544 tools   423,305 bytes   413 KB
+ *     curated   119 tools   106,147 bytes   104 KB
+ *     index      41 tools    42,901 bytes    42 KB
  *
  * Both presets pay up front for schemas the session may never use. `curated` is cheaper only
  * because it guesses which operations matter, and it is wrong for anyone whose work is the rest.
@@ -49,7 +49,7 @@
  *
  * The trade is honest and worth stating: reaching an operation costs an extra round trip the first
  * time. Measured, that trade is the index plus one operation schema -- 42,415 bytes against
- * 421,041, or **9.9x cheaper** than `all`. That multiplier fell from 18.2x in v3.2.0, and the
+ * 423,305, or **9.5x cheaper** than `all`. That multiplier fell from 18.2x in v3.2.0, and the
  * reason is worth recording rather than quietly restating: twelve registry tools were added in
  * v3.3.0 and a registry tool has no navigation path, so one that is not listed cannot be called at
  * all. They are all in the index, and the index is twice the size it was. For a client that wants

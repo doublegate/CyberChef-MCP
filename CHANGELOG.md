@@ -7,8 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
+## [3.4.0] - 2026-09-04
 
+**Three operations that had never worked.** `Unzip`, `Untar` and `Extract Files` were dead through
+this fork's entire life — advertised in `tools/list`, returning either an error from inside the
+presenter or an archive listing with the right filenames and zero bytes each — while eleven
+releases of a green suite watched. Details in [the release notes](docs/releases/v3.4.0.md) and
+[the findings log](docs/internal/v3.4.0-findings-log.md).
+
+### Fixed
+
+- **`Unzip`, `Untar` and `Extract Files` return the contents of an archive.** Two independent
+  defects stacked, and fixing either alone left the operation broken in a different way.
+  `Utils.readFile` threw `ERR_INVALID_ARG_TYPE` on the very `File` its own JSDoc example passes it
+  (`patches/fork/11`, because `src/core/**` is mirrored and a hand-edit here is what the SafeRegex
+  incident was). And five operations construct a **bare global `File`** that nothing in this
+  process was providing: the only `global.File = File` in the tree is in the generated bridge,
+  which this server deliberately does not import eagerly, so `new File(...)` resolved to Node's own
+  `File` — a `Blob` subclass with no `.data`. The second defect **cannot be reproduced in-process**,
+  because any harness that has loaded the bridge puts the shim back; `tests/mcp/list-file-output.
+  test.mjs` therefore drives a real server through the official SDK client, and was verified as a
+  regression test rather than assumed.
+- **`server.json` validates against the schema it declares.** It was written to the 2025-09-29
+  schema and declared the 2025-07-09 one — camelCase against a schema requiring snake_case — and
+  failed validation in six places. Nothing had ever read a file whose entire purpose is to be
+  machine-read.
+- **The benchmark baseline workflow can complete.** Written in v3.2.0, never run; its first run
+  failed on `GitHub Actions is not permitted to create or approve pull requests`. It now pushes a
+  branch and links the compare view instead of opening the PR itself, because the setting that
+  would allow it also grants Actions the right to *approve* pull requests.
+- **A baseline capture no longer lies about where it ran.** It carried the previous file's
+  provenance forward, so the first runner capture claimed "Captured on one developer machine" and
+  "CI variance is NOT yet measured". Both derived from the environment now.
+
+### Added
+
+- **`cyberchef_ecdsa_recover`** — recover an ECDSA private key from two signatures that reused a
+  nonce. The four ECDSA operations all work on one signature and nothing compares two, which is
+  where ECDSA actually fails in practice. Exact algebra, no search, no new dependency. It does
+  **not** attack a merely biased nonce and says so; a caller reading "no reuse found" as "sound" is
+  a failure of the tool, not of the mathematics.
 - **`check:versions` asserts the Docker Hub image name.** The two registries do not share a
   namespace — GHCR is `ghcr.io/doublegate/cyberchef-mcp_v<major>`, Docker Hub is
   `parobek/cyberchef-mcp` — and `mcp-release.yml` builds the second from a secret, so nothing in
@@ -19,6 +57,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `:3.3.0-rc.1` used to be truncated to `3.3.0` and reported as agreeing. It cannot read the
   secret; the release workflow already covers that half by pulling the pushed tag back for the
   tarball.
+- **`npm run check:server-json`**, wired into both CI workflows beside `check:versions`. It
+  deliberately does not use a JSON Schema validator: `ajv` is transitive-only here, and validating
+  against the live schema URL would make a release gate need the network in a project that ships an
+  air-gapped deployment guide. It **fails when `$schema` names a version whose rules it does not
+  carry**, which is the whole design.
+- **Both MCP registry ownership proofs** — `mcpName` in `package.json` and an
+  `io.modelcontextprotocol.server.name` annotation on the image. Neither existed, so a registry
+  publish would have been rejected on both packages; `npm view cyberchef-mcp mcpName` was empty
+  across all eleven published versions and a registry search returned zero servers. The annotation
+  is verified by reading it off a built image rather than by reviewing the Dockerfile.
+
+### Changed
+
+- **The benchmark baseline is captured on the runner the gate runs on.** The committed
+  developer-machine baseline sat at a median -9.6% offset (worst +43.1%), so a regression smaller
+  than that offset was never catchable on CI. `_machine` in `baseline.json` now says which machine
+  a baseline came from, derived from `GITHUB_RUN_ID` rather than asserted.
+- **The tolerance was cut from 50% to 20% and put back the same day**, and both halves are
+  recorded. Three runner captures gave a worst cross-instance spread of 6.7% and zero false
+  failures in a 180-comparison simulation at 20%, 15% or 10%. Four real CI runs then swung
+  `To Hex (100KB)` **-41.8%** and `Regular expression (1KB)` **+28.2%** on the same run, on tasks
+  this release does not touch — the benchmark imports the generated bridge, which reaches no
+  changed module. Three captures sixteen minutes apart sampled one class of host; the pool is
+  heterogeneous in memory bandwidth. 50% covers what was actually observed. The number is not the
+  lever: a median of runs, or normalising against a calibration task, is.
+- **Surface figures re-measured**: 41 tools / 42,901 bytes for the default index, 119 / 106,147
+  curated, 544 / 423,305 for all. The published figures were 325 bytes low across all three, having
+  been recorded during v3.3.0's development and never re-measured before the tag.
+
+### Measured, and deliberately unchanged
+
+- **The shell-free base image.** `latest-slim` builds, runs, and returns byte-identical output on
+  every fragile operation tested — the wasm path, the vendored crypto path, the OpenSSL-legacy path
+  and the capstone path — for 26 MB less. It is still declined: it ships **Node v25.9.0** against
+  the current v26.8.1, which is a downgrade for every existing user and a version neither CI job
+  tests. What would change the answer is stated so it can be checked: a Chainguard slim tag on
+  Node 26.
+- **`--requirements` does not replace `--suite all`** in the conformance gate. It is 13 scenarios
+  against 40, ten of them `tasks-*` for a capability this server deliberately declines, and it drops
+  the `resources`, `prompts` and `caching` scenarios that validate v3.0.0.
+- **stdio does serve the 2026-07-28 era.** A bare `initialize` naming that version is answered
+  `2025-11-25`, which looks like a defect and is correct: the era is selected by an envelope claim
+  in `params._meta`, so a bare `initialize` is by definition a legacy handshake.
 
 ## [3.3.0] - 2026-09-04
 

@@ -4,7 +4,7 @@ This project provides a **Model Context Protocol (MCP)** server interface for **
 
 By running this server, you enable AI assistants (like Claude, Cursor AI, and others) to natively utilize CyberChef's extensive library of **504 data manipulation operations**—including encryption, encoding, compression, and forensic analysis—as executable tools.
 
-**Latest Release:** v3.3.0 | [Release Notes](docs/releases/v3.3.0.md) | [Tutorial](docs/guides/tutorial.md) | [Examples](examples/) | [Breaking Changes](docs/v2.0.0-breaking-changes.md) | [Security Policy](SECURITY.md)
+**Latest Release:** v3.4.0 | [Release Notes](docs/releases/v3.4.0.md) | [Tutorial](docs/guides/tutorial.md) | [Examples](examples/) | [Breaking Changes](docs/v2.0.0-breaking-changes.md) | [Security Policy](SECURITY.md)
 
 **Upstream base:** GCHQ CyberChef **v11.4.0** | **Licence:** GPL-3.0-or-later (from v2.0.0; v1.9.x and earlier remain Apache-2.0)
 
@@ -63,7 +63,7 @@ The server exposes CyberChef operations as MCP tools:
 *   **Tool annotations on every tool** (v2.2.0): `readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint` and a readable `title`, so a client can skip the approval prompt for a pure operation. The exceptions were measured, not guessed — only `HTTP request` and `DNS over HTTPS` reach the network, and non-idempotence was determined by running each candidate twice and comparing.
 *   **Prompts and resources** (v2.2.0): five workflow prompts (`analyse-unknown-data`, `extract-iocs`, `deobfuscate-script`, `identify-hash`, `decode-chain`) for when you do not yet know which of 504 operations you need, and saved recipes exposed as readable resources at `recipe://<id>`.
 *   **`cyberchef_bake`**: The "Omni-tool". Executes a full CyberChef recipe (a chain of operations) on an input. Ideal for complex, multi-step transformations (e.g., "Decode Base64, then Gunzip, then prettify JSON").
-*   **All 504 operations, without paying for 504 schemas** (v2.1.0): `tools/list` is an **index** by default — 40 tools and 40,637 bytes, rather than 543 tools and 421,041 bytes. The index grew in v3.3.0 because twelve new registry tools have no navigation path of their own — a registry tool that is not listed cannot be called at all. Every operation stays reachable: `cyberchef_categories` -> `cyberchef_list_operations` -> `cyberchef_describe_operation` walks down to any of them, `cyberchef_search` finds one by keyword, and `cyberchef_bake` runs any of them by name. `CYBERCHEF_TOOL_SURFACE=curated` (118 tools, 103,883 bytes) or `=all` (all 543, 421,041 bytes) if you would rather pre-load. See the [User Guide](docs/guides/user_guide.md#the-tool-surface--how-many-tools-you-see-and-why).
+*   **All 504 operations, without paying for 504 schemas** (v2.1.0): `tools/list` is an **index** by default — 41 tools and 42,901 bytes, rather than 544 tools and 423,305 bytes. The index grew in v3.3.0 because twelve new registry tools have no navigation path of their own — a registry tool that is not listed cannot be called at all. Every operation stays reachable: `cyberchef_categories` -> `cyberchef_list_operations` -> `cyberchef_describe_operation` walks down to any of them, `cyberchef_search` finds one by keyword, and `cyberchef_bake` runs any of them by name. `CYBERCHEF_TOOL_SURFACE=curated` (119 tools, 106,147 bytes) or `=all` (all 544, 423,305 bytes) if you would rather pre-load. See the [User Guide](docs/guides/user_guide.md#the-tool-surface--how-many-tools-you-see-and-why).
     *   `cyberchef_to_base64` / `cyberchef_from_base64`
     *   `cyberchef_aes_decrypt`
     *   `cyberchef_sha2`
@@ -159,13 +159,13 @@ For environments without direct GHCR access, download the pre-built Docker image
 1.  **Download the tarball** (**141 MB** compressed; measured against the published v3.1.0 asset, not estimated):
     ```bash
     # Download from GitHub Releases
-    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v3.3.0/cyberchef-mcp-v3.3.0-docker-image.tar.gz
+    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v3.4.0/cyberchef-mcp-v3.4.0-docker-image.tar.gz
     ```
 
 2.  **Load the image into Docker:**
 
     ```bash
-    docker load < cyberchef-mcp-v3.3.0-docker-image.tar.gz
+    docker load < cyberchef-mcp-v3.4.0-docker-image.tar.gz
     ```
 
 3.  **Tag for easier usage:**

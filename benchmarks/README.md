@@ -30,53 +30,98 @@ benchmark that stopped doing the work.
 
 ### Why the tolerance is 50%
 
-Measured, not chosen — and the first measurement was wrong by an order of magnitude, which is the
-part worth knowing.
+Measured, not chosen — four times now, and the fourth measurement is the one that disproved the
+third. The history is kept because the *shape* of the error repeats.
 
-It reported per-task spreads up to **84%**, a number plausible enough to believe on a JIT-compiled
-workload, and wide enough to justify a gate that could never fire. Two causes:
+**A local study.** Four runs on an idle developer machine give a worst per-task spread of 9.8%.
+(An earlier version reported up to 84% and would have justified a gate that could never fire: two
+operations shared a task name, `SHA2` for both 256 and 512, and JIT warm-up inflated the first
+bench of a cold process. Fixing the names and discarding the cold run moved the answer by an order
+of magnitude.) That supported **25%**.
 
-1. **A task-name collision.** `SHA2` is registered twice, for 256 and for 512, and both emitted
-   tasks called `SHA2 (1KB)`. The 84% "variance" was two operations taking turns in one slot.
-2. **JIT warm-up.** The first bench of a cold process absorbs it: `To Base64 (1KB)` measured 7,482
-   ops/s cold against 11,445–12,188 warm.
+**CI disagreed.** Three runs on GitHub's shared runners produced deltas from −25.5% to +99.1% and
+two false failures on a different task each time. Two cries of wolf in three runs is how a gate gets
+switched off, so the tolerance went to **50%** — what a cross-machine baseline can honestly support.
 
-With names disambiguated and the cold run discarded, four runs give a worst per-task spread of
-**9.8%** and a median of **4.3%**. That supported 25%, which is what shipped first — and then CI
-disagreed.
+**v3.4.0 moved the baseline onto the runner** and measured three captures from three instances:
+worst spread between their medians 6.7%, and zero false failures simulating the gate over 180
+comparisons at 20%, 15%, even 10%. That supported **20%**.
 
-Three runs on GitHub's shared runners produced deltas from **−25.5% to +99.1%** and **two false
-failures**: `Entropy (100KB)` at −25.3%, then `Frequency distribution (100KB)` at −25.5%, a
-different task each time with nothing in the diff touching either. Two cries of wolf in three runs
-is how a gate gets switched off.
+**CI disagreed again, within the hour.** Four runs on the release branch split two-pass/two-fail:
 
-So the tolerance is **50%** — what a cross-machine baseline can honestly support. It fires on
-factor-level regressions, which is what a regression that matters looks like, and stops firing on
-the runner. The missing-task check is unaffected and stays exact: a benchmark that disappears is a
-fact, not a measurement.
+```text
+To Hex (100KB)                  -41.8%
+To Hex (10KB)                   -37.0%
+Frequency distribution (100KB)  -29.2%
+Entropy (100KB)                 -26.2%
+Regular expression (1KB)        +28.2%   <- on the SAME run
+Regular expression (10KB)       +24.0%
+```
+
+Both directions at once, on tasks no commit in that branch touched — `operation-benchmarks.mjs`
+imports `bake` from `src/node/index.mjs`, and the generated bridge does not reach any module the
+release changed. That is a different **host**: the memory-bandwidth-bound tasks collapsed while the
+CPU-bound one improved.
+
+The study's flaw was sampling rather than arithmetic. Three captures sixteen minutes apart landed
+on one class of host — and the document said so while choosing 20% over the 10% its own data
+allowed. Being aware of a bias is not being protected from it.
+
+So **50%**, which covers the −41.8% actually observed. Full study and disproof:
+[`../docs/internal/measurements/v3.4.0-runner-baseline.md`](../docs/internal/measurements/v3.4.0-runner-baseline.md).
+
+**The number is not the lever worth pulling.** Widening it further would not help either. Two
+mechanisms would, and both are follow-ups with their own validation:
+
+1. **A median of several runs in CI**, matching what the baseline already is — it is a median of
+   four and the gate compares a *single* run against it, which is asymmetric. Cuts within-instance
+   noise, not host-to-host difference, and triples the job.
+2. **Normalising against a calibration task** — measure one fixed operation each run and scale the
+   rest by it. Targets host-class difference directly, which is what actually broke this.
+
+The missing-task check is unaffected and stays exact: a benchmark that disappears is a fact, not a
+measurement.
 
 ### What the gate does not catch
 
-**The baseline is machine-relative.** On its first green CI run the GitHub runner measured
-**27–99% faster** than the machine the baseline came from — a machine-class difference, not noise.
-So:
+**It used to be machine-relative, and that mattered more than the tolerance did.** Through v3.3.0
+the baseline came from a developer machine while the gate ran on GitHub's runners, which measured
+**27–99% faster** — a machine class, not noise. The consequence:
 
-> a regression smaller than the cross-machine offset will not be caught on CI.
+> a regression smaller than the cross-machine offset was not caught on CI.
 
 If the runner is ~30% faster, code that got 25% slower still measures faster than baseline and
-passes. The gate catches **factor-level** regressions on CI, and tolerance-level ones only on the
-machine the baseline came from. That is still strictly better than a check that said in its own
-output it could not fail, but "gates" and "gates against what" are different claims.
+passes. That is fixed: the committed baseline is captured by
+`.github/workflows/benchmark-baseline.yml`, and `_machine` in `baseline.json` says which machine it
+came from — **derived** from `GITHUB_RUN_ID`, not asserted, because the previous version carried
+"Captured on one developer machine" forward into a runner capture and was wrong the first time the
+workflow ran. If you see that sentence in a committed baseline, the caveat above is live again.
 
-The fix is a baseline captured on the runner, compared like against like — carried forward.
+**Longer-term runner drift is still uncharacterised.** Three captures sixteen minutes apart say
+nothing about what the pool does across weeks. The workflow runs monthly; revisit the number after
+a few cycles, on the evidence, rather than on the next release for its own sake.
 
-**CI variance is otherwise uncharacterised.** One green run is not a characterisation; it does show
-the tolerance produced no false failure.
+**arm64 is unmeasured.** The published image is multi-arch and no benchmark has run on arm64
+hardware. The v3.3.0 timings came from QEMU on an amd64 host and measure the emulator.
 
 ### Moving the baseline
 
-`npm run benchmark:baseline`, then commit **with the reason it moved**. A baseline moved without a
-stated reason is a gate switched off, and it looks identical to one moved for a good reason.
+Dispatch `.github/workflows/benchmark-baseline.yml` and merge the branch it pushes. It captures on
+the runner the gate executes on, which is the whole point — a local capture is not comparable to
+what CI measures, and it now says so in `_machine`.
+
+`npm run benchmark:baseline` still works and is the right tool for investigating a change locally.
+It produces a **developer-machine** baseline; committing one reintroduces the cross-machine gap
+described above.
+
+Either way, commit **with the reason it moved**. A baseline moved without a stated reason is a gate
+switched off, and it looks identical to one moved for a good reason.
+
+The workflow pushes a branch rather than opening the pull request itself. Actions is not permitted
+to create pull requests on this repository, and the setting that would permit it also grants
+Actions the right to *approve* them — a review bypass, in a workflow whose entire purpose is to keep
+a gate's reference point under review. The safety property was never the PR; it is that this never
+pushes to `master`.
 
 ## Reading `measure:results` before proposing an efficiency change
 

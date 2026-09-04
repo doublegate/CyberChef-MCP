@@ -136,6 +136,16 @@ LABEL org.opencontainers.image.title="CyberChef MCP Server" \
       org.opencontainers.image.url="https://github.com/doublegate/CyberChef-MCP" \
       org.opencontainers.image.documentation="https://github.com/doublegate/CyberChef-MCP/blob/master/docs/guides/user_guide.md"
 
+# The MCP registry's ownership proof for an OCI package: it reads this annotation off the image
+# and requires it to equal `name` in server.json. Without it a registry publish is rejected, which
+# is why the server was absent from the registry until v3.4.0 -- measured, not assumed:
+# `registry.modelcontextprotocol.io/v0/servers?search=cyberchef` returned zero.
+#
+# Kept separate from the OCI block above because it is not an OCI predefined annotation and does
+# not mean the same kind of thing. `npm run check:server-json` asserts it against server.json and
+# package.json's `mcpName`, since three copies of one identifier is three chances to drift.
+LABEL io.modelcontextprotocol.server.name="io.github.doublegate/cyberchef-mcp"
+
 WORKDIR /app
 
 # Copy built application from builder stage

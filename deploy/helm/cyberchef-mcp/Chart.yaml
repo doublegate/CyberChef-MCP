@@ -3,9 +3,9 @@ name: cyberchef-mcp
 description: CyberChef MCP Server - 504 data-transformation operations as MCP tools, over Streamable HTTP
 type: application
 # The chart's own version, bumped when the chart changes.
-version: 0.5.3
+version: 0.5.4
 # The application version this chart defaults to. Kept in step with the image tag in values.yaml.
-appVersion: "3.3.0"
+appVersion: "3.4.0"
 # Derived from the project's round-patch artwork: cropped to the patch, contrast-lifted and
 # reduced to 256px/128 colours, because the source is a 973 KB photograph of embroidery that
 # renders as a dark grey disc at the ~48px an Artifact Hub listing actually shows.

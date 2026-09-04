@@ -88,19 +88,46 @@ const worst = Math.max(...spreads);
 const mid = median(spreads);
 const existing = existingBaseline;
 
+// WHERE THIS RAN, derived rather than asserted.
+//
+// The script used to carry `_machine` and `toleranceRationale` over from the previous file via
+// `...existing`, so a baseline captured on a GitHub runner inherited the sentence "Captured on one
+// developer machine" and the claim "CI variance is NOT yet measured". Both were false the moment
+// `benchmark-baseline.yml` ran for the first time, and a provenance field that lies is worse than
+// no provenance field: the whole point of the record is to say what the numbers can be compared to.
+//
+// `GITHUB_RUN_ID` rather than `CI`, because the run id is what makes the record actionable -- it
+// names the run whose logs and artifacts hold the raw numbers.
+const runId = process.env.GITHUB_RUN_ID;
+const machine = runId ?
+    `Captured on a GitHub Actions runner (${process.env.RUNNER_OS ?? "unknown OS"}/` +
+    `${process.env.RUNNER_ARCH ?? "unknown arch"}), workflow run ${runId}. This is the machine ` +
+    "class the regression gate executes on, so the comparison is like against like and the " +
+    "cross-machine offset that limited earlier baselines does not apply." :
+    "Captured on a developer machine, NOT on the runner the gate executes on. A regression " +
+    "smaller than the cross-machine offset will not be caught on CI. Prefer a baseline from " +
+    "`.github/workflows/benchmark-baseline.yml`.";
+
 writeFileSync(OUT, `${JSON.stringify({
     ...existing,
     capturedFor,
     capturedAt: runs.at(-1).capturedAt,
     node: runs.at(-1).node,
     runs: runs.length,
+    // Set when this ran on a runner, and REMOVED when it did not -- `...existing` above carries
+    // the previous file's fields forward, so a local capture would otherwise keep the runner id of
+    // the baseline it replaces while `_machine` says developer machine. The file would then claim
+    // two different origins at once, which is the same defect as the inherited `_machine` text this
+    // block was written to fix. Found in review on PR #118.
+    capturedOnRunnerRunId: runId ?? undefined,
+    _machine: machine,
     toleranceRationale:
-        `Measured, not chosen. Across ${runs.length} runs the worst per-task spread was ` +
-        `${worst.toFixed(1)}% and the median was ${mid.toFixed(1)}%, on an otherwise idle ` +
-        `machine. ${existing.tolerancePct}% is roughly 2.5x the worst observed spread: wide ` +
-        "enough that runner noise does not fail a build, narrow enough to catch the kind of " +
-        "regression that matters, which is a factor rather than a few percent. CI variance is " +
-        "NOT yet measured -- revisit once there are enough runs to characterise it.",
+        `Measured, not chosen. Across ${runs.length} runs on this machine the worst per-task ` +
+        `spread was ${worst.toFixed(1)}% and the median was ${mid.toFixed(1)}%. The tolerance ` +
+        `of ${existing.tolerancePct}% is set from the CROSS-INSTANCE study in ` +
+        "docs/internal/measurements/v3.4.0-runner-baseline.md, not from this single capture -- " +
+        "one machine's spread cannot tell you what a pool of machines does, which is the mistake " +
+        "that produced two false failures and a 50% stopgap.",
     tasks
 }, null, 2)}\n`);
 
