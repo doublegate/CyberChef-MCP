@@ -26,13 +26,21 @@ on:
     # track it continuously.
     - cron: "0 5 1 * *"
 
+# Read-only at the workflow level. The write-scoped token lives on ONE job that installs nothing
+# and runs no project code -- see `open-pr` below.
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
   capture:
     runs-on: ubuntu-latest
+    # No write scope here. This job runs `npm ci` and then executes benchmark code, which is the
+    # largest blast radius in the workflow: a compromised dependency or script would otherwise sit
+    # in the same job as a token that can push to the default branch and open pull requests.
+    # `performance-benchmarks.yml` already splits its capture and reporting jobs for the same
+    # reason; this follows it.
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v6
 
@@ -55,6 +63,30 @@ jobs:
 
       - name: Show what changed
         run: git --no-pager diff --stat benchmarks/baseline.json
+
+      - name: Hand the baseline to the PR job
+        uses: actions/upload-artifact@v7
+        with:
+          name: benchmark-baseline
+          path: benchmarks/baseline.json
+          retention-days: 7
+
+  # The only job with a write-scoped token. It installs nothing, runs no project code, and touches
+  # exactly one file -- so a compromised dependency in the job above cannot reach this token.
+  open-pr:
+    needs: capture
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Take the captured baseline
+        uses: actions/download-artifact@v8
+        with:
+          name: benchmark-baseline
+          path: benchmarks/
 
       # A PR, not a push. A baseline is the gate's reference point, and moving it silently is
       # indistinguishable from switching the gate off -- which is the failure this whole line of

@@ -3,7 +3,7 @@
 **Current version:** **v3.3.0** (released 2026-09-04) · **Upstream base:** CyberChef v11.4.0
 **Charted through:** v4.0.0 — as one plan plus five charters, not five plans
 **Timeline:** January 2026 - present
-**Last Updated:** 2026-09-03
+**Last Updated:** 2026-09-04
 
 > **Read this before trusting a date below.** Every release from v2.5.0 onward opened by measuring
 > its plan against the running server, and all six found the plan empty, already built, or
