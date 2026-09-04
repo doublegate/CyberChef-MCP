@@ -5,6 +5,28 @@ Full notes for every version live in
 [releases page](https://github.com/doublegate/CyberChef-MCP/releases). This is the shape of the
 2.x and 3.x lines, and what each release was actually *about*.
 
+## v3.7.0 — the gate that checked four of eleven files
+
+v3.2.0's notes say it fixed the operation-count discrepancy. Three documents were corrected and
+**nine live occurrences still said 505** two releases later — while `check:versions` reported every
+operation-count location `ok` the whole time, because it carried a hand-written list of four files
+and the claim appears in eleven.
+
+The check's own comment already said *"a check that covers some occurrences of a claim reads as
+covering the claim"*. The lesson had been learned about phrasings and not applied to files.
+
+It now discovers the files it checks — coverage 7 to 37 locations — and found two more than reading
+the tree by hand did, both operator-facing: a Grafana alert annotation and the comment explaining a
+Helm memory request. The extra phrasing anchor was chosen by measurement rather than by adding
+alternatives until it passed: a wide pattern flags twenty counts that are legitimately not 504, while
+all nine wrong ones share the phrase "operation implementations".
+
+Also a guard for the meta-tool duplication the v3.0.0 plan recorded and six releases carried. It has
+not drifted — 23 declared, 23 dispatched — so it gets a tripwire rather than a rewrite.
+
+Nine carried-forward items were measured against the code. Two were already done and still being
+carried, which is what happens to a list nobody re-measures.
+
 ## v3.6.0 — the gate, measured into existence
 
 The same-host benchmark comparison becomes a gate at 25% per task. That sentence has been written

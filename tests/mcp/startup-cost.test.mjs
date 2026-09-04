@@ -3,7 +3,7 @@
  *
  * Startup cost: the Node API must stay off the launch path.
  *
- * `src/node/index.mjs` imports all 505 operation implementations and costs ~1.1 s to load. Before
+ * `src/node/index.mjs` imports all every operation implementation and costs ~1.1 s to load. Before
  * v2.6.0 it was pulled in eagerly by three modules, so every launch paid it -- on stdio, which is
  * how every editor starts this server, before answering a single request.
  *

@@ -35,7 +35,7 @@
  * @license GPL-3.0-or-later
  */
 
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 
@@ -63,6 +63,84 @@ const expectedMajor = expected.split(".")[0];
 // operation, and a check that has to be edited on every sync is a check that gets edited wrongly.
 // Absent before `grunt configTests` runs, so the count locations are skipped rather than failed --
 // this script must stay runnable on a fresh clone.
+/**
+ * The phrasings that mean THE WHOLE OPERATION CATALOGUE.
+ *
+ * ONE definition, because there are two consumers -- the file discovery below and the check itself
+ * -- and within a single edit they had already diverged: discovery kept two anchors while the check
+ * gained a third, so `src/node/lib/node-api.mjs` was excluded from discovery and its two wrong
+ * counts stayed invisible. Exactly the duplication this release adds a guard for elsewhere.
+ *
+ * `g` is deliberately absent here; a shared regex with `g` carries mutable `lastIndex` between
+ * consumers and would make `.test()` alternate true/false on identical input.
+ */
+const CATALOGUE_COUNT = /(?:all|loads|exposes|importing) ([0-9]{3})[- ]operation|\b([0-9]{3})-operation \*?barrel/;
+
+/**
+ * Every text file in the repository that could carry a whole-catalogue operation count.
+ *
+ * Walked rather than listed. The previous version named four files and the claim lives in eleven,
+ * so `check:versions` passed for two releases while seven locations were wrong.
+ *
+ * Excluded, and each for a reason rather than for convenience:
+ *
+ *   - `node_modules`, `.git`, generated output -- not this project's prose.
+ *   - `docs/releases/**`, `docs/internal/**`, `CHANGELOG.md`, `docs/wiki/Release-History.md`,
+ *     `docs/planning/future-releases/**` -- HISTORICAL RECORDS. They describe what was true at the
+ *     time, including counts that have since changed, and correcting them would falsify the record.
+ *     This is the same rule that keeps a release note immutable.
+ *
+ * `Release-History.md` moves from checked to excluded in v3.7.0. It was in the old four-file list
+ * and it is a history document; it happened to be consistent, which is luck rather than design.
+ *
+ * @returns {string[]} Repository-relative paths.
+ */
+function discoverFiles() {
+    const SKIP_DIRS = new Set([
+        "node_modules", ".git", ".github/workflows/node_modules", "coverage", "test-results",
+        "ref-proj", "src/vendor", "src/core/vendor"
+    ]);
+    // Historical records: what was true when written, and not to be rewritten.
+    const SKIP_PREFIXES = [
+        "docs/releases/", "docs/internal/", "docs/planning/future-releases/", "docs/planning/phases/"
+    ];
+    const SKIP_FILES = new Set([
+        "CHANGELOG.md",
+        "docs/wiki/Release-History.md",
+        // Describes UPSTREAM's repository tree at v10.19.4, where the count genuinely was 463.
+        // Not this fork's catalogue, and correcting it to 504 would make it wrong.
+        "docs/reference/cyberchef-upstream.md",
+        // This file's own comments quote example phrasings, including counts that are deliberately
+        // not 504. A checker that fails on its own documentation is a checker nobody edits.
+        "scripts/check-version-consistency.mjs"
+    ]);
+    const EXTENSIONS = [".md", ".mjs", ".js", ".json", ".yml", ".yaml"];
+
+    const found = [];
+    const walk = (dir) => {
+        for (const entry of readdirSync(join(ROOT, dir || "."), { withFileTypes: true })) {
+            const rel = dir ? `${dir}/${entry.name}` : entry.name;
+            if (entry.isDirectory()) {
+                if (SKIP_DIRS.has(entry.name) || SKIP_DIRS.has(rel)) continue;
+                walk(rel);
+            } else if (EXTENSIONS.some(ext => entry.name.endsWith(ext))) {
+                if (SKIP_FILES.has(rel)) continue;
+                if (SKIP_PREFIXES.some(prefix => rel.startsWith(prefix))) continue;
+                found.push(rel);
+            }
+        }
+    };
+    walk("");
+    // Only files that actually make the claim, so the report names locations rather than the tree.
+    return found.filter(file => {
+        try {
+            return CATALOGUE_COUNT.test(read(file));
+        } catch {
+            return false;
+        }
+    });
+}
+
 let operationCount = null;
 try {
     operationCount = Object.keys(JSON.parse(read("src/core/config/OperationConfig.json"))).length;
@@ -248,18 +326,31 @@ const LOCATIONS = [
         // One pattern per file rather than per phrasing. The first version of this matched three
         // hand-written phrases and missed five more occurrences in the same files, which review
         // found -- a check that covers some occurrences of a claim reads as covering the claim.
-        ...[
-            "deploy/helm/cyberchef-mcp/templates/prometheusrule.yaml",
-            "deploy/compose/docker-compose.yml",
-            "README.md",
-            "docs/wiki/Release-History.md"
-        ].map(file => ({
+        //
+        // v3.7.0: the same mistake, one level up. That fix left a hand-written list of FOUR files,
+        // and the claim appears in eleven. `check:versions` reported every operation-count location
+        // `ok` for two releases while seven live locations said 505 -- including a Grafana panel
+        // description an operator reads. A check that covers four of eleven files reads exactly
+        // like a check that covers the claim.
+        //
+        // So the files are DISCOVERED, not listed. A new document making the claim is covered the
+        // day it is written, and the only way to escape the check is to be in the exclusion list
+        // below -- which is short, explicit, and about history rather than convenience.
+        ...discoverFiles().map(file => ({
             file,
-            // Anchored on phrasings that mean THE WHOLE CATALOGUE. A bare `NNN operation` matches
-            // "2,289 operation tests" and "100-operation" in an unrelated sentence, which is
-            // worse than under-matching: a check that fires on the wrong claim gets deleted.
-            find: text => [...text.matchAll(
-                /(?:all|loads|exposes|importing) ([0-9]{3})[- ]operation|\b([0-9]{3})-operation \*?barrel/g)]
+            // Anchored on phrasings that mean THE WHOLE CATALOGUE. A bare `NNN operation`
+            // matches "2,289 operation tests" and "100-operation" in an unrelated sentence, which
+            // is worse than under-matching: a check that fires on the wrong claim gets deleted.
+            //
+            // A third anchor, `NNN operation implementations`, was added in v3.7.0 and REMOVED in
+            // its review. It matched every one of the nine stale locations -- but it would have
+            // made this gate demand that an IMPLEMENTATION count equal the CATALOGUE count, and
+            // those are different numbers: the bridge imports 494 modules where `OperationConfig`
+            // has 504. The gate would have enforced a figure that is not true and rejected the
+            // accurate one. The phrase was removed from the prose instead, since those sentences
+            // are about the COST of the eager import and the count was never load-bearing -- which
+            // is precisely why a wrong one survived three releases.
+            find: text => [...text.matchAll(new RegExp(CATALOGUE_COUNT, "g"))]
                 .map((m, i) => ({ what: `operation count ${i + 1}`, value: m[1] ?? m[2],
                     compare: String(operationCount) }))
         }))

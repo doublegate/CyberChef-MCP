@@ -163,7 +163,7 @@ Percentiles are the right thing to *alert* on; the distribution is the right thi
 from, which is why both are there.
 
 **Memory per replica** will show a step of roughly 100–200 MB the first time `cyberchef_search`,
-batch search, or a saved recipe runs on a replica. That is the Node API loading all 505 operation
+batch search, or a saved recipe runs on a replica. That is the Node API loading all 504 operation
 implementations, deferred in v2.6.0. It happens once per process and is **not a leak** — but a
 container memory limit sized for the idle process will OOM exactly there, rather than at startup.
 
