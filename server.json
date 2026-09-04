@@ -1,5 +1,5 @@
 {
-  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.doublegate/cyberchef-mcp",
   "description": "CyberChef's 504 data-transformation operations as MCP tools: encryption, encoding, forensics.",
   "status": "active",
@@ -7,13 +7,13 @@
     "url": "https://github.com/doublegate/CyberChef-MCP",
     "source": "github"
   },
-  "version": "3.4.0",
+  "version": "3.5.0",
   "packages": [
     {
       "registryType": "oci",
       "registryBaseUrl": "https://ghcr.io",
       "identifier": "doublegate/cyberchef-mcp_v3",
-      "version": "3.4.0",
+      "version": "3.5.0",
       "transport": {
         "type": "stdio"
       }
@@ -22,11 +22,11 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "cyberchef-mcp",
-      "version": "3.4.0",
+      "version": "3.5.0",
       "transport": {
         "type": "stdio"
       }
     }
   ],
-  "_comment": "The npm record was ABSENT until v3.0.0, and should not have been: cyberchef-mcp has been on the registry since 2.5.0 -- seven versions -- while this file, docs/wiki/Installation.md, docs/wiki/FAQ.md and AGENTS.md all said it was publishable but unpublished. The comment here even said to add the record in the same change that publishes it, and nothing did. Verified with `npm view cyberchef-mcp versions` before writing this. The version fields are gated by `npm run check:versions`, which this file was outside of until v3.0.0 and had been stale at 2.4.1 for six releases as a result. SCHEMA: the file declared the 2025-07-09 schema while being written in the 2025-09-29 shape -- camelCase `registryType`/`registryBaseUrl` against a schema that requires snake_case `registry_type`/`registry_base_url`. Measured in v3.4.0: six validation errors against the schema it named, one against the schema it was actually written to (`description` was 153 characters against a 100-character limit). Nothing had ever validated it, which is why a file whose whole purpose is to be machine-read by a registry had been unreadable by one since it was written. `npm run check:server-json` is now that gate, and it fails when the declared schema URL is one it does not know the rules for -- a checker that silently checks the wrong rules is the failure mode this file already demonstrated once."
+  "_comment": "The npm record was ABSENT until v3.0.0, and should not have been: cyberchef-mcp has been on the registry since 2.5.0 -- seven versions -- while this file, docs/wiki/Installation.md, docs/wiki/FAQ.md and AGENTS.md all said it was publishable but unpublished. The comment here even said to add the record in the same change that publishes it, and nothing did. Verified with `npm view cyberchef-mcp versions` before writing this. The version fields are gated by `npm run check:versions`, which this file was outside of until v3.0.0 and had been stale at 2.4.1 for six releases as a result. SCHEMA: the file declared the 2025-07-09 schema while being written in the 2025-09-29 shape -- camelCase `registryType`/`registryBaseUrl` against a schema that requires snake_case `registry_type`/`registry_base_url`. Measured in v3.5.0: six validation errors against the schema it named, one against the schema it was actually written to (`description` was 153 characters against a 100-character limit). Nothing had ever validated it, which is why a file whose whole purpose is to be machine-read by a registry had been unreadable by one since it was written. `npm run check:server-json` is now that gate, and it fails when the declared schema URL is one it does not know the rules for -- a checker that silently checks the wrong rules is the failure mode this file already demonstrated once. v3.5.0 then found the gate itself was a schema version behind on the day it shipped: 2025-12-11 was current and the official `mcp-publisher validate` says so in one line. The transcribed checker stays as the OFFLINE gate, and CI now also runs the official validator as the oracle -- the same arrangement the conformance suite has, for the same reason."
 }

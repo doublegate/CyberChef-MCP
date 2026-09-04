@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.5.0] - 2026-09-04
+
+**Two of the previous release's conclusions were tested before being built on, and both were
+wrong.** The `server.json` gate v3.4.0 shipped was a schema version behind on the day it shipped;
+the benchmark fix it recorded would not have worked. Details in
+[the release notes](docs/releases/v3.5.0.md) and
+[the findings log](docs/internal/v3.5.0-findings-log.md).
+
+### Added
+
+- **The registry's own validator runs in CI**, alongside the transcribed offline checker. The
+  in-tree gate verifies what its author believed the schema says; only the official
+  `mcp-publisher validate` can contradict them, and it did — `check-server-json.mjs` shipped in
+  v3.4.0 encoding the 2025-09-29 schema while 2025-12-11 was already current. The transcribed
+  checker stays the **blocking** gate because it runs offline, which this product's air-gapped
+  posture requires. The oracle is additive, and fails on a deprecation warning the tool itself
+  exits 0 on.
+- **`publish-mcp.yml`** publishes `server.json` to the MCP registry on the version tag, using
+  GitHub OIDC rather than a stored credential. It waits for the npm package the listing points at
+  (`mcp-release.yml` publishes it on the same tag), and reads the registry back afterwards, because
+  a zero exit code is not evidence a listing is live. v3.4.0 added both ownership proofs and never
+  used them.
+- **A same-host benchmark comparison.** On a pull request the benchmark job now measures the
+  **merge base** and the **head** in one job on one runner, via a git worktree, and reports the
+  difference above the fold in the PR comment. Measured on a GitHub runner — the environment that
+  produced the -42% to +101% range — median **+0.5%**, worst **-2.2%**, best **+6.0%**.
+  `To Hex (100KB)` reads **-41.8%** against a stored baseline and **-2.0%** same-host, on identical
+  code. It **does not gate**: one runner measurement is not a distribution, and setting a threshold
+  from the first plausible number is the mistake that moved this project's tolerance three times.
+
+### Changed
+
+- **`server.json` declares the 2025-12-11 schema**, and the checker's transcribed rules move with
+  it. The document needed no change; the checker did. `Package.version` is no longer required by
+  the schema, so the checker stops requiring it — a checker stricter than the schema rejects
+  documents the registry accepts. Two fixtures pin the new behaviour.
+
+### Measured, and deliberately not built
+
+- **Normalising benchmarks against a calibration task**, which v3.4.0's findings log named as the
+  fix. Tested against the four runs that motivated it: dividing out each run's median leaves a
+  residual spread of -39.7% and -44.3% against raw deltas of -38.6% and -42.1%. The correction is
+  worth about two percentage points, because the hosts differ in profile rather than by a scale
+  factor.
+- **A shell-free base image.** Unchanged from v3.4.0: `cgr.dev/chainguard/node:latest-slim` still
+  ships Node v25.9.0 against the current v26.8.1, and there is no `node26-slim` tag. The stated
+  trigger has not fired.
+- **v4.0.0.** Its own kill criterion is "if the specification does not force a breaking change, do
+  not cut a major". There is no MCP specification revision after 2026-07-28.
+
 ## [3.4.0] - 2026-09-04
 
 **Three operations that had never worked.** `Unzip`, `Untar` and `Extract Files` were dead through

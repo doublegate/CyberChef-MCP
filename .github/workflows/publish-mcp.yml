@@ -1,0 +1,197 @@
+name: Publish to the MCP Registry
+
+# The registry hosts METADATA, not artifacts. It reads `server.json`, resolves the packages it
+# names, and verifies that this repository owns them. So this workflow must run AFTER the artifacts
+# it points at exist -- `mcp-release.yml` publishes the npm package and both container images on the
+# same tag, and a registry entry naming a version npm has not seen yet is a broken listing.
+#
+# Ownership is proven by fields added in v3.4.0, not by anything here:
+#
+#   npm   `mcpName` in package.json, which must equal `name` in server.json
+#   OCI   an `io.modelcontextprotocol.server.name` annotation on the image, same rule
+#
+# `npm run check:server-json` asserts all three copies of that identifier agree, on every PR and
+# push. If they ever drift, this workflow is not where you want to find out.
+
+on:
+  push:
+    tags: ['v*']
+  # Manual re-run, for the case this workflow exists to survive: the registry is in preview and has
+  # said it may reset data. Re-publishing an already-published version is the recovery, and it needs
+  # no new tag.
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Why this is being re-published'
+        required: false
+        default: 'Manual re-publish.'
+
+# Read-only by default. `id-token: write` below is what OIDC needs, and it is granted to the one
+# job that uses it.
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish server.json
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # A deployment environment, so this job can be gated on a human.
+    #
+    # The registry maps the OIDC `repository_owner` claim to the `io.github.doublegate/*` namespace,
+    # so a run of this workflow can publish or overwrite entries under that namespace. Anyone with
+    # write access can dispatch it from any branch they can push, which makes "who may publish" a
+    # strictly wider set than "who may cut a release".
+    #
+    # Naming the environment here is the half that lives in the repository. The other half is
+    # settings, and cannot be committed: add required reviewers, and restrict the deployment
+    # branches/tags to `v*`, under Settings -> Environments -> mcp-registry-publish. Until that is
+    # configured GitHub creates the environment unprotected on first use, and this line changes
+    # nothing -- it is the hook, not the protection.
+    environment: mcp-registry-publish
+    permissions:
+      # OIDC. This is the whole reason there is no registry token in this repository's secrets:
+      # `mcp-publisher login github-oidc` exchanges a short-lived, workflow-scoped identity token
+      # for registry credentials. Nothing long-lived is stored, so nothing long-lived can leak.
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout the tag
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js 26
+        uses: actions/setup-node@v7
+        with:
+          node-version: '26'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Fail here rather than at the registry. `check:server-json` is the offline gate: it asserts
+      # the schema rules, and that `mcpName` and the image annotation both equal `server.json`'s
+      # `name`. A mismatch is a publish the registry rejects for a reason that reads as an
+      # authentication failure rather than as the drift it is.
+      - name: server.json is internally consistent
+        run: npm run check:server-json
+
+      - name: Version consistency
+        run: npm run check:versions
+
+      - name: Install mcp-publisher
+        run: |
+          set -o pipefail
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" \
+            | tar xz mcp-publisher
+          ./mcp-publisher --help > /dev/null
+
+      # The registry's own validator, before authenticating. A document that fails here fails for
+      # a reportable reason; the same document failing after login fails somewhere less legible.
+      - name: Validate against the registry
+        run: |
+          set -o pipefail
+          ./mcp-publisher validate 2>&1 | tee validation.txt
+          if grep -q "Deprecated schema detected" validation.txt; then
+            echo "::error::server.json declares a deprecated schema. Publishing it would list this"
+            echo "::error::server against a format the registry is moving off. Update server.json"
+            echo "::error::and the KNOWN_SCHEMA constant in scripts/check-server-json.mjs together."
+            exit 1
+          fi
+
+      # The tag is the authority on the version, not the checked-out file -- but they must agree.
+      # `check:versions` above already asserts server.json matches package.json; this asserts both
+      # match the tag being published, which is the one comparison neither of them can make.
+      - name: The tag, server.json and package.json name the same version
+        if: github.event_name == 'push'
+        run: |
+          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+          SERVER_VERSION="$(node -p "require('./server.json').version")"
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          echo "tag=$TAG_VERSION server.json=$SERVER_VERSION package.json=$PKG_VERSION"
+          if [ "$TAG_VERSION" != "$SERVER_VERSION" ] || [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::Version mismatch. A registry listing that names a version the packages"
+            echo "::error::do not carry is worse than no listing: it resolves to nothing."
+            exit 1
+          fi
+
+      # npm and the images are published by mcp-release.yml on this same tag. The registry resolves
+      # what server.json names, so publishing before they exist produces a listing that 404s.
+      # Polling npm is the cheap, honest check -- the OCI images are published in the same job as
+      # the npm package, so npm arriving is good evidence for both.
+      - name: Wait for the npm package this listing points at
+        if: github.event_name == 'push'
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          NAME="$(node -p "require('./package.json').name")"
+          for attempt in $(seq 1 30); do
+            if npm view "$NAME@$VERSION" version > /dev/null 2>&1; then
+              echo "$NAME@$VERSION is on the registry"
+              exit 0
+            fi
+            echo "attempt $attempt/30: $NAME@$VERSION not visible yet"
+            sleep 20
+          done
+          echo "::error::$NAME@$VERSION never appeared on npm. mcp-release.yml publishes it on this"
+          echo "::error::same tag; check that job before re-running this one by workflow_dispatch."
+          exit 1
+
+      - name: Authenticate with the registry
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish
+        run: ./mcp-publisher publish
+
+      # Verified by reading the registry back, not by trusting the exit code -- the same rule this
+      # project applies to the container annotation and the tag message.
+      - name: Confirm the listing is live
+        run: |
+          set -o pipefail
+          VERSION="$(node -p "require('./server.json').version")"
+          NAME="$(node -p "require('./server.json').name")"
+          for attempt in $(seq 1 10); do
+            BODY="$(curl -fsS "https://registry.modelcontextprotocol.io/v0/servers?search=cyberchef" || echo '{}')"
+            # Both values must belong to the SAME record. Two independent greps over the whole
+            # response pass when the name is in one entry and the version in another -- a search
+            # response holds several servers, so that is a real way to report a listing that is not
+            # there. Parsed rather than grepped.
+            if MATCH="$BODY" NAME="$NAME" VERSION="$VERSION" node -e '
+                const body = JSON.parse(process.env.MATCH || "{}");
+                const servers = body.servers ?? [];
+                const hit = servers.some(entry => {
+                  const s = entry.server ?? entry;
+                  return s.name === process.env.NAME && s.version === process.env.VERSION;
+                });
+                process.exit(hit ? 0 : 1);
+              '; then
+              echo "listed: $NAME $VERSION"
+              echo "$BODY" | head -c 1200
+              exit 0
+            fi
+            echo "attempt $attempt/10: not visible yet"
+            sleep 15
+          done
+          echo "::error::mcp-publisher reported success but the registry does not list $NAME"
+          echo "::error::at $VERSION. Do not assume it propagated -- check manually."
+          exit 1
+
+      - name: Summary
+        if: always()
+        env:
+          # Through the environment, NOT interpolated into the script body. `${{ ... }}` is
+          # substituted into the shell source before bash sees it, so a value containing a quote or
+          # a `$(...)` would be executed rather than printed. Dispatching this workflow already
+          # requires write access, so this is defence in depth rather than a hole being closed --
+          # but the safe form costs one line and the unsafe form is the one that gets copied into a
+          # workflow where the input is not trusted.
+          REASON: ${{ github.event.inputs.reason || 'Tag push.' }}
+        run: |
+          {
+            echo "## MCP Registry"
+            echo
+            echo "- server: \`$(node -p "require('./server.json').name")\`"
+            echo "- version: \`$(node -p "require('./server.json').version")\`"
+            echo "- reason: $REASON"
+            echo
+            echo "Authenticated with GitHub OIDC; no registry credential is stored in this repository."
+          } >> "$GITHUB_STEP_SUMMARY"
