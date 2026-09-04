@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`check:versions` asserts the Docker Hub image name.** The two registries do not share a
+  namespace — GHCR is `ghcr.io/doublegate/cyberchef-mcp_v<major>`, Docker Hub is
+  `parobek/cyberchef-mcp` — and `mcp-release.yml` builds the second from a secret, so nothing in
+  the tree connected the name in README and the wiki to the image actually published. The check
+  derives the expected namespace from `docs/registry/dockerhub-description.md`, which the release
+  workflow pushes as that repository's description, and fails when a live document disagrees or
+  stops naming it at all. A version-shaped tag is checked too, including a prerelease suffix:
+  `:3.3.0-rc.1` used to be truncated to `3.3.0` and reported as agreeing. It cannot read the
+  secret; the release workflow already covers that half by pulling the pushed tag back for the
+  tarball.
+
 ## [3.3.0] - 2026-09-04
 
 **Twelve new analysis tools, and none of them is a tool the plan asked for.** The charter's own
