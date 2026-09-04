@@ -5,6 +5,25 @@ Full notes for every version live in
 [releases page](https://github.com/doublegate/CyberChef-MCP/releases). This is the shape of the
 2.x and 3.x lines, and what each release was actually *about*.
 
+## v3.6.0 — the gate, measured into existence
+
+The same-host benchmark comparison becomes a gate at 25% per task. That sentence has been written
+twice before in this project and the number was wrong within days both times, so this release is
+mostly the measurement that makes it stick.
+
+Two halves, and the second is the one no previous attempt ever did. The **noise floor**: four
+same-host runs on unchanged code, worst -7.6%. The **detection curve**: a deliberate, tunable
+slowdown in `To Hex` — redoing a measured fraction of its own work, so the slowdown carries the
+operation's real profile — giving -8.2% at 10% extra work, -20.2% at 25%, -32.8% at 50%, while every
+untouched task stayed inside the noise floor. That last part is what makes a per-task threshold
+meaningful rather than a suite-wide smear, and it had been assumed rather than shown.
+
+The reach is stated rather than implied: it fires when a task is more than 25% slower, which took
+about a third more work in the experiment. **A quarter more work does not fail the build** — it is
+printed with its number. Both previous thresholds were quoted as though they caught everything.
+
+Also the first findings log in nine releases that opens with "the plan was right".
+
 ## v3.5.0 — measuring the thing instead of estimating it
 
 Two of v3.4.0's conclusions were tested before being built on, and both were wrong.

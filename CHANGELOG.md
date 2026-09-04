@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.6.0] - 2026-09-04
+
+**The same-host benchmark comparison becomes a gate, at 25% per task.** That sentence has been
+written twice before here and the number was wrong within days both times, so this release is mostly
+the measurement that makes it stick. Details in [the release notes](docs/releases/v3.6.0.md) and
+[the findings log](docs/internal/v3.6.0-findings-log.md).
+
+### Changed
+
+- **`compare-runs.mjs` fails the build** when a task is more than **25%** slower than the merge base,
+  measured on the same runner in the same job. The threshold is 3.3x the worst observed same-host
+  noise (-7.6%, over four runs on unchanged code plus one developer-machine control), matching the
+  2.5-3x margin this project's precedent uses.
+- **Its reach is stated rather than implied.** A deliberate, tunable slowdown in `To Hex` — redoing a
+  measured fraction of its own work — gives the detection curve no previous attempt at this gate ever
+  measured: 10% extra work reads -8.2%, 25% reads -20.2%, 50% reads -32.8%, while every untouched
+  task stays within -3.7%. So the gate catches a task **more than 25% slower**, which took ~33% extra
+  work in the experiment. **A quarter more work does not fail the build** — it is printed with its
+  number. Verified by running the gate over those fixtures rather than reasoning about them.
+- **A task with no usable measurement now fails** instead of being dropped from the comparison. A
+  benchmark that produced nothing on one side is broken, not unchanged.
+
+### Unchanged, and checked
+
+The re-measurement ritual found nothing moved: SDK 2.0.0, conformance alpha.11, `server.json` schema
+2025-12-11 current, no MCP specification revision after 2026-07-28, and
+`chainguard/node:latest-slim` still on Node v25.9.0 — so the shell-free base image's stated trigger
+has still not fired. v4.0.0 stays unscheduled.
+
 ## [3.5.0] - 2026-09-04
 
 **Two of the previous release's conclusions were tested before being built on, and both were
