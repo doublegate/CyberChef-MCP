@@ -49,6 +49,29 @@ import Utils from "../../core/Utils.mjs";
 import OperationConfig from "../../core/config/OperationConfig.json" with {type: "json"};
 import { resolveArgValue, toolArgName, assertKnownArgs } from "./tool-schema.mjs";
 import { createInputError } from "../errors.mjs";
+import File from "../File.mjs";
+
+// `src/core` reaches for a BARE GLOBAL `File`, and nothing in this process was putting one there.
+//
+// Five operations construct one -- `Unzip`, `Untar`, `Tar`, `Zip`, `Split Colour Channels` -- and
+// not one of them imports it. In the browser it is the platform's. On Node the shim in
+// `src/node/File.mjs` is meant to stand in for it, and the ONLY assignment is at
+// `src/node/index.mjs:516` -- the generated bridge, which this server deliberately does not import
+// eagerly (see the note at the top of `mcp-server.mjs`: it would pull all 504 operation
+// implementations at startup).
+//
+// So the bridge's side effect went with it, and `new File(...)` in an operation resolved to
+// Node's OWN global `File` -- a `Blob` subclass with no `.data`, whose bytes are reachable only
+// through an async `arrayBuffer()`. The failure is quiet and specific: `Unzip` parsed the central
+// directory correctly and returned members with the right NAMES and zero bytes each.
+//
+// It reproduces only through a real client, which is the whole reason this took as long as it did
+// to find. Any in-process probe that imports the bridge first -- as every earlier one did -- puts
+// the shim back and the bug disappears.
+//
+// Installed here rather than in `mcp-server.mjs` because this module is the one every bake path
+// goes through, and the worker path already gets it from the bridge it does import.
+if (globalThis.File !== File) globalThis.File = File;
 
 /**
  * Does this string look like browser markup rather than a result?
@@ -227,6 +250,46 @@ export async function bakeOnCore(input, recipeConfig) {
     // exactly how `cyberchef_generate_qr_code` came to return an image on the first call and text
     // on every call after it.
     let value = baked.result;
+
+    // `List<File>` is rendered HERE, not by the dish and not by the presenter.
+    //
+    // Two of the twelve Forensics operations output `List<File>` -- `Unzip` and `Extract Files` --
+    // and BOTH were unusable through this server for the fork's whole life. They threw outright
+    // until the `Utils.readFile` patch, and once that was fixed they returned the browser's
+    // file-list markup: names, sizes and two button labels, with the file CONTENTS nowhere in it.
+    //
+    // The dish cannot supply them either, and that is deliberate upstream behaviour rather than a
+    // second bug: `DishListFile.toArrayBuffer` leaves the value as an ARRAY of per-file arrays on
+    // Node, and `tests/node/tests/NodeDish.mjs:225` asserts exactly that shape. Changing it makes
+    // the STRING conversion work and breaks that test -- a behaviour change to shared,
+    // upstream-owned code for what is really a rendering decision, and rendering is ours.
+    //
+    // So it is made here. A caller unzipping an archive wants what is IN it and wants to know
+    // which member each part came from; neither the concatenated bytes nor the markup gives both.
+    //
+    // Keyed on the DISH's type, not on `outputType`. `OperationConfig` records the PRESENTED type,
+    // so it says `html` for all three `List<File>` operations and would never match here -- which
+    // it did not, on the first attempt.
+    if (baked.dish?.type === Dish.LIST_FILE && Array.isArray(baked.dish.value)) {
+        const rendered = baked.dish.value.map(file => {
+            const bytes = Buffer.from(file.data ?? []);
+            // Base64 for a member that is not text, rather than mojibake. The same choice the
+            // content-block layer makes for a binary result, applied per member.
+            const printable = bytes.length > 0 && bytes.every(b =>
+                b === 9 || b === 10 || b === 13 || (b >= 32 && b < 127));
+            const header = `=== ${file.name} (${bytes.length} bytes${printable ? "" : ", base64"}) ===`;
+            return `${header}\n${printable ? bytes.toString("utf8") : bytes.toString("base64")}`;
+        }).join("\n");
+        return {
+            value: rendered,
+            outputType,
+            /** @returns {string} The rendered listing. */
+            toString() {
+                return rendered;
+            }
+        };
+    }
+
     if (typeof value === "string" && HTML_TAG.test(value) && !mediaFromHtml(value)) {
         try {
             const raw = await baked.dish.get(Dish.STRING);

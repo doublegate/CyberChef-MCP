@@ -1231,7 +1231,40 @@ class Utils {
     static readFile(file) {
 
         if (isNodeEnvironment()) {
-            return Buffer.from(file).buffer;
+            // FORK CHANGE (patches/fork/11): accept a `File`, which the signature already
+            // promises and the code did not honour.
+            //
+            // A `File` on this platform is the shim in `src/node/File.mjs`, which holds its bytes
+            // in `.data` -- `Buffer.from` does not accept the object itself and throws
+            // ERR_INVALID_ARG_TYPE. The shim's own constructor already unwraps a nested File the
+            // same way (`Buffer.from(d.data)`), so this is the established shape, not a guess.
+            //
+            // Every `List<File>` operation failed on Node without this. `Chef.bake` presents the
+            // dish UNCONDITIONALLY, and `displayFilesAsHTML` reaches here once per member, so
+            // `Unzip` and `Extract Files` threw before returning anything at all -- two of the
+            // twelve Forensics operations, dead through this fork's whole life.
+            //
+            // The signature above already promises to accept a `File`. This makes it true.
+            //
+            // `.buffer` is NOT returned directly. `Buffer.from` allocates out of a shared 8 KB
+            // pool for small inputs, so `.buffer` is the whole pool and the caller sees several
+            // kilobytes of unrelated memory where it expected eighteen bytes -- which showed up
+            // here as `RangeError: offset is out of bounds` while concatenating. This repository
+            // already carries `patches/fork/09-image-ops-return-pooled-buffer.patch` for the same
+            // mistake in another place.
+            const unwrap = (bytes) => {
+                const buf = Buffer.from(bytes);
+                return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+            };
+            if (file && typeof file === "object" && file.data !== undefined) {
+                return unwrap(file.data);
+            }
+            // Node's own `File` extends `Blob`, which `Buffer.from` also rejects. Not reachable
+            // through the shim above, and handled so that passing a native one is not a new bug.
+            if (typeof Blob !== "undefined" && file instanceof Blob) {
+                return file.arrayBuffer();
+            }
+            return unwrap(file);
 
         } else {
             return new Promise((resolve, reject) => {
