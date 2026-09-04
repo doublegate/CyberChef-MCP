@@ -14,6 +14,7 @@
  */
 
 import { ToolRegistry } from "./registry.mjs";
+import cribDrag from "./crib-drag.mjs";
 import cyclicPattern from "./cyclic-pattern.mjs";
 import hashIdentify from "./hash-identify.mjs";
 import hashStatistics from "./hash-statistics.mjs";
@@ -23,7 +24,7 @@ import rsaMultiKey from "./rsa-multi-key.mjs";
 import xorKeyLength from "./xor-key-length.mjs";
 
 /** Tools, in the order they should appear in `tools/list`. */
-const TOOLS = [cyclicPattern, hashIdentify, hashStatistics, plaintextCheck, rsaAttack, rsaMultiKey, xorKeyLength];
+const TOOLS = [cribDrag, cyclicPattern, hashIdentify, hashStatistics, plaintextCheck, rsaAttack, rsaMultiKey, xorKeyLength];
 
 /**
  * Build the registry.

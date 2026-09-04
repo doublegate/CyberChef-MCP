@@ -180,7 +180,7 @@ function chooseLength(ranked) {
  *
  * Everything not listed shares the remainder, which is what `OTHER_SHARE` below distributes.
  */
-const ENGLISH_BYTE_FREQ = (() => {
+export const ENGLISH_BYTE_FREQ = (() => {
     const table = new Float64Array(256);
     const letters = [
         0.0651738, 0.0124248, 0.0217339, 0.0349835, 0.1041442, 0.0197881, 0.0158610, 0.0492888,
