@@ -30,7 +30,13 @@ built once and pushed to both, with provenance and SBOM attestations.
 **`--rm` is a convenience**, not a requirement — it cleans up the container when the client
 disconnects. Without it you accumulate stopped containers.
 
-The image runs as UID 65532 (`nonroot`) on a distroless Chainguard base, and contains no shell.
+The image runs as UID 65532 (`nonroot`) on a Chainguard Wolfi base.
+
+> **It is not shell-free.** This page said "contains no shell" until v3.2.0, and measuring the
+> published image found `/usr/bin/sh`, `ash`, `busybox` (v1.38.0) and `npm`. What is genuinely
+> absent is a package manager: no `apk`, no `wget`, no `curl`. If your threat model assumed no
+> shell, it needs revisiting — see
+> [the v3.1.0 baseline](https://github.com/doublegate/CyberChef-MCP/blob/master/docs/internal/measurements/v3.1.0-baseline.md).
 
 ## npm
 
