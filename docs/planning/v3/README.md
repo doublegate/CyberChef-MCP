@@ -6,6 +6,16 @@
 | `RE-MEASURE.md` | **Mandatory** before any charter becomes a release |
 | `charters/` | One page per candidate release: intent, candidate scope, kill criteria |
 
+## Status, 2026-09-03
+
+| Charter | State |
+|---|---|
+| `v3.1.0-evaluation-harness.md` | **Executed** as v3.1.0, re-scoped on measurement — its own kill criterion fired |
+| `v3.2.0-result-efficiency.md` | **Next.** Result efficiency, plus the debt v3.1.0 named and the deferred task-scoring track |
+| `v3.3.0-external-tools.md` | Unscheduled |
+| `v3.x-supply-chain.md` | **Absorbed** into v3.2.0 Track B; its trigger fired |
+| `v4.0.0.md` | Unscheduled; determined by the spec |
+
 ## Why this is smaller than `../future-releases/`
 
 That directory holds 19 release plans written mostly in December 2025, of which four carry
