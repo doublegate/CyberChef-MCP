@@ -262,11 +262,27 @@ jobs:
 
       - name: Report the machine this measured
         run: |
+          # arm64 /proc/cpuinfo carries NO `model name` field -- that is an x86 convention. The
+          # first version of this step assumed it did, and its `|| echo unknown` fallback could not
+          # fire, because grep matching nothing still leaves `xargs` exiting 0: the field came back
+          # EMPTY on the job's first real run. An empty field is worse than "unknown", because it
+          # reads as a machine with no model rather than as a question this step failed to answer.
+          # The implementer/part pair is the closest thing arm64 offers to an identity.
+          model="$(grep -m1 -E 'model name|^Model' /proc/cpuinfo | cut -d: -f2- | xargs)"
+          if [ -z "$model" ]; then
+            impl="$(grep -m1 'CPU implementer' /proc/cpuinfo | cut -d: -f2- | xargs)"
+            part="$(grep -m1 'CPU part' /proc/cpuinfo | cut -d: -f2- | xargs)"
+            if [ -n "$impl" ] || [ -n "$part" ]; then
+              model="implementer ${impl:-?} part ${part:-?} (no model name field)"
+            else
+              model="unknown"
+            fi
+          fi
           {
             echo "arch:   $(uname -m)"
             echo "kernel: $(uname -r)"
             echo "cpus:   $(nproc)"
-            echo "model:  $(grep -m1 -E 'model name|Model' /proc/cpuinfo | cut -d: -f2- | xargs || echo unknown)"
+            echo "model:  $model"
             echo "memory: $(awk '/MemTotal/ {printf "%.1f GB", $2/1048576}' /proc/meminfo)"
             echo "node:   $(node --version)"
           } | tee arm64-machine.txt
