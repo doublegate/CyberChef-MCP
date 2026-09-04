@@ -220,6 +220,26 @@ for (const [index, pkg] of (doc.packages ?? []).entries()) {
         assert(seen === wanted, `packages[${index}].${field} (optional, ${wanted})`,
             seen === wanted ? JSON.stringify(pkg[field]) : seen);
     }
+    // THE REGISTRY'S OWN RULES, which the schema does not express and `mcp-publisher validate`
+    // does not check. Learned the way they are usually learned -- the publish endpoint returned
+    // 400:
+    //
+    //     OCI packages must not have 'registryBaseUrl' field
+    //     - use canonical reference in 'identifier' instead (e.g. 'docker.io/owner/image:1.0.0')
+    //
+    // Encoded here so the next person meets it in a pull request rather than at a release. That
+    // there IS a layer stricter than the official validator is the more useful half of the lesson:
+    // schema < validate < publish, and only the last one is authoritative.
+    if (pkg.registryType === "oci") {
+        assert(pkg.registryBaseUrl === undefined,
+            `packages[${index}] OCI has no registryBaseUrl (the registry rejects it)`,
+            pkg.registryBaseUrl ?? "absent");
+        // `registry/namespace/repository:tag`, the documented form. The tag may also be a digest.
+        assert(/^[a-z0-9.-]+(:[0-9]+)?\/[^\s]+[:@][^\s:@]+$/.test(String(pkg.identifier ?? "")),
+            `packages[${index}] OCI identifier is a canonical reference`,
+            String(pkg.identifier ?? "(absent)"));
+    }
+
     // The transport's own shape. `{"type": "stdio"}` and `{"type": "sse", "url": ...}` are
     // different schemas, and a transport naming a type the spec does not define is a package no
     // client can launch.

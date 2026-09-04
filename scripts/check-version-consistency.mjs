@@ -196,9 +196,19 @@ const LOCATIONS = [
                     // which is the same "stopped matching" failure this file exists to prevent.
                     const oci = pkg.registryType === "oci";
                     const major = /cyberchef-mcp_v([0-9]+)/.exec(pkg.identifier ?? "")?.[1];
+                    // An OCI identifier is a canonical reference -- `ghcr.io/owner/image:tag` --
+                    // and the registry REQUIRES that form, rejecting a `registryBaseUrl` alongside
+                    // it. So the tag carries the version and the entry has no `version` field:
+                    // checking one that is legitimately absent would report a false failure.
+                    // Instead the tag itself is asserted, which is a stronger claim than the major
+                    // this used to check.
+                    const tag = oci ? /:([^:/]+)$/.exec(pkg.identifier ?? "")?.[1] : undefined;
                     return [
-                        { what: `packages[${i}].version`, value: pkg.version ?? "(absent)" },
+                        ...(oci ? [] : [{ what: `packages[${i}].version`, value: pkg.version ?? "(absent)" }]),
                         ...(oci ? [{
+                            what: `packages[${i}].identifier tag`,
+                            value: tag ?? `(no tag in "${pkg.identifier ?? ""}")`
+                        }, {
                             what: `packages[${i}].identifier major`,
                             value: major === undefined ?
                                 `(no major in "${pkg.identifier ?? ""}")` : `${major}.x.x`,

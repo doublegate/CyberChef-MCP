@@ -42,7 +42,7 @@ const VALID = {
     version: "9.9.9",
     repository: { url: "https://github.com/doublegate/CyberChef-MCP", source: "github" },
     packages: [
-        { registryType: "oci", registryBaseUrl: "https://ghcr.io", identifier: "doublegate/x", version: "9.9.9", transport: { type: "stdio" } }
+        { registryType: "oci", identifier: "ghcr.io/doublegate/x:9.9.9", transport: { type: "stdio" } }
     ]
 };
 
@@ -180,6 +180,27 @@ describe("check-server-json", () => {
         const { code, out } = run(doc);
         expect(code).toBe(1);
         expect(out).toContain("version (optional, string)");
+    });
+
+    it("rejects an OCI package carrying registryBaseUrl", () => {
+        // The registry rejected exactly this with a 400 on v3.5.0's first publish -- a rule the
+        // 2025-12-11 schema does not express and `mcp-publisher validate` does not check. There is
+        // a layer stricter than the official validator, and this is the one rule of it we know.
+        const doc = clone();
+        doc.packages[0].registryBaseUrl = "https://ghcr.io";
+        const { code, out } = run(doc);
+        expect(code).toBe(1);
+        expect(out).toContain("no registryBaseUrl");
+    });
+
+    it("rejects an OCI identifier that is not a canonical reference", () => {
+        // `owner/image` without a registry host or a tag is what this repository shipped until
+        // v3.5.0, and it is unpublishable.
+        const doc = clone();
+        doc.packages[0].identifier = "doublegate/cyberchef-mcp_v3";
+        const { code, out } = run(doc);
+        expect(code).toBe(1);
+        expect(out).toContain("canonical reference");
     });
 
     it("rejects a mismatched npm ownership proof", () => {
