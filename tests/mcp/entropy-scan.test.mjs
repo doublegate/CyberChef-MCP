@@ -105,6 +105,30 @@ describe("entropy_scan", () => {
         expect(r.regions).toHaveLength(1);
     });
 
+    it("refuses a window count that would hold the server for tens of seconds", async () => {
+        // The bound is (bytes - window) / step, NOT the input size, and the schema permits a
+        // one-byte step. Measured before the fix: 8 MB at window 16 step 1 is 8.4 million windows
+        // and 29,219 ms, against the 30-second timeout every operation tool is held to -- one
+        // legal call holding the event loop for twenty-nine seconds with no way to interrupt it.
+        await expect(run({
+            input: raw(randomBytes(1048576)), "input_format": "Raw",
+            "window_bytes": 16, "step_bytes": 1
+        })).rejects.toThrow(/windows, and the limit is/);
+    });
+
+    it("says which step_bytes would fit rather than only that this one does not", async () => {
+        try {
+            await run({
+                input: raw(randomBytes(1048576)), "input_format": "Raw",
+                "window_bytes": 16, "step_bytes": 1
+            });
+            throw new Error("should have been refused");
+        } catch (error) {
+            // A refusal that does not name the way out is a refusal the caller has to guess past.
+            expect(error.context?.hint ?? error.message).toMatch(/step_bytes of at least \d+ fits/);
+        }
+    });
+
     it("rejects malformed hex", async () => {
         await expect(run({ input: "zzzz", "input_format": "Hex" })).rejects.toThrow(/not valid hex/);
     });

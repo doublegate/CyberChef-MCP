@@ -36,6 +36,27 @@ import { createInputError } from "../errors.mjs";
 /** Largest input accepted, in bytes. The scan is O(n), but the region list is what a caller reads. */
 const MAX_BYTES = 8388608;
 
+/**
+ * Most windows a single scan will measure.
+ *
+ * The bound that matters is not the input size, it is `(bytes - window) / step` -- and the schema
+ * permits 8 MB with a one-byte step, which is 8.4 million windows. Measured: **29,219 ms**, against
+ * the 30-second timeout every operation tool is held to. One legal call therefore sat on the event
+ * loop for twenty-nine seconds, starving every other request on a shared server, and the timeout
+ * could not fire because the work is synchronous.
+ *
+ * 500,000 windows is about 1.2 seconds at the measured 2.3 us per window. It is also far more than
+ * anyone reads: `max_regions` caps the output at 256 regions, so a scan producing millions of
+ * windows is measuring detail that never leaves the function.
+ *
+ * Refused rather than silently downsampled. Quietly widening the step would answer a different
+ * question from the one asked, at a resolution the caller did not choose.
+ */
+const MAX_WINDOWS = 500000;
+
+/** Windows measured between yields. Keeps a long scan interruptible; costs nothing measurable. */
+const YIELD_EVERY = 4096;
+
 /** Lyda and Hamrock's two thresholds, and their block size. */
 const BINTROPY_MEAN = 6.677;
 const BINTROPY_PEAK = 7.199;
@@ -69,10 +90,14 @@ function entropy(bytes, start, end) {
  * 8 bits of entropy per byte; only compressed data still has structure, and it shows up here as a
  * chi-squared far from the 255 degrees of freedom a uniform source would give.
  *
+ * Chunked with a yield between chunks. It is a single linear pass, but a linear pass over the
+ * 8 MB the schema permits is a full second of unbroken synchronous work, and a second is enough to
+ * starve every other request on a shared server.
+ *
  * @param {Uint8Array} bytes - The data.
- * @returns {{chiSquared: number, serialCorrelation: number}} Both statistics.
+ * @returns {Promise<{chiSquared: number, serialCorrelation: number}>} Both statistics.
  */
-function uniformityStats(bytes) {
+async function uniformityStats(bytes) {
     const counts = new Uint32Array(256);
     for (const b of bytes) counts[b]++;
     const expected = bytes.length / 256;
@@ -86,11 +111,16 @@ function uniformityStats(bytes) {
     let t1 = 0;
     let t2 = 0;
     let t3 = 0;
-    for (let i = 0; i < bytes.length; i++) {
-        const next = bytes[(i + 1) % bytes.length];
-        t1 += bytes[i] * next;
-        t2 += bytes[i];
-        t3 += bytes[i] * bytes[i];
+    const CHUNK = 1 << 20;
+    for (let start = 0; start < bytes.length; start += CHUNK) {
+        if (start > 0) await new Promise(resolve => setImmediate(resolve));
+        const end = Math.min(start + CHUNK, bytes.length);
+        for (let i = start; i < end; i++) {
+            const next = bytes[(i + 1) % bytes.length];
+            t1 += bytes[i] * next;
+            t2 += bytes[i];
+            t3 += bytes[i] * bytes[i];
+        }
     }
     const n = bytes.length;
     const numerator = n * t1 - t2 * t2;
@@ -109,7 +139,12 @@ function uniformityStats(bytes) {
  * @returns {Uint8Array} The bytes.
  */
 function decode(value, format) {
-    if (format === "Raw") return Uint8Array.from(value, ch => ch.charCodeAt(0) & 0xff);
+    // `Buffer.from(value, "latin1")` rather than `Uint8Array.from(value, ch => ch.charCodeAt(0) & 0xff)`.
+    // Byte-identical -- latin1 takes the low byte of each UTF-16 code unit, which is what the
+    // mapper did -- and measured at **14 ms against 675 ms** on 8 MB. The per-character
+    // callback is the whole cost, and it was the largest single block of synchronous work in
+    // any of these tools.
+    if (format === "Raw") return new Uint8Array(Buffer.from(value, "latin1"));
     const cleaned = format === "Hex" ? value.replace(/[\s,:]/g, "") : value.trim();
     if (format === "Hex" && (cleaned.length % 2 || !/^[0-9a-f]*$/i.test(cleaned))) {
         throw createInputError("The input is not valid hex.", { received: value.slice(0, 60) });
@@ -170,8 +205,32 @@ export default {
                 { bytes: bytes.length, window });
         }
 
+        const windowCount = Math.floor((bytes.length - window) / step) + 1;
+        if (windowCount > MAX_WINDOWS) {
+            throw createInputError(
+                `That is ${windowCount.toLocaleString("en")} windows, and the limit is ` +
+                `${MAX_WINDOWS.toLocaleString("en")}. The scan is bounded by (bytes - window) / ` +
+                "step rather than by the input size, and at this resolution it would hold the " +
+                "server for tens of seconds. Raise step_bytes.",
+                {
+                    windows: windowCount,
+                    maximum: MAX_WINDOWS,
+                    hint: `step_bytes of at least ${Math.ceil((bytes.length - window) / MAX_WINDOWS)} ` +
+                        "fits, and the region list is capped at max_regions regardless, so a finer " +
+                        "step mostly produces detail that never leaves the tool."
+                });
+        }
+
         const windows = [];
+        let sinceYield = 0;
         for (let offset = 0; offset + window <= bytes.length; offset += step) {
+            // Yield periodically. The bound above keeps this near a second, but a second of
+            // unbroken synchronous work still starves every other request on a shared server and
+            // leaves the call timeout unable to fire.
+            if (++sinceYield >= YIELD_EVERY) {
+                sinceYield = 0;
+                await new Promise(resolve => setImmediate(resolve));
+            }
             windows.push({ offset, entropy: entropy(bytes, offset, offset + window) });
         }
 
@@ -201,6 +260,7 @@ export default {
         // and that omission is why the rule is so often reported as not working.
         const blocks = [];
         for (let offset = 0; offset + BINTROPY_BLOCK <= bytes.length; offset += BINTROPY_BLOCK) {
+            if ((blocks.length & (YIELD_EVERY - 1)) === 0) await new Promise(resolve => setImmediate(resolve));
             let nonZero = 0;
             for (let i = offset; i < offset + BINTROPY_BLOCK; i++) if (bytes[i]) nonZero++;
             if (nonZero * 2 >= BINTROPY_BLOCK) {
@@ -212,7 +272,7 @@ export default {
         const packed = bintropyMean !== null &&
             bintropyMean > BINTROPY_MEAN && bintropyPeak > BINTROPY_PEAK;
 
-        const stats = uniformityStats(bytes);
+        const stats = await uniformityStats(bytes);
         const overall = entropy(bytes, 0, bytes.length);
 
         return {

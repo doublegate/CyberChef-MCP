@@ -311,6 +311,7 @@ menu entries:
 | `extract-iocs` | You need URLs, IPs, emails and domains out of a document or script, defanged. |
 | `deobfuscate-script` | You have obfuscated PowerShell, JavaScript, VBScript or PHP. |
 | `identify-hash` | You have a hash and need to know which algorithm produced it. |
+| `break-cipher` | You have ciphertext and no key, and need the search ordered cheapest-first. |
 | `decode-chain` | You know roughly what was done to the data and want it unwrapped. |
 
 Each encodes the order a practitioner would actually work in, not a restatement of the tool list —

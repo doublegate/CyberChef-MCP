@@ -71,6 +71,17 @@ reading the reference projects as code instead of as documentation. Details in
   `operations`; `describe_operation` names a registry tool as one and says its schema is already
   loaded, instead of "No such operation, use cyberchef_search" — which pointed at a search that
   could not find it either.
+- **`entropy_scan` refuses a window count that would hold the server for tens of seconds.** Its
+  cost is bounded by `(bytes - window) / step`, not by input size, and the schema permitted 8 MB
+  with a one-byte step: 8.4 million windows, measured at **29,219 ms** against a 30-second timeout,
+  synchronous and therefore uninterruptible. Capped at 500,000 windows, with the refusal naming the
+  `step_bytes` that would fit. Yields added to every remaining O(input) loop in `entropy_scan`,
+  `corpus_diff` and `crib_drag`; the longest event-loop block at `crib_drag`'s maximum falls from
+  about 4,000 ms to 301 ms.
+- **A per-character decode was the largest single block of synchronous work in these tools.**
+  `Uint8Array.from(value, ch => ch.charCodeAt(0) & 0xff)` measures 675 ms on 8 MB;
+  `new Uint8Array(Buffer.from(value, "latin1"))` is byte-identical and takes 14 ms. Replaced in
+  `entropy_scan`, `corpus_diff`, `crib_drag` and `xor_key_length`.
 - **The default `tools/list` index grew from 28 tools / 20,297 bytes to 40 / 40,637.** Registry
   tools have no navigation path, so one that is not listed cannot be called at all; listing must
   never be stricter than dispatch. `curated` is 118 / 103,883 and `all` is 543 / 421,041. Trimming

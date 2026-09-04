@@ -439,13 +439,15 @@ export default {
         // errors are the ones a caller of this server already recognises.
         let bytes;
         if (format === "Raw") {
-            bytes = Uint8Array.from(input, ch => ch.charCodeAt(0) & 0xff);
+            // See the note in the tools that share this decode: latin1 is byte-identical to the
+            // per-character mapper and 48x faster, because the callback is the whole cost.
+            bytes = new Uint8Array(Buffer.from(input, "latin1"));
         } else {
             const decoded = await ctx.bake(input, [{ op: format === "Hex" ? "From Hex" : "From Base64" }]);
             const value = decoded.value;
             bytes = value instanceof ArrayBuffer ? new Uint8Array(value) :
                 Array.isArray(value) ? Uint8Array.from(value) :
-                    Uint8Array.from(String(value), ch => ch.charCodeAt(0) & 0xff);
+                    new Uint8Array(Buffer.from(String(value), "latin1"));
         }
 
         if (bytes.length < 8) {
