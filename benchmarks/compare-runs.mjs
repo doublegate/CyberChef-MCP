@@ -205,14 +205,24 @@ process.stdout.write(
     "its number. Read those numbers; a pass is not proof there is no regression.\n" +
     "See benchmarks/README.md.\n");
 
+// `process.exitCode` rather than `process.exit()`, for two reasons that both bite here.
+//
+// Ordering: with BOTH an unmeasured task and a regression, an immediate exit in the first block
+// would suppress the second, so the report would name one problem and hide the other -- in the run
+// where a reader most needs both.
+//
+// Truncation: `process.exit()` tears the process down without waiting for queued stdout, and this
+// output is piped through `tee` in CI. A pipe is asynchronous, so the very diagnostics being written
+// are the ones at risk of being cut off. Setting the code and letting Node exit naturally flushes
+// first.
 if (unmeasured.length) {
-    // A task that could not be compared is not a task that passed. Failing here rather than
-    // reporting it: silently shrinking coverage is the failure this project keeps finding, and a
-    // benchmark that produced no measurement on one side is broken rather than unchanged.
+    // A task that could not be compared is not a task that passed. Failing rather than reporting:
+    // silently shrinking coverage is the failure this project keeps finding, and a benchmark that
+    // produced no measurement on one side is broken rather than unchanged.
     process.stdout.write(
         `\n${unmeasured.length} task(s) had no usable measurement. That is a broken run, not a\n` +
         "clean one -- investigate before trusting anything above.\n");
-    process.exit(1);
+    process.exitCode = 1;
 }
 
 if (regressions.length) {
@@ -221,5 +231,5 @@ if (regressions.length) {
     process.stdout.write(
         "\nBoth sides ran on the same machine in the same job, so this is not host variance -- that\n" +
         "is the whole point of comparing this way. If it is intentional, say so in the pull request.\n");
-    process.exit(1);
+    process.exitCode = 1;
 }
