@@ -44,7 +44,7 @@ Extend the platform with binary/image handling, WebSocket/SSE transports, and a 
 
 Deploy enterprise-grade features including OAuth 2.1 authentication, RBAC authorization, horizontal scaling with Kubernetes, and comprehensive OpenTelemetry observability. This phase enables production deployment at scale.
 
-### Phase 6: Evolution (v2.8.0 - v3.0.0) - shipped September 2026
+### Phase 6: Evolution (v2.8.0 - v3.1.0) - shipped September 2026
 
 > **Corrected 2026-09-03.** This phase listed "v2.9.x Pre-v3.0.0 Polish", whose primary goal was
 > deprecation warnings for v3.0.0's breaking changes. Measured against the server, that goal is
@@ -148,7 +148,7 @@ gantt
 > The curated tool surface **did** ship, in v2.1.0, alongside an index surface that goes further.
 > The SDK v2 migration did not, and moves to Phase 4.
 
-### Phase 4-6 (v2.2.0 - v3.0.0)
+### Phase 4-6 (v2.2.0 - v3.1.0)
 
 | Release | Theme | Key Features | Effort | Risk |
 |---------|-------|--------------|--------|------|
