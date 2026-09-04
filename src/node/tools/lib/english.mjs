@@ -43,9 +43,36 @@ export const TRIGRAM_LOGP = (() => {
     return out;
 })();
 
+/**
+ * Whether a single code point counts as one letter, and the code it maps to.
+ *
+ * Exported because the solvers restore the original spacing and case by walking the input in step
+ * with the plaintext codes, and the two sides MUST use the same rule. They did not: `toCodes`
+ * uppercased the whole string first, so `"ß"` became `"SS"` and produced TWO codes, while the
+ * restore walk tested `ch.toUpperCase()` against the range `"A"` to `"Z"` -- which `"SS"` satisfies
+ * as a string comparison -- and consumed ONE. Every letter after that point came back shifted by
+ * one, and a long enough tail read past the end of the plaintext into `String.fromCharCode(NaN)`.
+ *
+ * Reproduced: "Straße ..." decrypted to "Strase ..." with the rest of the sentence intact but the
+ * indices off by one. The ligatures `ﬁ`, `ﬂ` and `ﬀ` do the same; `"ŉ"` does the reverse, since its
+ * uppercase `"ʼN"` fails the range test while the old `toCodes` kept the `N`.
+ *
+ * One predicate now, used by both, so they cannot disagree.
+ *
+ * @param {string} ch - A single code point.
+ * @returns {number} 0-25 for a letter, or -1.
+ */
+export function letterCode(ch) {
+    const upper = ch.toUpperCase();
+    // `length === 1` is the whole fix: a code point whose uppercase form EXPANDS is not one letter,
+    // and treating it as one is what desynchronised the two walks.
+    if (upper.length !== 1 || upper < "A" || upper > "Z") return -1;
+    return upper.charCodeAt(0) - 65;
+}
+
 /** @returns {number[]} A-Z as 0-25, everything else dropped. */
 export const toCodes = (text) =>
-    [...text.toUpperCase()].filter(ch => ch >= "A" && ch <= "Z").map(ch => ch.charCodeAt(0) - 65);
+    [...text].map(letterCode).filter(code => code >= 0);
 
 /** @returns {string} Letter codes rendered back to text. */
 export const fromCodes = (codes) => codes.map(c => String.fromCharCode(65 + c)).join("");

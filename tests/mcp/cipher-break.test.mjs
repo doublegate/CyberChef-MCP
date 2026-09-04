@@ -15,7 +15,7 @@
 import { describe, it, expect } from "vitest";
 import vigenere from "../../src/node/tools/vigenere-break.mjs";
 import substitution from "../../src/node/tools/substitution-break.mjs";
-import { trigramScore, toCodes, indexOfCoincidence, chiSquared } from "../../src/node/tools/lib/english.mjs";
+import { trigramScore, toCodes, indexOfCoincidence, chiSquared, letterCode } from "../../src/node/tools/lib/english.mjs";
 
 /** Held-out prose: not in the corpus the trigram table was built from. */
 const PROSE = "The study of computer security begins with the observation that every system has a " +
@@ -24,15 +24,21 @@ const PROSE = "The study of computer security begins with the observation that e
     "The answers are rarely found in the algorithm and almost always found in the plumbing " +
     "around it, which is why an attacker reads the configuration before reading the source code.";
 
-/** @returns {string} Vigenere ciphertext, preserving case and punctuation. */
+/**
+ * @returns {string} Vigenere ciphertext, preserving case and punctuation.
+ *
+ * Uses the tool's own `letterCode` rather than an inline range test, because an inline one gets the
+ * ligature cases wrong in the same way the tool used to -- and a fixture built with the wrong rule
+ * cannot test the right one.
+ */
 function encipherVigenere(text, key) {
     let at = 0;
     return [...text].map(ch => {
-        const upper = ch.toUpperCase();
-        if (upper < "A" || upper > "Z") return ch;
+        const code = letterCode(ch);
+        if (code < 0) return ch;
         const shift = key.toUpperCase().charCodeAt(at++ % key.length) - 65;
-        const out = String.fromCharCode(65 + (upper.charCodeAt(0) - 65 + shift) % 26);
-        return ch === upper ? out : out.toLowerCase();
+        const out = String.fromCharCode(65 + (code + shift) % 26);
+        return ch === ch.toUpperCase() ? out : out.toLowerCase();
     }).join("");
 }
 
@@ -47,6 +53,22 @@ function encipherSubstitution(text, alphabet) {
 }
 
 describe("the shared English model", () => {
+    it("counts a code point whose uppercase expands as no letter, on both sides", async () => {
+        const { letterCode } = await import("../../src/node/tools/lib/english.mjs");
+
+        // `"ß".toUpperCase()` is `"SS"` and the ligatures behave the same way. The old `toCodes`
+        // uppercased the whole string first, so ß produced TWO codes, while the restore walk tested
+        // `ch.toUpperCase()` against the range "A" to "Z" -- which "SS" satisfies as a string
+        // comparison -- and consumed ONE. Every letter after that came back shifted by one, and a
+        // long enough tail read past the plaintext into String.fromCharCode(NaN).
+        expect(letterCode("ß")).toBe(-1);
+        expect(letterCode("ﬁ")).toBe(-1);
+        expect(letterCode("ŉ")).toBe(-1);
+        expect(letterCode("a")).toBe(0);
+        expect(letterCode("Z")).toBe(25);
+        expect(toCodes("aßb")).toEqual([0, 1]);
+    });
+
     it("returns -Infinity rather than a number for text too short to have a trigram", async () => {
         expect(trigramScore(toCodes("AB"))).toBe(-Infinity);
         expect(chiSquared([])).toBe(Infinity);
@@ -117,6 +139,18 @@ describe("vigenere_break", () => {
         const r = await vigenere.run(
             vigenere.inputSchema.parse({ input: encipherVigenere(PROSE, "KEY") }));
         expect(r.plaintext.startsWith("The study of computer security")).toBe(true);
+    }, 30000);
+
+    it("stays in step with the input across a code point whose uppercase expands", async () => {
+        // The regression the shared `letterCode` predicate exists for. Enciphered with the same
+        // predicate the tool uses, so ß and the ligature pass through verbatim; if the two walks
+        // disagree by one, everything after them is shifted and the tail runs off the end.
+        const withLigatures = `Straße ﬁnance ${PROSE}`;
+        const r = await vigenere.run(
+            vigenere.inputSchema.parse({ input: encipherVigenere(withLigatures, "KEY") }));
+
+        expect(r.plaintext.startsWith("Straße ﬁnance The study of computer security")).toBe(true);
+        expect(r.plaintext).not.toContain(String.fromCharCode(NaN));
     }, 30000);
 
     it("reports the runner-up at every key position", async () => {

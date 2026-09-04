@@ -29,7 +29,7 @@
 
 import { z } from "zod";
 import { createInputError } from "../errors.mjs";
-import { toCodes, fromCodes, chiSquared, indexOfCoincidence, trigramScore } from "./lib/english.mjs";
+import { toCodes, fromCodes, letterCode, chiSquared, indexOfCoincidence, trigramScore } from "./lib/english.mjs";
 
 /** Largest input accepted, in characters. */
 const MAX_INPUT = 262144;
@@ -225,10 +225,12 @@ export default {
         // block of capitals the caller has to re-align against the input by eye.
         let at = 0;
         const restored = [...args.input].map(ch => {
-            const upper = ch.toUpperCase();
-            if (upper < "A" || upper > "Z") return ch;
+            // `letterCode`, the same predicate `toCodes` uses. The two walks must consume letters
+            // in lockstep, and an inline range test does not: `"ß".toUpperCase()` is `"SS"`, which
+            // satisfies `>= "A" && <= "Z"` as a string comparison while producing two codes.
+            if (letterCode(ch) < 0) return ch;
             const letter = String.fromCharCode(65 + plain[at++]);
-            return ch === upper ? letter : letter.toLowerCase();
+            return ch === ch.toUpperCase() ? letter : letter.toLowerCase();
         }).join("");
 
         return {
