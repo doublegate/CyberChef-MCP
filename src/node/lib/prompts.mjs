@@ -220,7 +220,13 @@ const PROMPTS = [
             "below a few hundred characters: read what came back, and if two letters look",
             "transposed throughout, pin the ones you are sure of and run it again.",
             "",
-            args?.hint ? `What is known about it: ${String(args.hint)}` : "Nothing is known about it.",
+            // Trimmed before the test, as `decode-chain` does with the identically named
+            // argument. A whitespace-only hint is truthy, so the untrimmed version emitted
+            // "What is known about it:" followed by blank space -- which reads as a claim
+            // that something is known.
+            String(args?.hint ?? "").trim() ?
+                `What is known about it: ${String(args.hint).trim()}` :
+                "Nothing is known about it.",
             "",
             "Ciphertext:",
             "```",

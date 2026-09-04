@@ -149,6 +149,14 @@ function decode(value, format) {
     if (format === "Hex" && (cleaned.length % 2 || !/^[0-9a-f]*$/i.test(cleaned))) {
         throw createInputError("The input is not valid hex.", { received: value.slice(0, 60) });
     }
+    // Base64 is validated as strictly as hex. `Buffer.from(value, "base64")` IGNORES characters
+    // outside the alphabet and truncates a trailing incomplete group, so Raw text submitted with
+    // input_format Base64 decoded to a shorter, entirely different byte string and every statistic
+    // below was computed on it -- silently. "hello world!!" came back as 7 bytes.
+    if (format === "Base64" && !/^[A-Za-z0-9+/]*={0,2}$/.test(cleaned.replace(/\s/g, ""))) {
+        throw createInputError("The input is not valid base64.",
+            { received: value.slice(0, 60) });
+    }
     return new Uint8Array(Buffer.from(cleaned, format === "Hex" ? "hex" : "base64"));
 }
 
@@ -241,8 +249,12 @@ export default {
         for (const w of windows) {
             const last = regions[regions.length - 1];
             if (w.entropy >= args.threshold) {
-                if (last && last.end === w.offset) {
-                    last.end = w.offset + window;
+                // `<=`, not `===`. With any step smaller than the window the next window STARTS
+                // before the previous one ends, so an equality test never merges and one physical
+                // blob comes back as a region per window -- 29 of them for a single 2 KB blob at
+                // window 256 step 64, which then competes with itself for the `max_regions` slots.
+                if (last && w.offset <= last.end) {
+                    last.end = Math.max(last.end, w.offset + window);
                     last.peak = Math.max(last.peak, w.entropy);
                     last.windows++;
                     last.total += w.entropy;
@@ -259,8 +271,12 @@ export default {
         // blocks at least half non-zero count -- alignment padding otherwise drags the mean down,
         // and that omission is why the rule is so often reported as not working.
         const blocks = [];
+        // Counted separately from `blocks.length`, which only grows for blocks that pass the
+        // half-non-zero test: an all-zero 8 MB input leaves it at zero forever, so the yield
+        // condition held on EVERY block and produced 32,768 scheduler turns instead of eight.
+        let scanned = 0;
         for (let offset = 0; offset + BINTROPY_BLOCK <= bytes.length; offset += BINTROPY_BLOCK) {
-            if ((blocks.length & (YIELD_EVERY - 1)) === 0) await new Promise(resolve => setImmediate(resolve));
+            if ((scanned++ & (YIELD_EVERY - 1)) === 0) await new Promise(resolve => setImmediate(resolve));
             let nonZero = 0;
             for (let i = offset; i < offset + BINTROPY_BLOCK; i++) if (bytes[i]) nonZero++;
             if (nonZero * 2 >= BINTROPY_BLOCK) {

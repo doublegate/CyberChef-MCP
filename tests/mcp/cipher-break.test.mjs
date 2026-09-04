@@ -53,9 +53,18 @@ describe("the shared English model", () => {
     });
 
     it("scores English above the same letters shuffled", async () => {
-        const english = trigramScore(toCodes(PROSE));
-        const shuffled = toCodes(PROSE).sort(() => Math.random() - 0.5);
-        expect(english).toBeGreaterThan(trigramScore(shuffled) + 0.5);
+        // Seeded Fisher-Yates, not `sort(() => Math.random() - 0.5)`. That is not a valid
+        // comparator -- it is inconsistent between calls, so the permutation is biased and
+        // engine-dependent and can leave much of the original order intact. The assertion would
+        // then depend on chance rather than on the model.
+        const shuffled = toCodes(PROSE);
+        let state = 20260904;
+        for (let i = shuffled.length - 1; i > 0; i--) {
+            state = (state * 1103515245 + 12345) & 0x7fffffff;
+            const j = state % (i + 1);
+            [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
+        expect(trigramScore(toCodes(PROSE))).toBeGreaterThan(trigramScore(shuffled) + 0.5);
     });
 
     it("computes the index of coincidence without replacement", async () => {
@@ -67,9 +76,20 @@ describe("the shared English model", () => {
     });
 
     it("reads its packed table from the right byte offset", async () => {
-        // A Buffer's ArrayBuffer may be a slice of a shared pool, so a Uint16Array constructed
-        // without the byteOffset reads whatever else the pool holds. The symptom would be a model
-        // that scores plausibly and solves nothing, so it is asserted rather than assumed.
+        // A Buffer's ArrayBuffer may be a slice of a shared pool, so a Uint16Array built without
+        // the byteOffset reads whatever else the pool holds. The symptom is a model that scores
+        // plausibly and solves nothing.
+        //
+        // Asserted against the TRIGRAM table itself. The first version of this test called
+        // `chiSquared`, which reads only the letter-frequency array and never touches the decoded
+        // buffer at all -- so a wrong byteOffset would have left it passing, which is the one
+        // thing a test named for the offset must not do.
+        const { TRIGRAM_LOGP } = await import("../../src/node/tools/lib/english.mjs");
+        expect(TRIGRAM_LOGP).toHaveLength(26 * 26 * 26);
+
+        const index = (a, b, c) => (a.charCodeAt(0) - 65) * 676 + (b.charCodeAt(0) - 65) * 26 + (c.charCodeAt(0) - 65);
+        // THE is the most common English trigram; QKX appears in no English text.
+        expect(TRIGRAM_LOGP[index("T", "H", "E")]).toBeGreaterThan(TRIGRAM_LOGP[index("Q", "K", "X")] + 3);
         expect(chiSquared(toCodes(PROSE))).toBeLessThan(chiSquared(toCodes("ZZZZZZZZZZQQQQQQQQQQ")));
     });
 });
@@ -120,16 +140,19 @@ describe("vigenere_break", () => {
             .rejects.toThrow(/Below about 40/);
     });
 
-    it("refuses when no key length has enough letters per coset, separately from being short", async () => {
-        // Different failure from the one above, and the caller fixes it differently: there IS
-        // enough ciphertext to look at, but max_key_length asks for cosets of fewer than twenty
-        // letters, where the statistic means nothing.
-        await expect(vigenere.run(vigenere.inputSchema.parse({
-            input: "A".repeat(45), "max_key_length": 1
-        }))).resolves.toBeDefined();
-        await expect(vigenere.run(vigenere.inputSchema.parse({
-            input: encipherVigenere(PROSE.slice(0, 60), "KEY"), "max_key_length": 20
-        }))).resolves.toBeDefined();
+    it("always has at least one candidate length, whatever max_key_length asks for", async () => {
+        // The 40-letter floor guarantees it: k = 1 gives a coset of the whole input, which is
+        // twice the 20-letter minimum rankLengths applies, so a row is always pushed. The tool
+        // used to carry an unreachable "no key length has enough letters" error for this, and the
+        // test named after it asserted the opposite of what its name said -- it recorded that both
+        // calls SUCCEED. Asserting the invariant is the honest version of the same test.
+        for (const args of [
+            { input: "A".repeat(45), "max_key_length": 1 },
+            { input: encipherVigenere(PROSE.slice(0, 60), "KEY"), "max_key_length": 20 }
+        ]) {
+            const r = await vigenere.run(vigenere.inputSchema.parse(args));
+            expect(r.length_candidates.length).toBeGreaterThan(0);
+        }
     }, 30000);
 
     it("skips the search when the caller supplies a key length", async () => {

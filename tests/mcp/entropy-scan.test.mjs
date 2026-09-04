@@ -82,6 +82,25 @@ describe("entropy_scan", () => {
             .rejects.toThrow(/window larger than the data/);
     });
 
+    it("merges overlapping windows into one region, not one region per window", async () => {
+        // With any step smaller than the window, the next window STARTS before the previous one
+        // ends. An equality test never merges, so a single 2 KB blob came back as 29 regions --
+        // which then compete with each other for the max_regions slots.
+        const data = Buffer.concat([Buffer.alloc(512, 0x41), randomBytes(2048), Buffer.alloc(512, 0x41)]);
+        const r = await run({
+            input: raw(data), "input_format": "Raw", "window_bytes": 256, "step_bytes": 64
+        });
+
+        expect(r.regions).toHaveLength(1);
+        expect(r.regions[0].start).toBe(512);
+        expect(r.regions[0].end).toBe(2560);
+    });
+
+    it("rejects malformed base64 as strictly as malformed hex", async () => {
+        await expect(run({ input: "not base64 at all!!", "input_format": "Base64" }))
+            .rejects.toThrow(/not valid base64/);
+    });
+
     it("supports overlapping windows", async () => {
         const r = await run({
             input: raw(randomBytes(1024)), "input_format": "Raw",
@@ -128,6 +147,27 @@ describe("entropy_scan", () => {
             expect(error.context?.hint ?? error.message).toMatch(/step_bytes of at least \d+ fits/);
         }
     });
+
+    it("stays interruptible and still separates regions on a large input", async () => {
+        // Large enough to cross the yield interval, and shaped so the region sort has more than
+        // one region to order. Both were uncovered: the yield callback never ran on a small input,
+        // and a single region never exercises the comparator that ranks them by peak entropy.
+        const blob = () => randomBytes(4096);
+        const gap = () => Buffer.alloc(4096, 0x41);
+        const data = Buffer.concat([blob(), gap(), blob(), gap(), blob()]);
+        // Window 256, not 64: a 64-byte window holds at most 64 distinct values, so its entropy
+        // cannot exceed 6 bits and nothing ever reaches the 7.0 threshold. The window has to be
+        // wide enough for the statistic to be able to say what the test is asking it to say.
+        const r = await run({
+            input: raw(data), "input_format": "Raw", "window_bytes": 256, "step_bytes": 4
+        });
+
+        expect(r.windows_measured).toBeGreaterThan(4096);
+        expect(r.regions.length).toBeGreaterThan(1);
+        for (let i = 1; i < r.regions.length; i++) {
+            expect(r.regions[i - 1].peak_entropy).toBeGreaterThanOrEqual(r.regions[i].peak_entropy);
+        }
+    }, 30000);
 
     it("rejects malformed hex", async () => {
         await expect(run({ input: "zzzz", "input_format": "Hex" })).rejects.toThrow(/not valid hex/);

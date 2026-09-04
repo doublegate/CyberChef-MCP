@@ -83,8 +83,13 @@ describe("corpus_diff", () => {
         expect(r.nonce_reuse.collisions).toHaveLength(1);
         // The keystream cancels. This is P1 xor P2 and nothing else, which is the exploit as well
         // as the evidence -- and it is exactly what crib_drag takes as input.
+        //
+        // Reported per PAIR, each naming its two samples. A single XOR beside a `samples` list of
+        // every index invited a caller -- told by `next` to read the two together -- to attribute
+        // one pair's XOR to the whole group.
         const expected = hex(p1.map((b, i) => b ^ p2[i]));
-        expect(r.nonce_reuse.collisions[0].bodies_xored_hex).toBe(expected);
+        expect(r.nonce_reuse.collisions[0].pairs[0].pair).toEqual([0, 1]);
+        expect(r.nonce_reuse.collisions[0].pairs[0].bodies_xored_hex).toBe(expected);
         expect(r.next).toMatch(/crib_drag/);
     });
 
@@ -135,6 +140,17 @@ describe("corpus_diff", () => {
             "input_format": "Base64"
         });
         expect(b64.lengths.shortest).toBe(4);
+    });
+
+    it("names every pair when more than two samples share a nonce", async () => {
+        const nonce = Array.from({ length: 12 }, (_, i) => i);
+        const bodies = [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12]];
+        const r = await run({ samples: bodies.map(body => hex([...nonce, ...body])) });
+
+        // Three samples is three pairs, and each carries its own XOR. Reporting one XOR for the
+        // group would be attributing it to five sample pairings that never produced it.
+        expect(r.nonce_reuse.collisions[0].pairs.map(p => p.pair))
+            .toEqual([[0, 1], [0, 2], [1, 2]]);
     });
 
     it("rejects a sample that decodes to nothing", async () => {

@@ -88,6 +88,22 @@ describe("hash_crack", () => {
         expect(r.candidates_tried).toBe(2);
     });
 
+    it("checks the clock during the search, not only between words", async () => {
+        // The budget test fires every 1024 CANDIDATES rather than every word, because with
+        // mutations on one word is about twenty candidates and a per-word check can overshoot by
+        // that much. It needs more than 1024 candidates to run at all, which nothing else here
+        // supplies.
+        const r = await run({
+            hashes: [md5("needle-in-the-haystack")],
+            wordlist: Array.from({ length: 4000 }, (_, i) => `filler${i}`),
+            mutations: false, "include_common": false
+        });
+
+        expect(r.candidates_tried).toBe(4000);
+        expect(r.wordlist_exhausted).toBe(true);
+        expect(r.cracked).toHaveLength(0);
+    }, 30000);
+
     it("rejects something that is neither hex nor a crypt string", async () => {
         await expect(run({ hashes: ["not a hash at all"] }))
             .rejects.toThrow(/not hex and is not a recognised crypt/);

@@ -145,13 +145,13 @@ export default {
                 { letters: codes.length, minimum: 40 });
         }
 
+        // `ranked` cannot be empty, and the invariant is worth stating rather than guarding: the
+        // check above rejects anything under 40 letters, so `k = 1` always gives a coset of at
+        // least 40 -- twice the 20-letter floor `rankLengths` applies -- and a row is always
+        // pushed. A guard here would be unreachable code claiming to handle a case that cannot
+        // arise, and the only way to cover it would be to fake it. If the 40-letter floor above is
+        // ever lowered below 20, revisit this.
         const ranked = rankLengths(codes, Math.min(args.max_key_length, Math.floor(codes.length / 20)));
-        if (!ranked.length) {
-            throw createInputError(
-                "No key length has enough letters per coset to judge. Lower max_key_length, or " +
-                "supply more ciphertext.",
-                { letters: codes.length });
-        }
         const threshold = UNIFORM_IC + (ENGLISH_IC - UNIFORM_IC) * IC_BAR;
         const qualifying = ranked.filter(r => r.ic >= threshold);
 
@@ -185,16 +185,22 @@ export default {
             let score = trigramScore(decrypt(codes, candidate));
             let corrections = 0;
             for (let position = 0; position < length; position++) {
-                const original = candidate[position];
                 for (const option of solvedFor[position].slice(0, 5)) {
-                    if (option.shift === original) continue;
+                    // `best` is re-read each time, NOT captured once before the loop. Captured
+                    // once, an alternative that improved the score was kept -- and then the NEXT
+                    // alternative that failed wrote the ORIGINAL back, reverting an accepted
+                    // correction while `score` still held the improved value. The reported key and
+                    // the reported score then described different keys, and the key was the wrong
+                    // one, which is the half a caller acts on.
+                    const best = candidate[position];
+                    if (option.shift === best) continue;
                     candidate[position] = option.shift;
                     const next = trigramScore(decrypt(codes, candidate));
                     if (next > score) {
                         score = next;
                         corrections++;
                     } else {
-                        candidate[position] = original;
+                        candidate[position] = best;
                     }
                 }
             }

@@ -85,11 +85,47 @@ const FORMATS = [
         note: "Seconds since 2001, often fractional. NSDate, and macOS/iOS plists."
     },
     {
-        name: "GPS seconds", toMs: (v) => v * 1000 + MS.GPS,
-        note: "Seconds since 1980-01-06 with NO leap seconds, so it currently runs 18 seconds " +
-            "ahead of UTC. The conversion here does not apply that correction."
+        name: "GPS seconds", toMs: (v) => v * 1000 + MS.GPS - gpsLeapSeconds(v) * 1000,
+        note: "Seconds since 1980-01-06 with NO leap seconds, so it runs ahead of UTC by however " +
+            "many have been inserted since — 18 since 2017. The correction IS applied here, and " +
+            "it is the represented instant's offset rather than today's, so a 1990 timestamp gets " +
+            "the 1990 value."
     }
 ];
+
+/**
+ * GPS-to-UTC offsets, as [GPS seconds at which the offset takes effect, seconds].
+ *
+ * GPS time does not insert leap seconds, so it drifts ahead of UTC by one per insertion. Adding
+ * the epoch alone therefore produces an ISO time that is too LATE, by up to 18 seconds — which is
+ * small, and is exactly the size of error that survives review because it looks right.
+ *
+ * The offset used is the one in force at the REPRESENTED instant, not today's: a 1990 GPS
+ * timestamp is 6 seconds ahead of UTC, not 18. Using a single current value would be correct only
+ * for the present and wrong for every historical record, which is what a forensic tool mostly sees.
+ *
+ * Derived from IERS Bulletin C. The table ends in 2017 because no leap second has been inserted
+ * since; a future one needs a row here.
+ */
+const GPS_LEAP_SECONDS = [
+    [0, 0], [46828800, 1], [78364801, 2], [109900802, 3], [173059203, 4], [252028804, 5],
+    [315187205, 6], [346723206, 7], [393984007, 8], [425520008, 9], [457056009, 10],
+    [504489610, 11], [551750411, 12], [599184012, 13], [820108813, 14], [914803214, 15],
+    [1025136015, 16], [1119744016, 17], [1167264017, 18]
+];
+
+/**
+ * @param {number} gpsSeconds - The raw GPS second count.
+ * @returns {number} Leap seconds in force at that instant.
+ */
+function gpsLeapSeconds(gpsSeconds) {
+    let offset = 0;
+    for (const [from, seconds] of GPS_LEAP_SECONDS) {
+        if (gpsSeconds >= from) offset = seconds;
+        else break;
+    }
+    return offset;
+}
 
 /** Default plausibility window. Narrow enough to discriminate, wide enough not to hide real data. */
 const DEFAULT_FROM = "1990-01-01";

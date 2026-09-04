@@ -95,6 +95,20 @@ describe("crib_drag", () => {
             .rejects.toThrow(/only \d+ to drag it along/);
     });
 
+    it("rejects an empty second ciphertext rather than switching mode behind the caller", async () => {
+        // It passed the schema and was then treated as ABSENT, so a caller who asked for
+        // two-ciphertext analysis got key bytes back instead -- a different answer to a different
+        // question, with nothing in the output saying the mode had changed.
+        expect(() => tool.inputSchema.parse({
+            ciphertext: encrypt(P1), "ciphertext_b": "", crib: " the "
+        })).toThrow();
+    });
+
+    it("rejects malformed base64 as strictly as malformed hex", async () => {
+        await expect(run({ ciphertext: "not base64 at all!!", crib: "the", "input_format": "Base64" }))
+            .rejects.toThrow(/not valid base64/);
+    });
+
     it("rejects malformed hex rather than decoding it to something", async () => {
         await expect(run({ ciphertext: "zzzz", crib: "the" })).rejects.toThrow(/not valid hex/);
     });

@@ -741,7 +741,21 @@ describe("rsa_attack", () => {
         return ((s % m) + m) % m;
     };
 
-    /** Deterministic Miller-Rabin, valid well past every size used in these tests. */
+    /**
+     * Miller-Rabin against the first twelve primes.
+     *
+     * NOT deterministic at the sizes used here, and the comment used to claim it was. The bases 2
+     * through 37 make it deterministic only below about 3.32e24 -- roughly 2^81 -- and the fixtures
+     * in this file are 200-, 255- and 512-bit values, so this is a probable-prime test at every
+     * size it is actually called with.
+     *
+     * That is fine for a test helper generating its own fixtures: the error probability is
+     * negligible and the numbers are not adversarial. It is not fine as a stated guarantee, because
+     * a reader who reuses this on the strength of the old comment inherits something it never had.
+     * The tool's own `isProbablePrime` uses RANDOM bases for that reason -- its inputs are
+     * attacker-supplied by definition, and a fixed base set is exactly what a constructed
+     * pseudoprime defeats.
+     */
     const isPrime = (n) => {
         if (n < 2n) return false;
         for (const s of [2n, 3n, 5n, 7n, 11n, 13n, 17n, 19n, 23n, 29n, 31n, 37n]) {

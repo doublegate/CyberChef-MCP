@@ -56,6 +56,37 @@ reading the reference projects as code instead of as documentation. Details in
   a question about a whole corpus.
 - **`examples/10-break-a-cipher.mjs`**, self-asserting and run by CI like the other nine.
 
+### Fixed
+
+- **Two crashes and one silently wrong private key**, all from inputs the schema accepts and all
+  found by reproducing bot-review findings rather than by reading them. `rsa_attack` with
+  `modulus: "97"` threw `RangeError: Division by zero`, because a prime modulus factored as n x 1
+  and phi became 0. `rsa_multi_key` with moduli 15 and 45 threw `TypeError`, because Håstad's
+  coprimality test missed the case where one modulus DIVIDES another. And `modulus: "105"` returned
+  `p = 3, q = 35, private_exponent = 9` and a plaintext derived from it — `q` is composite, so the
+  totient was 68 against the true 48, and `modInverse` succeeded on the wrong one. Both factors are
+  now primality-tested with random-base Miller-Rabin before phi is computed.
+- **`vigenere_break` reported a key and a score that described different keys.** The trigram
+  rescore captured the original letter once per position, so a later failed alternative reverted an
+  accepted correction while the score kept the improved value.
+- **`entropy_scan` returned one region per window instead of one per blob** whenever the step was
+  smaller than the window — 29 regions for a single 2 KB blob, competing for the same `max_regions`
+  slots. Its yield counter was also keyed on a value that stays zero for an all-zero input.
+- **Base64 was not validated in `entropy_scan`, `corpus_diff` or `crib_drag`.**
+  `Buffer.from(v, "base64")` ignores characters outside the alphabet, so Raw text submitted with
+  `input_format: "Base64"` decoded to a shorter, different byte string and every statistic was
+  computed on it. `"hello world!!"` became 7 bytes.
+- **`hash_crack` reported an unsupported hash as uncracked**, which reads as a password that
+  survived a search it was never part of. **`hash_statistics`** split a bare NetNTLM record on its
+  first colon and reported a passwordless account. **`crib_drag`** accepted an empty
+  `ciphertext_b`, treated it as absent, and silently answered a different question.
+- **`timestamp_identify` did not apply GPS leap seconds**, so every GPS timestamp came back up to
+  18 seconds late. The offset in force at the represented instant is now used, not today's.
+- **`corpus_diff`'s cross-sample block map retained every block**: 512 samples of 64 KB at
+  `block_size: 4` held 8.4 million hex keys and objects — over a gigabyte of live heap for one
+  accepted request — and then discarded all but 16. It now keeps one first sighting per block.
+  Its nonce-reuse output also reports one XOR **per pair** rather than one for a whole group.
+
 ### Changed
 
 - **`xor_key_length` gained two more length estimators and stopped assuming a space.**

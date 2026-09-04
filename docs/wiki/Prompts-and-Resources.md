@@ -5,7 +5,7 @@ starting point** when you do not yet know what you are looking at.
 
 ## Prompts
 
-Five workflow prompts, discoverable through `prompts/list`. In a client that surfaces them, they
+Six workflow prompts, discoverable through `prompts/list`. In a client that surfaces them, they
 appear as slash commands or a picker.
 
 | Prompt | Arguments | What it is for |

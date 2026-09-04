@@ -217,7 +217,17 @@ function crt(residues, moduli) {
     let sum = 0n;
     for (let i = 0; i < moduli.length; i++) {
         const partial = product / moduli[i];
-        sum += residues[i] * partial * modInverse(partial, moduli[i]);
+        const inverse = modInverse(partial, moduli[i]);
+        /* v8 ignore next 5 -- defence in depth. Every caller checks pairwise coprimality first,
+           and that check is what this guards; it exists so a future caller that forgets produces a
+           sentence rather than "TypeError: Cannot mix BigInt and other types", which is what the
+           multiplication below does when modInverse returns null. */
+        if (inverse === null) {
+            throw createInputError(
+                "The moduli are not pairwise coprime, so no CRT reconstruction exists.",
+                { modulus: moduli[i].toString().slice(0, 60) });
+        }
+        sum += residues[i] * partial * inverse;
     }
     return ((sum % product) + product) % product;
 }
@@ -497,19 +507,36 @@ export default {
                 for (let i = 0; i < chosen.length && !shared; i++) {
                     for (let j = i + 1; j < chosen.length && !shared; j++) {
                         const g = gcd(chosen[i].n, chosen[j].n);
-                        if (g > 1n && g < chosen[i].n) shared = { g, i, j };
+                        // `g > 1n`, not `g > 1n && g < n_i`. The narrower test missed the case
+                        // where one modulus DIVIDES another -- 15 and 45, say -- because then
+                        // g === n_i. The moduli are distinct after deduplication, so nothing else
+                        // rejected them, and `crt` was reached with moduli that are not pairwise
+                        // coprime: `modInverse` returns null for a non-invertible partial product
+                        // and the multiplication threw `TypeError: Cannot mix BigInt and other
+                        // types`. A crash, from an input the schema accepts.
+                        if (g > 1n) shared = { g, i, j };
                     }
                 }
                 ran = true;
                 attempted.push(`hastad (e=${exponent}, ${chosen.length} moduli)`);
                 if (shared) {
+                    const divides = shared.g === chosen[shared.i].n || shared.g === chosen[shared.j].n;
                     findings.push({
                         attack: "hastad",
                         "key_indices": [chosen[shared.i].index, chosen[shared.j].index],
-                        p: shared.g.toString(),
-                        q: (chosen[shared.i].n / shared.g).toString(),
-                        note: "Two of the broadcast moduli share a prime. Håstad was abandoned: factoring " +
-                            "two keys is a better result than recovering one message."
+                        // A shared factor that equals one of the moduli is not a factorisation of
+                        // it -- one simply divides the other, which is not an RSA modulus pair at
+                        // all. Reporting p and q there would be reporting n and 1.
+                        ...(divides ? {} : {
+                            p: shared.g.toString(),
+                            q: (chosen[shared.i].n / shared.g).toString()
+                        }),
+                        note: divides ?
+                            "One of these moduli divides another, so they are not pairwise coprime " +
+                            "and the CRT reconstruction Håstad needs does not exist. At least one " +
+                            "of them is not an RSA modulus." :
+                            "Two of the broadcast moduli share a prime. Håstad was abandoned: " +
+                            "factoring two keys is a better result than recovering one message."
                     });
                     continue;
                 }

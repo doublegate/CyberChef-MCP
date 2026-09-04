@@ -218,7 +218,7 @@ they are.
 
 ## Prompts
 
-Five workflow prompts ship with the server for when you do not yet know where to start:
+Six workflow prompts ship with the server for when you do not yet know where to start:
 `analyse-unknown-data`, `extract-iocs`, `deobfuscate-script`, `identify-hash`, `break-cipher`,
 `decode-chain`.
 Most clients surface them as slash commands or an attachment menu. See

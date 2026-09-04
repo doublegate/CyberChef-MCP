@@ -30,6 +30,9 @@ import { z } from "zod";
 import { createInputError } from "../errors.mjs";
 import { FORMATS, BY_HEX_LENGTH } from "./hash-identify.mjs";
 
+/** The NetNTLM patterns, by name, so this file cannot drift from `hash_identify`'s. */
+const NETNTLM = FORMATS.filter(format => format.name.startsWith("NetNTLM"));
+
 /** How many rounds of stretching a format applies by default, and what that buys. */
 const STRENGTH = {
     "bcrypt": { rank: 5, why: "adaptive cost, memory-light but deliberately slow" },
@@ -84,6 +87,20 @@ function parseCorpus(text) {
     for (let i = 0; i < lines.length; i++) {
         const raw = lines[i].trim();
         if (!raw || raw.startsWith("#")) continue;
+        // NetNTLM is the exception and has to come first. A bare NetNTLMv1/v2 value is
+        // `user::domain:challenge:response`, so the FIRST colon is not a user/hash separator and
+        // the second field is empty -- which stored an empty value and made the tool report a
+        // passwordless account for a perfectly good response hash.
+        //
+        // Matched by SHAPE, against the same patterns `hash_identify` uses, not by looking for
+        // `::`. A disabled /etc/shadow line is `daemon:*:19000:0:99999:7:::` and a passwordless
+        // one is `user::19000:0:...`; both contain `::`, and the first has it at the same position
+        // a NetNTLM record does. Only the full pattern tells them apart.
+        if (NETNTLM.some(format => format.pattern.test(raw))) {
+            out.push({ line: i + 1, user: raw.slice(0, raw.indexOf(":")) || null, value: raw });
+            continue;
+        }
+
         // `user:hash:...` (shadow, passwd, or a two-field dump). A modular-crypt hash contains
         // `$` and no `:`, so splitting on the FIRST colon is safe for both shapes -- and the
         // fields after the hash in /etc/shadow are ageing metadata, not part of it.

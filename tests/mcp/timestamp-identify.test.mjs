@@ -74,6 +74,23 @@ describe("timestamp_identify", () => {
         expect(prefixed.value).toBe(decimal.value);
     });
 
+    it("applies the leap-second offset in force at the represented instant, not today's", async () => {
+        // GPS does not insert leap seconds, so it runs ahead of UTC by however many have been
+        // inserted since 1980 -- 18 since 2017, 7 in early 1991. Adding the epoch alone produces
+        // an ISO time that is too LATE, which is small enough to survive review because it looks
+        // right. A single current offset would be correct only for the present and wrong for every
+        // historical record, which is most of what a forensic tool sees.
+        const recent = await run({ value: "1441152018", "plausible_from": "1980-01-01" });
+        const older = await run({ value: "347155206", "plausible_from": "1980-01-01" });
+        const gps = (r) => r.interpretations.find(i => i.format === "GPS seconds");
+
+        // Both land one leap-second offset BEFORE the naive conversion, and the two offsets differ.
+        const naiveRecent = new Date((1441152018 + 315964800) * 1000).getTime();
+        const naiveOlder = new Date((347155206 + 315964800) * 1000).getTime();
+        expect(naiveRecent - Date.parse(gps(recent).iso)).toBe(18000);
+        expect(naiveOlder - Date.parse(gps(older).iso)).toBe(7000);
+    });
+
     it("rejects a window that is not a date", async () => {
         await expect(run({ value: "1756900000", "plausible_from": "not a date" }))
             .rejects.toThrow(/parseable dates/);

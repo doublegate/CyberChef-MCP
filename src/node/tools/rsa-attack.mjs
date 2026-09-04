@@ -194,6 +194,56 @@ export function integerRoot(n, k) {
 }
 
 /**
+ * Miller-Rabin, with random bases.
+ *
+ * Needed only to decide whether a recovered factor is prime, which is a different question from
+ * the one every attack here answers: the attacks self-certify with `p * q === n`, and that says
+ * nothing about whether q is a prime or a product of two more.
+ *
+ * Random bases rather than a fixed list, and 24 rounds rather than the 2 to 4 FIPS 186-5 permits
+ * for a candidate you generated yourself. FIPS is explicit that a number HANDED to you is a
+ * different regime -- App. C.1 gives `p_{k,t} <= 4^-t` there -- and an adversary can construct a
+ * composite that passes any fixed base set (Albrecht et al., eprint 2018/749). Every input to this
+ * tool is attacker-supplied by definition.
+ *
+ * @param {bigint} n - The candidate.
+ * @returns {boolean} Whether n is probably prime.
+ */
+function isProbablePrime(n) {
+    if (n < 2n) return false;
+    for (const small of [2n, 3n, 5n, 7n, 11n, 13n, 17n, 19n, 23n, 29n, 31n, 37n]) {
+        if (n === small) return true;
+        if (n % small === 0n) return false;
+    }
+    let d = n - 1n;
+    let r = 0n;
+    while ((d & 1n) === 0n) {
+        d >>= 1n;
+        r++;
+    }
+    const bits = n.toString(2).length;
+    for (let round = 0; round < 24; round++) {
+        // A base in [2, n-2], drawn from the same width as n so it is not biased toward small
+        // values -- a small fixed base is exactly what a constructed pseudoprime defeats.
+        let a = 0n;
+        for (let i = 0; i < bits; i += 32) a = (a << 32n) | BigInt(Math.floor(Math.random() * 4294967296));
+        a = 2n + (a % (n - 3n));
+        let x = modPow(a, d, n);
+        if (x === 1n || x === n - 1n) continue;
+        let composite = true;
+        for (let i = 1n; i < r; i++) {
+            x = (x * x) % n;
+            if (x === n - 1n) {
+                composite = false;
+                break;
+            }
+        }
+        if (composite) return false;
+    }
+    return true;
+}
+
+/**
  * Fermat factorisation: fast when p and q are close, useless otherwise.
  *
  * @param {bigint} n - The modulus.
@@ -300,7 +350,11 @@ function smallFactors(n) {
         if (g === 1n) return null;
         for (const prime of walked) {
             const big = BigInt(prime);
-            if (n % big === 0n) return { p: big, q: n / big };
+            // `n / big > 1n` matters: when n IS one of these small primes, `n % big === 0n` holds
+            // and the "factorisation" is n x 1. The handler then computed phi = (p-1)(q-1) with
+            // q = 1, so phi = 0, and `modInverse(e, 0n)` threw `RangeError: Division by zero` --
+            // a crash from `modulus: "97"`, which the schema accepts because it is at least 4.
+            if (n % big === 0n && n / big > 1n) return { p: big, q: n / big };
         }
         /* v8 ignore next -- unreachable: a non-trivial gcd with the block means one of the block's
            primes divides n, and the walk above finds it. Kept so a future change to how blocks are
@@ -371,11 +425,20 @@ async function pollardRho(n, deadline) {
             // first non-trivial gcd is the answer.
             g = 1n;
             let step = ys;
+            let sinceYield = 0;
             while (g === 1n) {
                 step = f(step);
                 const diff = x > step ? x - step : step - x;
                 g = gcd(diff, n);
                 if (Date.now() > deadline) return null;
+                // Yields, like the batch loop above and the Fermat loop. Without one this spun
+                // synchronously for whatever remained of the 10-second budget, and the reason
+                // matters more than the duration: an uninterruptible block prevents the
+                // surrounding timeout from firing at all, so the bound stops being a bound.
+                if (++sinceYield >= 4096) {
+                    sinceYield = 0;
+                    await new Promise(resolve => setImmediate(resolve));
+                }
             }
         }
         if (g > 1n && g < n) return { p: g, q: n / g };
@@ -396,8 +459,12 @@ async function pollardRho(n, deadline) {
  *
  *   - gcd every ~100 primes rather than every prime. RsaCtfTool takes one per exponentiation,
  *     which costs more than the exponentiation.
- *   - on gcd === 1, RAISE the bound and continue from the current base rather than restarting.
- *     Restarting repeats every exponentiation already done.
+ *   - stage 1 runs ONCE per base, at the bound the caller asked for. A bound-escalation variant
+ *     exists -- on gcd === 1, raise the bound and continue from the CURRENT base rather than
+ *     restarting, since restarting repeats every exponentiation already done -- and this does not
+ *     implement it: `bound` is a fixed argument, and a base that fails moves to the next one with
+ *     `a` reset. Stated plainly, because the comment previously described the behaviour it was
+ *     recommending rather than the behaviour below it.
  *
  * @param {bigint} n - The modulus.
  * @param {number} bound - Stage-1 smoothness bound.
@@ -554,9 +621,12 @@ export default {
             "small_factors", "pollard_rho", "pollard_pm1"
         ])).max(7).optional()
             .describe(
-                "Which attacks to try. All of them by default. `small_factors` is trial division " +
-                "and costs nothing; `pollard_rho` finds a short prime; `pollard_pm1` finds a prime " +
-                "whose predecessor is smooth."),
+                "Which attacks to try. All of them by default, which costs up to 35 seconds of " +
+                "wall clock on a key none of them breaks — the four time-budgeted searches run " +
+                "sequentially, and a soundly generated modulus is exactly the case that reaches " +
+                "all four. Name the ones you want if your client has a shorter per-call timeout. " +
+                "`small_factors` is trial division and costs nothing; `pollard_rho` finds a short " +
+                "prime; `pollard_pm1` finds a prime whose predecessor is smooth."),
         "pm1_bound": z.number().int().min(100).max(100000).default(50000)
             .describe(
                 "Smoothness bound for pollard_pm1. Higher finds primes whose p-1 has a larger " +
@@ -706,8 +776,15 @@ export default {
         // and the difference is not academic -- with the wrong totient the tool reported a
         // private exponent that decrypted 424242 as 368518651580054785. A silently wrong answer
         // from a tool whose entire output is an answer.
+        // Both factors must be PRIME before phi means anything. `small_factors` returns the first
+        // small prime and the cofactor, and the cofactor need not be prime: n = 105 gives p = 3 and
+        // q = 35, phi computes as 2 x 34 = 68 against the true totient of 48, and `modInverse`
+        // succeeds -- so the tool returned a real-looking private exponent that decrypts nothing,
+        // and a `plaintext` field derived from it. A silently wrong answer from a tool whose entire
+        // output is an answer, which is the same defect the p === q note below records.
+        const primes = isProbablePrime(p) && isProbablePrime(q);
         const phi = p === q ? p * (p - 1n) : (p - 1n) * (q - 1n);
-        const d = modInverse(e, phi);
+        const d = primes ? modInverse(e, phi) : null;
         const result = {
             factored: true,
             via,
@@ -715,10 +792,17 @@ export default {
             p: p.toString(),
             q: q.toString(),
             "private_exponent": d === null ? null : d.toString(),
-            ...(d === null ? {
+            ...(d !== null ? {} : primes ? {
                 warning: "e and phi(n) are not coprime, so no private exponent exists for this e. " +
                     "The factors are still correct."
-            } : {}),
+            } : {
+                warning: `This is a PARTIAL factorisation: ${isProbablePrime(p) ? "q" : "p"} is ` +
+                    "composite, so n has more than two prime factors and phi(n) is not " +
+                    "(p-1)(q-1). No private exponent is derived, because one computed from the " +
+                    "wrong totient decrypts nothing while looking entirely healthy. Factor the " +
+                    "composite side and try again.",
+                "fully_factored": false
+            }),
             assessment: {
                 fermat: "The primes are close together — the generator almost certainly picked one " +
                     "prime and searched upward for the next.",

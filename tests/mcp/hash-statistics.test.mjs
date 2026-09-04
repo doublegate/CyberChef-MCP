@@ -118,4 +118,26 @@ describe("hash_statistics: what only a corpus shows", () => {
         await expect(hashStatistics.run({ input: huge, "reveal_shared": true }))
             .rejects.toThrow(/at most 5000/);
     });
+
+    it("keeps a bare NetNTLM record whole, and still reads a disabled shadow line", async () => {
+        // A bare NetNTLMv1/v2 value is `user::domain:challenge:response`, so its second field is
+        // empty -- and splitting on the first colon stored that empty field as the hash and
+        // reported a passwordless account for a perfectly good response.
+        //
+        // Detected by SHAPE rather than by looking for `::`, which is the part that took two
+        // attempts. A disabled shadow line is `daemon:*:19000:0:99999:7:::` and a genuinely
+        // passwordless one is `user::19000:0:...`; both contain `::`, and the first has it at the
+        // same position a NetNTLM record does. Only the full pattern separates them.
+        const r = await hashStatistics.run({
+            input: [
+                "admin::CORP:1122334455667788:" + "a".repeat(32) + ":0101000000000000abcdef",
+                "daemon:*:19000:0:99999:7:::",
+                "nobody::19000:0:99999:7:::"
+            ].join("\n"),
+            "reveal_shared": true
+        });
+
+        expect(r.formats.map(f => f.format)).toContain("NetNTLMv2");
+        expect(r.placeholders).toBe(2);
+    });
 });

@@ -94,6 +94,14 @@ function decode(value, format, label) {
     if (format === "Hex" && (cleaned.length % 2 || !/^[0-9a-f]*$/i.test(cleaned))) {
         throw createInputError(`${label} is not valid hex.`, { field: label, received: value.slice(0, 60) });
     }
+    // Base64 is validated as strictly as hex. `Buffer.from(value, "base64")` IGNORES characters
+    // outside the alphabet and truncates a trailing incomplete group, so Raw text submitted with
+    // input_format Base64 decoded to a shorter, entirely different byte string and every statistic
+    // below was computed on it -- silently. "hello world!!" came back as 7 bytes.
+    if (format === "Base64" && !/^[A-Za-z0-9+/]*={0,2}$/.test(cleaned.replace(/\s/g, ""))) {
+        throw createInputError(`${label} is not valid base64.`,
+            { field: label, received: value.slice(0, 60) });
+    }
     return [...Buffer.from(cleaned, format === "Hex" ? "hex" : "base64")];
 }
 
@@ -117,7 +125,10 @@ export default {
     },
     inputSchema: z.object({
         ciphertext: z.string().min(1).max(MAX_BYTES * 2).describe("The ciphertext to drag along."),
-        "ciphertext_b": z.string().max(MAX_BYTES * 2).optional()
+        // `.min(1)`: an empty string passed the schema and was then treated as ABSENT, so a
+        // caller who asked for two-ciphertext analysis silently received key bytes instead --
+        // a different answer to a different question, with nothing saying so.
+        "ciphertext_b": z.string().min(1).max(MAX_BYTES * 2).optional()
             .describe(
                 "A second ciphertext under the SAME key. Every hit is then a span of the other " +
                 "plaintext. Omit it to recover key bytes instead."),

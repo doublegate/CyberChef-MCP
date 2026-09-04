@@ -79,6 +79,14 @@ function decode(value, format, index) {
     if (format === "Hex" && (cleaned.length % 2 || !/^[0-9a-f]*$/i.test(cleaned))) {
         throw createInputError(`samples[${index}] is not valid hex.`, { index, received: value.slice(0, 60) });
     }
+    // Base64 is validated as strictly as hex. `Buffer.from(value, "base64")` IGNORES characters
+    // outside the alphabet and truncates a trailing incomplete group, so Raw text submitted with
+    // input_format Base64 decoded to a shorter, entirely different byte string and every statistic
+    // below was computed on it -- silently. "hello world!!" came back as 7 bytes.
+    if (format === "Base64" && !/^[A-Za-z0-9+/]*={0,2}$/.test(cleaned.replace(/\s/g, ""))) {
+        throw createInputError(`samples[${index}] is not valid base64.`,
+            { index, received: value.slice(0, 60) });
+    }
     return new Uint8Array(Buffer.from(cleaned, format === "Hex" ? "hex" : "base64"));
 }
 
@@ -240,19 +248,27 @@ export default {
             }
             // Blocks repeated ACROSS samples matter too, and only this tool can see them: identical
             // blocks in two different messages mean the same key AND the same plaintext block.
-            const across = new Map();
+            // ONE first-sighting per distinct block, not every occurrence. Retaining every
+            // occurrence meant 512 samples of 64 KB at block_size 4 held 8,388,608 hex keys plus
+            // an object each -- well over a gigabyte of live heap for a single accepted request,
+            // on a process serving other clients, and then the filter below discarded all but 16
+            // of them. Only blocks seen in more than one SAMPLE are ever reported, so a first
+            // sighting and a lazily-recorded second is the whole requirement.
+            const firstSeen = new Map();
+            const shared = [];
             for (const [index, sample] of samples.entries()) {
                 if ((index % YIELD_EVERY) === 0) await new Promise(resolve => setImmediate(resolve));
                 for (let offset = 0; offset + args.block_size <= sample.length; offset += args.block_size) {
                     const block = Buffer.from(sample.subarray(offset, offset + args.block_size)).toString("hex");
-                    if (!across.has(block)) across.set(block, []);
-                    across.get(block).push({ sample: index, offset });
+                    const seen = firstSeen.get(block);
+                    if (seen === undefined) {
+                        firstSeen.set(block, { sample: index, offset });
+                    } else if (seen.sample !== index && shared.length < 16 &&
+                        !shared.some(entry => entry.block === block)) {
+                        shared.push({ block, places: [seen, { sample: index, offset }] });
+                    }
                 }
             }
-            const shared = [...across.entries()]
-                .filter(([, places]) => new Set(places.map(p => p.sample)).size > 1)
-                .slice(0, 16)
-                .map(([block, places]) => ({ block, places }));
             result.ecb = {
                 "block_size": size,
                 "samples_with_repeats": findings.length,
@@ -280,18 +296,28 @@ export default {
             Object.assign(result, { "nonce_reuse": {
                 "prefix_bytes": prefix,
                 collisions: collisions.slice(0, 16).map(([nonce, indices]) => {
-                    const [a, b] = [samples[indices[0]], samples[indices[1]]];
-                    const length = Math.min(a.length, b.length) - prefix;
-                    const xored = Buffer.from(
-                        Array.from({ length }, (_, i) => a[prefix + i] ^ b[prefix + i])).toString("hex");
-                    return {
-                        nonce,
-                        samples: indices,
-                        // The XOR is the evidence AND the exploit. Under any keystream cipher the
-                        // keystream cancels and this is P1 xor P2 -- the exact input crib_drag takes.
-                        "bodies_xored_hex": xored.slice(0, 512),
-                        ...(xored.length > 512 ? { truncated: true } : {})
-                    };
+                    // One XOR per PAIR, each naming its pair. The previous shape reported every
+                    // index in `samples` beside a single `bodies_xored_hex` taken from the first
+                    // two, so a caller reading the two fields together -- which `next` tells them
+                    // to do -- attributed one pair's XOR to the whole group.
+                    const pairs = [];
+                    for (let i = 0; i < indices.length && pairs.length < 8; i++) {
+                        for (let j = i + 1; j < indices.length && pairs.length < 8; j++) {
+                            const [a, b] = [samples[indices[i]], samples[indices[j]]];
+                            const length = Math.min(a.length, b.length) - prefix;
+                            const xored = Buffer.from(
+                                Array.from({ length }, (_, k) => a[prefix + k] ^ b[prefix + k])).toString("hex");
+                            pairs.push({
+                                // The XOR is the evidence AND the exploit. Under any keystream
+                                // cipher the keystream cancels and this is P1 xor P2 -- exactly
+                                // what crib_drag takes as input.
+                                pair: [indices[i], indices[j]],
+                                "bodies_xored_hex": xored.slice(0, 512),
+                                ...(xored.length > 512 ? { truncated: true } : {})
+                            });
+                        }
+                    }
+                    return { nonce, samples: indices, pairs };
                 }),
                 assessment: collisions.length ?
                     "Two messages share a leading prefix. Under a stream cipher or a counter mode " +

@@ -270,6 +270,26 @@ export default {
                 { length: targets[0].length, supported: Object.keys(ALGORITHMS).join(", ") });
         }
 
+        // EVERY target must match a chosen algorithm's length, not just one of them. `some` above
+        // selected MD5 for `["abcdef", "<a real MD5>"]` and then reported `abcdef` as UNCRACKED --
+        // which reads as "the password survived the search" for a string that was never hashed by
+        // anything the search ran. Not cracking something and not being able to try are different
+        // answers, and only one of them says anything about the password.
+        const lengths = new Set(chosen.map(([, spec]) => spec.length));
+        const unusable = targets.filter(target => !lengths.has(target.length));
+        if (unusable.length) {
+            throw createInputError(
+                `${unusable.length} of ${targets.length} hashes have a length no selected digest ` +
+                `produces: ${[...new Set(unusable.map(t => t.length))].join(", ")} characters.`,
+                {
+                    rejected: unusable.slice(0, 5).map(t => t.slice(0, 24)),
+                    selected: chosen.map(([name]) => name).join(", "),
+                    hint: "Split the batch by digest, or set `algorithm` explicitly. An unsupported " +
+                        "hash reported as uncracked would read as a password that survived a search " +
+                        "it was never part of."
+                });
+        }
+
         const wanted = new Map();
         for (const target of targets) wanted.set(target, null);
         const deadline = Date.now() + BUDGET_MS;
