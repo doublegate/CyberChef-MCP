@@ -146,14 +146,20 @@ degrade well before that many definitions.
 So the default is an **index**, not a catalogue. Measured on the serialised `tools/list` payload at
 v2.4.0, not estimated:
 
-| `CYBERCHEF_TOOL_SURFACE` | Tools in `tools/list` | Payload | Approx. tokens |
-|---|---|---|---|
-| **`index`** *(default)* | 28 | 19 KB | **~4,900** |
-| `curated` | 106 | 81 KB | ~20,700 |
-| `all` | 531 | 391 KB | ~100,000 |
+| `CYBERCHEF_TOOL_SURFACE` | Tools in `tools/list` | Payload |
+|---|---|---|
+| **`index`** *(default)* | 40 | **40,637 bytes** |
+| `curated` | 118 | 103,883 bytes |
+| `all` | 543 | 421,041 bytes |
 
-The figures grew across v2.2.0-v2.4.0 as tools gained annotations, titles and fuller argument
-descriptions — the ratio between the three modes is what matters, and it has held.
+Bytes, measured on the serialised `tools/list` payload with `npm run measure:surfaces`, not
+estimated. Earlier versions of this table gave token figures; this repository has never contained a
+tokenizer and every one of those was bytes divided by four.
+
+The index doubled at v3.3.0, from 28 tools and 20,297 bytes. Twelve registry tools were added, and
+a registry tool has no navigation path — `cyberchef_bake` runs recipes of *operations* — so one
+that is not listed cannot be called at all. The ratio between the three modes is what matters, and
+the index plus one operation schema is still 9.9x cheaper than `all`.
 
 **Nothing becomes unreachable.** `cyberchef_bake` runs any of the 504 operations by name, and three
 navigation tools let a client find the name and its arguments:
@@ -170,11 +176,20 @@ cyberchef_categories            16 categories, with counts and examples   (~2 KB
 **`Magic` is exposed in every surface**, including `index`. It is what you reach for *before* you
 know what you are looking at, so making it three calls deep would invert the cost.
 
-**The four analysis tools are in every surface too** — `cyberchef_xor_key_length`,
-`cyberchef_cyclic_pattern`, `cyberchef_hash_identify` and `cyberchef_rsa_attack`. Unlike an
-operation, none of them is reachable through `cyberchef_bake`: they are not in `OperationConfig`,
-because each performs an analysis rather than a transformation. Hiding them behind a surface setting
-would make them unreachable rather than merely inconvenient. They cost about 1,500 tokens together.
+**The sixteen analysis tools are in every surface too.** Four since v2.4.0 —
+`cyberchef_xor_key_length`, `cyberchef_cyclic_pattern`, `cyberchef_hash_identify`,
+`cyberchef_rsa_attack` — and twelve added in v3.3.0: `cyberchef_classical_cipher`,
+`cyberchef_corpus_diff`, `cyberchef_crib_drag`, `cyberchef_entropy_scan`, `cyberchef_hash_crack`,
+`cyberchef_hash_statistics`, `cyberchef_jwt_weakness`, `cyberchef_plaintext_check`,
+`cyberchef_rsa_multi_key`, `cyberchef_substitution_break`, `cyberchef_timestamp_identify` and
+`cyberchef_vigenere_break`.
+
+Unlike an operation, none of them is reachable through `cyberchef_bake`: they are not in
+`OperationConfig`, because each performs an analysis rather than a transformation. Hiding one
+behind a surface setting would make it unreachable rather than merely inconvenient, and listing
+must never be stricter than dispatch. That is why the index doubled in v3.3.0: the twelve new
+tools account for roughly 20 KB of the 40,637-byte payload, and there is no honest way to avoid
+paying it.
 
 Fine-grained control:
 

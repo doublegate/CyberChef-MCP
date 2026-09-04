@@ -132,14 +132,11 @@ export default {
     title: "Break a substitution cipher",
     category: "Analysis",
     description:
-        "Recover a monoalphabetic substitution mapping from ciphertext alone, by hill-climbing on " +
-        "English trigram fitness with random restarts. CyberChef's `Substitute` requires the " +
-        "mapping and no operation finds one — the search is a loop with a decision inside it, " +
-        "which a linear recipe cannot express. Also solves Caesar, ROT-N and Atbash, since all of " +
-        "them are substitutions. Measured on held-out prose: 82.9% of letters at 150, 90.7% at " +
-        "250, 94.6% at 350 — so expect it to leave one or two letter pairs swapped rather than to " +
-        "solve outright. Pin what you can already read with `known_mapping` and run it again; that " +
-        "is how the last pairs come out.",
+        "Recover a monoalphabetic substitution mapping from ciphertext alone, by hill-climbing " +
+        "on English trigram fitness with random restarts. `Substitute` needs the mapping and no " +
+        "operation finds one. Also solves Caesar, ROT-N and Atbash. Measured on held-out prose: " +
+        "82.9% of letters at 150, 90.7% at 250, 94.6% at 350 — so expect one or two letter pairs " +
+        "still swapped. Pin what you can read with `known_mapping` and run it again.",
     annotations: {
         title: "Break a substitution cipher",
         readOnlyHint: true,
@@ -152,18 +149,16 @@ export default {
             .describe("The ciphertext. Non-letters are ignored and restored in the output."),
         restarts: z.number().int().min(1).max(2000).default(120)
             .describe(
-                "Independent hill climbs. More is strictly better and strictly slower; the " +
-                "measured figures used 120. Bounded by a 20-second wall clock regardless."),
-        "known_mapping": z.string().max(64).default("")
+                "Independent hill climbs. More is better and slower; the measured figures used " +
+                "120. Bounded by a 20-second wall clock."),
+        "known_mapping": z.string().max(128).default("")
             .describe(
-                "Letters you already know, as `cipher:plain` pairs separated by commas, e.g. " +
-                "\"q:t,w:h,e:e\". These are held fixed and never swapped, which turns a partial " +
-                "read into a real constraint on the search."),
+                "Letters you already know, as comma-separated `cipher:plain` pairs, e.g. " +
+                "\"q:t,w:h\". Held fixed and never swapped."),
         seed: z.number().int().min(0).max(4294967295).optional()
             .describe(
-                "Make the search reproducible. Left unset it is non-deterministic, which is the " +
-                "right default: restarts are independent samples and a fixed seed that landed in " +
-                "a bad local optimum would land there every time."),
+                "Make the search reproducible. Unset is non-deterministic, which is the right " +
+                "default: a fixed seed that lands in a bad local optimum lands there every time."),
         "preview_letters": z.number().int().min(0).max(4096).default(400)
             .describe("How much decrypted text to return. 0 for none.")
     }),

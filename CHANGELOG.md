@@ -9,12 +9,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [3.3.0] - 2026-09-04
 
-The things v3.2.0 shipped knowing they were incomplete. No new tools: the charter's own kill
-criterion fired on the phase it proposed next. Details in
+**Twelve new analysis tools, and none of them is a tool the plan asked for.** The charter's own
+kill criterion fired on the phase it proposed next — six of its nine tools already exist as
+upstream operations and three of those would throw at startup — so the scope was re-derived by
+reading the reference projects as code instead of as documentation. Details in
 [the release notes](docs/releases/v3.3.0.md) and
 [the findings log](docs/internal/v3.3.0-findings-log.md).
 
+### Added
+
+- **Twelve registry tools, 4 → 16.** Each fills a gap verified against `OperationConfig` rather
+  than assumed, and none shadows an operation:
+  - **`vigenere_break`** and **`substitution_break`** — `Vigenère Decode` takes a key and
+    `Substitute` takes a mapping; no operation finds either, because the search is a loop with a
+    decision inside it and a linear recipe cannot express one. Measured: the exact Vigenere key in
+    9 of 10 cases, and 94.6% of substitution letters at 350 characters.
+  - **`classical_cipher`** — Playfair, Polybius, ADFGVX and Baudot/ITA2, all verified absent from
+    `src/core/operations/`. Every published vector reproduces exactly. The three contested
+    conventions are parameters, because implementations that disagree on one disagree on every
+    message: Playfair's 26th letter, Polybius coordinate order, and ITA2 versus the US teleprinter
+    figures shift (dcode.fr ships the latter under the former's name).
+  - **`rsa_multi_key`** — batch GCD, common modulus, Håstad broadcast and Franklin–Reiter. Attacks
+    that need a SET of keys, which `Fork` structurally cannot express.
+  - **`corpus_diff`** — per-offset byte and bit variance across samples, ECB detection with
+    offsets, and nonce reuse. The other thing `Fork` cannot do: a statistic across branches.
+  - **`crib_drag`** — two ciphertexts under one key, or one with a known fragment. Adds a `mod k`
+    periodicity constraint that no published write-up of the technique states.
+  - **`plaintext_check`** — the verdict every auto-decoder makes internally and none exposes.
+  - **`entropy_scan`** — WHERE the entropy is, with offsets, plus the sourced two-threshold packed
+    rule and a second axis that separates compressed from encrypted.
+  - **`jwt_weakness`** — everything decidable from a token, with server-dependent headers kept in
+    a separate list rather than reported as findings.
+  - **`hash_crack`** — MD5, SHA-1, SHA-2 and NTLM from a wordlist, refusing the slow schemes by
+    name. Carries its own MD4, because OpenSSL 3 will not give you one.
+  - **`hash_statistics`** — corpus-level hash analysis: shared passwords, weakest format,
+    placeholders.
+  - **`timestamp_identify`** — ranks every format a number could be, because one 64-bit integer is
+    a valid FILETIME, Cocoa date and nanosecond count at once.
+- **`src/node/tools/lib/english.mjs`** and a generated trigram model built from this repository's
+  own prose by **`scripts/build-english-trigrams.mjs`** — 1,280,768 letters, 46 KB packed,
+  regenerable byte-for-byte.
+
 ### Changed
+
+- **`xor_key_length` gained two more length estimators and stopped assuming a space.**
+  Autocorrelation and Kasiski join the index of coincidence, chosen for uncorrelated failure modes;
+  all three opinions are reported so a disagreement is visible. Key recovery now scores all 256
+  candidate bytes per column by chi-squared against English, with runners-up and margins, instead
+  of taking an argmax and XORing with a hardcoded `0x20` — 28 exact keys against the old method's
+  23, over 43 cases. The old method remains behind an explicit `assumed_common_byte`.
+- **The default `tools/list` index grew from 28 tools / 20,297 bytes to 40 / 40,637.** Registry
+  tools have no navigation path, so one that is not listed cannot be called at all; listing must
+  never be stricter than dispatch. `curated` is 118 / 103,883 and `all` is 543 / 421,041. Trimming
+  prose from descriptions recovered 3.8 KB; a generic dispatcher would have recovered 5 KB more and
+  reintroduced the empty-`inputSchema` defect of v2.1.0.
 
 - **Errors stop giving advice that points away from the fix.** `ErrorSuggestions` is keyed by
   error CODE, so all 504 operations shared three lines for every `INVALID_INPUT` -- an

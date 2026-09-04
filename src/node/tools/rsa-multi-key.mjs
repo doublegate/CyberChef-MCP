@@ -327,13 +327,11 @@ export default {
     title: "RSA multi-key attack",
     category: "Analysis",
     description:
-        "Attack a SET of RSA keys, or several ciphertexts under one key, for the leaks that no " +
-        "single key shows: shared prime factors across a whole corpus in near-linear time " +
-        "(batch GCD), the same message sent twice under one modulus with two exponents (common " +
-        "modulus), one message broadcast to several recipients under a small exponent (Håstad), " +
-        "and two ciphertexts whose plaintexts differ by a known linear relation " +
-        "(Franklin–Reiter). Three of the four recover the message without factoring anything, " +
-        "because they are protocol and padding failures rather than key failures. Use " +
+        "Attack a SET of RSA keys, or several ciphertexts under one key, for leaks no single key " +
+        "shows: shared primes across a corpus in near-linear time (batch GCD), one message sent " +
+        "twice under one modulus with two exponents (common modulus), one message broadcast under " +
+        "a small exponent (Håstad), and two ciphertexts related by a known linear relation " +
+        "(Franklin–Reiter). Three of the four recover the message without factoring anything. Use " +
         "`rsa_attack` for a single key.",
     annotations: {
         title: "RSA multi-key attack",
@@ -351,15 +349,13 @@ export default {
                 .describe("A ciphertext under this key.")
         })).min(2).max(MAX_KEYS)
             .describe(
-                "The keys to attack together. Two are enough for common_modulus and " +
-                "franklin_reiter; Håstad needs at least e of them; batch_gcd is worth running on " +
-                "as many as you have."),
+                "The keys to attack together. Two suffice for common_modulus and " +
+                "franklin_reiter; Håstad needs at least e; batch_gcd wants as many as you have."),
         attacks: z.array(z.enum(["batch_gcd", "common_modulus", "hastad", "franklin_reiter"])).optional()
             .describe("Which attacks to try. All of the applicable ones by default."),
         "relation_a": z.string().max(64).default("1")
             .describe(
-                "For franklin_reiter: the multiplier in m1 = a*m2 + b. The relation must be KNOWN; " +
-                "the attack does not search for it."),
+                "For franklin_reiter: the multiplier in m1 = a*m2 + b. The relation must be KNOWN."),
         "relation_b": z.string().max(MAX_OPERAND_CHARS).default("1")
             .describe("For franklin_reiter: the offset in m1 = a*m2 + b.")
     }),

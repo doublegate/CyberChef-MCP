@@ -191,15 +191,13 @@ export default {
     title: "Crack a fast unsalted hash",
     category: "Analysis",
     description:
-        "Recover the plaintext behind a fast unsalted hash from a wordlist, for MD5, SHA-1, " +
-        "SHA-256/384/512 and NTLM. Follows `hash_identify` and `hash_statistics`: those say what a " +
-        "hash is and what a corpus shows, this answers whether the password is one anybody would " +
-        "guess. Deliberately REFUSES bcrypt, scrypt, Argon2, yescrypt and the crypt(3) family by " +
-        "name — they are slow by design, by four to six orders of magnitude, and a pure-JS attempt " +
-        "would run, find nothing, and leave you believing the password survived a real attack. " +
-        "Supply your own wordlist; a small list of the passwords everybody uses is built in, and " +
-        "cheap mutations (capitalise, append a year, leetspeak) are applied on request. Bounded to " +
-        "20 seconds, which is about 24 million candidates measured end to end.",
+        "Recover the plaintext behind a fast unsalted hash from a wordlist: MD5, SHA-1, " +
+        "SHA-256/384/512 and NTLM. Follows `hash_identify` with the question that matters — is " +
+        "this password one anybody would guess? Deliberately REFUSES bcrypt, scrypt, Argon2, " +
+        "yescrypt and the crypt(3) family BY NAME rather than attempting them, because a pure-JS " +
+        "attempt would find nothing and imply the password was strong. Supply a wordlist; a small " +
+        "common-password list and cheap mutations are built in. Bounded to 20 seconds, about 24 " +
+        "million candidates.",
     annotations: {
         title: "Crack a fast unsalted hash",
         readOnlyHint: true,
@@ -209,17 +207,15 @@ export default {
     },
     inputSchema: z.object({
         hashes: z.array(z.string().min(1).max(256)).min(1).max(MAX_HASHES)
-            .describe("The hashes, as hex. Several at once share one pass over the wordlist."),
+            .describe("The hashes, as hex. Several share one pass over the wordlist."),
         algorithm: z.enum(["auto", ...Object.keys(ALGORITHMS)]).default("auto")
             .describe(
-                "Which digest. `auto` infers it from the hex length, which is ambiguous at 32 " +
-                "characters (MD5 and NTLM) and at 64 — so both are tried when it is."),
+                "Which digest. `auto` infers it from the hex length and tries every candidate " +
+                "when that is ambiguous, as it is at 32 characters."),
         wordlist: z.array(z.string().max(256)).max(MAX_WORDS).optional()
-            .describe("Candidates to try, in order. The built-in common list runs first regardless."),
+            .describe("Candidates to try, in order. The built-in common list runs first."),
         mutations: z.boolean().default(true)
-            .describe(
-                "Apply cheap rules to each candidate: capitalise, uppercase, append a digit or " +
-                "year, leetspeak. Multiplies the search by about 20."),
+            .describe("Capitalise, uppercase, append a digit or year, leetspeak. About 20x the search."),
         "include_common": z.boolean().default(true)
             .describe("Try the built-in list of the most-used passwords first.")
     }),

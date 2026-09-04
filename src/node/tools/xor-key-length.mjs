@@ -386,16 +386,13 @@ export default {
     title: "XOR key length",
     category: "Analysis",
     description:
-        "Recover the key length of a repeating-key XOR by three independent statistics — index of " +
-        "coincidence, autocorrelation and Kasiski examination — then score every candidate key " +
-        "byte per column against English and decrypt. Ranks candidate lengths and reports what " +
-        "each method concluded, so a disagreement is visible rather than averaged away. Use this " +
-        "when you have XOR-encrypted data and no key; use cyberchef_bake with the XOR operation " +
-        "when you already know the key. CyberChef's own `XOR Brute Force` stops at a two-byte " +
-        "key. Measured over 72 cases (prose, source code and log lines; 8 key lengths from 1 to " +
-        "24; 3 input sizes): the exact length in 60%, and the length or a multiple of it — which " +
-        "still decrypts — in 96%. Least reliable on short inputs and on plaintext with its own " +
-        "strong period, such as fixed-width log lines.",
+        "Recover the key length of a repeating-key XOR by three independent statistics — index " +
+        "of coincidence, autocorrelation and Kasiski — then score every candidate key byte per " +
+        "column against English and decrypt. Reports what each method concluded, so a " +
+        "disagreement is visible rather than averaged away. CyberChef's `XOR Brute Force` stops " +
+        "at a two-byte key. Measured over 72 cases: the exact length in 60%, and the length or a " +
+        "multiple of it — which still decrypts — in 96%. Least reliable on short inputs and on " +
+        "plaintext with its own strong period.",
     annotations: {
         title: "XOR key length",
         readOnlyHint: true,
@@ -422,11 +419,9 @@ export default {
             .describe("How much decrypted output to return. 0 for none."),
         "assumed_common_byte": z.number().int().min(0).max(255).optional()
             .describe(
-                "Override key recovery with the older method: assume this byte is the most common " +
-                "plaintext byte in every column and take each column's most common ciphertext " +
-                "byte to be it. 32 (space) is the usual choice for text. Left unset, every " +
-                "candidate key byte is instead scored against English byte frequencies, which " +
-                "needs no assumption and reports its runners-up.")
+                "Assume this is the most common plaintext byte in every column (32 for text) and " +
+                "take each column's most common ciphertext byte to be it. Unset, every candidate " +
+                "key byte is scored against English instead, which needs no assumption.")
     }),
 
     /**

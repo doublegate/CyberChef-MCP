@@ -77,16 +77,14 @@ export default {
     title: "JWT weakness scan",
     category: "Analysis",
     description:
-        "Report everything wrong with a JSON Web Token that can be established from the token " +
-        "alone. CyberChef's `JWT Verify` answers whether a signature is valid under a key you " +
-        "supply, which is a different question — a token with `alg: none` has no signature to " +
-        "verify, and one signed with `secret` verifies perfectly. Checks the algorithm (including " +
-        "the case and Unicode-escape variants that bypass naive `alg == \"none\"` filters), an " +
-        "empty or absent signature, the ECDSA psychic signature (r = s = 0, CVE-2022-21449), a " +
-        "short list of secrets from framework quickstarts, and the standard claims. Headers that " +
-        "only matter because of what a SERVER does with them — jku, jwk, x5u, kid traversal — are " +
-        "reported as present, never as confirmed: whether they work cannot be decided from the " +
-        "bytes, and saying otherwise would be a guess dressed as a finding.",
+        "Report everything wrong with a JWT that can be established from the token alone. `JWT " +
+        "Verify` answers whether a signature is valid under a key you supply, which is a " +
+        "different question: `alg: none` has no signature to verify and one signed with `secret` " +
+        "verifies perfectly. Checks the algorithm (including the case and Unicode-escape variants " +
+        "that bypass naive filters), an empty signature, the ECDSA psychic signature " +
+        "(CVE-2022-21449), quickstart secrets, and the standard claims. Headers that only matter " +
+        "because of what a SERVER does with them — jku, jwk, x5u, kid — are reported as present, " +
+        "never as confirmed.",
     annotations: {
         title: "JWT weakness scan",
         readOnlyHint: true,

@@ -71,7 +71,17 @@ describe("tool surface: index (the default)", () => {
     it("is the default without any environment variable set", () => {
         // Asserted by count rather than by reading the env: the question is what a user gets out
         // of the box, not what the code intends.
-        expect(tools.length).toBeLessThan(40);
+        //
+        // The bound moved from 40 to 48 in v3.3.0, and it is worth saying why rather than letting
+        // it drift. Twelve registry tools were added, and a registry tool has no navigation path:
+        // `cyberchef_bake` runs recipes of OPERATIONS, so a registry tool that is not listed
+        // cannot be called at all. Listing must never be stricter than dispatch, so they are all
+        // in the index and the default payload grew from ~4.9k tokens to ~10.1k.
+        //
+        // The alternative was considered and rejected: one indexed dispatcher taking a tool name
+        // and a free-form `args` object would cut 5k tokens and reintroduce exactly the defect
+        // v2.1.0 was spent fixing -- a tool whose schema tells a client nothing.
+        expect(tools.length).toBeLessThan(48);
     });
 
     it("still exposes the executor and the navigation tools", () => {

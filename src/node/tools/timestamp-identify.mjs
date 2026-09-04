@@ -151,14 +151,12 @@ export default {
     title: "Identify a timestamp",
     category: "Analysis",
     description:
-        "Given a number that might be a time, rank every format it could plausibly be. CyberChef's " +
-        "date operations all require you to already know which format you are holding; this is the " +
-        "step before them. Covers Unix at four resolutions, Windows FILETIME, Chrome/WebKit, .NET " +
-        "ticks, UUIDv1, OLE Automation and Delphi, HFS+, Cocoa and GPS — and accepts a v1 UUID " +
-        "directly, reassembling its split time field. Always returns a ranked list: a 64-bit " +
-        "integer is simultaneously a valid FILETIME, a valid Cocoa date and a valid nanosecond " +
-        "count, and only a plausibility window separates them, so a single confident answer would " +
-        "be wrong by construction.",
+        "Given a number that might be a time, rank every format it could plausibly be — the step " +
+        "before CyberChef's date operations, which all need you to know the format already. " +
+        "Covers Unix at four resolutions, FILETIME, Chrome/WebKit, .NET ticks, UUIDv1, OLE " +
+        "Automation and Delphi, HFS+, Cocoa and GPS, and takes a v1 UUID directly. Always a " +
+        "ranked list: one 64-bit integer is a valid FILETIME, Cocoa date and nanosecond count at " +
+        "once, so a single confident answer would be wrong by construction.",
     annotations: {
         title: "Identify a timestamp",
         readOnlyHint: true,
@@ -174,9 +172,7 @@ export default {
         "plausible_to": z.string().max(32).default(DEFAULT_TO)
             .describe("Latest such date."),
         "show_all": z.boolean().default(false)
-            .describe(
-                "Include the interpretations that fall outside the window. Useful when the value " +
-                "is genuinely old or genuinely far future, and the default window is what is wrong.")
+            .describe("Include interpretations outside the window, when the window is what is wrong.")
     }),
 
     /**

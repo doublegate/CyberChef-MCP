@@ -90,6 +90,21 @@ describe("entropy_scan", () => {
         expect(r.windows_measured).toBe(13);
     });
 
+    it("accepts base64 as well as hex and raw", async () => {
+        const data = Buffer.alloc(1024, 0x41);
+        const r = await run({ input: data.toString("base64"), "input_format": "Base64" });
+        expect(r.bytes).toBe(1024);
+    });
+
+    it("rejects an input that decodes to nothing", async () => {
+        await expect(run({ input: "  ", "input_format": "Base64" })).rejects.toThrow(/decoded to nothing/);
+    });
+
+    it("caps the region list", async () => {
+        const r = await run({ input: raw(randomBytes(8192)), "input_format": "Raw", "max_regions": 1 });
+        expect(r.regions).toHaveLength(1);
+    });
+
     it("rejects malformed hex", async () => {
         await expect(run({ input: "zzzz", "input_format": "Hex" })).rejects.toThrow(/not valid hex/);
     });

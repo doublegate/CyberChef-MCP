@@ -139,14 +139,12 @@ export default {
     title: "Corpus difference",
     category: "Analysis",
     description:
-        "Compute statistics ACROSS a set of samples rather than within one — the thing a CyberChef " +
-        "recipe cannot express, because `Fork` runs each branch separately and nothing combines " +
-        "them. Infers record structure by per-offset byte AND bit variance across the corpus, " +
-        "grouping adjacent offsets that behave alike into fields; detects ECB or any other " +
-        "diffusion-free mode from repeated ciphertext blocks, reporting where they sit rather than " +
-        "only how many; and detects nonce reuse between messages, emitting the XOR of the two " +
-        "bodies, which is simultaneously the evidence and the way in. Assumes fixed-length or " +
-        "left-aligned samples.",
+        "Compute statistics ACROSS a set of samples — what a recipe cannot express, since `Fork` " +
+        "runs each branch separately and nothing combines them. Infers record structure from " +
+        "per-offset byte AND bit variance, grouping adjacent offsets into fields; finds repeated " +
+        "cipher blocks (ECB and any other diffusion-free mode) and reports WHERE they sit; and " +
+        "finds nonce reuse, emitting the XOR of the two bodies, which is both the evidence and " +
+        "the way in. Assumes fixed-length or left-aligned samples.",
     annotations: {
         title: "Corpus difference",
         readOnlyHint: true,
@@ -156,17 +154,15 @@ export default {
     },
     inputSchema: z.object({
         samples: z.array(z.string().min(1).max(MAX_SAMPLE_BYTES * 2)).min(2).max(MAX_SAMPLES)
-            .describe("The samples to compare. At least two; more makes every statistic here better."),
+            .describe("The samples to compare. At least two; more is better for every statistic."),
         "input_format": z.enum(["Raw", "Hex", "Base64"]).default("Hex")
             .describe("How the samples are encoded."),
         "block_size": z.number().int().min(4).max(256).default(16)
-            .describe(
-                "Cipher block size for the ECB check, in bytes. 16 for AES; 8 for DES, 3DES and " +
-                "Blowfish."),
+            .describe("Cipher block size for the ECB check. 16 for AES; 8 for DES and Blowfish."),
         "nonce_prefix_bytes": z.number().int().min(0).max(64).default(12)
             .describe(
-                "How many leading bytes to treat as the nonce or IV when looking for reuse. 12 is " +
-                "the GCM default; 16 for a CBC IV; 8 for ChaCha20's original nonce. 0 disables the check."),
+                "Leading bytes to treat as the nonce or IV. 12 for GCM, 16 for a CBC IV, 8 for " +
+                "ChaCha20. 0 disables the check."),
         analyses: z.array(z.enum(["fields", "ecb", "nonce_reuse"])).optional()
             .describe("Which analyses to run. All of them by default.")
     }),

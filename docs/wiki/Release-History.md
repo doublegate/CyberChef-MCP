@@ -2,8 +2,57 @@
 
 Full notes for every version live in
 [`docs/releases/`](https://github.com/doublegate/CyberChef-MCP/tree/master/docs/releases) and on the
-[releases page](https://github.com/doublegate/CyberChef-MCP/releases). This is the shape of the 2.x
-line, and what each release was actually *about*.
+[releases page](https://github.com/doublegate/CyberChef-MCP/releases). This is the shape of the
+2.x and 3.x lines, and what each release was actually *about*.
+
+## v3.3.0 — twelve tools nobody planned
+
+The `ext-proj-int` charter's own kill criterion fired on the phase it proposed next: six of its
+nine tools already exist as upstream operations, and three of those would throw at startup because
+registration refuses a shadowing name. So the scope was re-derived by reading the reference
+projects as *code* rather than as documentation, and most of what that turned up contradicts what
+those projects say about themselves — Ciphey's A* searcher is never imported, and both of Ares'
+production call sites pass `&None` for the decoder heuristic, so neither tool's advertised ranking
+runs at all.
+
+Twelve registry tools, 4 to 16: two keyless cipher solvers (`vigenere_break`,
+`substitution_break`), the four classical ciphers upstream lacks (`classical_cipher`), two tools
+that compute across inputs rather than within one (`rsa_multi_key`, `corpus_diff`), and
+`crib_drag`, `plaintext_check`, `entropy_scan`, `jwt_weakness`, `hash_crack`, `hash_statistics`
+and `timestamp_identify`.
+
+The default `tools/list` index doubled as a result — 28 tools to 40, 20,297 bytes to 40,637 — and
+that is the cost rather than an oversight: a registry tool has no navigation path, so one that is
+not listed cannot be called at all.
+
+## v3.2.0 — every gate does what it says
+
+A benchmark gate that said in its own output that it *"cannot fail on a regression"*; a Trivy scan
+narrowed to CRITICAL-only for a dependency backlog cleared eight releases earlier; a Helm chart
+nothing in CI rendered; and a README security claim — *"no shell, no package manager"* — that
+measuring the published image disproved. All four fixed, and the last one by correcting the
+documentation rather than the image.
+
+## v3.1.0 — the evaluation harness
+
+Every tool-quality claim in this project had been asserted rather than measured. This is the
+release that made the later ones provable.
+
+## v3.0.0 — conformance, and a renamed image
+
+MCP 2026-07-28 conformance plus the breaking cleanups it forces. A major bump RENAMES the GHCR
+package, so `_v2` became `_v3` — and the release pipeline had an npm-publish guard keyed to `v2.`
+tags that would have silently skipped publishing, found before the tag rather than after it.
+
+## v2.10.0 — one configuration file, finally read
+
+`cyberchef.config.json` had been documented since v1.8.0 and read by nothing.
+
+## v2.9.0 — the presented-output correctness rule
+
+44 operations declare a `presentType` differing from their `outputType`, and the presenter targets
+a browser. `JSON Beautify` is why this is a correctness rule and not a formatting one: its keys'
+quotes were markup structure, so stripping tags returned unparseable JSON.
 
 ## v2.8.1 — testing what we actually ship
 

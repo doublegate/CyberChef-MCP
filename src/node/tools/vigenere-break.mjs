@@ -107,18 +107,13 @@ export default {
     title: "Break a Vigenere cipher",
     category: "Analysis",
     description:
-        "Recover a Vigenere key from ciphertext alone. CyberChef's `Vigenère Decode` requires the " +
-        "key and no operation finds one — the search needs a loop with a decision inside it, which " +
-        "a linear recipe cannot express. Finds the key length by the index of coincidence of each " +
-        "coset — as a filter, not a judge, since every multiple of the true length scores as well " +
-        "or better and that is the standard way this goes wrong. A shortlist of lengths is solved " +
-        "in full and the plaintext's trigram score decides. Each key letter comes from a " +
-        "chi-squared fit, rescored on trigrams; the assembled " +
-        "candidates on trigrams. Reports the runners-up per position, because a close second is " +
-        "where the answer is wrong. Recovered the exact key in 9 of 10 measured cases; the tenth " +
-        "was a 14-letter key against 240 letters of ciphertext, which leaves 17 letters per " +
-        "position where the statistic needs about 50 — and it reported its own failure rather " +
-        "than the wrong key.",
+        "Recover a Vigenere key from ciphertext alone. `Vigenère Decode` requires the key and no " +
+        "operation finds one. The index of coincidence per coset is used as a FILTER, not a judge " +
+        "— every multiple of the true length scores as well or better, which is the standard way " +
+        "this goes wrong — so a shortlist of lengths is solved in full and the plaintext's " +
+        "trigram score decides. Runners-up are reported per position, because a close second is " +
+        "where the answer is wrong. Exact key in 9 of 10 measured cases, and it reported its own " +
+        "failure on the tenth rather than a wrong key.",
     annotations: {
         title: "Break a Vigenere cipher",
         readOnlyHint: true,
@@ -132,7 +127,7 @@ export default {
         "max_key_length": z.number().int().min(1).max(64).default(20)
             .describe("Longest key length to consider."),
         "key_length": z.number().int().min(1).max(64).optional()
-            .describe("Skip the search and use this length. Useful when the ranked list is close."),
+            .describe("Skip the search and use this length."),
         "preview_letters": z.number().int().min(0).max(4096).default(300)
             .describe("How much decrypted text to return. 0 for none.")
     }),

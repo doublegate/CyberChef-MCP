@@ -105,6 +105,45 @@ describe("corpus_diff", () => {
         expect(r.ecb.assessment).toMatch(/rules out nothing at all/);
     });
 
+    it("runs only the analyses asked for", async () => {
+        const r = await run({ samples: [hex([1, 2, 3, 4]), hex([1, 2, 3, 5])], analyses: ["fields"] });
+        expect(r.structure).toBeDefined();
+        expect(r.ecb).toBeUndefined();
+        expect(r.nonce_reuse).toBeUndefined();
+    });
+
+    it("skips the nonce check when the prefix length is zero", async () => {
+        const r = await run({
+            samples: [hex([1, 2, 3, 4]), hex([1, 2, 3, 5])], "nonce_prefix_bytes": 0
+        });
+        expect(r.nonce_reuse).toBeUndefined();
+    });
+
+    it("says so when no two samples share a nonce", async () => {
+        const ascending = hex(Array.from({ length: 32 }, (_, i) => i));
+        const descending = hex(Array.from({ length: 32 }, (_, i) => 255 - i));
+        const r = await run({ samples: [ascending, descending] });
+        expect(r.nonce_reuse.collisions).toHaveLength(0);
+        expect(r.nonce_reuse.assessment).toMatch(/re-run with nonce_prefix_bytes/);
+    });
+
+    it("accepts raw and base64 as well as hex", async () => {
+        const raw = await run({ samples: ["abcd", "abce"], "input_format": "Raw" });
+        expect(raw.samples).toBe(2);
+        const b64 = await run({
+            samples: [Buffer.from([1, 2, 3, 4]).toString("base64"), Buffer.from([1, 2, 3, 5]).toString("base64")],
+            "input_format": "Base64"
+        });
+        expect(b64.lengths.shortest).toBe(4);
+    });
+
+    it("rejects a sample that decodes to nothing", async () => {
+        // Non-empty as a string, empty as bytes. The schema's min(1) catches the first case; this
+        // is the one it cannot.
+        await expect(run({ samples: [Buffer.from([1, 2]).toString("base64"), "  "], "input_format": "Base64" }))
+            .rejects.toThrow(/decoded to nothing/);
+    });
+
     it("rejects malformed hex rather than analysing whatever it decodes to", async () => {
         await expect(run({ samples: ["dead", "zz"] })).rejects.toThrow(/samples\[1\] is not valid hex/);
     });

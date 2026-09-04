@@ -97,14 +97,12 @@ export default {
     title: "Crib drag",
     category: "Analysis",
     description:
-        "Drag a guessed plaintext fragment along a XOR ciphertext and report every offset where it " +
-        "fits, ranked. Two modes, one algebra. Given TWO ciphertexts under the same key, their XOR " +
-        "is the XOR of the two plaintexts and the key cancels entirely — a crib guessed in one " +
-        "message yields the matching span of the OTHER, which you then feed back as the next crib. " +
-        "Given ONE ciphertext and a known plaintext fragment, the same operation yields key bytes " +
-        "instead; supply `key_length` and the periodicity of a repeating key becomes a far stronger " +
-        "filter than printability, cross-validating fragments against each other and recovering the " +
-        "whole key outright when the crib is at least as long as the key.",
+        "Drag a guessed plaintext fragment along a XOR ciphertext and report every offset where " +
+        "it fits, ranked. With TWO ciphertexts under one key their XOR cancels the key, so a crib " +
+        "guessed in one message yields the matching span of the OTHER. With ONE ciphertext and a " +
+        "known fragment it yields key bytes instead; supply `key_length` and periodicity becomes " +
+        "a far stronger filter than printability, recovering the whole key when the crib is at " +
+        "least as long as it.",
     annotations: {
         title: "Crib drag",
         readOnlyHint: true,
@@ -116,23 +114,19 @@ export default {
         ciphertext: z.string().min(1).max(MAX_BYTES * 2).describe("The ciphertext to drag along."),
         "ciphertext_b": z.string().max(MAX_BYTES * 2).optional()
             .describe(
-                "A second ciphertext under the SAME key. Given one, the tool works on their XOR " +
-                "and every hit is a span of the other plaintext. Omit it to recover key bytes " +
-                "instead."),
+                "A second ciphertext under the SAME key. Every hit is then a span of the other " +
+                "plaintext. Omit it to recover key bytes instead."),
         crib: z.string().min(1).max(256).describe("The guessed plaintext fragment, e.g. \" the \"."),
         "input_format": z.enum(["Raw", "Hex", "Base64"]).default("Hex")
             .describe("How the ciphertexts are encoded. The crib is always literal text."),
         "key_length": z.number().int().min(1).max(4096).optional()
             .describe(
-                "Single-ciphertext mode only: the repeating key's length, if known. Every derived " +
-                "key byte must then agree with the ones at the same offset mod this length, which " +
-                "rejects far more wrong offsets than a printability test does."),
+                "Single-ciphertext mode only: the repeating key's length, if known. Derived bytes " +
+                "must then agree mod this length, which rejects far more offsets than printability."),
         top: z.number().int().min(1).max(200).default(10)
             .describe("How many offsets to report, best first."),
         "printable_only": z.boolean().default(true)
-            .describe(
-                "Report only offsets whose whole result is printable. False reports every offset, " +
-                "which is what you want when the plaintext is not text.")
+            .describe("Report only fully printable results. False when the plaintext is not text.")
     }),
 
     /**

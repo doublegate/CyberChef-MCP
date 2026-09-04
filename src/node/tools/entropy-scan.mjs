@@ -122,16 +122,12 @@ export default {
     title: "Entropy scan",
     category: "Analysis",
     description:
-        "Find WHERE a file's entropy is high, not just whether it is. CyberChef's `Entropy` curve " +
-        "has a hardcoded 256-byte bin, no threshold and no region output, so it can show density " +
-        "but cannot say where the dense part starts and stops. Returns contiguous regions above a " +
-        "threshold with their offsets, applies Lyda and Hamrock's packed-binary rule (which is a " +
-        "CONJUNCTION of mean > 6.677 and peak > 7.199, not the single 7.0 usually quoted), and " +
-        "adds chi-squared and serial correlation as a second axis — because compressed and " +
-        "encrypted data are both near 8 bits per byte and only one of them still has structure. " +
-        "Reports what a high number does and does not establish: NDSS 2020 measured over 30% of " +
-        "low-entropy malware as packed anyway, and calibrated 7.0 as roughly what XOR with a " +
-        "three-byte key produces.",
+        "Find WHERE a file's entropy is high, not just whether it is: contiguous regions above a " +
+        "threshold, with offsets. CyberChef's `Entropy` curve has a fixed 256-byte bin, no " +
+        "threshold and no region output. Applies Lyda and Hamrock's packed-binary rule (a " +
+        "CONJUNCTION of mean > 6.677 and peak > 7.199, not the single 7.0 usually quoted) and " +
+        "adds chi-squared and serial correlation as a second axis, which is what separates " +
+        "compressed from encrypted. Reports what a high number does and does not establish.",
     annotations: {
         title: "Entropy scan",
         readOnlyHint: true,
@@ -145,15 +141,14 @@ export default {
             .describe("How `input` is encoded."),
         "window_bytes": z.number().int().min(16).max(65536).default(256)
             .describe(
-                "Window size for the sliding scan. 256 is the sourced figure — Lyda and Hamrock " +
-                "chose it over 512 because the larger window 'tended to reduce the subjects' " +
-                "entropy scores when encryption existed only in small areas'."),
+                "Window size for the sliding scan. 256 is the sourced figure; a larger window " +
+                "hides encryption that exists only in small areas."),
         "step_bytes": z.number().int().min(1).max(65536).optional()
             .describe("Distance between windows. Defaults to the window size, i.e. no overlap."),
         threshold: z.number().min(0).max(8).default(7.0)
             .describe(
                 "Bits per byte above which a window counts as high-entropy. 7.0 is conventional " +
-                "and weak; see the report's own caveat on what it means."),
+                "and weak; the report says why."),
         "max_regions": z.number().int().min(1).max(256).default(32)
             .describe("How many regions to return.")
     }),

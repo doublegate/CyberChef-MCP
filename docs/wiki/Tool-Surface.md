@@ -1,28 +1,31 @@
 # The Tool Surface
 
-**Why you see 28 tools and not 531.** This is the most common question about the server, and the
+**Why you see 40 tools and not 543.** This is the most common question about the server, and the
 answer is a deliberate design decision rather than a limitation.
 
 ## The problem
 
 `tools/list` is sent to the model on **every** request. Exposing all 504 operations plus the
-meta-tools costs roughly **100,000 tokens** before the user has typed anything — and model
+meta-tools costs roughly **421,041 bytes** before the user has typed anything — and model
 tool-selection quality is known to degrade well before that many definitions are in play.
 
 So the default is an **index**, not a catalogue.
 
 ## The three surfaces
 
-Measured on the serialised `tools/list` payload from a real MCP client at v2.4.0, not estimated:
+Measured with `npm run measure:surfaces`, which drives a real MCP client and counts the exact
+bytes of the `tools/list` payload, rather than estimated:
 
-| `CYBERCHEF_TOOL_SURFACE` | Tools | Payload | Approx. tokens |
+| `CYBERCHEF_TOOL_SURFACE` | Tools | Payload | Exact bytes |
 |---|---|---|---|
-| **`index`** *(default)* | 28 | 19 KB | **~4,900** |
-| `curated` | 106 | 81 KB | ~20,700 |
-| `all` | 531 | 391 KB | ~100,000 |
+| **`index`** *(default)* | 40 | 39 KB | **40,637** |
+| `curated` | 118 | 101 KB | 103,883 |
+| `all` | 543 | 411 KB | 421,041 |
 
-The 28 in the default index are 23 meta-tools, `cyberchef_magic`, and the four
-[analysis tools](Analysis-Tools).
+The 40 in the default index are 23 meta-tools, `cyberchef_magic`, and the sixteen
+[analysis tools](Analysis-Tools). The index grew from 28 to 40 in v3.3.0 because twelve new
+registry tools have no navigation path of their own — a registry tool that is not listed cannot
+be called at all.
 
 ## Nothing becomes unreachable
 
@@ -38,18 +41,19 @@ cyberchef_categories            16 categories, with counts and examples   (~2 KB
 
 `cyberchef_search` short-circuits the walk when you already know roughly what you want.
 
-So the index costs a round trip on an unusual operation and saves ~95,000 tokens on every request.
-For an assistant that mostly reaches for base64, hex, JWT and hashes, that is the right trade — and
-when it is not, one environment variable changes it.
+So the index costs a round trip on an unusual operation and saves roughly 380,000 bytes on every
+request. For an assistant that mostly reaches for base64, hex, JWT and hashes, that is the right
+trade — and when it is not, one environment variable changes it.
 
 ## Two things are always exposed, at every surface
 
 **`cyberchef_magic`**, because it is what you reach for *before* you know what you are looking at.
 Making it three calls deep would invert the cost.
 
-**The four analysis tools**, because unlike an operation, none of them is reachable through
+**The sixteen analysis tools**, because unlike an operation, none of them is reachable through
 `cyberchef_bake` — they are not in `OperationConfig`. Hiding them behind a surface setting would
-make them unreachable rather than merely inconvenient. They cost about 1,500 tokens together.
+make them unreachable rather than merely inconvenient. They form part of the 40,637-byte index
+payload.
 
 ## Shaping it yourself
 

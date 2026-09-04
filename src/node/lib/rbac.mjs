@@ -4,7 +4,7 @@
  * Role-based access control, derived from the annotations the server already computes.
  *
  * The obvious design is a table mapping every tool to a scope. This is not that, and the reason is
- * the failure mode rather than the effort: with 531 tools, a hand-maintained table is wrong the
+ * the failure mode rather than the effort: with 543 tools, a hand-maintained table is wrong the
  * day an operation is added, and it is wrong *silently* -- a tool missing from it either denies
  * everything or, far worse, defaults to permitted. Upstream adds operations in most releases.
  *

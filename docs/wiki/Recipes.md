@@ -152,7 +152,7 @@ cyberchef_list_operations  everything in one category
 cyberchef_describe_operation  full argument schema for one
 ```
 
-That path exists because `tools/list` deliberately pre-loads only 28 tools. See the
+That path exists because `tools/list` deliberately pre-loads only 40 tools. See the
 [FAQ](FAQ).
 
 ## Break a repeating-key XOR

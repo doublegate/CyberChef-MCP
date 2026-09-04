@@ -1,8 +1,8 @@
 # CyberChef MCP Server
 
 [GCHQ CyberChef](https://github.com/gchq/CyberChef) as tools an AI assistant can call: **504
-operations** for encryption, encoding, compression and forensics, plus **four analysis tools** that
-an operation cannot express.
+operations** for encryption, encoding, compression and forensics, plus **sixteen analysis tools**
+that an operation cannot express.
 
 ```bash
 docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v3:latest
@@ -29,7 +29,7 @@ If the site and this wiki ever disagree, **the site is right** and this wiki nee
 |---|---|
 | **[Installation](Installation)** | Docker, npm, or from source |
 | **[Client Setup](Client-Setup)** | Claude Code, Claude Desktop, LM Studio, Cursor, MCP Inspector |
-| **[The Tool Surface](Tool-Surface)** | Why you see 28 tools and not 531 — the most common question |
+| **[The Tool Surface](Tool-Surface)** | Why you see 40 tools and not 543 — the most common question |
 | **[Analysis Tools](Analysis-Tools)** | XOR key length, cyclic patterns, hash identification, RSA attacks |
 | **[Troubleshooting](Troubleshooting)** | The failures people actually hit, and what causes them |
 

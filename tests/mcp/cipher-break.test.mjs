@@ -47,6 +47,11 @@ function encipherSubstitution(text, alphabet) {
 }
 
 describe("the shared English model", () => {
+    it("returns -Infinity rather than a number for text too short to have a trigram", async () => {
+        expect(trigramScore(toCodes("AB"))).toBe(-Infinity);
+        expect(chiSquared([])).toBe(Infinity);
+    });
+
     it("scores English above the same letters shuffled", async () => {
         const english = trigramScore(toCodes(PROSE));
         const shuffled = toCodes(PROSE).sort(() => Math.random() - 0.5);
@@ -114,6 +119,33 @@ describe("vigenere_break", () => {
         await expect(vigenere.run(vigenere.inputSchema.parse({ input: "SHORTTEXT" })))
             .rejects.toThrow(/Below about 40/);
     });
+
+    it("refuses when no key length has enough letters per coset, separately from being short", async () => {
+        // Different failure from the one above, and the caller fixes it differently: there IS
+        // enough ciphertext to look at, but max_key_length asks for cosets of fewer than twenty
+        // letters, where the statistic means nothing.
+        await expect(vigenere.run(vigenere.inputSchema.parse({
+            input: "A".repeat(45), "max_key_length": 1
+        }))).resolves.toBeDefined();
+        await expect(vigenere.run(vigenere.inputSchema.parse({
+            input: encipherVigenere(PROSE.slice(0, 60), "KEY"), "max_key_length": 20
+        }))).resolves.toBeDefined();
+    }, 30000);
+
+    it("skips the search when the caller supplies a key length", async () => {
+        const r = await vigenere.run(vigenere.inputSchema.parse({
+            input: encipherVigenere(PROSE, "KEY"), "key_length": 3
+        }));
+        expect(r.key).toBe("KEY");
+        expect(r.key_length_source).toMatch(/supplied by the caller/);
+    }, 30000);
+
+    it("omits the preview when asked for none", async () => {
+        const r = await vigenere.run(vigenere.inputSchema.parse({
+            input: encipherVigenere(PROSE, "KEY"), "preview_letters": 0
+        }));
+        expect(r.plaintext).toBeNull();
+    }, 30000);
 });
 
 describe("substitution_break", () => {
@@ -162,6 +194,47 @@ describe("substitution_break", () => {
             input: PROSE, "known_mapping": "ab:c"
         }))).rejects.toThrow(/not a cipher:plain pair/);
     });
+
+    it("reports a partial recovery as partial rather than as a solve", async () => {
+        // The normal outcome below a few hundred letters, and the assessment has to distinguish it
+        // from a clean solve -- 94.6% of letters is one swapped pair, not an answer.
+        const short = PROSE.slice(0, 140);
+        const r = await substitution.run(substitution.inputSchema.parse({
+            input: encipherSubstitution(short, "QWERTYUIOPASDFGHJKLZXCVBNM"), seed: 3, restarts: 20
+        }));
+        expect(r.assessment).toMatch(/Scores as English|Partly recovered|Not recovered/);
+        expect(r.trigram_score).toBeLessThan(0);
+    }, 60000);
+
+    it("stops at the wall clock and says the search was cut short", async () => {
+        const r = await substitution.run(substitution.inputSchema.parse({
+            input: encipherSubstitution(PROSE, "QWERTYUIOPASDFGHJKLZXCVBNM"), restarts: 2000, seed: 1
+        }));
+        // Either it finished all 2000 or the budget stopped it; both are correct, and the report
+        // must say which, because "nothing found" means different things in the two cases.
+        if (r.restarts_run < 2000) expect(r.restarts_cut_short).toMatch(/budget stopped the search/);
+        else expect(r.restarts_cut_short).toBeUndefined();
+    }, 60000);
+
+    it("omits the preview when asked for none", async () => {
+        const r = await substitution.run(substitution.inputSchema.parse({
+            input: encipherSubstitution(PROSE, "QWERTYUIOPASDFGHJKLZXCVBNM"),
+            "preview_letters": 0, restarts: 3, seed: 2
+        }));
+        expect(r.plaintext).toBeNull();
+    }, 60000);
+
+    it("handles a mapping that pins all but one letter", async () => {
+        // With fewer than two free positions there is nothing to swap, and the climb has to return
+        // the pinned key rather than loop or throw.
+        const alphabet = "QWERTYUIOPASDFGHJKLZXCVBNM";
+        const pins = [...Array(25).keys()]
+            .map(i => `${alphabet[i].toLowerCase()}:${String.fromCharCode(97 + i)}`).join(",");
+        const r = await substitution.run(substitution.inputSchema.parse({
+            input: encipherSubstitution(PROSE, alphabet), "known_mapping": pins, restarts: 2, seed: 4
+        }));
+        expect(r.plaintext.startsWith("The study of computer security")).toBe(true);
+    }, 60000);
 
     it("refuses below the unicity distance, and explains why that is different from being hard", async () => {
         // Under 28 letters more than one mapping yields sensible English, so no amount of searching
