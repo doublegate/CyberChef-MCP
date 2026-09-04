@@ -116,11 +116,32 @@ for (let i = 0; i < counts.length; i++) {
     if (counts[i] > 0 && packed[i] === 0) lost++;
 }
 
+// Two failure modes ended in the same place and neither was detected. An empty or near-empty
+// corpus makes `max` zero, `counts[i] / max` is NaN, and assignment into a Uint16Array converts
+// NaN to 0 -- so the output was an all-zero table with `lost` at 0 and a normal-looking summary
+// line. And the two replacements below are anchored on the generated module's current formatting,
+// so a reformat would leave the file untouched and still report success. This script is meant to
+// be copied into another repository with a path substituted, which is exactly the case where the
+// walk returns nothing.
+if (letters.length < 100000 || max === 0 || distinct < 1000) {
+    process.stderr.write(
+        `Refusing to write: the corpus is ${letters.length} letters with ${distinct} distinct ` +
+        "trigrams, which is too little for a usable model. Check the walk's paths.\n");
+    process.exit(1);
+}
+
 const b64 = Buffer.from(packed.buffer).toString("base64");
 const existing = readFileSync(OUTPUT, "utf8");
 const updated = existing
     .replace(/export const TRIGRAM_CORPUS_LETTERS = \d+;/, `export const TRIGRAM_CORPUS_LETTERS = ${letters.length};`)
     .replace(/(export const TRIGRAM_TABLE_B64 =\n {4}")[^"]*(";)/, `$1${b64}$2`);
+if (!updated.includes(b64) || !updated.includes(`TRIGRAM_CORPUS_LETTERS = ${letters.length};`)) {
+    process.stderr.write(
+        "Refusing to write: one of the two replacements did not match. They are anchored on the " +
+        "generated module's formatting, so a reformat silently leaves the file unchanged while " +
+        "this script reports success.\n");
+    process.exit(1);
+}
 writeFileSync(OUTPUT, updated);
 
 process.stdout.write(

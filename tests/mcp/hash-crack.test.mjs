@@ -104,6 +104,14 @@ describe("hash_crack", () => {
         expect(r.cracked).toHaveLength(0);
     }, 30000);
 
+    it.each([["sha384", 96], ["sha512", 128]])(
+        "cracks %s, whose length nothing else in this file exercises", async (algorithm, length) => {
+            const digest = createHash(algorithm).update("password").digest("hex");
+            expect(digest).toHaveLength(length);
+            const r = await run({ hashes: [digest] });
+            expect(r.cracked[0]).toMatchObject({ plaintext: "password", algorithm });
+        });
+
     it("rejects something that is neither hex nor a crypt string", async () => {
         await expect(run({ hashes: ["not a hash at all"] }))
             .rejects.toThrow(/not hex and is not a recognised crypt/);

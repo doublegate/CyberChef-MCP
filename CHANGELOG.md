@@ -23,7 +23,7 @@ reading the reference projects as code instead of as documentation. Details in
   - **`vigenere_break`** and **`substitution_break`** — `Vigenère Decode` takes a key and
     `Substitute` takes a mapping; no operation finds either, because the search is a loop with a
     decision inside it and a linear recipe cannot express one. Measured: the exact Vigenere key in
-    9 of 10 cases, and 94.6% of substitution letters at 350 characters.
+    9 of 10 cases, and 95.9% of substitution letters at 350 characters.
   - **`classical_cipher`** — Playfair, Polybius, ADFGVX and Baudot/ITA2, all verified absent from
     `src/core/operations/`. Every published vector reproduces exactly. The three contested
     conventions are parameters, because implementations that disagree on one disagree on every
@@ -47,7 +47,7 @@ reading the reference projects as code instead of as documentation. Details in
   - **`timestamp_identify`** — ranks every format a number could be, because one 64-bit integer is
     a valid FILETIME, Cocoa date and nanosecond count at once.
 - **`src/node/tools/lib/english.mjs`** and a generated trigram model built from this repository's
-  own prose by **`scripts/build-english-trigrams.mjs`** — 1,280,768 letters, 46 KB packed,
+  own prose by **`scripts/build-english-trigrams.mjs`** — 1,328,077 letters, 46 KB packed,
   regenerable byte-for-byte.
 - **A sixth prompt, `break-cipher`**, routing a caller through the cheap checks before the
   expensive ones: plaintext check, then Magic, then the solver the shape of the data calls for.

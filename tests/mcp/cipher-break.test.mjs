@@ -220,7 +220,7 @@ describe("substitution_break", () => {
 
     it("reports a partial recovery as partial rather than as a solve", async () => {
         // The normal outcome below a few hundred letters, and the assessment has to distinguish it
-        // from a clean solve -- 94.6% of letters is one swapped pair, not an answer.
+        // from a clean solve -- 95.9% of letters is one swapped pair, not an answer.
         const short = PROSE.slice(0, 140);
         const r = await substitution.run(substitution.inputSchema.parse({
             input: encipherSubstitution(short, "QWERTYUIOPASDFGHJKLZXCVBNM"), seed: 3, restarts: 20

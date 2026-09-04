@@ -79,6 +79,19 @@ describe("plaintext_check", () => {
         expect(r.next).toMatch(/cyberchef_magic/);
     });
 
+    it("decides on letter statistics when no common word appears at all", async () => {
+        // The only verdict reached by the statistics rather than by the dictionary, and nothing
+        // else in this file gets near it: every other case either hits a common word first or
+        // fails the printable-ratio check. A change to either threshold would have passed silently.
+        const r = await run(
+            "Kowalski Nakamura Oyelaran Bergstrom Villanueva Petrosyan Kirchner Almeida " +
+            "Rasmussen Fontaine Delacroix Marchetti Novotny Karlsson Ferreira Lindqvist");
+
+        expect(r.decided_by).toBe("letter statistics");
+        expect(r.verdict).toBe("probably plaintext");
+        expect(r.evidence.common_word_hits).toBe(0);
+    });
+
     it("carries the evidence for whatever it decided", async () => {
         const r = await run("The quick brown fox jumps over the lazy dog and then runs from the farm.");
 

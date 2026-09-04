@@ -198,13 +198,21 @@ describe("stdio contract, via the official MCP client", () => {
         "cyberchef_xor_key_length": [{ input: "0b1b1b0c4e0f1b0c4e0a1b1b0c4e0f1b0c4e0a1b1b0c4e0f1b0c4e0a1b1b0c4e0f1b0c4e0a", "input_format": "Hex", "preview_bytes": 0 }, r => expect(r.key_length).toBeGreaterThan(0)]
     };
 
-    it("has a client-driven call for every registry tool, with none missing", () => {
-        // The list is the assertion. Adding a registry tool without adding a case here fails
-        // HERE rather than in production, which is the only place a missing test can be caught.
-        const registryNames = tools
-            .map(t => t.name)
-            .filter(name => Object.prototype.hasOwnProperty.call(REGISTRY_CALLS, name));
-        expect(registryNames.sort()).toEqual(Object.keys(REGISTRY_CALLS).sort());
+    it("has a client-driven call for every registry tool, with none missing", async () => {
+        // Derived from the REGISTRY, not from the advertised list filtered by REGISTRY_CALLS.
+        // The first version did the latter -- it kept only names already in REGISTRY_CALLS and
+        // then compared that to REGISTRY_CALLS -- which is an identity, and could not fail. A new
+        // registry tool with no case here would have sailed through the test written to catch
+        // exactly that.
+        const { buildRegistry } = await import("../../src/node/tools/index.mjs");
+        const { ToolRegistry } = await import("../../src/node/tools/registry.mjs");
+        const expected = buildRegistry().list().map(tool => ToolRegistry.exposedName(tool.name));
+
+        expect(expected.sort()).toEqual(Object.keys(REGISTRY_CALLS).sort());
+        // And every one of them is actually advertised, so the fixtures cannot describe a tool
+        // the server does not serve.
+        const advertised = new Set(tools.map(t => t.name));
+        for (const name of expected) expect(advertised.has(name), name).toBe(true);
     });
 
     it.each(Object.keys(REGISTRY_CALLS))(

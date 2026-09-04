@@ -334,16 +334,26 @@ describe("input bounds: what stops a tool blocking the server", () => {
             for (const [field, definition] of Object.entries(shape)) {
                 const json = z.toJSONSchema(z.object({ [field]: definition }), { io: "input" });
                 const property = json.properties?.[field] ?? {};
-                // Follow one level of wrapping: `.default()` and `.optional()` both nest.
-                const inner = property.anyOf?.find(entry => entry.type) ?? property;
-                if (inner.type === "string" && inner.maxLength === undefined && !inner.enum) {
-                    unbounded.push(`${tool.name}.${field} (string)`);
-                }
-                if (inner.type === "array") {
-                    if (inner.maxItems === undefined) unbounded.push(`${tool.name}.${field} (array length)`);
-                    const item = inner.items ?? {};
-                    if (item.type === "string" && item.maxLength === undefined && !item.enum) {
-                        unbounded.push(`${tool.name}.${field}[] (string)`);
+                // EVERY anyOf branch, not the first one carrying a `type`. `.optional()` and
+                // `.nullable()` both produce a union, and checking one arm would let an unbounded
+                // string through whenever it happened to sit in another. `type` may also be an
+                // ARRAY of names for a nullable scalar, so it is normalised to a set.
+                const branches = property.anyOf ?? [property];
+                const has = (schema, name) => {
+                    const type = schema?.type;
+                    return Array.isArray(type) ? type.includes(name) : type === name;
+                };
+                for (const inner of branches) {
+                    if (has(inner, "string") && inner.maxLength === undefined && !inner.enum) {
+                        unbounded.push(`${tool.name}.${field} (string)`);
+                    }
+                    if (has(inner, "array")) {
+                        if (inner.maxItems === undefined) unbounded.push(`${tool.name}.${field} (array length)`);
+                        for (const item of inner.items?.anyOf ?? [inner.items ?? {}]) {
+                            if (has(item, "string") && item.maxLength === undefined && !item.enum) {
+                                unbounded.push(`${tool.name}.${field}[] (string)`);
+                            }
+                        }
                     }
                 }
             }
@@ -355,9 +365,12 @@ describe("input bounds: what stops a tool blocking the server", () => {
         // `rsa_multi_key.keys` is an array of OBJECTS, so the item check above sees `type: object`
         // and stops. Its fields are bounded; asserted directly because the structural walk cannot
         // reach them and an assertion that silently checks nothing is worse than none.
+        // Asserted on the MESSAGE, not just that something threw. A bare `rejects.toThrow()` here
+        // would pass if the call failed for any other reason -- including a reason that has
+        // nothing to do with the bound the test is named for.
         await expect(run("rsa_multi_key", {
             keys: [{ modulus: "9".repeat(5001) }, { modulus: "77" }]
-        })).rejects.toThrow();
+        })).rejects.toThrow(/modulus/);
     });
 
     it("skips the small-e attack for an exponent that would kill the process", async () => {

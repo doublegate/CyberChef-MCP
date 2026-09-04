@@ -162,5 +162,16 @@ describe("corpus_diff", () => {
 
     it("rejects malformed hex rather than analysing whatever it decodes to", async () => {
         await expect(run({ samples: ["dead", "zz"] })).rejects.toThrow(/samples\[1\] is not valid hex/);
+        // Odd length as well as bad characters: "abc" is three nibbles, and `Buffer.from` would
+        // silently drop the last one. Both halves of the validation are contract.
+        await expect(run({ samples: ["dead", "abc"] })).rejects.toThrow(/samples\[1\] is not valid hex/);
+    });
+
+    it("refuses a sample larger than the byte limit, not just the character limit", async () => {
+        // The schema caps each sample STRING at MAX_SAMPLE_BYTES * 2 characters, which for Raw is
+        // twice the byte limit -- so the byte check is reachable and is the one that actually
+        // bounds the work. Without a test it could be removed or inverted and CI would not notice.
+        await expect(run({ samples: ["a".repeat(70000), "abcd"], "input_format": "Raw" }))
+            .rejects.toThrow(/the limit is 65536/);
     });
 });

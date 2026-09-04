@@ -145,9 +145,12 @@ export default [
         // grunt lint task globs `src/node/**` and `tests/**` only, so none of those three
         // directories was linted AT ALL: `npm run lint` went green over a file with 22 errors in
         // it. Adding the exemption here is not enough on its own; see the Gruntfile.
+        // `examples/**` joined in v3.3.0 for the same reason, found the same way: the ten example
+        // scripts are executed by CI and were never LINTED, so an unused import or an undeclared
+        // variable in one would only surface when the script ran.
         files: [
             "src/node/cli/**/*", "scripts/**/*.{js,mjs}",
-            "benchmarks/**/*.mjs", "conformance/**/*.mjs"
+            "benchmarks/**/*.mjs", "conformance/**/*.mjs", "examples/**/*.mjs"
         ],
         rules: {
             "no-console": "off"

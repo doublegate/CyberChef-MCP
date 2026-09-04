@@ -15,13 +15,13 @@
  *
  * **What it will and will not do.** Measured on four held-out prose passages with 120 restarts:
  *
- *     100 letters    50.2% of letters recovered
- *     150 letters    82.9%
- *     250 letters    90.7%
- *     350 letters    94.6%
+ *     100 letters    63.3% of letters recovered
+ *     150 letters    83.6%
+ *     250 letters    91.2%
+ *     350 letters    95.9%
  *
  * So at a few hundred letters it recovers most of the mapping and typically leaves one or two
- * letter pairs swapped -- the exact-solve rate at 350 letters is 3 in 12. That is a lead, not a
+ * letter pairs swapped -- 9 of 12 reach 95% of letters at 350, and 0 of 12 do at 100. That is a
  * solution, and the output says so. It is also why `known_mapping` exists: pinning the letters you
  * can already read and re-running is how the last pairs come out, and it is what a human does.
  *
@@ -135,7 +135,7 @@ export default {
         "Recover a monoalphabetic substitution mapping from ciphertext alone, by hill-climbing " +
         "on English trigram fitness with random restarts. `Substitute` needs the mapping and no " +
         "operation finds one. Also solves Caesar, ROT-N and Atbash. Measured on held-out prose: " +
-        "82.9% of letters at 150, 90.7% at 250, 94.6% at 350 — so expect one or two letter pairs " +
+        "83.6% of letters at 150, 91.2% at 250, 95.9% at 350 — so expect one or two letter pairs " +
         "still swapped. Pin what you can read with `known_mapping` and run it again.",
     annotations: {
         title: "Break a substitution cipher",
@@ -205,6 +205,11 @@ export default {
         let ran = 0;
         for (let r = 0; r < args.restarts; r++) {
             if (Date.now() > deadline) break;
+            // Yield between restarts. Each climb is bounded by STALE_LIMIT and takes a couple of
+            // milliseconds, but 2,000 of them back to back is twenty seconds during which nothing
+            // else on the server runs -- and the `deadline` above cannot fire while they do, so
+            // the budget stops being a budget. The same rule the other tools follow.
+            if ((r & 0x1f) === 0 && r > 0) await new Promise(resolve => setImmediate(resolve));
             const attempt = climb(histogram, pinned, random);
             ran++;
             if (!best || attempt.score > best.score) best = attempt;

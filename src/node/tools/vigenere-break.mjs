@@ -169,7 +169,14 @@ export default {
             ])
         ].sort((a, b) => a - b);
 
-        const attempts = shortlist.map(length => {
+        const attempts = [];
+        for (const length of shortlist) {
+            // Yield between candidate lengths. Solving one is 26 chi-squared evaluations per
+            // position plus a trigram rescore over the whole text for each of five alternatives,
+            // so at max_key_length 64 over a 256 KB input the shortlist is seconds of unbroken
+            // synchronous work -- which starves every other request and leaves the call timeout
+            // unable to fire.
+            await new Promise(resolve => setImmediate(resolve));
             const solvedFor = [];
             for (let offset = 0; offset < length; offset++) {
                 const coset = [];
@@ -204,8 +211,8 @@ export default {
                     }
                 }
             }
-            return { length, key: candidate, solved: solvedFor, score, corrections };
-        });
+            attempts.push({ length, key: candidate, solved: solvedFor, score, corrections });
+        }
 
         // Best score wins, but a SHORTER length within a hair of the best beats it -- because a
         // multiple of the true key decrypts identically and would otherwise be reported as the key.
