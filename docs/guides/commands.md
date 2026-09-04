@@ -358,6 +358,11 @@ with offsets, and nonce-reuse detection.
 Drags a guessed plaintext fragment along a XOR ciphertext — against two ciphertexts under one key,
 or one ciphertext with a known fragment.
 
+### cyberchef_ecdsa_recover
+
+Recovers an ECDSA private key from two signatures that reused a nonce, detected by a shared `r`.
+Exact algebra rather than a search. It does **not** attack a merely biased nonce, and says so.
+
 ### cyberchef_entropy_scan
 
 Reports where a file's entropy is high, as regions with offsets, plus the Lyda-Hamrock

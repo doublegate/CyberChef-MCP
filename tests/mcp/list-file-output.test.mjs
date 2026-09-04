@@ -74,10 +74,19 @@ function crc32(bytes) {
  * @returns {Buffer} The archive.
  */
 function buildZip() {
-    const members = [
+    return buildZipWith([
         { name: "note.txt", data: Buffer.from(TEXT_MEMBER, "utf8") },
         { name: "blob.bin", data: BINARY_MEMBER }
-    ];
+    ]);
+}
+
+/**
+ * A stored ZIP over an arbitrary member list.
+ *
+ * @param {Array<{name: string, data: Buffer}>} members - The members.
+ * @returns {Buffer} The archive.
+ */
+function buildZipWith(members) {
     const locals = [];
     const centrals = [];
     let offset = 0;
@@ -244,5 +253,66 @@ describe("List<File> operations, through the official MCP client", () => {
         // an assertion of its own.
         expect(text).not.toContain("<div");
         expect(text).not.toContain("Download");
+    });
+});
+
+describe("the List<File> rendering itself, in-process", () => {
+    // The suite above is the one that catches the defect, and it must stay out-of-process for the
+    // reason its header gives. But an out-of-process test contributes NO coverage: the
+    // instrumentation runs in this process and the server runs in another, so the rendering block
+    // measured as untested and the `src/node/lib/**` gate failed.
+    //
+    // The rendering is not the part that needs a subprocess. Only the missing global `File` was
+    // invisible in-process, and importing `bakeOnCore` installs it. So the branches are exercised
+    // here, directly, where they can be counted -- and the two suites assert different things:
+    // this one that the rendering is right, the one above that it is reachable at all.
+    const zip = buildZip();
+
+    it("renders text and binary members from bakeOnCore", async () => {
+        const { bakeOnCore } = await import("../../src/node/lib/core-recipe.mjs");
+        const out = await bakeOnCore(zip.toString("base64"), [
+            { op: "From Base64" }, { op: "Unzip" }
+        ]);
+        const text = String(out);
+
+        expect(text).toContain(`=== note.txt (${TEXT_MEMBER.length} bytes) ===`);
+        expect(text).toContain(TEXT_MEMBER.trim());
+        expect(text).toContain(`=== blob.bin (${BINARY_MEMBER.length} bytes, base64) ===`);
+        expect(text).toContain(BINARY_MEMBER.toString("base64"));
+        // `value` and `toString()` must agree; a caller reaches for either.
+        expect(out.value).toBe(text);
+    });
+
+    it("labels a zero-length member as base64 rather than as text", async () => {
+        // `bytes.length > 0` is the guard: without it an empty member is "printable" by vacuous
+        // truth on `every`, and an empty file would claim to be text it does not contain.
+        const { bakeOnCore } = await import("../../src/node/lib/core-recipe.mjs");
+        const empty = buildZipWith([{ name: "empty.dat", data: Buffer.alloc(0) }]);
+        const text = String(await bakeOnCore(empty.toString("base64"), [
+            { op: "From Base64" }, { op: "Unzip" }
+        ]));
+        expect(text).toContain("=== empty.dat (0 bytes, base64) ===");
+    });
+
+    it("treats tab, LF and CR as printable, and other control bytes as not", async () => {
+        const { bakeOnCore } = await import("../../src/node/lib/core-recipe.mjs");
+        const whitespace = Buffer.from("a\tb\r\nc", "latin1");
+        const control = Buffer.from([0x41, 0x07, 0x42]);
+        const archive = buildZipWith([
+            { name: "ws.txt", data: whitespace },
+            { name: "bell.bin", data: control }
+        ]);
+        const text = String(await bakeOnCore(archive.toString("base64"), [
+            { op: "From Base64" }, { op: "Unzip" }
+        ]));
+        expect(text).toContain(`=== ws.txt (${whitespace.length} bytes) ===`);
+        expect(text).toContain(`=== bell.bin (${control.length} bytes, base64) ===`);
+    });
+
+    it("leaves a non-List<File> result alone", async () => {
+        // The block is keyed on the dish type, so an ordinary string result must not enter it.
+        const { bakeOnCore } = await import("../../src/node/lib/core-recipe.mjs");
+        const out = await bakeOnCore("hello", [{ op: "To Base64" }]);
+        expect(String(out)).toBe("aGVsbG8=");
     });
 });

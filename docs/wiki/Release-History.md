@@ -5,6 +5,33 @@ Full notes for every version live in
 [releases page](https://github.com/doublegate/CyberChef-MCP/releases). This is the shape of the
 2.x and 3.x lines, and what each release was actually *about*.
 
+## v3.4.0 — three operations that had never worked
+
+`Unzip`, `Untar` and `Extract Files` had been dead since v1.0.0. Advertised the whole time,
+returning either an error thrown from inside the presenter after the operation had already
+succeeded, or an archive listing with every filename right and every file zero bytes long.
+
+Two independent defects stacked. `Utils.readFile` rejected the very `File` type its own
+documentation passes it. And five operations construct a *bare global* `File` that nothing in this
+process provided, because the only assignment lives in the generated bridge the server
+deliberately does not import eagerly — so `new File(...)` resolved to Node's own `File`, a `Blob`
+with no `.data`.
+
+The second one **cannot be reproduced in-process**: any test harness that has loaded the bridge
+puts the shim back and the bug vanishes. That is why eleven green releases never saw it, and why
+the regression test drives a real server through a real client.
+
+Also: `ecdsa_recover`, for the nonce reuse the four ECDSA operations cannot see; `server.json`
+validated for the first time by anything, having declared one schema while being written to
+another; both MCP registry ownership proofs, which were absent and would have had a publish
+rejected; and the performance gate's tolerance down from 50% to 20% on a baseline that finally
+gets captured on the runner it is compared against.
+
+Three carried-forward questions were measured and deliberately left alone — the shell-free base
+image (it works, and ships Node 25 against the current 26), the conformance suite's
+`--requirements` flag, and the stdio protocol era — each recorded with what would change the
+answer.
+
 ## v3.3.0 — twelve tools nobody planned
 
 The `ext-proj-int` charter's own kill criterion fired on the phase it proposed next: six of its
