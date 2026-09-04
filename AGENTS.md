@@ -224,6 +224,20 @@ every location here, and fails when a location matches *nothing* as well as when
 pattern that has stopped matching is how a consistency check silently stops checking. The list is
 kept as documentation of what is covered, not as the mechanism.
 
+**The Docker Hub namespace is `parobek`, not `doublegate`, and `check:versions` now asserts it.**
+The two registries do not share a name: GHCR is `ghcr.io/doublegate/cyberchef-mcp_v<major>` and
+Docker Hub is `parobek/cyberchef-mcp`. `mcp-release.yml` builds the second from
+`${{ secrets.DOCKERHUB_USERNAME }}`, so the workflow does not say what the image is called and
+nothing in the tree connected the two -- assuming they matched produced a confident report that the
+Docker Hub publish was broken when it had never failed once. The check derives the expected
+namespace from `docs/registry/dockerhub-description.md`, which the release workflow pushes as that
+repository's description, and asserts every live document agrees.
+
+It cannot see the secret, so it establishes that the documents agree with each other and not that
+they agree with the repository the workflow pushes to. That half is already covered by
+construction: the release workflow pulls `$DOCKERHUB_IMAGE_NAME:latest` back for the tarball
+immediately after the push, so a failed or misdirected push fails the job.
+
 Release cut (module 70 has the ceremony; this is the repo-specific mechanic):
 
 ```bash

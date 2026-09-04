@@ -75,6 +75,58 @@ try {
 }
 
 /**
+ * Every reference to a Docker Hub image in a file, as `{namespace, tag}`.
+ *
+ * Three things this has to get right, and a plain `<ns>/cyberchef-mcp` gets all three wrong -- it
+ * fired on an npm badge, the npm package page and a Unix socket path on the first run:
+ *
+ *   - **GHCR is excluded** by `(?![\w-])`. That package is `cyberchef-mcp_v3`, and an underscore
+ *     is a word character, so the name never completes.
+ *   - **A deeper URL path segment is not a namespace.** The lookbehind rejects a match whose
+ *     namespace is itself preceded by `/`, which is what `.../npm/v/cyberchef-mcp`,
+ *     `.../package/cyberchef-mcp` and `/run/cyberchef-mcp.sock` all are. Requiring a `:tag`
+ *     instead would have been simpler and wrong: two of the live mentions are prose naming the
+ *     image with no tag at all.
+ *   - **Except the two registry prefixes**, which ARE followed by a real namespace. Listed
+ *     explicitly rather than carved out of the lookbehind, so what they are is visible.
+ *
+ * @param {string} text - File contents.
+ * @returns {Array<{namespace: string, tag: string|undefined}>} Every occurrence, in order.
+ */
+const dockerHubRefs = (text) =>
+    [...text.matchAll(
+        /(?:hub\.docker\.com\/r\/|docker\.io\/|(?<![\w./-]))([a-z0-9][a-z0-9._-]*)\/cyberchef-mcp(?![\w-])(?::([\w.]+))?/g)]
+        .map(m => ({ namespace: m[1], tag: m[2] }));
+
+// The Docker Hub namespace, which no file in this repository derives and `package.json` does not
+// carry: `mcp-release.yml` builds the image name from `${{ secrets.DOCKERHUB_USERNAME }}`, so a
+// reader of the workflow cannot tell what the image is called, and neither can this script.
+//
+// `docs/registry/dockerhub-description.md` is the source because the release workflow PUSHES it to
+// Docker Hub as that repository's description. It is the file most tightly bound to the real
+// repository, which makes it the least arbitrary choice available.
+//
+// WHAT THIS DOES AND DOES NOT ESTABLISH, because the distinction is the whole value of the check.
+// It establishes that every live document naming the image agrees, so changing one forces the
+// rest. It CANNOT see the secret, so it cannot tell you the documents match the repository the
+// workflow actually pushes to. That half is verified elsewhere and by construction: the release
+// workflow's tarball step does `docker pull "$DOCKERHUB_REGISTRY/$DOCKERHUB_IMAGE_NAME:latest"`
+// immediately after the push, so a failed or misdirected push fails the job.
+//
+// The gap this closes is real and was found the hard way: the namespace is `parobek` while the
+// GitHub owner is `doublegate`, nothing in the tree connects the two, and assuming they matched
+// produced a confident report that the Docker Hub publish was broken when it had never failed.
+const DOCKERHUB_SOURCE = "docs/registry/dockerhub-description.md";
+let dockerHubNamespace = null;
+try {
+    dockerHubNamespace = dockerHubRefs(read(DOCKERHUB_SOURCE))[0]?.namespace ?? null;
+} catch (error) {
+    // Committed, so a missing file is a real failure rather than "not generated yet". Reported
+    // through the same machinery as everything else so it cannot pass quietly.
+    if (error.code !== "ENOENT") throw error;
+}
+
+/**
  * Every place the release version appears, and how to find it.
  *
  * Each entry yields zero or more occurrences. A location that yields NONE is itself a failure:
@@ -203,6 +255,37 @@ const LOCATIONS = [
         find: text => [...text.matchAll(/releases\/download\/v([0-9]+\.[0-9]+\.[0-9]+)\//g)]
             .map((m, i) => ({ what: `release asset URL ${i + 1}`, value: m[1] }))
     },
+    ...(dockerHubNamespace === null ? [{
+        // The source itself could not be read or no longer names an image. Reported as a location
+        // rather than skipped: without it every entry below has nothing to compare against, and a
+        // check whose expected value silently became `null` is the failure this file exists to
+        // prevent.
+        file: DOCKERHUB_SOURCE,
+        find: () => []
+    }] : [
+        DOCKERHUB_SOURCE,
+        "README.md",
+        "docs/guides/user_guide.md",
+        "docs/wiki/Installation.md"
+    ].map(file => ({
+        file,
+        // Required, not optional. These four are where a user looks for the pull command, and one
+        // of them quietly ceasing to name the image is exactly the "stopped matching" case the
+        // rule below is for -- the failure message tells the next person to update this list,
+        // which is the correct outcome for a deliberate removal too.
+        //
+        // CHANGELOG.md and the findings logs are excluded on purpose: they are historical, and a
+        // past release's text was true when written.
+        find: (text) => dockerHubRefs(text).flatMap(({ namespace, tag }, i) => [
+            { what: `Docker Hub namespace ${i + 1}`, value: namespace, compare: dockerHubNamespace },
+            // A versioned reference gets its version checked too. Folded into the same occurrence
+            // rather than given its own location, because every reference today is `:latest` and a
+            // separate entry would match nothing and fail by the rule below -- a check that is
+            // wrong until someone happens to add the thing it looks for.
+            ...(tag && /^[0-9]+\.[0-9]+\.[0-9]+$/.test(tag) ?
+                [{ what: `Docker Hub tag ${i + 1}`, value: tag }] : [])
+        ])
+    }))),
     {
         // The asset FILENAME, which is a separate occurrence from the URL above and was missed
         // by it: the download URL said v3.0.0 while the `docker load` line two steps later still
