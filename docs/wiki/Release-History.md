@@ -5,6 +5,40 @@ Full notes for every version live in
 [releases page](https://github.com/doublegate/CyberChef-MCP/releases). This is the shape of the
 2.x and 3.x lines, and what each release was actually *about*.
 
+## v3.8.0 — two blockers that were not blockers
+
+The carried-forward list had five live items. Re-measuring found that **two had never actually been
+blocked**.
+
+**arm64 performance** had said "needs arm64 **hardware**" since v3.3.0. `mcp-docker-build.yml` has
+been running jobs on `ubuntu-24.04-arm` — free GitHub-hosted arm64 runners — the whole time, three
+lines below a careful comment reasoning about that exact runner label. The hardware the note said
+was missing was in the same repository's CI configuration. It now has a `benchmark-arm64` job that
+**reports and does not gate**: there is no arm64 noise floor yet, and this project has set three
+thresholds from a first plausible measurement and moved two of them within days. It does not compare
+arm64 against amd64 either — those are different machines, which is what the whole v3.4.0–v3.6.0 line
+of work was about.
+
+**Task-level scoring** was blocked on a document. The charter required its design to survive "must
+not be a flaky gate" *in writing* before any code, and nobody had written it. It is written, and it
+concludes **against** building the harness: the same-host construction that rescued the benchmark
+gate does not transfer, because host speed is a shared factor that cancels within a run while model
+sampling noise is independent per invocation — so running both sides against the same model in one
+job makes the comparison worse, not better. Recording a decision not to build is the point of the
+exercise, and the item leaves the list either way.
+
+**`cert_chain`** is the release's new capability and the 18th registry tool. Three operations parse
+a single certificate each; nothing relates two, and every real question about a bundle is
+relational. Its design changed twice under measurement. A first draft claimed to report "the issuer
+name matches but the signature does not" — unreachable, because `checkIssued` already verifies
+cryptographically, established against a purpose-built imposter carrying the real intermediate's
+subject. The replacement imposter check was wrong too: it compared an orphan's subject against
+subjects **in** the chain, which finds nothing precisely when an imposter has *replaced* the real
+intermediate. It now asks about the issuer name the chain is **looking for**.
+
+A missing root is reported as normal rather than as a defect, because a server's `fullchain.pem`
+legitimately omits it, and a tool that cries wolf on the common case gets ignored.
+
 ## v3.7.0 — the gate that checked four of eleven files
 
 v3.2.0's notes say it fixed the operation-count discrepancy. Three documents were corrected and

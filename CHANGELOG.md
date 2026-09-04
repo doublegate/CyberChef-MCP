@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.8.0] - 2026-09-04
+
+**Two blockers that were not blockers.** Re-measuring the carried-forward list found one item
+blocked on hardware this repository already uses, and one blocked on a document nobody had written.
+Details in [the release notes](docs/releases/v3.8.0.md) and
+[the findings log](docs/internal/v3.8.0-findings-log.md).
+
+### Added
+
+- **`cert_chain`**, the 18th registry tool. `Parse X.509 certificate`, `Parse X.509 CRL` and
+  `Public Key from Certificate` each handle **one** certificate; nothing relates two. This orders a
+  shuffled bundle, verifies every link with `node:crypto`'s `X509Certificate`, and reports the
+  chain's validity window as the **intersection** of its members' — the statistic no per-certificate
+  operation can produce. A missing root is reported as normal, because a server's `fullchain.pem`
+  legitimately omits it. No new dependency.
+- **`benchmark-arm64`**, a second benchmark job on `ubuntu-24.04-arm`. It **reports and does not
+  gate**: there is no arm64 noise floor yet, and this project has set three thresholds from a first
+  plausible measurement and moved two of them within days. It records the machine it measured, and
+  asserts `uname -m` is `aarch64` — Actions has no syntax for "hosted runner only", so a self-hosted
+  runner registered with the same label could otherwise claim a job that runs pull-request code.
+- **[`docs/planning/v3/task-level-scoring.md`](docs/planning/v3/task-level-scoring.md)** — the design
+  the v3.3.0 charter required in writing before any code. It **concludes against building the
+  harness**: the same-host construction that rescued the benchmark gate does not transfer, because
+  host speed is a shared factor that cancels within a run while model sampling noise is independent
+  per invocation and does not. Recording a decision not to build is the point of the exercise.
+
+### Fixed
+
+- **The `cert_chain` imposter check asked the wrong question**, caught by a real bundle before
+  release. It compared an orphan's subject against subjects already **in** the chain, which finds
+  nothing in the case that matters: when an imposter replaces the real intermediate, the real one is
+  absent, so its subject is not in the chain either. It now compares against the issuer names the
+  chain is **looking for**. An earlier draft also claimed to report "names match but signature
+  fails"; that branch is unreachable — `checkIssued` verifies cryptographically, measured against a
+  purpose-built imposter — and the claim was removed rather than left standing.
+
+- **A stale token figure in a runtime log line.** `describeSurface` told operators the `all` surface
+  costs "~86k tokens per tools/list" — a token claim in a repository whose stated rule is bytes-only
+  (it was bytes/4 wearing a token label), and stale besides: the payload is now 424,810 bytes, ~106k
+  under that same convention. Now `~415 KB`, measured.
+- **Transposed coverage figures in `AGENTS.md`** — 95.7% lines / 96.6% statements against an actual
+  96.6% lines / 95.5% statements. `vitest.config.mjs` carries a paragraph warning about this exact
+  confusion, added because a reviewer once read the threshold tuple as swapped; the row downstream of
+  that warning had them swapped for six releases. Both were found in the output of gates run for
+  other reasons.
+
+### Measured, and still declined
+
+The shell-free base image's trigger has still not fired: `chainguard/node:latest-slim` is Node
+**v25.9.0** against the shipped v26.8.1, and `node26-slim` / `26-slim` do not exist. Opt-in feature
+adoption remains permanently deferred. Ecosystem unchanged: SDK `2.0.0`, conformance
+`0.2.0-alpha.11`, `server.json` schema 2025-12-11, no MCP specification revision after 2026-07-28.
+v4.0.0 stays unscheduled.
+
 ## [3.7.0] - 2026-09-04
 
 **A gate that checked four of eleven files.** v3.2.0 said it fixed the operation-count discrepancy;

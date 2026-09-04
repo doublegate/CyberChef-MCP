@@ -213,6 +213,82 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
+  # arm64, on real hardware, for the first time.
+  #
+  # "arm64 performance is still unmeasured" has been on this project's carried-forward list since
+  # v3.3.0, with the stated blocker "real numbers need arm64 HARDWARE". That blocker was already
+  # gone: `mcp-docker-build.yml` has a `build-arm64` job on `ubuntu-24.04-arm`, a GitHub-hosted
+  # runner free for public repositories, succeeding on every run. The note was carried five times
+  # without being checked against the workflow beside it.
+  #
+  # ON THE RUNNER LABEL: `ubuntu-24.04-arm` is GitHub-hosted, and Actions has no syntax for
+  # "hosted only" -- a self-hosted runner registered with the same label could claim this job, which
+  # runs pull-request code. Verified for this repository: the one self-hosted runner
+  # (`AB-i9-cyberchef-mcp`) carries `self-hosted, Linux, X64, agy` and is x64, so it cannot match.
+  # The same reasoning and the same warning as `mcp-docker-build.yml`; keep it that way.
+  #
+  # REPORTS, DOES NOT GATE. There is no arm64 noise floor yet, and this project has set three
+  # thresholds from a first plausible measurement and moved two of them within days. The numbers
+  # accumulate first. It also does not compare arm64 against amd64: those are different machines,
+  # and the whole v3.4.0-v3.6.0 line of work was about not doing that.
+  benchmark-arm64:
+    name: Benchmark on arm64
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js 26
+        uses: actions/setup-node@v7
+        with:
+          node-version: '26'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate OperationConfig
+        run: npx grunt configTests
+
+      - name: Report the machine this measured
+        run: |
+          {
+            echo "arch:   $(uname -m)"
+            echo "kernel: $(uname -r)"
+            echo "cpus:   $(nproc)"
+            echo "model:  $(grep -m1 -E 'model name|Model' /proc/cpuinfo | cut -d: -f2- | xargs || echo unknown)"
+            echo "memory: $(awk '/MemTotal/ {printf "%.1f GB", $2/1048576}' /proc/meminfo)"
+            echo "node:   $(node --version)"
+          } | tee arm64-machine.txt
+          # A benchmark whose machine is unrecorded is a number nobody can reuse. This project
+          # learned that from a baseline that claimed to be from a developer machine when it was
+          # captured on a runner.
+          if [ "$(uname -m)" != "aarch64" ]; then
+            echo "::error::This job is not running on arm64 ($(uname -m)). A self-hosted runner may"
+            echo "::error::have claimed the ubuntu-24.04-arm label -- see the note above."
+            exit 1
+          fi
+
+      - name: Run benchmarks
+        run: |
+          set -o pipefail
+          NO_COLOR=1 FORCE_COLOR=0 npm run benchmark 2>&1 | tee arm64-benchmark.txt
+
+      - name: Upload the arm64 results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: arm64-benchmark
+          path: |
+            arm64-benchmark.txt
+            arm64-machine.txt
+          retention-days: 7
+          if-no-files-found: warn
+
   # Separate job, and the separation is the point. The job above installs the PR's dependencies
   # (`npm ci`, with lifecycle scripts) and executes the PR's own code. Holding a write-scoped
   # token in that job would put it within reach of anything that code or its dependency tree
@@ -222,7 +298,7 @@ jobs:
   # file and posts it. That is the only place `pull-requests: write` exists.
   report:
     name: Report benchmark results
-    needs: benchmark
+    needs: [benchmark, benchmark-arm64]
     if: always() && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
@@ -246,6 +322,14 @@ jobs:
           name: same-host-comparison
         continue-on-error: true
 
+      # arm64 numbers, so the long-carried "unmeasured" note has somewhere to be read. Optional in
+      # the same way: a failed arm64 job must not cost the amd64 report.
+      - name: Download the arm64 results
+        uses: actions/download-artifact@v8
+        with:
+          name: arm64-benchmark
+        continue-on-error: true
+
       # Reporting must never fail the workflow. Before this split, a 403 in the comment step
       # turned a fully green benchmark run into a red check and blocked unrelated PRs.
       - name: Comment benchmark results on PR
@@ -265,6 +349,7 @@ jobs:
             // that a thing had happened.
             let output;
             let sameHost = null;
+            let arm64 = null;
             try {
               const fs = require("fs");
               output = fs.readFileSync("benchmark-output.txt", "utf8").trim();
@@ -273,6 +358,13 @@ jobs:
               try {
                 sameHost = fs.readFileSync("same-host-comparison.txt", "utf8").trim();
               } catch { sameHost = null; }
+              try {
+                // Machine first: an arm64 number without the machine it came from is not reusable,
+                // and this project has a baseline in its history that claimed the wrong one.
+                const machine = fs.readFileSync("arm64-machine.txt", "utf8").trim();
+                const bench = fs.readFileSync("arm64-benchmark.txt", "utf8").trim();
+                arm64 = `${machine}\n\n${bench}`;
+              } catch { arm64 = null; }
             } catch (err) {
               // Logged, not swallowed: if the artifact is missing, the reason belongs in the
               // job log rather than being replaced silently by a placeholder.
@@ -327,6 +419,18 @@ jobs:
                 "",
               ]),
               ...(truncated ? ["_Output truncated to the last 60,000 characters._", ""] : []),
+              // arm64 is collapsed: it is a reference measurement rather than a pass/fail signal,
+              // and the same-host block above is what a reviewer acts on.
+              ...(arm64 ? [
+                "<details><summary>arm64 throughput (reference, does not gate)</summary>",
+                "",
+                "```text",
+                arm64.length > 20000 ? arm64.slice(0, 20000) : arm64,
+                "```",
+                "",
+                "</details>",
+                "",
+              ] : []),
               "<details><summary>Full benchmark output</summary>",
               "",
               fence,
