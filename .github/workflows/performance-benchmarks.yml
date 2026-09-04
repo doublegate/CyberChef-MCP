@@ -88,7 +88,16 @@ jobs:
       - name: Check for regressions against the committed baseline
         run: |
           set -o pipefail
-          npm run benchmark:json > benchmark-results.json
+          # `node` directly, NOT `npm run benchmark:json > file`. npm's own banner --
+          # "> cyberchef-mcp@3.2.0 benchmark:json" -- landed in the redirect on this runner and the
+          # JSON failed to parse, on this gate's very first real CI run. It read as a benchmark
+          # failure and was a defect in the gate's wiring.
+          #
+          # The banner goes to STDERR locally and reached STDOUT here, which is the actual lesson:
+          # the stream depends on the environment, so a gate that pipes through `npm run` has a
+          # dependency it cannot see. Calling the script directly removes it rather than papering
+          # over it with `--silent`.
+          node benchmarks/operation-benchmarks.mjs --json > benchmark-results.json
           node benchmarks/check-regression.mjs benchmark-results.json
 
       # Hand the output to the reporting job as an artifact. `if: always()` so a FAILING
