@@ -67,9 +67,17 @@ implementation.
 ### Averaging is the remaining option, and it is expensive in the wrong currency
 
 Variance can be beaten down with trials. Scoring is per-task pass/fail, so the quantity being
-estimated is a proportion, and its standard error falls as `1/sqrt(n)`. To resolve a 5-percentage-
-point regression on a 100-task set with any confidence needs repeated trials per task — call it
-five, conservatively.
+estimated is a proportion, and its standard error falls as `1/sqrt(n)`.
+
+The trial count below is an order-of-magnitude figure, and its assumptions are worth stating rather
+than leaving implicit — a number presented without them is exactly the kind of unsupported claim
+this document exists to avoid. Assume a suite-level pass rate near 0.5 (where a proportion's
+variance is greatest, so this is the pessimistic case), independent trials, and a target of
+detecting a 5-percentage-point shift. The standard error of a proportion over `N` total trials is
+`sqrt(p(1-p)/N)`; at `p = 0.5` that is `0.5/sqrt(N)`, so distinguishing a 5-point shift at roughly
+two standard errors needs `N` in the high hundreds — five trials across 100 tasks, or 500
+observations per side. Fewer tasks, or a pass rate further from 0.5, moves the figure; nothing here
+turns on the exact value, and the argument below holds for any `N` large enough to be meaningful.
 
 ```text
 100 tasks  x  5 trials  x  2 sides (base and head)  =  1,000 model invocations per pull request

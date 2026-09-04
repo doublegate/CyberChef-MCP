@@ -25,8 +25,13 @@ Details in [the release notes](docs/releases/v3.8.0.md) and
 - **`benchmark-arm64`**, a second benchmark job on `ubuntu-24.04-arm`. It **reports and does not
   gate**: there is no arm64 noise floor yet, and this project has set three thresholds from a first
   plausible measurement and moved two of them within days. It records the machine it measured, and
-  asserts `uname -m` is `aarch64` — Actions has no syntax for "hosted runner only", so a self-hosted
-  runner registered with the same label could otherwise claim a job that runs pull-request code.
+  asserts `uname -m` is `aarch64` **as its first step, before any repository code runs** — it was
+  originally the fifth, after `npm ci` and `npx grunt` had already executed pull-request code, which
+  makes a guard decoration. What it establishes is precisely that the job ran on aarch64; it does
+  **not** establish the runner is GitHub-hosted, and Actions offers no syntax for that. The real
+  controls are that this repository's only self-hosted runner is x64 (verified against the API) and
+  that `pull_request` gives fork code no secrets and a read-only token; the assertion is the cheap
+  tripwire for the first of those changing unnoticed.
 - **[`docs/planning/v3/task-level-scoring.md`](docs/planning/v3/task-level-scoring.md)** — the design
   the v3.3.0 charter required in writing before any code. It **concludes against building the
   harness**: the same-host construction that rescued the benchmark gate does not transfer, because
