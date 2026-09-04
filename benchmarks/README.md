@@ -46,8 +46,23 @@ With names disambiguated and the cold run discarded, four runs give a worst per-
 is a factor, not a few percent, and a gate tuned to a few percent on a shared CI runner is a gate
 that gets disabled within two releases.
 
-**CI variance is not characterised.** Every figure is one machine. Revisit once CI has produced
-enough runs to say something about its own spread.
+### What the gate does not catch
+
+**The baseline is machine-relative.** On its first green CI run the GitHub runner measured
+**27–99% faster** than the machine the baseline came from — a machine-class difference, not noise.
+So:
+
+> a regression smaller than the cross-machine offset will not be caught on CI.
+
+If the runner is ~30% faster, code that got 25% slower still measures faster than baseline and
+passes. The gate catches **factor-level** regressions on CI, and tolerance-level ones only on the
+machine the baseline came from. That is still strictly better than a check that said in its own
+output it could not fail, but "gates" and "gates against what" are different claims.
+
+The fix is a baseline captured on the runner, compared like against like — carried forward.
+
+**CI variance is otherwise uncharacterised.** One green run is not a characterisation; it does show
+the tolerance produced no false failure.
 
 ### Moving the baseline
 

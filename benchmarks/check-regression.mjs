@@ -27,8 +27,24 @@
  * WHAT IT DELIBERATELY DOES NOT DO
  * --------------------------------
  * It does not fail on an IMPROVEMENT, and it does not silently accept one either: a task faster
- * than baseline by more than the tolerance is reported, because the usual cause is that the
- * benchmark stopped doing the work rather than that the code got faster.
+ * than baseline by more than the tolerance is reported, because one cause is that the benchmark
+ * stopped doing the work rather than that the code got faster.
+ *
+ * THE BASELINE IS MACHINE-RELATIVE, AND THIS LIMITS WHAT THE GATE CATCHES
+ * ----------------------------------------------------------------------
+ * Measured on this gate's first green CI run: the GitHub runner is 27-99% FASTER than the machine
+ * the baseline was captured on, across most tasks. That is a machine-class difference, not noise,
+ * and it has a consequence worth stating rather than discovering later:
+ *
+ *     a regression smaller than the cross-machine offset will not be caught on CI.
+ *
+ * If CI runs ~30% faster than the baseline machine, code that got 25% slower still measures faster
+ * than baseline and passes. The gate therefore catches FACTOR-level regressions on CI and
+ * tolerance-level ones only where it is run on the machine the baseline came from.
+ *
+ * The fix is a baseline captured on the runner, compared like against like. That is a follow-up
+ * with its own measurement, not something to bodge in here -- and until it exists, this comment is
+ * the honest description of the gate's reach. See v3.2.0 findings log F-10.
  *
  * @author DoubleGate
  * @license GPL-3.0-or-later
@@ -86,8 +102,13 @@ process.stdout.write(
     `  compared: ${Object.keys(baseline.tasks).length} tasks\n\n`);
 
 if (improvements.length > 0) {
-    process.stdout.write("Faster than baseline by more than the tolerance -- confirm the\n" +
-        "benchmark still does the work before updating the baseline:\n");
+    process.stdout.write(
+        `Faster than baseline by more than the tolerance (${improvements.length} of ` +
+        `${Object.keys(baseline.tasks).length}). Two causes, and they look identical here:\n` +
+        "  - a faster MACHINE than the one the baseline came from, which is the usual answer on\n" +
+        "    CI and is not a finding;\n" +
+        "  - a benchmark that stopped doing the work, which is.\n" +
+        "Check the second before updating the baseline.\n");
     for (const r of improvements) process.stdout.write(`${fmt(r)}\n`);
     process.stdout.write("\n");
 }

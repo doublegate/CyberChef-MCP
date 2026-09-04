@@ -157,5 +157,6 @@
       "throughputMedian": 7876.2,
       "observedSpreadPct": 4.6
     }
-  }
+  },
+  "_machine": "Captured on one developer machine. The GitHub runner measured 27-99% FASTER across most tasks on 2026-09-04, which is a machine-class difference rather than noise -- so a regression smaller than that offset will NOT be caught on CI. The gate catches factor-level regressions there, and tolerance-level ones only on the machine this was captured on. A runner-captured baseline is the fix; see v3.2.0 findings log F-10."
 }
