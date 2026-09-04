@@ -275,6 +275,27 @@ describe("in-process handlers: bake and search", () => {
         }
     });
 
+    it("answers a search that matches nothing, in the same shape", async () => {
+        // `help()` returns null rather than an empty array when nothing matches, and for an empty
+        // query too. The old path serialised that through, so a caller got the four characters
+        // `null`; the first version of the summariser would have thrown on it. Caught in review,
+        // and it existed because no test had ever searched for something absent.
+        const { client, close } = await connected();
+        try {
+            for (const query of ["zzzz-no-such-operation", ""]) {
+                const results = await callJson(client, "cyberchef_search", { query });
+
+                expect(results.matches).toBe(0);
+                expect(results.operations).toEqual([]);
+                // A search that found nothing is a successful search, not an error, and it says
+                // what to do next rather than leaving the model to guess.
+                expect(results.next).toMatch(/cyberchef_categories/);
+            }
+        } finally {
+            await close();
+        }
+    });
+
     it("returns the full entries when the caller asks for them", async () => {
         // The escape hatch, so this is not a silent shape change for anything already parsing the
         // old payload. Opt-in rather than default, because the default is what every model pays.

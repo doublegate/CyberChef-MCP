@@ -47,7 +47,9 @@ measured against is [`docs/internal/measurements/v3.1.0-baseline.md`](docs/inter
 
 ### Changed
 
-- **`cyberchef_search` summarises by default: 27,060 -> 3,087 bytes for "base64" (-88.6%).** It
+- **`cyberchef_search` summarises by default: 27,060 -> 3,087 bytes for "base64" (-88.6%).**
+  **This is a response-contract change**: a caller parsing the previous default array breaks until
+  it adapts or passes `detailed: true`, and nothing sends that flag automatically. It
   returned the full `OperationConfig` entry per match, which is more than
   `cyberchef_describe_operation` returns for the same operations -- the discovery tool paying the
   detail tool's cost for operations the caller had not chosen. `detailed: true` restores the

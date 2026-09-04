@@ -176,15 +176,26 @@ export function listOperations(category) {
  * @returns {Object} `{query, matches, operations, next}`.
  */
 export function summariseSearch(query, results) {
+    // `help()` returns **null**, not an empty array, when nothing matches -- and for an empty or
+    // absent query too. The old code path serialised that straight through, so a caller searching
+    // for a term with no hits received the four characters `null`. Passing it to `.length` here
+    // would have turned that into a server error instead, which is worse; caught in review before
+    // it shipped, and it existed because no test searched for something absent.
+    //
+    // A search that found nothing is a successful search. It answers in the same shape as one that
+    // found something, so a caller parses one path rather than three.
+    const found = Array.isArray(results) ? results : [];
     return {
         query,
-        matches: results.length,
-        operations: results.map(op => ({
+        matches: found.length,
+        operations: found.map(op => ({
             operation: op.name,
             summary: summarise(op.description, 120),
             args: (op.args || []).length
         })),
-        next: "Use cyberchef_describe_operation for argument schemas, then cyberchef_bake to run."
+        next: found.length ?
+            "Use cyberchef_describe_operation for argument schemas, then cyberchef_bake to run." :
+            "No match. Try cyberchef_categories to browse, or a shorter or more general keyword."
     };
 }
 

@@ -110,7 +110,7 @@ The [analysis tools](Analysis-Tools) carry their own bounds, because their cost 
 
 ## Container posture
 
-Distroless Chainguard base, digest-pinned. Runs as **UID 65532 (`nonroot`)**. No shell. Provenance
+Chainguard Wolfi base, digest-pinned. Runs as **UID 65532 (`nonroot`)**. No package manager -- `apk`, `wget` and `curl` are absent -- but a **BusyBox shell and `npm` ARE present**. This section said "No shell" until v3.2.0; measuring the published image showed otherwise, so size a container compromise accordingly. Provenance
 and SBOM attestations are published with every release, and Trivy scans run on every push and
 weekly.
 

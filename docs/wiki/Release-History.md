@@ -82,7 +82,7 @@ labels that anyone could have used to explode a shared Prometheus.
 
 ## v2.6.0 — deployable, and seven times faster to start
 
-Cold start ~1300 ms → **~185 ms**. 88% of it was one import pulling in all 505 operation
+Cold start ~1300 ms → **~185 ms**. 88% of it was one import pulling in all 504 operation
 implementations before answering anything, on a path only three tools need. A background warm-up was
 tried, measured, and removed — module loading blocks the event loop, so "in the background" is not
 something it can be.

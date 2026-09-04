@@ -64,7 +64,7 @@ async function withTimeout(fn, timeoutMs = 30000) {
     return Promise.race([
         fn(),
         new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('Operation timeout exceeded')), timeoutMs)
+            setTimeout(() => reject(new Error("Operation timeout exceeded")), timeoutMs)
         )
     ]);
 }
@@ -131,7 +131,7 @@ function createCompressionBenchmark(opName, args = []) {
  */
 async function runEncodingBenchmarks() {
     if (!AS_JSON) {
-    console.log("\n=== Encoding Operations ===");
+        console.log("\n=== Encoding Operations ===");
     }
 
     const base64Bench = createOperationBenchmark("To Base64");
@@ -146,7 +146,7 @@ async function runEncodingBenchmarks() {
  */
 async function runHashingBenchmarks() {
     if (!AS_JSON) {
-    console.log("\n=== Hashing Operations ===");
+        console.log("\n=== Hashing Operations ===");
     }
 
     const md5Bench = createOperationBenchmark("MD5");
@@ -165,7 +165,7 @@ async function runHashingBenchmarks() {
  */
 async function runCompressionBenchmarks() {
     if (!AS_JSON) {
-    console.log("\n=== Compression Operations ===");
+        console.log("\n=== Compression Operations ===");
         console.log("(Using smaller test sizes for compression operations)");
     }
 
@@ -179,7 +179,7 @@ async function runCompressionBenchmarks() {
     try {
         await runAndCollect("compression", gzipBench);
     } catch (error) {
-        if (error.message.includes('timeout')) {
+        if (error.message.includes("timeout")) {
             console.error("Gzip benchmark exceeded timeout - skipping");
         } else {
             throw error;
@@ -192,7 +192,7 @@ async function runCompressionBenchmarks() {
  */
 async function runCryptoBenchmarks() {
     if (!AS_JSON) {
-    console.log("\n=== Cryptographic Operations ===");
+        console.log("\n=== Cryptographic Operations ===");
     }
 
     const aesBench = createOperationBenchmark("AES Encrypt", [
@@ -211,7 +211,7 @@ async function runCryptoBenchmarks() {
  */
 async function runTextBenchmarks() {
     if (!AS_JSON) {
-    console.log("\n=== Text Operations ===");
+        console.log("\n=== Text Operations ===");
     }
 
     const regexBench = createOperationBenchmark("Regular expression", [
@@ -233,7 +233,7 @@ async function runTextBenchmarks() {
  */
 async function runAnalysisBenchmarks() {
     if (!AS_JSON) {
-    console.log("\n=== Analysis Operations ===");
+        console.log("\n=== Analysis Operations ===");
     }
 
     const entropyBench = createOperationBenchmark("Entropy", ["Shannon scale"]);

@@ -52,7 +52,7 @@ The server exposes CyberChef operations as MCP tools:
 *   **Observable** (v2.7.0): a dependency-free Prometheus endpoint at `/metrics` (20 metric families, **off by default** — unlike the health probes it reports which tools are used, how often and how large the inputs are, which is a reconnaissance surface), OpenTelemetry spans following the MCP semantic conventions, and `trace_id`/`span_id` on every log line. It adds **one** package: the OTel *API*, not the SDK — measured at 1 package / 2.6 MB / +9 ms against the SDK's 71 packages / 50 MB / +100 ms, which would have handed back more than half of v2.6.0's startup work on every stdio launch. You supply the SDK, so every OTLP backend works rather than a chosen few. Ships a [Grafana dashboard, alert rules and a runnable Prometheus stack](deploy/grafana/) — all executed against a live server rather than reviewed. Tool arguments are **never** recorded: the conventions mark them Opt-In, and for this server the arguments *are* the sensitive material.
 *   **OAuth 2.1 authentication on HTTP** (v2.5.0): the server acts as an OAuth 2.1 **Resource Server** — RFC 9728 Protected Resource Metadata, JWKS-based bearer validation, and RFC 8707 audience binding, which is the check that stops a token minted for another service being replayed here. Scope-based RBAC with three scopes (`cyberchef:read`, `cyberchef:write`, `cyberchef:network`), where the scope a tool needs is *derived from its annotations* rather than a table that goes stale. Audit logging for who called what. **Off unless `CYBERCHEF_AUTH_ISSUER` is set**, and deliberately not applied to stdio — the MCP specification says stdio SHOULD NOT use OAuth, because a bearer token protects nothing when the client already owns the process.
 *   **Multi-tenancy** (v2.5.0): the operation cache, recipe store, concurrency pool and audit trail are isolated per tenant, with the tenant read from a claim on an already-verified token (`CYBERCHEF_TENANT_CLAIM`) — never from a header the caller controls. Without it, any caller on a shared HTTP deployment could list, modify and delete any other caller's saved recipes, and `clear()` destroyed every tenant's at once. **Off unless configured**, and configuring it without `CYBERCHEF_AUTH_ISSUER` is a startup error rather than a silent downgrade.
-*   **Starts in ~185 ms** (v2.6.0): it used to take ~1.3 seconds, of which ~1.15 s was importing all 505 operation implementations before answering anything — paid on every launch, on stdio, which is how every editor starts the server. The 505-operation *barrel* is now loaded only by the three tools that need it (`cyberchef_search`, batch search, and saved-recipe execution). `tools/list` is built from metadata, and an ordinary operation call loads just the one operation it runs — verified: `cyberchef_bake` completes without the barrel being loaded at all. A background warm-up was tried, measured, and removed: module loading blocks the event loop, so it just moved the cost in front of the first request.
+*   **Starts in ~185 ms** (v2.6.0): it used to take ~1.3 seconds, of which ~1.15 s was importing all 504 operation implementations before answering anything — paid on every launch, on stdio, which is how every editor starts the server. The 504-operation *barrel* is now loaded only by the three tools that need it (`cyberchef_search`, batch search, and saved-recipe execution). `tools/list` is built from metadata, and an ordinary operation call loads just the one operation it runs — verified: `cyberchef_bake` completes without the barrel being loaded at all. A background warm-up was tried, measured, and removed: module loading blocks the event loop, so it just moved the cost in front of the first request.
 *   **Deployable as a service** (v2.6.0): a [Helm chart and Compose file](deploy/) with liveness/readiness/startup probes and a drain that loses no requests during a rolling update. Liveness deliberately stays healthy while draining — a liveness failure there gets the pod killed mid-drain. The chart *refuses* to render configurations the server would reject at startup, so they fail at `helm template` rather than as a crashloop.
 *   **Bounded calls to the authorization server** (v2.6.0): JWKS discovery had no timeout (Node's `fetch` has none by default) and cached failures not at all, so an issuer outage turned every request into two outbound ones that could hang until the OS gave up. Now a 5 s deadline and a circuit breaker: 20 verifications against a down issuer went from 40 outbound attempts to 10.
 *   **Four analysis tools that are not operations** (v2.4.0): `cyberchef_xor_key_length` (repeating-key XOR length by index of coincidence), `cyberchef_cyclic_pattern` (De Bruijn patterns and overflow offsets, byte-compatible with pwntools' `cyclic`), `cyberchef_hash_identify` (hash format with the hashcat mode and John format name) and `cyberchef_rsa_attack` (Fermat, shared factors, Wiener and unpadded small-`e`). An operation is a pure `run(input, args)` over one input and cannot express an analysis; `cyberchef_bake` cannot either, because a recipe is a pipeline, not a loop. Exposed at every tool surface. There is deliberately **no plugin loader** — `node:vm` is not a security boundary, and that was measured rather than assumed ([ADR 0002](docs/adr/0002-tool-registry-is-not-a-plugin-loader.md)).
@@ -156,7 +156,7 @@ docker run -i --rm cyberchef-mcp
 
 For environments without direct GHCR access, download the pre-built Docker image tarball from the [latest release](https://github.com/doublegate/CyberChef-MCP/releases/latest):
 
-1.  **Download the tarball** (approximately 196 MB compressed; measured, not estimated):
+1.  **Download the tarball** (**141 MB** compressed; measured against the published v3.1.0 asset, not estimated):
     ```bash
     # Download from GitHub Releases
     wget https://github.com/doublegate/CyberChef-MCP/releases/download/v3.2.0/cyberchef-mcp-v3.2.0-docker-image.tar.gz
@@ -508,12 +508,12 @@ This project implements comprehensive security hardening with continuous improve
     *   **Configurable Thresholds**: Streaming chunk size and progress interval
 
 ### Security Hardening (v1.4.6)
-*   **Chainguard Distroless Base Image**: Enterprise-grade container security
+*   **Chainguard Wolfi Base Image**: minimal, rebuilt daily, zero-CVE baseline
     *   **Zero-CVE Baseline**: Daily security updates with 7-day SLA for critical patches
     *   **70% Smaller Attack Surface**: Minimal OS footprint compared to traditional Alpine/Debian images
     *   **Non-Root Execution**: Runs as UID 65532 (nonroot user), with no package manager in the image
     *   **SLSA Build Level 3 Provenance**: Verifiable supply chain integrity
-    *   **Multi-stage Build**: `-dev` variant for compilation, distroless runtime for production
+    *   **Multi-stage Build**: `-dev` variant for compilation, the slim runtime variant for production
 *   **Read-Only Filesystem Support**: Production-ready immutable deployments
     *   Supports `docker run --read-only` with tmpfs mount for /tmp
     *   Compliance-ready for PCI-DSS, SOC 2, FedRAMP requirements
@@ -561,10 +561,10 @@ This project implements comprehensive security hardening with continuous improve
 *   **Verification**: Use `docker scout quickview` and `docker sbom` commands to inspect attestations locally
 
 ### Container Security (v1.4.5+)
-*   **Chainguard Distroless**: Zero-CVE baseline with minimal attack surface
-*   **Non-Root Execution**: Container runs as UID 65532 (nonroot user in distroless)
+*   **Chainguard Wolfi**: Zero-CVE baseline, rebuilt daily
+*   **Non-Root Execution**: Container runs as UID 65532 (`nonroot`)
 *   **Read-Only Filesystem**: Supports `--read-only` flag for immutable deployments
-*   **Minimal Attack Surface**: No shell, no package manager, only runtime dependencies
+*   **Minimal Attack Surface**: no package manager (`apk`, `wget` and `curl` are absent) and production dependencies only. **A BusyBox shell and `npm` ARE present** -- this line said "no shell" until v3.2.0, when measuring the published image showed otherwise. Size a container compromise accordingly.
 *   **Health Checks**: Built-in container health monitoring
 
 ### Cryptographic Hardening (v1.2.5)
@@ -581,7 +581,7 @@ This project implements comprehensive security hardening with continuous improve
 
 ### Secure Deployment
 ```bash
-# Recommended: Run with maximum security options (Chainguard distroless)
+# Recommended: Run with maximum security options
 docker run -i --rm \
   --read-only \
   --tmpfs /tmp:rw,noexec,nosuid,size=100m \
@@ -589,7 +589,7 @@ docker run -i --rm \
   --security-opt=no-new-privileges \
   cyberchef-mcp
 
-# Note: Chainguard distroless already runs as non-root (UID 65532)
+# Note: the image already runs as non-root (UID 65532)
 # --read-only requires tmpfs mount for /tmp directory
 ```
 

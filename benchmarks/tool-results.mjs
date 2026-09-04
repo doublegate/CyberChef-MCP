@@ -45,21 +45,21 @@ const LARGE = "A".repeat(64 * 1024);
 
 const CASES = [
     ["short transform", "cyberchef_bake",
-        { input: SHORT, recipe: [{ op: "To Base64" }] }],
+     { input: SHORT, recipe: [{ op: "To Base64" }] }],
     ["large transform (64 KB in)", "cyberchef_bake",
-        { input: LARGE, recipe: [{ op: "To Base64" }] }],
+     { input: LARGE, recipe: [{ op: "To Base64" }] }],
     ["analysis", "cyberchef_bake",
-        { input: SHORT, recipe: [{ op: "Entropy", args: ["Shannon scale"] }] }],
+     { input: SHORT, recipe: [{ op: "Entropy", args: ["Shannon scale"] }] }],
     ["magic (unknown data)", "cyberchef_magic",
-        { input: "SGVsbG8sIHdvcmxk" }],
+     { input: "SGVsbG8sIHdvcmxk" }],
     ["category index", "cyberchef_categories", {}],
     ["list one category", "cyberchef_list_operations", { category: "Hashing" }],
     ["describe one operation", "cyberchef_describe_operation", { operations: "AES Encrypt" }],
     ["describe five operations", "cyberchef_describe_operation",
-        { operations: ["AES Encrypt", "Gzip", "To Base64", "MD5", "Entropy"] }],
+     { operations: ["AES Encrypt", "Gzip", "To Base64", "MD5", "Entropy"] }],
     ["search", "cyberchef_search", { query: "base64" }],
     ["error: unknown operation", "cyberchef_bake",
-        { input: SHORT, recipe: [{ op: "Not A Real Operation" }] }],
+     { input: SHORT, recipe: [{ op: "Not A Real Operation" }] }],
     ["error: missing argument", "cyberchef_describe_operation", {}]
 ];
 

@@ -30,7 +30,7 @@ image:
   # A TAG IS NOT A DIGEST. GHCR tags are mutable, so the line above is a promise about which bytes
   # were pushed, not a guarantee about which bytes you get. Set this and it wins over `tag`:
   #
-  #   docker buildx imagetools inspect ghcr.io/doublegate/cyberchef-mcp_v3:3.1.0 \
+  #   docker buildx imagetools inspect ghcr.io/doublegate/cyberchef-mcp_v3:3.2.0 \
   #     --format '{{.Manifest.Digest}}'
   #   digest: "sha256:..."
   #

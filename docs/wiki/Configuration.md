@@ -198,7 +198,7 @@ Images are published for `linux/amd64` and `linux/arm64` — the latter covering
 Graviton and Raspberry Pi 4/5. `docker pull` resolves the right one; there is nothing to set.
 
 `linux/arm/v7` is **not** published: the Chainguard base image does not exist for it, and changing
-base image would mean giving up the distroless runtime, digest pinning and non-root default.
+base image would mean giving up the hardened runtime, digest pinning and non-root default.
 
 ## Observability (v2.7.0)
 

@@ -51,6 +51,7 @@
  */
 
 import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
@@ -61,11 +62,19 @@ const input = process.argv[2];
 if (!input) {
     process.stderr.write(
         "usage: node benchmarks/check-regression.mjs <results.json>\n" +
-        "  produce results with: npm run benchmark -- --json > results.json\n");
+        "       node benchmarks/check-regression.mjs --run   (runs the benchmark itself)\n");
     process.exit(2);
 }
 
-const run = JSON.parse(readFileSync(input, "utf8"));
+// `--run` executes the benchmark and keeps the JSON in memory. The npm script used to redirect
+// into a fixed path under /tmp, which two concurrent runs would fight over -- and the redirect
+// was itself the thing that broke this gate's first CI run, by capturing npm's banner. Removing
+// the shell from between the measurement and the comparison removes both.
+const run = input === "--run" ?
+    JSON.parse(execFileSync(
+        process.execPath, [resolve(HERE, "operation-benchmarks.mjs"), "--json"],
+        { encoding: "utf8", maxBuffer: 32 * 1024 * 1024, stdio: ["ignore", "pipe", "inherit"] })) :
+    JSON.parse(readFileSync(input, "utf8"));
 const observed = new Map(run.results.map(r => [r.task, r]));
 const tolerance = baseline.tolerancePct / 100;
 

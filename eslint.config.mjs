@@ -140,7 +140,15 @@ export default [
         // A command-line tool's entire output IS the console. `no-console` exists to stop a
         // SERVER writing to stdout -- which for an MCP stdio server would corrupt the JSON-RPC
         // stream, and did, right up to v2.1.0 -- but a CLI has no other channel.
-        files: ["src/node/cli/**/*", "scripts/**/*.mjs"],
+        // `benchmarks/**` and `conformance/**` joined this list in v3.2.0, along with
+        // `scripts/**/*.js` -- and the reason they were missing is the more useful half. The
+        // grunt lint task globs `src/node/**` and `tests/**` only, so none of those three
+        // directories was linted AT ALL: `npm run lint` went green over a file with 22 errors in
+        // it. Adding the exemption here is not enough on its own; see the Gruntfile.
+        files: [
+            "src/node/cli/**/*", "scripts/**/*.{js,mjs}",
+            "benchmarks/**/*.mjs", "conformance/**/*.mjs"
+        ],
         rules: {
             "no-console": "off"
         }

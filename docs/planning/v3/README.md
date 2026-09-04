@@ -6,7 +6,7 @@
 | `RE-MEASURE.md` | **Mandatory** before any charter becomes a release |
 | `charters/` | One page per candidate release: intent, candidate scope, kill criteria |
 
-## Status, 2026-09-03
+## Status, 2026-09-04
 
 | Charter | State |
 |---|---|

@@ -36,6 +36,8 @@ const median = xs => {
     return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 };
 
+const existingBaseline = JSON.parse(readFileSync(OUT, "utf8"));
+
 const runs = [];
 for (let i = 0; i <= KEEP; i++) {
     process.stderr.write(`run ${i + 1}/${KEEP + 1}${i === 0 ? " (discarded: cold)" : ""}\n`);
@@ -53,6 +55,22 @@ for (const run of runs) {
     }
 }
 
+// A task in the CURRENT baseline that no retained run produced would silently disappear from the
+// gate -- and `check-regression.mjs` could then never report it missing, because it would no
+// longer be in the baseline to miss. `operation-benchmarks.mjs` catches a Gzip timeout and
+// completes without those results, so this is reachable rather than theoretical.
+const previous = Object.keys(existingBaseline.tasks ?? {});
+const dropped = previous.filter(t => !by.has(t));
+if (dropped.length > 0 && !process.argv.includes("--allow-dropped")) {
+    process.stderr.write(
+        `\nRefusing to write a baseline that drops ${dropped.length} task(s):\n` +
+        dropped.map(t => `  ${t}\n`).join("") +
+        "\nA run that produced no result for these -- a timeout, a rename, a deletion -- would\n" +
+        "quietly shrink what the gate protects. Re-run, or pass --allow-dropped if the removal\n" +
+        "is intended, and say so in the commit message.\n");
+    process.exit(1);
+}
+
 const tasks = {};
 const spreads = [];
 for (const task of [...by.keys()].sort()) {
@@ -68,7 +86,7 @@ for (const task of [...by.keys()].sort()) {
 
 const worst = Math.max(...spreads);
 const mid = median(spreads);
-const existing = JSON.parse(readFileSync(OUT, "utf8"));
+const existing = existingBaseline;
 
 writeFileSync(OUT, `${JSON.stringify({
     ...existing,

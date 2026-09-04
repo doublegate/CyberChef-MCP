@@ -267,6 +267,16 @@ module.exports = function (grunt) {
             core: ["src/core/**/*.{js,mjs}", "!src/core/vendor/**/*", "!src/core/operations/legacy/**/*"],
             node: ["src/node/**/*.{js,mjs}", "!src/node/index.mjs"],
             tests: ["tests/**/*.{js,mjs}"],
+            // Added in v3.2.0. These three directories were linted by NOTHING: `npm run lint`
+            // globs only the two lists above, so a file in `benchmarks/` could carry 22 eslint
+            // errors and the gate stayed green -- which it did, until review pointed at the
+            // indentation and running eslint directly on the file showed the rest.
+            //
+            // A lint gate that does not cover a directory is not a lint gate for that directory,
+            // and the failure is silent in exactly the way a missing test is not.
+            tooling: [
+                "benchmarks/**/*.mjs", "conformance/**/*.mjs", "scripts/**/*.{js,mjs}"
+            ],
         },
         webpack: {
             options: webpackConfig,

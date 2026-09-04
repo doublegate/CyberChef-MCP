@@ -66,7 +66,13 @@ const expectedMajor = expected.split(".")[0];
 let operationCount = null;
 try {
     operationCount = Object.keys(JSON.parse(read("src/core/config/OperationConfig.json"))).length;
-} catch { /* not generated yet; see below */ }
+} catch (error) {
+    // ONLY a missing file means "not generated yet". Swallowing every error would let a
+    // malformed config -- a truncated write, a failed codegen -- silently disable all three
+    // count checks while the gate reported success, which is the failure this file exists to
+    // prevent one level up.
+    if (error.code !== "ENOENT") throw error;
+}
 
 /**
  * Every place the release version appears, and how to find it.
@@ -173,24 +179,24 @@ const LOCATIONS = [
             .map(m => ({ what: "Latest Release banner", value: m[1] }))
     },
     ...(operationCount === null ? [] : [
-        {
-            file: "deploy/helm/cyberchef-mcp/templates/prometheusrule.yaml",
-            find: text => [...text.matchAll(/loads all ([0-9]{3}) operations/g)]
-                .map((m, i) => ({ what: `operation count ${i + 1}`, value: m[1],
+        // One pattern per file rather than per phrasing. The first version of this matched three
+        // hand-written phrases and missed five more occurrences in the same files, which review
+        // found -- a check that covers some occurrences of a claim reads as covering the claim.
+        ...[
+            "deploy/helm/cyberchef-mcp/templates/prometheusrule.yaml",
+            "deploy/compose/docker-compose.yml",
+            "README.md",
+            "docs/wiki/Release-History.md"
+        ].map(file => ({
+            file,
+            // Anchored on phrasings that mean THE WHOLE CATALOGUE. A bare `NNN operation` matches
+            // "2,289 operation tests" and "100-operation" in an unrelated sentence, which is
+            // worse than under-matching: a check that fires on the wrong claim gets deleted.
+            find: text => [...text.matchAll(
+                /(?:all|loads|exposes|importing) ([0-9]{3})[- ]operation|\b([0-9]{3})-operation \*?barrel/g)]
+                .map((m, i) => ({ what: `operation count ${i + 1}`, value: m[1] ?? m[2],
                     compare: String(operationCount) }))
-        },
-        {
-            file: "README.md",
-            find: text => [...text.matchAll(/import of all ([0-9]{3}) operations/g)]
-                .map((m, i) => ({ what: `operation count ${i + 1}`, value: m[1],
-                    compare: String(operationCount) }))
-        },
-        {
-            file: "docs/wiki/Release-History.md",
-            find: text => [...text.matchAll(/440 \u2192 ([0-9]{3}) operations/g)]
-                .map((m, i) => ({ what: `operation count ${i + 1}`, value: m[1],
-                    compare: String(operationCount) }))
-        }
+        }))
     ]),
     {
         file: "README.md",
