@@ -78,6 +78,10 @@ reading the reference projects as code instead of as documentation. Details in
   `step_bytes` that would fit. Yields added to every remaining O(input) loop in `entropy_scan`,
   `corpus_diff` and `crib_drag`; the longest event-loop block at `crib_drag`'s maximum falls from
   about 4,000 ms to 301 ms.
+- **Three enum arrays were unbounded, one of them since v2.4.0.** The bounds test named four tools
+  by hand and kept passing as twelve more were added — the same shape as the gap it was written
+  for. It now walks every registry schema structurally, and found `corpus_diff.analyses`,
+  `rsa_attack.attacks` and `rsa_multi_key.attacks` accepting arrays of any length.
 - **A per-character decode was the largest single block of synchronous work in these tools.**
   `Uint8Array.from(value, ch => ch.charCodeAt(0) & 0xff)` measures 675 ms on 8 MB;
   `new Uint8Array(Buffer.from(value, "latin1"))` is byte-identical and takes 14 ms. Replaced in

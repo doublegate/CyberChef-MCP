@@ -351,7 +351,7 @@ export default {
             .describe(
                 "The keys to attack together. Two suffice for common_modulus and " +
                 "franklin_reiter; Håstad needs at least e; batch_gcd wants as many as you have."),
-        attacks: z.array(z.enum(["batch_gcd", "common_modulus", "hastad", "franklin_reiter"])).optional()
+        attacks: z.array(z.enum(["batch_gcd", "common_modulus", "hastad", "franklin_reiter"])).max(4).optional()
             .describe("Which attacks to try. All of the applicable ones by default."),
         "relation_a": z.string().max(64).default("1")
             .describe(

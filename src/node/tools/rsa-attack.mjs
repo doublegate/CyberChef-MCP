@@ -546,10 +546,13 @@ export default {
             .describe("Optional. Decrypted if the private key is recovered."),
         "other_modulus": z.string().max(MAX_OPERAND_CHARS).optional()
             .describe("A second modulus, to test for a shared prime factor. Breaks both keys if one exists."),
+        // `.max()` is not decoration: without it a caller can send a million-element array of
+        // enum values, and every one is parsed before the handler ever runs. The bound is the
+        // number of attacks there are, since asking for one twice is not asking for more.
         attacks: z.array(z.enum([
             "fermat", "common_factor", "wiener", "small_e",
             "small_factors", "pollard_rho", "pollard_pm1"
-        ])).optional()
+        ])).max(7).optional()
             .describe(
                 "Which attacks to try. All of them by default. `small_factors` is trial division " +
                 "and costs nothing; `pollard_rho` finds a short prime; `pollard_pm1` finds a prime " +

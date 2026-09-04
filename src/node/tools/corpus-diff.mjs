@@ -176,7 +176,7 @@ export default {
             .describe(
                 "Leading bytes to treat as the nonce or IV. 12 for GCM, 16 for a CBC IV, 8 for " +
                 "ChaCha20. 0 disables the check."),
-        analyses: z.array(z.enum(["fields", "ecb", "nonce_reuse"])).optional()
+        analyses: z.array(z.enum(["fields", "ecb", "nonce_reuse"])).max(3).optional()
             .describe("Which analyses to run. All of them by default.")
     }),
 

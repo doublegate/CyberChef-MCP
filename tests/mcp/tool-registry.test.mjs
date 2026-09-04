@@ -320,6 +320,46 @@ describe("input bounds: what stops a tool blocking the server", () => {
             .rejects.toThrow();
     });
 
+    it("bounds every string and array field of every registry tool, structurally", async () => {
+        // The four assertions above name four tools, which is how the gap they were written for
+        // comes back: the twelve tools added in v3.3.0 were not among them, and a fifth would not
+        // be either. This walks the schemas instead, so a new tool with an unbounded field fails
+        // here on the day it is added rather than on the day someone sends a gigabyte to it.
+        //
+        // An unbounded string is not a style question. Every one of these tools is superlinear in
+        // at least one input, and the server's general input ceiling is 100 MB.
+        const unbounded = [];
+        for (const tool of reg.list()) {
+            const shape = tool.inputSchema?.shape ?? {};
+            for (const [field, definition] of Object.entries(shape)) {
+                const json = z.toJSONSchema(z.object({ [field]: definition }), { io: "input" });
+                const property = json.properties?.[field] ?? {};
+                // Follow one level of wrapping: `.default()` and `.optional()` both nest.
+                const inner = property.anyOf?.find(entry => entry.type) ?? property;
+                if (inner.type === "string" && inner.maxLength === undefined && !inner.enum) {
+                    unbounded.push(`${tool.name}.${field} (string)`);
+                }
+                if (inner.type === "array") {
+                    if (inner.maxItems === undefined) unbounded.push(`${tool.name}.${field} (array length)`);
+                    const item = inner.items ?? {};
+                    if (item.type === "string" && item.maxLength === undefined && !item.enum) {
+                        unbounded.push(`${tool.name}.${field}[] (string)`);
+                    }
+                }
+            }
+        }
+        expect(unbounded).toEqual([]);
+    });
+
+    it("bounds an object-valued array element too, which the walk above would not reach", async () => {
+        // `rsa_multi_key.keys` is an array of OBJECTS, so the item check above sees `type: object`
+        // and stops. Its fields are bounded; asserted directly because the structural walk cannot
+        // reach them and an assertion that silently checks nothing is worse than none.
+        await expect(run("rsa_multi_key", {
+            keys: [{ modulus: "9".repeat(5001) }, { modulus: "77" }]
+        })).rejects.toThrow();
+    });
+
     it("skips the small-e attack for an exponent that would kill the process", async () => {
         // integerRoot computes `hi ** k`, so a large k is not slow, it is fatal:
         // "RangeError: Maximum BigInt size exceeded". A 400-digit exponent reached that and the
