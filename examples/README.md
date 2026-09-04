@@ -16,6 +16,7 @@ as fenced code blocks in a guide.
 | [`07-http-two-clients.mjs`](07-http-two-clients.mjs) | HTTP transport with two concurrent clients | binds a local port |
 | [`08-shell-oneliners.sh`](08-shell-oneliners.sh) | Driving the server from a shell with `jq` | `jq` on PATH |
 | [`09-prompts-and-media.mjs`](09-prompts-and-media.mjs) | Prompts, resources, image/audio blocks and tool annotations | nothing |
+| [`10-break-a-cipher.mjs`](10-break-a-cipher.mjs) | Breaking a Vigenere and a substitution cipher with no key, and reading what the answer rests on | nothing |
 
 ## Running them
 

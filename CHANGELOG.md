@@ -49,6 +49,12 @@ reading the reference projects as code instead of as documentation. Details in
 - **`src/node/tools/lib/english.mjs`** and a generated trigram model built from this repository's
   own prose by **`scripts/build-english-trigrams.mjs`** — 1,280,768 letters, 46 KB packed,
   regenerable byte-for-byte.
+- **A sixth prompt, `break-cipher`**, routing a caller through the cheap checks before the
+  expensive ones: plaintext check, then Magic, then the solver the shape of the data calls for.
+  `identify-hash` was rewritten too — it still told the model to use `Analyse hash`, which is
+  length-only, and never mentioned the registry tools that separate bcrypt from yescrypt or answer
+  a question about a whole corpus.
+- **`examples/10-break-a-cipher.mjs`**, self-asserting and run by CI like the other nine.
 
 ### Changed
 

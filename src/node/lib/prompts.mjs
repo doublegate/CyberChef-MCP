@@ -154,11 +154,19 @@ const PROMPTS = [
         build: (args) => [
             "Identify the hash below.",
             "",
-            "1. Run `Analyse hash`. It reports the candidate algorithms for the length and",
-            "   character set.",
-            "2. Narrow the candidates by context if there is any -- a 32-character hex string is",
-            "   MD5, NTLM or LM, and which one depends entirely on where it came from.",
-            "3. If you have a candidate plaintext, confirm it: `Generate all hashes` computes",
+            "1. Call `cyberchef_hash_identify`. It knows the crypt(3) and PHC prefixes as well as",
+            "   the bare hex lengths, so it separates bcrypt from yescrypt from Argon2 -- which",
+            "   the `Analyse hash` operation cannot, being length-only.",
+            "2. Narrow by context if there is any. A 32-character hex string is MD5, NTLM or LM,",
+            "   and which one depends entirely on where it came from; nothing about the string",
+            "   itself will settle it, so a single confident answer there is wrong by construction.",
+            "3. If it is a fast unsalted digest, `cyberchef_hash_crack` will tell you in seconds",
+            "   whether the password is one anybody would guess. It refuses the slow schemes by",
+            "   name rather than pretending to try them.",
+            "4. If you have several hashes rather than one, `cyberchef_hash_statistics` answers",
+            "   questions about the SET -- shared passwords, the weakest format present,",
+            "   placeholder entries -- that identifying each one in turn cannot.",
+            "5. If you have a candidate plaintext, confirm it: `Generate all hashes` computes",
             "   every algorithm at once, so one call settles the question.",
             "",
             "Report the most likely algorithm, the alternatives you could not rule out, and what",
@@ -167,6 +175,56 @@ const PROMPTS = [
             "Hash:",
             "```",
             String(args?.hash ?? ""),
+            "```"
+        ].join("\n")
+    },
+    {
+        name: "break-cipher",
+        title: "Break a cipher with no key",
+        description:
+            "Recover the plaintext from a classical or repeating-key cipher when you do not have " +
+            "the key.",
+        arguments: [
+            { name: "ciphertext", description: "The encrypted text or data", required: true },
+            { name: "hint", description: "Anything you know about it", required: false }
+        ],
+        /**
+         * @param {Object} args - Prompt arguments.
+         * @returns {string} The user message.
+         */
+        build: (args) => [
+            "Recover the plaintext below. You do not have the key, so this is a search, and the",
+            "order matters -- each step is cheaper than the one after it and rules out the case",
+            "the next one would waste time on.",
+            "",
+            "1. `cyberchef_plaintext_check` first. If it already reads as plaintext there is",
+            "   nothing to break, and if it says 'not plaintext' on the printable ratio then this",
+            "   is binary and the letter-based solvers below do not apply.",
+            "2. `cyberchef_magic` next. It finds anything that is merely ENCODED rather than",
+            "   encrypted, which is most of what looks encrypted.",
+            "3. Then decide by shape:",
+            "   - Binary or high-entropy bytes: `cyberchef_xor_key_length`. It reports three",
+            "     independent estimates of the key length and says when they disagree.",
+            "   - Letters only, and the index of coincidence is near English: it is a",
+            "     monoalphabetic substitution. `cyberchef_substitution_break` solves Caesar,",
+            "     ROT-N, Atbash and an arbitrary alphabet alike.",
+            "   - Letters only, and the index of coincidence is near random:",
+            "     `cyberchef_vigenere_break`.",
+            "   - Digit pairs, or an alphabet of exactly ADFGVX, or groups of five bits:",
+            "     `cyberchef_classical_cipher` -- Polybius, ADFGVX and Baudot respectively.",
+            "4. If you have TWO messages under the same key, stop and use `cyberchef_crib_drag`",
+            "   instead of any of the above. Their XOR cancels the key entirely, which is a much",
+            "   stronger position than attacking either one.",
+            "",
+            "The solvers are statistical and say so. A partial recovery is the normal outcome",
+            "below a few hundred characters: read what came back, and if two letters look",
+            "transposed throughout, pin the ones you are sure of and run it again.",
+            "",
+            args?.hint ? `What is known about it: ${String(args.hint)}` : "Nothing is known about it.",
+            "",
+            "Ciphertext:",
+            "```",
+            String(args?.ciphertext ?? ""),
             "```"
         ].join("\n")
     },

@@ -44,7 +44,7 @@ try {
     step("Prompts: where to start when you do not know what you have");
     const { prompts } = await client.listPrompts();
     for (const p of prompts) console.log(`  ${p.name.padEnd(22)} ${p.description.split(".")[0]}.`);
-    expect("five workflow prompts", prompts.length, 5);
+    expect("six workflow prompts", prompts.length, 6);
 
     // A prompt is rendered with your data and handed back as a user message. Your client shows
     // these as slash commands, so this is what it sends on your behalf.

@@ -517,7 +517,7 @@ describe("prompts: every prompt renders, including without its arguments", () =>
     it("renders all five with their arguments", async () => {
         const { listPrompts, getPrompt } = await import("../../src/node/lib/prompts.mjs");
         const { prompts } = listPrompts();
-        expect(prompts.length).toBe(5);
+        expect(prompts.length).toBe(6);
 
         for (const p of prompts) {
             // Supply every declared argument, so each prompt's own `build` actually runs. Two of
