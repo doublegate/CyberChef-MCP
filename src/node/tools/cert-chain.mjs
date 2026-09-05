@@ -222,8 +222,13 @@ export default {
         // metadata-only match is kept ONLY as a fallback when nothing verifies, because dropping it
         // would turn a substituted certificate into a silent orphan -- the link has to be reported
         // as broken, not omitted.
+        //
+        // There is deliberately NO separate record of which edges were chosen on metadata alone.
+        // It would be redundant: a fallback selection happens only when nothing verified, so such a
+        // link always reports `signature_verifies: false`, and a verified selection always reports
+        // true. An earlier draft carried a `metadataOnlyLink` set that was written and never read --
+        // reviewer-found dead code, removed rather than wired into the output that already says it.
         const issuedBy = new Map();
-        const metadataOnlyLink = new Set();
         for (const [i, cert] of certs.entries()) {
             let fallback;
             for (const [j, candidate] of certs.entries()) {
@@ -252,10 +257,7 @@ export default {
                 }
                 if (fallback === undefined) fallback = j;
             }
-            if (!issuedBy.has(i) && fallback !== undefined) {
-                issuedBy.set(i, fallback);
-                metadataOnlyLink.add(i);
-            }
+            if (!issuedBy.has(i) && fallback !== undefined) issuedBy.set(i, fallback);
         }
         const issuers = new Set(issuedBy.values());
         const leaves = certs.map((_, i) => i).filter(i => !issuers.has(i));
