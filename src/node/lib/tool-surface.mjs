@@ -193,5 +193,11 @@ export function describeSurface(exposed, total) {
         return `tool surface: curated (${exposed}/${total} operations; the rest remain reachable ` +
             "via cyberchef_bake -- set CYBERCHEF_TOOL_SURFACE=all to expose every one as a tool)";
     }
-    return `tool surface: all (${exposed}/${total} operations; ~86k tokens per tools/list)`;
+    // BYTES, not tokens. This line read "~86k tokens per tools/list" from the release that
+    // introduced the index until v3.8.0, and was wrong in both dimensions: no tokenizer has
+    // ever been in this repository, so the figure was bytes/4 wearing a token label -- and
+    // the payload has since grown to 424,810 bytes (~106k under that same convention), so
+    // even the disguised number had drifted by a fifth. Re-measure with
+    // `npm run measure:surfaces` rather than editing this by eye.
+    return `tool surface: all (${exposed}/${total} operations; ~415 KB per tools/list)`;
 }

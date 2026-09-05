@@ -337,9 +337,10 @@ output, so expect PKCS#1 or OAEP padding ahead of the message.
 
 ---
 
-## Analysis Tools Added in v3.3.0
+## Analysis Tools Added in v3.3.0 and after
 
-Twelve more registry tools, for the same reason as the first four: each closes a gap an operation
+Twelve more registry tools in v3.3.0, one in v3.4.0 (`ecdsa_recover`) and one in v3.8.0
+(`cert_chain`) — each for the same reason as the first four: each closes a gap an operation
 cannot express, whether that is a loop with a decision inside it, a statistic computed across
 several inputs, or a cipher upstream simply does not have.
 
@@ -352,6 +353,23 @@ operation.
 
 Compares several samples and reports per-offset byte and bit variance across them, ECB detection
 with offsets, and nonce-reuse detection.
+
+### cyberchef_cert_chain
+
+*Added in v3.8.0.* Orders a PEM bundle of X.509 certificates into a chain and says where it breaks:
+wrong order, a missing intermediate, an expired link, an issuer not permitted to sign, or an issuer
+whose name and key identifier match while its **signature** does not — the shape of a substituted
+certificate. `Parse X.509 certificate`, `Parse X.509 CRL` and `Public Key from Certificate` each
+handle one certificate; nothing relates two.
+
+Reports `chain_valid_until` as the **intersection** of the members' validity windows, which is the
+number that matters and the one no per-certificate operation can produce. A missing root arrives in
+`notes` rather than `problems` and does not affect `self_consistent` — a server's `fullchain.pem`
+legitimately omits it.
+
+Every link is verified cryptographically. Matching names and key identifiers are metadata: anyone
+can mint a certificate carrying the ones they choose, and `X509Certificate.checkIssued()` alone does
+not check a signature.
 
 ### cyberchef_crib_drag
 

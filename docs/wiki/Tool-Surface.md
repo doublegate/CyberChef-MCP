@@ -1,12 +1,12 @@
 # The Tool Surface
 
-**Why you see 41 tools and not 544.** This is the most common question about the server, and the
+**Why you see 42 tools and not 545.** This is the most common question about the server, and the
 answer is a deliberate design decision rather than a limitation.
 
 ## The problem
 
 `tools/list` is sent to the model on **every** request. Exposing all 504 operations plus the
-meta-tools costs roughly **423,305 bytes** before the user has typed anything — and model
+meta-tools costs roughly **424,810 bytes** before the user has typed anything — and model
 tool-selection quality is known to degrade well before that many definitions are in play.
 
 So the default is an **index**, not a catalogue.
@@ -18,9 +18,9 @@ bytes of the `tools/list` payload, rather than estimated:
 
 | `CYBERCHEF_TOOL_SURFACE` | Tools | Payload | Exact bytes |
 |---|---|---|---|
-| **`index`** *(default)* | 41 | 42 KB | **42,901** |
-| `curated` | 119 | 104 KB | 106,147 |
-| `all` | 544 | 413 KB | 423,305 |
+| **`index`** *(default)* | 42 | 43 KB | **44,406** |
+| `curated` | 120 | 105 KB | 107,652 |
+| `all` | 545 | 415 KB | 424,810 |
 
 The 40 in the default index are 23 meta-tools, `cyberchef_magic`, and the sixteen
 [analysis tools](Analysis-Tools). The index grew from 28 to 40 in v3.3.0 because twelve new
@@ -52,7 +52,7 @@ Making it three calls deep would invert the cost.
 
 **The sixteen analysis tools**, because unlike an operation, none of them is reachable through
 `cyberchef_bake` — they are not in `OperationConfig`. Hiding them behind a surface setting would
-make them unreachable rather than merely inconvenient. They form part of the 42,901-byte index
+make them unreachable rather than merely inconvenient. They form part of the 44,406-byte index
 payload.
 
 ## Shaping it yourself

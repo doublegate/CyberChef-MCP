@@ -25,14 +25,14 @@ npx grunt configTests
 committed — they are build output, and committing them would mean a stale copy shipping whenever
 the operation set changed.
 
-## I only see 41 tools, not 500
+## I only see 42 tools, not 500
 
-**Working as intended.** `tools/list` is an *index* by default: 41 tools and 42,901 bytes,
-rather than 544 tools and 423,305 bytes. Nothing is unreachable — `cyberchef_bake` runs any of the 504
+**Working as intended.** `tools/list` is an *index* by default: 42 tools and 44,406 bytes,
+rather than 545 tools and 424,810 bytes. Nothing is unreachable — `cyberchef_bake` runs any of the 504
 operations by name, and `cyberchef_categories` → `cyberchef_list_operations` →
 `cyberchef_describe_operation` walks down to any of them with its full argument schema.
 
-Pre-load more if you want to: `CYBERCHEF_TOOL_SURFACE=curated` (119 tools) or `=all` (all 544).
+Pre-load more if you want to: `CYBERCHEF_TOOL_SURFACE=curated` (120 tools) or `=all` (all 545).
 Full detail: **[The Tool Surface](Tool-Surface)**.
 Be careful with `all` on a local model — published measurement puts tool-selection quality falling
 off past roughly 50 tool definitions.

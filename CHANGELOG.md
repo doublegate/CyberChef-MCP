@@ -7,6 +7,104 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.8.0] - 2026-09-04
+
+**Two blockers that were not blockers.** Re-measuring the carried-forward list found one item
+blocked on hardware this repository already uses, and one blocked on a document nobody had written.
+Details in [the release notes](docs/releases/v3.8.0.md) and
+[the findings log](docs/internal/v3.8.0-findings-log.md).
+
+### Added
+
+- **`cert_chain`**, the 18th registry tool. `Parse X.509 certificate`, `Parse X.509 CRL` and
+  `Public Key from Certificate` each handle **one** certificate; nothing relates two. This orders a
+  shuffled bundle, verifies every link with `node:crypto`'s `X509Certificate`, and reports the
+  chain's validity window as the **intersection** of its members' — the statistic no per-certificate
+  operation can produce. A missing root is reported as normal, because a server's `fullchain.pem`
+  legitimately omits it. No new dependency.
+- **`benchmark-arm64`**, a second benchmark job on `ubuntu-24.04-arm`. It **reports and does not
+  gate**: there is no arm64 noise floor yet, and this project has set three thresholds from a first
+  plausible measurement and moved two of them within days. It records the machine it measured, and
+  asserts `uname -m` is `aarch64` **as its first step, before any repository code runs** — it was
+  originally the fifth, after `npm ci` and `npx grunt` had already executed pull-request code, which
+  makes a guard decoration. What it establishes is precisely that the job ran on aarch64; it does
+  **not** establish the runner is GitHub-hosted, and Actions offers no syntax for that. The real
+  controls are that this repository's only self-hosted runner is x64 (verified against the API) and
+  that `pull_request` gives fork code no secrets and a read-only token; the assertion is the cheap
+  tripwire for the first of those changing unnoticed.
+- **[`docs/planning/v3/task-level-scoring.md`](docs/planning/v3/task-level-scoring.md)** — the design
+  the v3.3.0 charter required in writing before any code. It **concludes against building the
+  harness**: the same-host construction that rescued the benchmark gate does not transfer, because
+  host speed is a shared factor that cancels within a run while model sampling noise is independent
+  per invocation and does not. Recording a decision not to build is the point of the exercise.
+
+### Fixed
+
+- **The `cert_chain` imposter check asked the wrong question**, caught by a real bundle before
+  release. It compared an orphan's subject against subjects already **in** the chain, which finds
+  nothing in the case that matters: when an imposter replaces the real intermediate, the real one is
+  absent, so its subject is not in the chain either. It now compares against the issuer names the
+  chain is **looking for**. An earlier draft also claimed to report "names match but signature
+  fails". That claim was withdrawn on a measurement and **the withdrawal was wrong**: `checkIssued`
+  compares names and key identifiers, never the signature, and the imposter had been rejected for a
+  `subjectKeyIdentifier` mismatch mistaken for cryptography. Caught in review. See the
+  security fix below.
+
+- **`cert_chain` reported `self_consistent: false` for an ordinary `fullchain.pem`**, beside its own
+  assessment saying a missing root is not a defect — it contradicted itself in a single response,
+  because the missing-root note was pushed into `problems` and `self_consistent` counted them. Notes
+  and problems are now separate fields. The tests had encoded the defect rather than catching it.
+- **`cert_chain` could be induced to report a valid chain as broken, and its cryptographic claim was
+  false.** `X509Certificate.checkIssued()` verifies issuer/subject names, authority and subject key
+  identifiers and key usage — **never the signature**. The tool claimed the opposite, and selected
+  the first `checkIssued` match as the chain edge, so a certificate minted with the real
+  intermediate's subject *and* a matching `subjectKeyIdentifier` over a different key captured the
+  link while the genuine issuer sat unconsidered in the same bundle. Disproof:
+  `leaf.checkIssued(skidImposter)` is `true` and `leaf.verify(skidImposter.publicKey)` is `false`.
+  Selection now evaluates every candidate and a verifying signature always wins, with a
+  metadata-only match kept only as a fallback so a substitution is reported rather than dropped. The
+  "names match, signature does not" warning is restored, because it is reachable and is the
+  substitution signature. Issuers must now also carry `basicConstraints CA:TRUE`, and a self-signed
+  top must verify against its own key. Adversary committed as
+  `tests/mcp/fixtures/cert-skid-imposter.pem`; the test fails against the old logic.
+- **`cert_chain`'s model-visible description advertised a finding the tool cannot make** — "an
+  issuer whose name matches but whose signature does not", the branch this same release established
+  as unreachable and removed from the implementation and the header comment. A stale comment misleads
+  a reader; a stale description misleads the caller, which is the model choosing the tool. The
+  missing-root note also claimed a root when the condition only establishes that the issuer above the
+  top certificate is absent — for a bare leaf that is the intermediate.
+- **Half-updated tool-surface figures.** Adding one registry tool moved every surface; the byte
+  counts were re-measured everywhere and the tool counts were not, leaving `README.md` saying "545
+  tools" and "all 544" three sentences apart, and a round-trip claim of 42,415 bytes against an index
+  documented at 44,406 — impossible on its face. `check:versions` covers *operation* counts and never
+  covered *surface* counts, so a partial update reported itself complete. New
+  `tests/mcp/tool-surface-figures.test.mjs` gates cross-document agreement and the round-trip
+  arithmetic; verified by reintroducing both real defects.
+- **The benchmark workflow did not trigger on changes to itself.** Its path filter listed the code
+  the benchmarks measure and not the workflow that measures it, so the one class of edit whose
+  correctness it is the only judge of was the class it never ran on. Found by consequence: this
+  release's new `benchmark-arm64` job would have merged **having never executed once**. The
+  workflow's own path is now in both filters; `src/node/lib/**` stays out deliberately, because a
+  run costs two dependency installs across two architectures on a runner pool measured as
+  heterogeneous.
+- **A stale token figure in a runtime log line.** `describeSurface` told operators the `all` surface
+  costs "~86k tokens per tools/list" — a token claim in a repository whose stated rule is bytes-only
+  (it was bytes/4 wearing a token label), and stale besides: the payload is now 424,810 bytes, ~106k
+  under that same convention. Now `~415 KB`, measured.
+- **Transposed coverage figures in `AGENTS.md`** — 95.7% lines / 96.6% statements against an actual
+  96.6% lines / 95.5% statements. `vitest.config.mjs` carries a paragraph warning about this exact
+  confusion, added because a reviewer once read the threshold tuple as swapped; the row downstream of
+  that warning had them swapped for six releases. Both were found in the output of gates run for
+  other reasons.
+
+### Measured, and still declined
+
+The shell-free base image's trigger has still not fired: `chainguard/node:latest-slim` is Node
+**v25.9.0** against the shipped v26.8.1, and `node26-slim` / `26-slim` do not exist. Opt-in feature
+adoption remains permanently deferred. Ecosystem unchanged: SDK `2.0.0`, conformance
+`0.2.0-alpha.11`, `server.json` schema 2025-12-11, no MCP specification revision after 2026-07-28.
+v4.0.0 stays unscheduled.
+
 ## [3.7.0] - 2026-09-04
 
 **A gate that checked four of eleven files.** v3.2.0 said it fixed the operation-count discrepancy;

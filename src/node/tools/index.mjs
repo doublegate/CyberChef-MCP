@@ -14,6 +14,7 @@
  */
 
 import { ToolRegistry } from "./registry.mjs";
+import certChain from "./cert-chain.mjs";
 import classicalCipher from "./classical-cipher.mjs";
 import corpusDiff from "./corpus-diff.mjs";
 import cribDrag from "./crib-drag.mjs";
@@ -33,7 +34,7 @@ import vigenereBreak from "./vigenere-break.mjs";
 import xorKeyLength from "./xor-key-length.mjs";
 
 /** Tools, in the order they should appear in `tools/list`. */
-const TOOLS = [classicalCipher, corpusDiff, cribDrag, cyclicPattern, ecdsaRecover, entropyScan, hashCrack, hashIdentify, hashStatistics, jwtWeakness, plaintextCheck, rsaAttack, rsaMultiKey, substitutionBreak, timestampIdentify, vigenereBreak, xorKeyLength];
+const TOOLS = [certChain, classicalCipher, corpusDiff, cribDrag, cyclicPattern, ecdsaRecover, entropyScan, hashCrack, hashIdentify, hashStatistics, jwtWeakness, plaintextCheck, rsaAttack, rsaMultiKey, substitutionBreak, timestampIdentify, vigenereBreak, xorKeyLength];
 
 /**
  * Build the registry.

@@ -1,9 +1,9 @@
 # FAQ
 
-## Why do I only see 41 tools when you say there are 504 operations?
+## Why do I only see 42 tools when you say there are 504 operations?
 
-Because `tools/list` goes to the model on **every** request, and sending all 544 costs about
-423,305 bytes before anyone types anything. The default is an index: 41 tools, 42,901 bytes.
+Because `tools/list` goes to the model on **every** request, and sending all 545 costs about
+424,810 bytes before anyone types anything. The default is an index: 42 tools, 44,406 bytes.
 
 **Nothing becomes unreachable.** `cyberchef_bake` runs any of the 504 by name, and
 `cyberchef_categories` → `cyberchef_list_operations` → `cyberchef_describe_operation` walks down to

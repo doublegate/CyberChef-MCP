@@ -1,5 +1,9 @@
 name: Performance Benchmarks
 
+# The path filter includes THIS FILE, and that was missing until v3.8.0. Without it, a change to
+# the benchmark workflow does not trigger the benchmark workflow -- so the one kind of edit whose
+# correctness this workflow is the only judge of was the one kind it never ran on. It was found by
+# adding a job here and noticing the PR had no benchmark check to look at.
 on:
   push:
     branches: [master]
@@ -8,6 +12,7 @@ on:
       - 'src/node/index.mjs'
       - 'src/core/**'
       - 'benchmarks/**'
+      - '.github/workflows/performance-benchmarks.yml'
   pull_request:
     branches: [master]
     paths:
@@ -15,6 +20,7 @@ on:
       - 'src/node/index.mjs'
       - 'src/core/**'
       - 'benchmarks/**'
+      - '.github/workflows/performance-benchmarks.yml'
   workflow_dispatch:
 
 # Default for every job: read only. The write scope needed to post a comment is granted to the
@@ -213,6 +219,125 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
+  # arm64, on real hardware, for the first time.
+  #
+  # "arm64 performance is still unmeasured" has been on this project's carried-forward list since
+  # v3.3.0, with the stated blocker "real numbers need arm64 HARDWARE". That blocker was already
+  # gone: `mcp-docker-build.yml` has a `build-arm64` job on `ubuntu-24.04-arm`, a GitHub-hosted
+  # runner free for public repositories, succeeding on every run. The note was carried five times
+  # without being checked against the workflow beside it.
+  #
+  # ON THE RUNNER LABEL: `ubuntu-24.04-arm` is GitHub-hosted, and Actions has no syntax for
+  # "hosted only" -- a self-hosted runner registered with the same label could claim this job, which
+  # runs pull-request code. Verified for this repository: the one self-hosted runner
+  # (`AB-i9-cyberchef-mcp`) carries `self-hosted, Linux, X64, agy` and is x64, so it cannot match.
+  # The same reasoning and the same warning as `mcp-docker-build.yml`; keep it that way.
+  #
+  # REPORTS, DOES NOT GATE -- and that phrase is worth pinning down, because a reviewer read it as
+  # "cannot fail the workflow" and by that reading it was false. What it means: this job applies NO
+  # performance threshold. It does not compare against `benchmarks/baseline.json`, it does not
+  # compare against the amd64 job, and no number it produces can fail the build. There is no arm64
+  # noise floor yet, and this project has set three thresholds from a first plausible measurement
+  # and moved two of them within days; the numbers accumulate first.
+  #
+  # It CAN still fail -- on the architecture assertion below, or on infrastructure (`npm ci`) --
+  # and `continue-on-error` is deliberately NOT set. The suggestion to add it was declined: it
+  # would silence the architecture tripwire, which exists precisely to be loud, and would hide an
+  # install failure that means the numbers are missing rather than fine. Silencing a security check
+  # to make a sentence true is the wrong direction; the sentence was made precise instead.
+  #
+  # It also does not compare arm64 against amd64: those are different machines, and the whole
+  # v3.4.0-v3.6.0 line of work was about not doing that.
+  benchmark-arm64:
+    name: Benchmark on arm64
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    permissions:
+      contents: read
+
+    steps:
+      # FIRST, BEFORE ANY REPOSITORY CODE RUNS. This assertion was originally the fifth step, after
+      # `npm ci` and `npx grunt` -- both of which execute code from the pull request (lifecycle
+      # scripts, the Gruntfile). A guard that fires after the thing it guards against has already
+      # run is decoration. Reviewer-found; it now runs before even the checkout.
+      #
+      # WHAT IT ESTABLISHES, precisely, because the earlier comment overstated this. It proves the
+      # job is executing on aarch64. It does NOT prove the runner is GitHub-hosted -- a self-hosted
+      # arm64 runner would pass it, and Actions offers no syntax for "hosted only". The actual
+      # controls are: this repository's only self-hosted runner is x64 (labels `self-hosted, Linux,
+      # X64, agy`, verified against the API), and `pull_request` -- not `pull_request_target` --
+      # gives fork code no secrets and a read-only token. This check is the cheap tripwire for the
+      # case where the first of those changes without anyone updating this workflow.
+      - name: Refuse to run anywhere but arm64
+        run: |
+          if [ "$(uname -m)" != "aarch64" ]; then
+            echo "::error::This job is not running on arm64 ($(uname -m)). A runner registered with"
+            echo "::error::the ubuntu-24.04-arm label claimed it -- see the note above."
+            exit 1
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js 26
+        uses: actions/setup-node@v7
+        with:
+          node-version: '26'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate OperationConfig
+        run: npx grunt configTests
+
+      - name: Report the machine this measured
+        run: |
+          # arm64 /proc/cpuinfo carries NO `model name` field -- that is an x86 convention. The
+          # first version of this step assumed it did, and its `|| echo unknown` fallback could not
+          # fire, because grep matching nothing still leaves `xargs` exiting 0: the field came back
+          # EMPTY on the job's first real run. An empty field is worse than "unknown", because it
+          # reads as a machine with no model rather than as a question this step failed to answer.
+          # The implementer/part pair is the closest thing arm64 offers to an identity.
+          model="$(grep -m1 -E 'model name|^Model' /proc/cpuinfo | cut -d: -f2- | xargs)"
+          if [ -z "$model" ]; then
+            impl="$(grep -m1 'CPU implementer' /proc/cpuinfo | cut -d: -f2- | xargs)"
+            part="$(grep -m1 'CPU part' /proc/cpuinfo | cut -d: -f2- | xargs)"
+            if [ -n "$impl" ] || [ -n "$part" ]; then
+              model="implementer ${impl:-?} part ${part:-?} (no model name field)"
+            else
+              model="unknown"
+            fi
+          fi
+          {
+            echo "arch:   $(uname -m)"
+            echo "kernel: $(uname -r)"
+            echo "cpus:   $(nproc)"
+            echo "model:  $model"
+            echo "memory: $(awk '/MemTotal/ {printf "%.1f GB", $2/1048576}' /proc/meminfo)"
+            echo "node:   $(node --version)"
+          } | tee arm64-machine.txt
+          # A benchmark whose machine is unrecorded is a number nobody can reuse. This project
+          # learned that from a baseline that claimed to be from a developer machine when it was
+          # captured on a runner. The arm64 assertion itself is the FIRST step of this job, not
+          # here -- see the note there.
+
+      - name: Run benchmarks
+        run: |
+          set -o pipefail
+          NO_COLOR=1 FORCE_COLOR=0 npm run benchmark 2>&1 | tee arm64-benchmark.txt
+
+      - name: Upload the arm64 results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: arm64-benchmark
+          path: |
+            arm64-benchmark.txt
+            arm64-machine.txt
+          retention-days: 7
+          if-no-files-found: warn
+
   # Separate job, and the separation is the point. The job above installs the PR's dependencies
   # (`npm ci`, with lifecycle scripts) and executes the PR's own code. Holding a write-scoped
   # token in that job would put it within reach of anything that code or its dependency tree
@@ -222,7 +347,7 @@ jobs:
   # file and posts it. That is the only place `pull-requests: write` exists.
   report:
     name: Report benchmark results
-    needs: benchmark
+    needs: [benchmark, benchmark-arm64]
     if: always() && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
@@ -246,6 +371,14 @@ jobs:
           name: same-host-comparison
         continue-on-error: true
 
+      # arm64 numbers, so the long-carried "unmeasured" note has somewhere to be read. Optional in
+      # the same way: a failed arm64 job must not cost the amd64 report.
+      - name: Download the arm64 results
+        uses: actions/download-artifact@v8
+        with:
+          name: arm64-benchmark
+        continue-on-error: true
+
       # Reporting must never fail the workflow. Before this split, a 403 in the comment step
       # turned a fully green benchmark run into a red check and blocked unrelated PRs.
       - name: Comment benchmark results on PR
@@ -264,7 +397,8 @@ jobs:
             // ... check the workflow logs", spending an API call and a PR comment to report
             // that a thing had happened.
             let output;
-            let sameHost = null;
+            let sameHost = null;   // reassigned by the per-section cap below
+            let arm64 = null;      // reassigned by the per-section cap below
             try {
               const fs = require("fs");
               output = fs.readFileSync("benchmark-output.txt", "utf8").trim();
@@ -273,6 +407,13 @@ jobs:
               try {
                 sameHost = fs.readFileSync("same-host-comparison.txt", "utf8").trim();
               } catch { sameHost = null; }
+              try {
+                // Machine first: an arm64 number without the machine it came from is not reusable,
+                // and this project has a baseline in its history that claimed the wrong one.
+                const machine = fs.readFileSync("arm64-machine.txt", "utf8").trim();
+                const bench = fs.readFileSync("arm64-benchmark.txt", "utf8").trim();
+                arm64 = `${machine}\n\n${bench}`;
+              } catch { arm64 = null; }
             } catch (err) {
               // Logged, not swallowed: if the artifact is missing, the reason belongs in the
               // job log rather than being replaced silently by a placeholder.
@@ -280,22 +421,39 @@ jobs:
               output = "(benchmark output was not captured -- see the workflow logs)";
             }
 
-            // GitHub rejects bodies over 65536 characters. Keep the TAIL, since these
-            // benchmarks print their summary last.
-            const LIMIT = 60000;
-            let truncated = false;
-            if (output.length > LIMIT) {
-              output = output.slice(-LIMIT);
-              // `slice` cuts UTF-16 code units, so the boundary can land inside a surrogate
-              // pair and leave a lone half. Drop it rather than emit a broken character.
-              output = output.replace(/^[\uDC00-\uDFFF]/, "");
-              truncated = true;
-            }
+            // GitHub rejects bodies over 65536 characters, and the previous version of this step
+            // capped each SECTION independently -- 60,000 for the full output, 20,000 for arm64,
+            // nothing at all for the same-host block. Three sections each inside their own limit
+            // can still sum past the ceiling, at which point the API call fails; and because this
+            // step is `continue-on-error`, the report would vanish while the workflow stayed
+            // green. Reviewer-found. The budget is now enforced on the ASSEMBLED body.
+            const HARD_LIMIT = 65000;   // headroom under GitHub's 65536
 
-            // A fence longer than any backtick run in the content, so benchmark output that
-            // itself contains ``` cannot break out of the code block.
-            const longest = (output.match(/`+/g) || []).reduce((n, s) => Math.max(n, s.length), 0);
-            const fence = "`".repeat(Math.max(3, longest + 1));
+            // A fence longer than any backtick run in the content, so output that itself contains
+            // ``` cannot break out of the code block. Applied to EVERY interpolated block now, not
+            // just the full output -- the same-host and arm64 blocks used a static ```text fence
+            // and carry runner-produced text just as the full output does.
+            const fenceFor = (text) => {
+              const longest = (text.match(/`+/g) || []).reduce((n, s) => Math.max(n, s.length), 0);
+              return "`".repeat(Math.max(3, longest + 1));
+            };
+            // `slice` cuts UTF-16 code units, so a boundary can land inside a surrogate pair and
+            // leave a lone half. Drop it rather than emit a broken character.
+            const keepTail = (text, budget) =>
+              budget <= 0 ? "" :
+                text.length <= budget ? text :
+                  text.slice(-budget).replace(/^[\uDC00-\uDFFF]/, "");
+            const keepHead = (text, budget) =>
+              budget <= 0 ? "" :
+                text.length <= budget ? text :
+                  text.slice(0, budget).replace(/[\uD800-\uDBFF]$/, "");
+
+            // Per-section caps first, so one runaway section cannot starve the others, then the
+            // whole-body budget below. arm64 keeps its HEAD (the machine record is printed first
+            // and is the part that makes the numbers reusable); the others keep their TAIL,
+            // because these benchmarks print their summary last.
+            if (sameHost) sameHost = keepTail(sameHost, 15000);
+            if (arm64) arm64 = keepHead(arm64, 20000);
 
             // Hidden marker used to find this job's previous comment and update it in place.
             // Without it every push appended another benchmark comment -- invisible while the
@@ -303,7 +461,12 @@ jobs:
             // src/core/** across many pushes.
             const MARKER = "<!-- performance-benchmark-results -->";
 
-            const body = [
+            // Assemble once with the full output to measure the fixed overhead, then give the
+            // output whatever budget is left. Two passes rather than an estimate, because an
+            // estimate of the markup length is one more number that can drift.
+            let outputBudget = output.length;
+            let outputTruncated = false;
+            const assemble = () => [
               MARKER,
               "## Performance Benchmark Results",
               "",
@@ -317,21 +480,38 @@ jobs:
               ...(sameHost ? [
                 "### Same-host comparison (merge base vs head)",
                 "",
-                "```text",
+                fenceFor(sameHost) + "text",
                 sameHost,
-                "```",
+                fenceFor(sameHost),
                 "",
               ] : [
                 "_No same-host comparison: this was a push, or the merge base and the head would_",
                 "_install different dependency trees, which would make the two runs incomparable._",
                 "",
               ]),
-              ...(truncated ? ["_Output truncated to the last 60,000 characters._", ""] : []),
+              ...(outputTruncated ? [
+                `_Full output truncated to its last ${outputBudget} characters to fit GitHub's_`,
+                "_comment size limit._", ""] : []),
+              // arm64 is collapsed: it is a reference measurement rather than a pass/fail signal,
+              // and the same-host block above is what a reviewer acts on.
+              ...(arm64 ? [
+                "<details><summary>arm64 throughput (reference, does not gate)</summary>",
+                "",
+                fenceFor(arm64) + "text",
+                arm64,
+                fenceFor(arm64),
+                "",
+                "</details>",
+                "",
+              ] : []),
               "<details><summary>Full benchmark output</summary>",
               "",
-              fence,
+              // Computed inside `assemble` rather than once above it, so the second pass fences
+              // the TRUNCATED output. A fence sized for the untruncated text would be correct but
+              // arbitrary; sized for text that is no longer there, it could be too short.
+              fenceFor(output),
               output,
-              fence,
+              fenceFor(output),
               "",
               "</details>",
               "",
@@ -340,6 +520,20 @@ jobs:
               "> A task faster than baseline by more than the tolerance is reported rather than",
               "> failed -- the usual cause is a benchmark that stopped doing the work.",
             ].join("\n");
+
+            let body = assemble();
+            if (body.length > HARD_LIMIT) {
+              // Everything except the output block is fixed cost; the output gets the remainder.
+              const overhead = body.length - output.length;
+              outputBudget = Math.max(0, HARD_LIMIT - overhead);
+              output = keepTail(output, outputBudget);
+              outputTruncated = true;
+              body = assemble();
+              // Belt and braces: if the fixed sections alone still exceed the limit -- which would
+              // mean the capped same-host and arm64 blocks plus markup are over 65,000 on their
+              // own -- trim the whole body rather than let the API reject it and the report vanish.
+              if (body.length > HARD_LIMIT) body = keepHead(body, HARD_LIMIT);
+            }
 
             // Update the existing comment if there is one, otherwise post a new one.
             //

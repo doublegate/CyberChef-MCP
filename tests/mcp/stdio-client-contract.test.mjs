@@ -30,6 +30,7 @@
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -37,6 +38,8 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SERVER = resolve(HERE, "../../src/node/mcp-server.mjs");
+const CERT_LEAF = readFileSync(resolve(HERE, "fixtures/cert-leaf.pem"), "utf8");
+const CERT_INTER = readFileSync(resolve(HERE, "fixtures/cert-inter.pem"), "utf8");
 
 // Booting the real server loads a 500-tool schema build, so this is generous on purpose: a
 // timeout here should mean "broken", not "busy CI runner".
@@ -180,6 +183,11 @@ describe("stdio contract, via the official MCP client", () => {
      * three releases while a green suite watched.
      */
     const REGISTRY_CALLS = {
+        // A real two-certificate chain from tests/mcp/fixtures. Read from disk rather than
+        // inlined: a PEM block is multi-line and pasting one into this table would make the
+        // fixture table unreadable for every other entry.
+        "cyberchef_cert_chain": [{ input: CERT_LEAF + CERT_INTER },
+                                 r => expect(r.chain.map(c => c.subject)).toEqual(["CN=example.test", "CN=Test Intermediate"])],
         "cyberchef_classical_cipher": [{ cipher: "polybius", input: "BAT" }, r => expect(r.output).toBe("121144")],
         "cyberchef_corpus_diff": [{ samples: ["deadbeef", "deadbeee"] }, r => expect(r.samples).toBe(2)],
         "cyberchef_crib_drag": [{ ciphertext: "00112233445566778899aabb", crib: "the" }, r => expect(r.mode).toBeTruthy()],

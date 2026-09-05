@@ -5,6 +5,57 @@ Full notes for every version live in
 [releases page](https://github.com/doublegate/CyberChef-MCP/releases). This is the shape of the
 2.x and 3.x lines, and what each release was actually *about*.
 
+## v3.8.0 — two blockers that were not blockers
+
+The carried-forward list had five live items. Re-measuring found that **two had never actually been
+blocked**.
+
+**arm64 performance** had said "needs arm64 **hardware**" since v3.3.0. `mcp-docker-build.yml` has
+been running jobs on `ubuntu-24.04-arm` — free GitHub-hosted arm64 runners — the whole time, three
+lines below a careful comment reasoning about that exact runner label. The hardware the note said
+was missing was in the same repository's CI configuration. It now has a `benchmark-arm64` job that
+**reports and does not gate**: there is no arm64 noise floor yet, and this project has set three
+thresholds from a first plausible measurement and moved two of them within days. It does not compare
+arm64 against amd64 either — those are different machines, which is what the whole v3.4.0–v3.6.0 line
+of work was about.
+
+**Task-level scoring** was blocked on a document. The charter required its design to survive "must
+not be a flaky gate" *in writing* before any code, and nobody had written it. It is written, and it
+concludes **against** building the harness: the same-host construction that rescued the benchmark
+gate does not transfer, because host speed is a shared factor that cancels within a run while model
+sampling noise is independent per invocation — so running both sides against the same model in one
+job makes the comparison worse, not better. Recording a decision not to build is the point of the
+exercise, and the item leaves the list either way.
+
+**`cert_chain`** is the release's new capability and the 18th registry tool. Three operations parse
+a single certificate each; nothing relates two, and every real question about a bundle is
+relational.
+
+Its design changed four times before shipping, every time because something outside the author's
+head said so — a measurement, a real bundle, or a reviewer. The important one was the last.
+
+The tool claimed that `X509Certificate.checkIssued()` verifies signatures, and built on it: a first
+draft's "the issuer name matches but the signature does not" warning was **withdrawn as
+unreachable** on the strength of an imposter that `checkIssued` rejected. A reviewer disputed it and
+was right. `checkIssued` compares names, authority/subject **key identifiers** and key usage; it
+never touches the signature. The imposter had been rejected for a key-identifier mismatch, and that
+was mistaken for cryptography — a single negative result read as proof of a mechanism, when it only
+ruled out one way of failing.
+
+The disproof is a certificate carrying the real intermediate's subject *and* a matching
+`subjectKeyIdentifier`, over a different key: `checkIssued` says yes, `verify` says no. Worse, edge
+selection took the first `checkIssued` match and stopped — so such a certificate captured the link
+while the genuine issuer sat unconsidered in the same bundle, and a good chain with one hostile
+certificate in it was reported as broken. Selection now requires a verifying signature, the
+withdrawn warning is restored because it is exactly the substitution signature, and the adversary is
+committed as a fixture with a test that fails against the old logic.
+
+Two earlier corrections: the replacement imposter check compared an orphan's subject against
+subjects **in** the chain, which finds nothing precisely when an imposter has *replaced* the real
+intermediate — it now asks about the issuer name the chain is **looking for**. And a missing root
+was counted as a defect, so an ordinary `fullchain.pem` came back `self_consistent: false` beside an
+assessment saying a missing root is not a defect; notes and problems are now separate fields.
+
 ## v3.7.0 — the gate that checked four of eleven files
 
 v3.2.0's notes say it fixed the operation-count discrepancy. Three documents were corrected and
