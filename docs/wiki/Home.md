@@ -29,7 +29,7 @@ If the site and this wiki ever disagree, **the site is right** and this wiki nee
 |---|---|
 | **[Installation](Installation)** | Docker, npm, or from source |
 | **[Client Setup](Client-Setup)** | Claude Code, Claude Desktop, LM Studio, Cursor, MCP Inspector |
-| **[The Tool Surface](Tool-Surface)** | Why you see 40 tools and not 543 — the most common question |
+| **[The Tool Surface](Tool-Surface)** | Why you see 42 tools and not 545 — the most common question |
 | **[Analysis Tools](Analysis-Tools)** | XOR key length, cyclic patterns, hash identification, RSA attacks |
 | **[Troubleshooting](Troubleshooting)** | The failures people actually hit, and what causes them |
 

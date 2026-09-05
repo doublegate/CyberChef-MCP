@@ -18,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in the default index while the prose beside it said "The 40 ... are 23 meta-tools,
   `cyberchef_magic`, and the sixteen analysis tools". 23 + 1 + 18 = 42, so the prose is now both
   correct and self-checking — it states the arithmetic rather than asserting a total.
+- **Four stale tool-surface counts in the wiki and reference notes** — `Home.md` said "40 tools and
+  not 543", `FAQ.md` said curated 118 / all 543, `Recipes.md` said the index pre-loads 40, and
+  `agent-tool-design.md` said the same. A reviewer found the first **after** a sweep that was meant
+  to catch exactly this; the other three turned up beside it. `tool-surface-figures` covered three
+  documents and the claim appears in seven, which is v3.7.0's lesson about files arriving a third
+  time. The gate now reads each document in its own phrasing, and was verified by reintroducing two
+  of the four.
 - **`tests/mcp/registry-tool-docs.test.mjs`** closes the gap that let the above happen. It compares
   the documents against the **live registry** rather than against each other, so a tool that exists
   in code and nowhere in prose fails — which is precisely the v3.4.0 defect. It also checks the
