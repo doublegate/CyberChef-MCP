@@ -14,7 +14,7 @@
  *
  * That is the first and second categories of registry tool at once -- a loop with a decision inside
  * it (ordering an unordered bundle), and a statistic computed ACROSS inputs (the chain's validity
- * window is the intersection of its members'). `Fork` runs one recipe per branch and cannot compare
+ * window is the intersection of its members' own validity windows). `Fork` runs one recipe per branch and cannot compare
  * branches, so none of it is expressible as a recipe.
  *
  * ## Links are established cryptographically, not by string comparison
@@ -424,7 +424,7 @@ export default {
                     "days_until_expiry": entry.days_until_expiry
                 }))
             } : {}),
-            // The chain's own validity window: the INTERSECTION of its members', which is the
+            // The chain's own validity window: the INTERSECTION of its members' windows, which is the
             // number that matters and the one no per-certificate operation can produce.
             ...(described.length ? {
                 "chain_valid_until": described.reduce(
