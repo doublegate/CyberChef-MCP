@@ -25,6 +25,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   documents and the claim appears in seven, which is v3.7.0's lesson about files arriving a third
   time. The gate now reads each document in its own phrasing, and was verified by reintroducing two
   of the four.
+- **`docs/wiki/FAQ.md` said "sixteen" and listed 16 of 18**, missing `ecdsa_recover` and
+  `cert_chain` — found by a reviewer *after* the gate above was added, because that gate listed its
+  inventory files by hand. A hand-maintained list of files went stale in the check written to stop
+  hand-maintained lists going stale. It now **discovers** them: any live document naming more than
+  half the registry tools is treated as an inventory and must name all of them, with one written
+  exemption (`THIRD-PARTY-NOTICES.md` is an attribution table keyed by borrowed work, so demanding
+  all eighteen would demand a false attribution). Exemptions are themselves checked — for a file
+  that still exists, still qualifies, and carries a reason.
 - **`tests/mcp/registry-tool-docs.test.mjs`** closes the gap that let the above happen. It compares
   the documents against the **live registry** rather than against each other, so a tool that exists
   in code and nowhere in prose fails — which is precisely the v3.4.0 defect. It also checks the

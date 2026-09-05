@@ -10,14 +10,17 @@ Because `tools/list` goes to the model on **every** request, and sending all 545
 any of them. Set `CYBERCHEF_TOOL_SURFACE=curated` (120) or `=all` (545) if you would rather
 pre-load. Full detail: **[The Tool Surface](Tool-Surface)**.
 
-## What are the sixteen tools that are not operations?
+## What are the eighteen tools that are not operations?
 
 `cyberchef_xor_key_length`, `cyberchef_cyclic_pattern`, `cyberchef_hash_identify` and
-`cyberchef_rsa_attack`, added in v2.4.0, plus twelve more added in v3.3.0:
+`cyberchef_rsa_attack`, added in v2.4.0; twelve more added in v3.3.0:
 `cyberchef_classical_cipher`, `cyberchef_corpus_diff`, `cyberchef_crib_drag`,
 `cyberchef_entropy_scan`, `cyberchef_hash_crack`, `cyberchef_hash_statistics`,
 `cyberchef_jwt_weakness`, `cyberchef_plaintext_check`, `cyberchef_rsa_multi_key`,
-`cyberchef_substitution_break`, `cyberchef_timestamp_identify` and `cyberchef_vigenere_break`. An
+`cyberchef_substitution_break`, `cyberchef_timestamp_identify` and `cyberchef_vigenere_break`;
+then `cyberchef_ecdsa_recover` in v3.4.0 (private-key recovery from a reused ECDSA nonce) and
+`cyberchef_cert_chain` in v3.8.0 (orders an X.509 bundle and verifies every link
+cryptographically). An
 operation is a pure `run(input, args)` over one input, which cannot express an *analysis* — and
 `cyberchef_bake` cannot either, because a recipe is a pipeline, not a loop. They are in every tool
 surface because none is reachable through `bake`. See **[Analysis Tools](Analysis-Tools)**.
