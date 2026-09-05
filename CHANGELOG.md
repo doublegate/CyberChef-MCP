@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`cert_chain` reports `chain_valid_from`**, the missing half of a claim it had been making. A
+  chain's validity window is the **intersection** of its members', and `chain_valid_until`
+  (`min(not_after)`) is only where that interval *ends*. The documentation described the whole
+  interval. Rather than weaken the prose to match half an implementation, the other half is now
+  computed: `max(not_before)`, the moment the chain starts working — which is not always in the
+  past, since a freshly issued intermediate inside an otherwise old chain moves it, and that is
+  exactly what someone deploying a renewed bundle needs to see. Purely additive.
+
+### Fixed
+
+- **Documentation sweep after v3.8.0.** The registry-tool count was stale in five live documents,
+  and had been since **v3.4.0** rather than since this release — `ecdsa_recover` was never added to
+  the wiki's Analysis-Tools page, the user guide, the README bullet, or the counts in
+  `Tool-Surface.md` and `Home.md`, and `cert_chain` then compounded it. All now say **eighteen**,
+  with entries for both tools.
+- **An arithmetic error in `Tool-Surface.md`** that the correction resolves: the table said 42 tools
+  in the default index while the prose beside it said "The 40 ... are 23 meta-tools,
+  `cyberchef_magic`, and the sixteen analysis tools". 23 + 1 + 18 = 42, so the prose is now both
+  correct and self-checking — it states the arithmetic rather than asserting a total.
+- **Four stale tool-surface counts in the wiki and reference notes** — `Home.md` said "40 tools and
+  not 543", `FAQ.md` said curated 118 / all 543, `Recipes.md` said the index pre-loads 40, and
+  `agent-tool-design.md` said the same. A reviewer found the first **after** a sweep that was meant
+  to catch exactly this; the other three turned up beside it. `tool-surface-figures` covered three
+  documents and the claim appears in seven, which is v3.7.0's lesson about files arriving a third
+  time. The gate now reads each document in its own phrasing, and was verified by reintroducing two
+  of the four.
+- **`docs/wiki/FAQ.md` said "sixteen" and listed 16 of 18**, missing `ecdsa_recover` and
+  `cert_chain` — found by a reviewer *after* the gate above was added, because that gate listed its
+  inventory files by hand. A hand-maintained list of files went stale in the check written to stop
+  hand-maintained lists going stale. It now **discovers** them: any live document naming more than
+  half the registry tools is treated as an inventory and must name all of them, with one written
+  exemption (`THIRD-PARTY-NOTICES.md` is an attribution table keyed by borrowed work, so demanding
+  all eighteen would demand a false attribution). Exemptions are themselves checked — for a file
+  that still exists, still qualifies, and carries a reason.
+- **`tests/mcp/registry-tool-docs.test.mjs`** closes the gap that let the above happen. It compares
+  the documents against the **live registry** rather than against each other, so a tool that exists
+  in code and nowhere in prose fails — which is precisely the v3.4.0 defect. It also checks the
+  stated count in all six documents that state one, and reports what each *does* say so the failure
+  names the fix. Verified by reproducing both real defects: removing `ecdsa_recover`'s entry yields
+  `docs/wiki/Analysis-Tools.md: cyberchef_ecdsa_recover`, and reverting a count yields
+  `docs/wiki/Home.md: expected 18, found 16`.
+- **`.gitignore`** now covers `arm64-benchmark.txt` and `arm64-machine.txt`, which the v3.8.0 arm64
+  job writes into the working directory, for the same reason `benchmark-output.txt` is there.
+  `arm64-machine.txt` looks worth keeping — it records the machine a measurement came from — but a
+  committed copy is a snapshot of one runner that goes stale on the next run; the durable record
+  belongs in `docs/internal/measurements/`.
+
 ## [3.8.0] - 2026-09-04
 
 **Two blockers that were not blockers.** Re-measuring the carried-forward list found one item

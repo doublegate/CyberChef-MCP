@@ -14,7 +14,7 @@
  *
  * That is the first and second categories of registry tool at once -- a loop with a decision inside
  * it (ordering an unordered bundle), and a statistic computed ACROSS inputs (the chain's validity
- * window is the intersection of its members'). `Fork` runs one recipe per branch and cannot compare
+ * window is the intersection of its members' own validity windows). `Fork` runs one recipe per branch and cannot compare
  * branches, so none of it is expressible as a recipe.
  *
  * ## Links are established cryptographically, not by string comparison
@@ -424,9 +424,21 @@ export default {
                     "days_until_expiry": entry.days_until_expiry
                 }))
             } : {}),
-            // The chain's own validity window: the INTERSECTION of its members', which is the
-            // number that matters and the one no per-certificate operation can produce.
+            // The chain's own validity window: the INTERSECTION of its members' windows, which is
+            // the answer no per-certificate operation can produce.
+            //
+            // BOTH ENDS, and only one of them was here until a reviewer pointed out that an
+            // intersection has a start. `chain_valid_until` alone is min(not_after) -- the moment
+            // the chain stops working -- and the documentation around it claimed the whole
+            // interval. Rather than weaken the prose to match half an implementation, the missing
+            // half is computed: `chain_valid_from` is max(not_before), the moment the chain STARTS
+            // working, which is not always in the past. A freshly issued intermediate inside an
+            // otherwise old chain moves it, and that is exactly the case someone deploying a
+            // renewed bundle needs to see.
             ...(described.length ? {
+                "chain_valid_from": described.reduce(
+                    (latest, entry) => entry.not_before > latest ? entry.not_before : latest,
+                    described[0].not_before),
                 "chain_valid_until": described.reduce(
                     (soonest, entry) => entry.not_after < soonest ? entry.not_after : soonest,
                     described[0].not_after)

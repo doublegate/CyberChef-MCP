@@ -1,6 +1,7 @@
 # Analysis Tools
 
-Sixteen tools that are **not** CyberChef operations: four added in v2.4.0, twelve more in v3.3.0.
+Eighteen tools that are **not** CyberChef operations: four added in v2.4.0, twelve more in
+v3.3.0, one in v3.4.0 and one in v3.8.0.
 
 ## Why they exist
 
@@ -204,6 +205,49 @@ Ranks every timestamp format a given number could plausibly be.
 ### `cyberchef_vigenere_break`
 
 Recovers a Vigenère key from ciphertext alone.
+
+---
+
+## Added in v3.4.0
+
+### `cyberchef_ecdsa_recover`
+
+Recovers an ECDSA private key from two signatures that reused a nonce, detected by a shared `r`.
+Exact algebra rather than a search, and it returns **two** candidates — one for a shared nonce and
+one for a negated nonce — because verifying a candidate against the signatures it was derived from
+is vacuous by construction. It does not attack a merely biased nonce, and says so rather than
+failing quietly.
+
+---
+
+## Added in v3.8.0
+
+### `cyberchef_cert_chain`
+
+Orders a PEM bundle of X.509 certificates into a chain and reports where it breaks: wrong order, a
+missing intermediate, an expired link, an issuer not permitted to sign, or an issuer whose name and
+key identifier match while its **signature** does not — the shape of a substituted certificate.
+
+`Parse X.509 certificate`, `Parse X.509 CRL` and `Public Key from Certificate` each handle **one**
+certificate. Nothing relates two, and every real question about a bundle is relational. It is both
+gap-shapes at once: a loop with a decision inside it (ordering an unordered bundle) and a statistic
+computed across inputs — `chain_valid_from` and `chain_valid_until` are the **intersection** of
+the members' validity windows, the answer no per-certificate operation can produce. Both ends
+matter: a freshly issued intermediate inside an otherwise old chain moves the start, which is
+exactly what someone deploying a renewed bundle needs to see.
+
+A missing root arrives in `notes` rather than `problems` and does not affect `self_consistent`: a
+server's `fullchain.pem` legitimately omits it, and a tool that cries wolf on the common case gets
+ignored.
+
+**Links are verified cryptographically, and this is the tool's hardest-won detail.**
+`X509Certificate.checkIssued()` compares issuer/subject names, authority and subject **key
+identifiers**, and key usage — it does *not* check the signature. An earlier design assumed it did
+and selected the first `checkIssued` match as the chain edge, so a certificate minted with a forged
+subject *and* a matching `subjectKeyIdentifier` could capture the link while the genuine issuer sat
+unconsidered in the same bundle, making a good chain report as broken. Selection now requires a
+verifying signature, keeping a metadata-only match only as a fallback so a substitution is reported
+rather than silently dropped.
 
 ---
 

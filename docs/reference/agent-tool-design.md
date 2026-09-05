@@ -11,7 +11,7 @@ elsewhere, on other servers — that is exactly why v3.1.0 exists before v3.2.0.
 
 **Do not expose every endpoint.** Consolidate multi-step work into one tool the way a person would
 divide a task. This server's `cyberchef_bake` is already that: one call runs an N-step recipe, and
-it is why the `index` surface can pre-load 40 tools without losing reach.
+it is why the `index` surface can pre-load 42 tools without losing reach.
 
 **Token efficiency is a design property of the response, not of the protocol.**
 - `response_format: concise | detailed` measured at **65%** reduction on one case (206 → 72 tokens)

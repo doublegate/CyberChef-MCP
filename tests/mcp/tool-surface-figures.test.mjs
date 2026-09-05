@@ -105,6 +105,56 @@ describe("documented tool-surface figures", () => {
             .toEqual({ tools: bySurface.all.tools, bytes: bySurface.all.bytes });
     });
 
+    // The wiki and the reference notes state the same figures in their own phrasings, and the
+    // first version of this file did not look at them. A reviewer found `Home.md` still saying
+    // "40 tools and not 543" AFTER a sweep that was supposed to have caught exactly that, and two
+    // more turned up beside it. A gate covering three of seven documents reads as covering the
+    // claim -- which is the lesson v3.7.0 recorded about files and v3.8.0 repeated about phrasings,
+    // arriving a third time.
+    //
+    // Each entry pulls the numbers out in that document's own wording. A pattern that matches
+    // NOTHING fails, so a rephrasing surfaces as a failure rather than as silence.
+    const PROSE_CLAIMS = [
+        {
+            file: "docs/wiki/Home.md",
+            extract: t => t.match(/Why you see (\d+) tools and not (\d+)/),
+            expect: s => [String(s.index.tools), String(s.all.tools)]
+        },
+        {
+            file: "docs/wiki/FAQ.md",
+            extract: t => t.match(/CYBERCHEF_TOOL_SURFACE=curated` \((\d+)\) or `=all` \((\d+)\)/),
+            expect: s => [String(s.curated.tools), String(s.all.tools)]
+        },
+        {
+            file: "docs/wiki/Recipes.md",
+            extract: t => t.match(/deliberately pre-loads only (\d+) tools/),
+            expect: s => [String(s.index.tools)]
+        },
+        {
+            file: "docs/reference/agent-tool-design.md",
+            extract: t => t.match(/`index` surface can pre-load (\d+) tools/),
+            expect: s => [String(s.index.tools)]
+        }
+    ];
+
+    it("the wiki and reference prose agree with the canonical table", () => {
+        const bySurface = Object.fromEntries(canonical().map(r => [r.surface, r]));
+        const wrong = [];
+        for (const { file, extract, expect: wanted } of PROSE_CLAIMS) {
+            const m = extract(read(file));
+            if (!m) {
+                wrong.push(`${file}: the surface-count sentence stopped matching`);
+                continue;
+            }
+            const found = m.slice(1);
+            const want = wanted(bySurface);
+            if (found.join(",") !== want.join(",")) {
+                wrong.push(`${file}: expected ${want.join("/")}, found ${found.join("/")}`);
+            }
+        }
+        expect(wrong).toEqual([]);
+    });
+
     it("the round-trip figure is larger than the index it contains", () => {
         // The defect that made this file worth writing. "index plus one operation schema" was
         // documented at 42,415 bytes while the index alone was documented at 44,406 -- a claim that

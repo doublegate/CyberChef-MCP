@@ -120,6 +120,14 @@ sbom.cyclonedx.json
 npm-audit-results.json
 benchmark-output.txt
 
+# The arm64 benchmark job (v3.8.0) writes these two into the working directory for the same
+# reason, and they are ignored for the same reason: `arm64-machine.txt` in particular looks like
+# something worth keeping -- it records the machine a measurement came from -- but a committed
+# copy is a point-in-time capture of ONE runner that goes stale on the next run. The durable
+# record belongs in docs/internal/measurements/, where it is dated and explained.
+arm64-benchmark.txt
+arm64-machine.txt
+
 # NOT ignored, and deliberately so:
 #
 #   ref-proj/          A declared submodule in .gitmodules, tracked as a gitlink. Ignoring a
