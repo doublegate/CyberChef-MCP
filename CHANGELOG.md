@@ -18,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in the default index while the prose beside it said "The 40 ... are 23 meta-tools,
   `cyberchef_magic`, and the sixteen analysis tools". 23 + 1 + 18 = 42, so the prose is now both
   correct and self-checking — it states the arithmetic rather than asserting a total.
+- **`tests/mcp/registry-tool-docs.test.mjs`** closes the gap that let the above happen. It compares
+  the documents against the **live registry** rather than against each other, so a tool that exists
+  in code and nowhere in prose fails — which is precisely the v3.4.0 defect. It also checks the
+  stated count in all six documents that state one, and reports what each *does* say so the failure
+  names the fix. Verified by reproducing both real defects: removing `ecdsa_recover`'s entry yields
+  `docs/wiki/Analysis-Tools.md: cyberchef_ecdsa_recover`, and reverting a count yields
+  `docs/wiki/Home.md: expected 18, found 16`.
 - **`.gitignore`** now covers `arm64-benchmark.txt` and `arm64-machine.txt`, which the v3.8.0 arm64
   job writes into the working directory, for the same reason `benchmark-output.txt` is there.
   `arm64-machine.txt` looks worth keeping — it records the machine a measurement came from — but a
