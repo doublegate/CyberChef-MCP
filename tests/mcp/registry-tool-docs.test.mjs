@@ -82,17 +82,55 @@ const INVENTORY_EXEMPT = new Map([
     ]
 ]);
 
-/** Live documentation, excluding what is historical by nature. */
+let liveMarkdownCache;
+
+/**
+ * Live documentation, excluding what is historical by nature.
+ *
+ * `git ls-files` rather than a directory walk, and that is deliberate: it lists TRACKED files, so
+ * generated-and-gitignored trees are excluded for free. `docs-site/src/content/docs/` is the reason
+ * -- it is a full copy of the documentation rebuilt before every site build, it was fourteen
+ * releases stale on this machine while the published site was current, and a filesystem walk would
+ * have treated that stale copy as an inventory and failed on it. Replacing git with a walk would
+ * trade an honest prerequisite for a wrong answer.
+ *
+ * The prerequisite is therefore stated rather than hidden. Without git -- or from a source archive
+ * with no `.git`, such as GitHub's "Download ZIP" -- `execFileSync` throws ENOENT or git's own
+ * "not a repository", both of which arrive as an opaque spawn failure inside a test about
+ * documentation. Reviewer-found; it now says what is missing and what to do.
+ *
+ * @returns {string[]} Tracked Markdown paths, excluding historical documents.
+ */
 function liveMarkdown() {
-    const out = execFileSync("git", ["ls-files", "*.md"], { cwd: ROOT, encoding: "utf8" })
-        .split("\n").filter(Boolean);
-    return out.filter(f =>
+    if (liveMarkdownCache) return liveMarkdownCache;
+    let raw;
+    try {
+        raw = execFileSync("git", ["ls-files", "*.md"], { cwd: ROOT, encoding: "utf8" });
+    } catch (error) {
+        throw new Error(
+            "This test enumerates the repository's tracked Markdown with `git ls-files`, and that " +
+            "failed: " + (error.code === "ENOENT" ? "git is not on PATH." : error.message.trim()) +
+            "\nRun it from a git clone with git installed. A source archive without `.git` " +
+            "(GitHub's \"Download ZIP\") will not work. `git ls-files` is used rather than a " +
+            "directory walk on purpose -- it excludes generated, gitignored trees such as " +
+            "docs-site/src/content/docs/, which a walk would wrongly treat as documentation.",
+            { cause: error });
+    }
+    const out = raw.split("\n").filter(Boolean);
+    liveMarkdownCache = out.filter(f =>
         !f.startsWith("docs/releases/") &&
         !f.includes("findings-log") &&
         !f.startsWith("docs/planning/future-releases/") &&
         !f.startsWith("docs/planning/phases/") &&
         !f.startsWith("docs/planning/ext-proj-int/") &&
         f !== "CHANGELOG.md");
+
+    // Discovery returning nothing would make every check below pass vacuously, which is the exact
+    // failure this file exists to prevent. Fail loudly instead.
+    if (liveMarkdownCache.length === 0) {
+        throw new Error("`git ls-files '*.md'` matched no live documentation, which cannot be right.");
+    }
+    return liveMarkdownCache;
 }
 
 describe("registry tool documentation", () => {
