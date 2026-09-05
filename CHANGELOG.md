@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Documentation sweep after v3.8.0.** The registry-tool count was stale in five live documents,
+  and had been since **v3.4.0** rather than since this release — `ecdsa_recover` was never added to
+  the wiki's Analysis-Tools page, the user guide, the README bullet, or the counts in
+  `Tool-Surface.md` and `Home.md`, and `cert_chain` then compounded it. All now say **eighteen**,
+  with entries for both tools.
+- **An arithmetic error in `Tool-Surface.md`** that the correction resolves: the table said 42 tools
+  in the default index while the prose beside it said "The 40 ... are 23 meta-tools,
+  `cyberchef_magic`, and the sixteen analysis tools". 23 + 1 + 18 = 42, so the prose is now both
+  correct and self-checking — it states the arithmetic rather than asserting a total.
+- **`.gitignore`** now covers `arm64-benchmark.txt` and `arm64-machine.txt`, which the v3.8.0 arm64
+  job writes into the working directory, for the same reason `benchmark-output.txt` is there.
+  `arm64-machine.txt` looks worth keeping — it records the machine a measurement came from — but a
+  committed copy is a snapshot of one runner that goes stale on the next run; the durable record
+  belongs in `docs/internal/measurements/`.
+
 ## [3.8.0] - 2026-09-04
 
 **Two blockers that were not blockers.** Re-measuring the carried-forward list found one item

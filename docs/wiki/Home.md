@@ -1,7 +1,7 @@
 # CyberChef MCP Server
 
 [GCHQ CyberChef](https://github.com/gchq/CyberChef) as tools an AI assistant can call: **504
-operations** for encryption, encoding, compression and forensics, plus **sixteen analysis tools**
+operations** for encryption, encoding, compression and forensics, plus **eighteen analysis tools**
 that an operation cannot express.
 
 ```bash

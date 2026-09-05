@@ -176,13 +176,14 @@ cyberchef_categories            16 categories, with counts and examples   (~2 KB
 **`Magic` is exposed in every surface**, including `index`. It is what you reach for *before* you
 know what you are looking at, so making it three calls deep would invert the cost.
 
-**The sixteen analysis tools are in every surface too.** Four since v2.4.0 —
+**The eighteen analysis tools are in every surface too.** Four since v2.4.0 —
 `cyberchef_xor_key_length`, `cyberchef_cyclic_pattern`, `cyberchef_hash_identify`,
-`cyberchef_rsa_attack` — and twelve added in v3.3.0: `cyberchef_classical_cipher`,
+`cyberchef_rsa_attack` — twelve added in v3.3.0: `cyberchef_classical_cipher`,
 `cyberchef_corpus_diff`, `cyberchef_crib_drag`, `cyberchef_entropy_scan`, `cyberchef_hash_crack`,
 `cyberchef_hash_statistics`, `cyberchef_jwt_weakness`, `cyberchef_plaintext_check`,
 `cyberchef_rsa_multi_key`, `cyberchef_substitution_break`, `cyberchef_timestamp_identify` and
-`cyberchef_vigenere_break`.
+`cyberchef_vigenere_break` — then `cyberchef_ecdsa_recover` in v3.4.0 and `cyberchef_cert_chain`
+in v3.8.0.
 
 Unlike an operation, none of them is reachable through `cyberchef_bake`: they are not in
 `OperationConfig`, because each performs an analysis rather than a transformation. Hiding one

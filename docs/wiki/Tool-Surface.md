@@ -22,10 +22,11 @@ bytes of the `tools/list` payload, rather than estimated:
 | `curated` | 120 | 105 KB | 107,652 |
 | `all` | 545 | 415 KB | 424,810 |
 
-The 40 in the default index are 23 meta-tools, `cyberchef_magic`, and the sixteen
-[analysis tools](Analysis-Tools). The index grew from 28 to 40 in v3.3.0 because twelve new
-registry tools have no navigation path of their own — a registry tool that is not listed cannot
-be called at all.
+The 42 in the default index are 23 meta-tools, `cyberchef_magic`, and the eighteen
+[analysis tools](Analysis-Tools) — and that arithmetic is the point: 23 + 1 + 18 = 42, matching the
+table above. The index grew from 28 to 40 in v3.3.0 because twelve new registry tools have no
+navigation path of their own — a registry tool that is not listed cannot be called at all — then to
+41 with `cyberchef_ecdsa_recover` in v3.4.0 and 42 with `cyberchef_cert_chain` in v3.8.0.
 
 ## Nothing becomes unreachable
 
@@ -50,7 +51,7 @@ trade — and when it is not, one environment variable changes it.
 **`cyberchef_magic`**, because it is what you reach for *before* you know what you are looking at.
 Making it three calls deep would invert the cost.
 
-**The sixteen analysis tools**, because unlike an operation, none of them is reachable through
+**The eighteen analysis tools**, because unlike an operation, none of them is reachable through
 `cyberchef_bake` — they are not in `OperationConfig`. Hiding them behind a surface setting would
 make them unreachable rather than merely inconvenient. They form part of the 44,406-byte index
 payload.
