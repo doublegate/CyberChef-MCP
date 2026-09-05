@@ -231,8 +231,10 @@ key identifier match while its **signature** does not — the shape of a substit
 `Parse X.509 certificate`, `Parse X.509 CRL` and `Public Key from Certificate` each handle **one**
 certificate. Nothing relates two, and every real question about a bundle is relational. It is both
 gap-shapes at once: a loop with a decision inside it (ordering an unordered bundle) and a statistic
-computed across inputs — `chain_valid_until` is the **intersection** of the members' validity
-windows, which is the number that matters and the one no per-certificate operation can produce.
+computed across inputs — `chain_valid_from` and `chain_valid_until` are the **intersection** of
+the members' validity windows, the answer no per-certificate operation can produce. Both ends
+matter: a freshly issued intermediate inside an otherwise old chain moves the start, which is
+exactly what someone deploying a renewed bundle needs to see.
 
 A missing root arrives in `notes` rather than `problems` and does not affect `self_consistent`: a
 server's `fullchain.pem` legitimately omits it, and a tool that cries wolf on the common case gets

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`cert_chain` reports `chain_valid_from`**, the missing half of a claim it had been making. A
+  chain's validity window is the **intersection** of its members', and `chain_valid_until`
+  (`min(not_after)`) is only where that interval *ends*. The documentation described the whole
+  interval. Rather than weaken the prose to match half an implementation, the other half is now
+  computed: `max(not_before)`, the moment the chain starts working — which is not always in the
+  past, since a freshly issued intermediate inside an otherwise old chain moves it, and that is
+  exactly what someone deploying a renewed bundle needs to see. Purely additive.
+
 ### Fixed
 
 - **Documentation sweep after v3.8.0.** The registry-tool count was stale in five live documents,

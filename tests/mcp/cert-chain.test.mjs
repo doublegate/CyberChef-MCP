@@ -126,6 +126,22 @@ describe("cert_chain", () => {
             .toBe(out.chain.find(entry => entry.subject === "CN=example.test").not_after);
     });
 
+    it("reports BOTH ends of the chain's validity window", async () => {
+        // An intersection has a start. `chain_valid_until` alone was min(not_after) while the
+        // documentation claimed the whole interval -- reviewer-found. `chain_valid_from` is
+        // max(not_before), and both are needed before the pair can be called an intersection.
+        const out = await tool.run({ input: LEAF + INTER + ROOT, "as_of": WITHIN });
+
+        const latestStart = out.chain.map(e => e.not_before).sort().at(-1);
+        const earliestEnd = out.chain.map(e => e.not_after).sort()[0];
+
+        expect(out.chain_valid_from).toBe(latestStart);
+        expect(out.chain_valid_until).toBe(earliestEnd);
+        // A usable chain has a non-empty intersection, and `as_of` sits inside it.
+        expect(out.chain_valid_from < out.chain_valid_until).toBe(true);
+        expect(out.chain_valid_from <= WITHIN && WITHIN <= out.chain_valid_until).toBe(true);
+    });
+
     it("flags a certificate expiring inside the warning window", async () => {
         const out = await tool.run({
             input: LEAF + INTER + ROOT, "as_of": WITHIN, "expiry_warning_days": 3650

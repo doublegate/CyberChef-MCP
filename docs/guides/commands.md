@@ -362,8 +362,9 @@ whose name and key identifier match while its **signature** does not — the sha
 certificate. `Parse X.509 certificate`, `Parse X.509 CRL` and `Public Key from Certificate` each
 handle one certificate; nothing relates two.
 
-Reports `chain_valid_until` as the **intersection** of the members' validity windows, which is the
-number that matters and the one no per-certificate operation can produce. A missing root arrives in
+Reports `chain_valid_from` and `chain_valid_until` — the **intersection** of the members' validity
+windows, and the answer no per-certificate operation can produce. Both ends, because a freshly
+issued intermediate inside an otherwise old chain moves the start. A missing root arrives in
 `notes` rather than `problems` and does not affect `self_consistent` — a server's `fullchain.pem`
 legitimately omits it.
 
