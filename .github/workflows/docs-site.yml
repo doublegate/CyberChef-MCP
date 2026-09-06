@@ -37,7 +37,7 @@ jobs:
     name: Build site
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           submodules: false
           # A `release` event checks out the RELEASE TAG by default, so publishing a release from
