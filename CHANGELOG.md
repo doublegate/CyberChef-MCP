@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation
+
+- **v4 planning added at `docs/planning/v4/`** — one measured plan, nine thin charters, and a
+  phase/sprint tree. Its headline finding is that **v4.0.0 is not scheduled**: the MCP draft
+  specification changelog reads *"Changes since the most recent release will accumulate here"* and
+  is **empty**, so nothing has accumulated since 2026-07-28 and the v4.0.0 charter's own kill
+  criterion — *if the specification does not force a breaking change, do not cut a major* — fires.
+  The ecosystem is not idle, which is a different claim: six SEPs were updated on the day of
+  measurement, and the likeliest forcing function is **SEP-2663 (Tasks)** entering core, because
+  this server holds a *tested* position declining tasks. Every charter carries a measurable trigger
+  and kill criteria, and all nine are **minors**. `v4.1.0` is the only one ready now — the
+  module-scope `runServer()` defect recorded as F-13 during v3.9.0, which an independent reviewer
+  diagnosed identically and unprompted. The v3 charter it replaces keeps a dated superseded banner
+  rather than being deleted.
+- **`.gitignore`**: `benchmark-output.txt` was listed twice. The duplicate is replaced by a pointer
+  to the entry that carries the reasoning — one entry, one place.
+
 ## [3.9.0] - 2026-09-10
 
 ### Added

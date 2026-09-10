@@ -621,7 +621,7 @@ what Ciphey, Ares and katana's core do, and cryptii's encodings have 26 equivale
 operations. The `cyberchef-recipes` preset corpus remains unbuilt. See
 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) for what was taken from where.
 
-See the [**Full Roadmap**](docs/planning/ROADMAP.md) for detailed release plans and timelines.
+See the [**Full Roadmap**](docs/planning/ROADMAP.md) for what shipped, and [**v4 planning**](docs/planning/v4/) for what is being watched for. A major version here exists because the protocol forced one, not because the number was next.
 
 ## Documentation
 
@@ -649,7 +649,8 @@ Detailed documentation is organized in the [`docs/`](docs/) directory:
 *   [**Performance Tuning Guide**](docs/architecture/performance-tuning.md): Configuration guide for optimizing performance
 
 ### Project Management
-*   [**Product Roadmap**](docs/planning/ROADMAP.md): Comprehensive v1.1.0 → v3.0.0 roadmap with timeline
+*   [**Product Roadmap**](docs/planning/ROADMAP.md): v1.1.0 → v3.9.0 shipped, with what each release actually found rather than what it planned
+*   [**v4 planning**](docs/planning/v4/): one measured plan and nine thin charters — and the measurement that says **v4.0.0 is not scheduled**, because the MCP draft specification has accumulated no changes since 2026-07-28
 *   [**Tasks**](docs/planning/tasks.md): 500+ implementation tasks organized by release
 *   [**Development Phases**](docs/planning/phases/overview.md): Sprint breakdowns for each development phase
 *   [**Release Plans**](docs/planning/future-releases/): Individual release specifications (v1.2.0 - v3.0.0)

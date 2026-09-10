@@ -118,7 +118,7 @@ values.*.local.yaml
 *.sarif
 sbom.cyclonedx.json
 npm-audit-results.json
-benchmark-output.txt
+# (`benchmark-output.txt` is ignored above, with the reasoning -- one entry, one place.)
 
 # The arm64 benchmark job (v3.8.0) writes these two into the working directory for the same
 # reason, and they are ignored for the same reason: `arm64-machine.txt` in particular looks like

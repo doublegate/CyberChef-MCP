@@ -430,7 +430,29 @@ an intent, a candidate scope, and kill criteria — and none of them may be exec
 | ~~[v3.2.0](./v3/charters/v3.2.0-result-efficiency.md)~~ | **Shipped 2026-09-04.** Result efficiency, plus the debt v3.1.0 named | Track A: a `response_format` enum measured at 65% reduction elsewhere, truncation *with guidance*, error suggestions keyed by operation rather than by code. Track B: five gates whose stated preconditions have expired -- the Trivy severity `TODO`s (backlog is now 0/0), benchmarks that say in their own output they cannot fail, a Helm chart nothing in CI renders, no metadata-integrity guard on the sync path, and prose operation counts nothing checks. Track C: task-level scoring, only if it can be made non-flaky. |
 | [v3.3.0+](./v3/charters/v3.3.0-external-tools.md) | The `ext-proj-int` programme | The real feature backlog: 80-120 tools from 8 reference projects, of which ~4 shipped in v2.4.0. The GPL-3.0 relicense unblocked katana and John the Ripper. Spans several releases. |
 | ~~[v3.x](./v3/charters/v3.x-supply-chain.md)~~ | Security and supply chain | **Absorbed into v3.2.0 Track B.** Its own trigger -- "a gate used as evidence must actually gate" -- fired when v3.1.0's release notes cited the CI gates as verification. |
-| [v4.0.0](./v3/charters/v4.0.0.md) | Determined by the spec, not by us | The MCP roadmap's five priorities — notably **progressive tool discovery**, which is the problem this server's hand-rolled index surface solves privately. |
+| [v4.0.0](./v4/v4.0.0-plan.md) | Determined by the spec, not by us | The MCP roadmap's five priorities — notably **progressive tool discovery**, which is the problem this server's hand-rolled index surface solves privately. |
+
+## v4 planning
+
+**Added 2026-09-10, after v3.9.0.** [`v4/`](./v4/) holds one measured plan and nine thin charters.
+
+Its headline finding is that **v4.0.0 is not scheduled**, and the measurement is unusually clean:
+the MCP draft specification changelog reads *"Changes since the most recent release will accumulate
+here"* and is **empty**. Nothing has accumulated since 2026-07-28, so the v4.0.0 charter's own kill
+criterion -- *if the specification does not force a breaking change, do not cut a major* -- fires.
+
+The ecosystem is not idle, which is a different thing: six SEPs were updated on the day of
+measurement, and the likeliest forcing function is **SEP-2663 (Tasks)** entering core, because this
+server holds a tested position declining tasks.
+
+| | |
+|---|---|
+| [`v4/v4.0.0-plan.md`](./v4/v4.0.0-plan.md) | The measured plan, four named triggers, and why none has fired |
+| [`v4/charters/`](./v4/charters/) | v4.1.0-v4.9.0, one page each, every one a **minor** |
+| [`v4/to-dos/`](./v4/to-dos/) | Phase 0 trigger watch, five phase plans, and every kill criterion in one table |
+
+`v4.1.0` is the only charter ready now: the module-scope `runServer()` defect recorded as F-13 in
+the v3.9.0 findings log, which an independent reviewer diagnosed identically and unprompted.
 
 ## References
 
