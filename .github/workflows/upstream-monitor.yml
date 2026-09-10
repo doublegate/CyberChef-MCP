@@ -62,7 +62,37 @@ jobs:
           echo "latest=$LATEST_TAG" >> "$GITHUB_OUTPUT"
           echo "Latest CyberChef release: $LATEST_TAG"
 
-          # Get version from package.json
+          # CHECK OUT THAT TAG BEFORE ANY COMPARISON.
+          #
+          # The clone tracks `master`, so without this every file comparison below ran against
+          # UNRELEASED upstream work while the issue headline named a release tag -- two different
+          # refs printed as one. Issue #129 is what that produces: "New CyberChef release v11.4.0
+          # available" listing `ParsePGPKey.mjs` as a new operation, when this repository was
+          # already on v11.4.0 and `ParsePGPKey.mjs` is not in the v11.4.0 tag at all. A maintainer
+          # reading it would start a sync that has nothing to sync.
+          #
+          # Master's head is recorded first, so "master has moved since the release" stays
+          # measurable -- it is real information, just not the same claim as "a new release exists".
+          MASTER_SHA=$(git rev-parse HEAD)
+          echo "master_sha=$MASTER_SHA" >> "$GITHUB_OUTPUT"
+          if [ "$LATEST_TAG" != "unknown" ]; then
+            git checkout --detach "$LATEST_TAG" --quiet
+            TAG_SHA=$(git rev-parse HEAD)
+            echo "tag_sha=$TAG_SHA" >> "$GITHUB_OUTPUT"
+            if [ "$MASTER_SHA" != "$TAG_SHA" ]; then
+              AHEAD=$(git rev-list --count "$LATEST_TAG".."$MASTER_SHA" 2>/dev/null || echo "0")
+            else
+              AHEAD=0
+            fi
+            echo "master_ahead=$AHEAD" >> "$GITHUB_OUTPUT"
+            echo "Comparing against tag $LATEST_TAG; master is $AHEAD commit(s) ahead of it"
+          else
+            echo "tag_sha=unknown" >> "$GITHUB_OUTPUT"
+            echo "master_ahead=0" >> "$GITHUB_OUTPUT"
+          fi
+
+          # Get version from package.json AT THE TAG, which is the release's own version rather
+          # than whatever master currently declares.
           UPSTREAM_VERSION=$(node -p "require('./package.json').version" 2>/dev/null || echo "unknown")
           echo "version=$UPSTREAM_VERSION" >> "$GITHUB_OUTPUT"
           echo "Upstream package.json version: $UPSTREAM_VERSION"
@@ -76,10 +106,16 @@ jobs:
           echo "version=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
           echo "Current MCP version: $CURRENT_VERSION"
 
-          # Extract CyberChef version from package.json
-          CYBERCHEF_VERSION=$(node -p "require('./package.json').version")
+          # Extract the UPSTREAM base version -- `cyberchefUpstreamVersion`, not `version`.
+          #
+          # This read `.version` until v3.9.0, which is this fork's own semver (3.8.0), so the
+          # comparison below was "v3.8.0" against "v11.4.0" and could NEVER be equal. The monitor
+          # was structurally incapable of reporting "up to date": it raised a release issue every
+          # single run, and the compare link it generated pointed at `v3.8.0...v11.4.0`, a ref that
+          # does not exist in gchq/CyberChef. The correct field has existed since v2.2.0.
+          CYBERCHEF_VERSION=$(node -p "require('./package.json').cyberchefUpstreamVersion")
           echo "cyberchef_version=$CYBERCHEF_VERSION" >> "$GITHUB_OUTPUT"
-          echo "Current CyberChef version: $CYBERCHEF_VERSION"
+          echo "Current CyberChef upstream base: $CYBERCHEF_VERSION"
 
       - name: Compare operation files
         id: compare_ops
@@ -198,6 +234,8 @@ jobs:
           REF_OPS: ${{ steps.compare_ops.outputs.ref_ops }}
           NEW_OPS: ${{ steps.compare_ops.outputs.new_ops }}
           MODIFIED_OPS: ${{ steps.compare_ops.outputs.modified_ops }}
+          NEW_VERSION: ${{ steps.compare.outputs.new_version }}
+          MASTER_AHEAD: ${{ steps.upstream.outputs.master_ahead }}
         run: |
           TIMESTAMP=$(date -u +'%Y-%m-%d %H:%M:%S UTC')
 
@@ -205,16 +243,32 @@ jobs:
           NEW_OPS_LIST=$(cat /tmp/new_ops.txt)
           MODIFIED_OPS_LIST=$(cat /tmp/modified_ops.txt)
 
-          ISSUE_BODY="## New Upstream Release Detected
+          # Two different claims, kept apart. "A release you are not on exists" and "master has
+          # moved since the release you ARE on" are both worth knowing and need different action;
+          # conflating them is what made #129 misleading.
+          if [ "$NEW_VERSION" = "true" ]; then
+            HEADLINE="## New Upstream Release Detected"
+            ISSUE_TITLE="New CyberChef release $LATEST available"
+          else
+            HEADLINE="## Upstream Drift Detected (same release)"
+            ISSUE_TITLE="Upstream drift against $LATEST -- operations differ from the tag"
+          fi
 
-          **CyberChef Version**: $LATEST
-          **Current Version**: v$CYBERCHEF_VERSION
+          ISSUE_BODY="$HEADLINE
+
+          **Latest upstream release**: $LATEST
+          **This fork's upstream base**: v$CYBERCHEF_VERSION
+          **Compared against**: \`$LATEST\` (the release tag, not master)
+          **Master is ahead of that tag by**: $MASTER_AHEAD commit(s)
           **Detected**: $TIMESTAMP
 
           ### Operation Changes
 
-          - **Current Operations**: $MAIN_OPS
-          - **Upstream Operations**: $REF_OPS
+          Counted against the **$LATEST tag**. Work that exists only on upstream master is
+          deliberately excluded -- it is unreleased and is not something to sync.
+
+          - **Operations here**: $MAIN_OPS
+          - **Operations at $LATEST**: $REF_OPS
           - **New Operations**: $NEW_OPS
           - **Modified Operations**: $MODIFIED_OPS
 
@@ -231,7 +285,7 @@ jobs:
           ### Next Steps
 
           1. Review the [upstream release notes](https://github.com/gchq/CyberChef/releases/tag/$LATEST)
-          2. Check the [upstream commit log](https://github.com/gchq/CyberChef/compare/v$CYBERCHEF_VERSION...$LATEST)
+          2. Check the [upstream commit log](https://github.com/gchq/CyberChef/compare/v$CYBERCHEF_VERSION...$LATEST) -- valid now that \`CYBERCHEF_VERSION\` is the upstream base rather than this fork's semver
           3. Review operation changes above for breaking changes
           4. To trigger automatic sync, add the \`upstream-sync-approved\` label
           5. For manual sync or complex changes, see instructions below
@@ -266,7 +320,7 @@ jobs:
           This issue was created automatically by the Upstream Release Monitor workflow."
 
           gh issue create \
-            --title "New CyberChef release $LATEST available" \
+            --title "$ISSUE_TITLE" \
             --label "upstream-release,needs-review" \
             --body "$ISSUE_BODY"
 
@@ -296,8 +350,9 @@ jobs:
           {
             echo "### Upstream Monitor Summary"
             echo ""
-            echo "- **Latest CyberChef:** $LATEST"
-            echo "- **Current Version:** v$CYBERCHEF_VERSION"
+            echo "- **Latest CyberChef release:** $LATEST"
+            echo "- **Upstream base here:** v$CYBERCHEF_VERSION"
+            echo "- **Compared against:** $LATEST (tag, not master)"
             echo "- **MCP Version:** $MCP_VERSION"
             echo ""
             echo "#### Operation Comparison"
