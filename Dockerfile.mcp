@@ -42,8 +42,8 @@
 #
 # The `:tag@sha256:` form is deliberate over a bare `@sha256:` -- it records which tag the digest
 # came from, which is otherwise unrecoverable from the file.
-# cgr.dev/chainguard/node:latest-dev -- Node v26.8.1, digest resolved 2026-08-31
-FROM cgr.dev/chainguard/node:latest-dev@sha256:e2fa61befbde3556bd8a2ea15b11791c257aee8857f6b7e56337b66c9829cdc5 AS builder
+# cgr.dev/chainguard/node:latest-dev -- Node v26.8.2, digest resolved 2026-09-10
+FROM cgr.dev/chainguard/node:latest-dev@sha256:abb166041fd07e5b67d5b066dab23381d6a978585e97437f82e39056b2890069 AS builder
 
 # Run as root for build operations (Chainguard -dev includes root user)
 USER root
@@ -116,9 +116,9 @@ RUN npm prune --omit=dev --ignore-scripts
 # -----------------------------------------------------------------------------
 # Stage 2: Runtime Stage (distroless, minimal attack surface)
 # -----------------------------------------------------------------------------
-# cgr.dev/chainguard/node:latest -- Node v26.8.1, digest resolved 2026-08-31.
+# cgr.dev/chainguard/node:latest -- Node v26.8.2, digest resolved 2026-09-10.
 # Digest-pinned for the same two reasons as the builder stage above.
-FROM cgr.dev/chainguard/node:latest@sha256:f819ce9bc54ff2a771a6849ec8453aaab9bb697873f3f6b91039ed07a3626748
+FROM cgr.dev/chainguard/node:latest@sha256:70518e427c8eaca89c9e965ab01cc05f7a816c703b3332dd76a9e007f67026c2
 
 # Security: Add metadata labels
 # Registry metadata. These are what a package page shows, so they are the first thing anyone reads
