@@ -23,6 +23,11 @@ env:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    # BOUNDED after v3.9.0 hung twice at "Build and push", 33 minutes each with no image pushed,
+    # against a 378-second median across v3.4.0-v3.8.0. With no timeout the job would burn the 6h
+    # default before anyone learned anything. 45 minutes is ~7x the median: generous for a bad day,
+    # decisive for a hang.
+    timeout-minutes: 45
     permissions:
       contents: write
       packages: write
@@ -54,7 +59,15 @@ jobs:
       # Revisit if the build slows materially: the matrix is the right answer at 30 minutes, and
       # the deciding number is in this comment so a future reader can re-measure rather than guess.
       - name: Set up QEMU for multi-platform builds
-        uses: docker/setup-qemu-action@v4
+        # PINNED BACK TO v3 as a bisect, not as a diagnosis. v3.9.0 bumped this v3 -> v4 (Dependabot
+        # #127) and the multi-arch build then hung twice for 33 minutes having previously taken 378
+        # seconds. Three other hypotheses were tested and eliminated: the QEMU step itself succeeds
+        # in 8s (4s on v3, comparable); the v3.9.0 Dockerfile builds clean locally for amd64; and
+        # both pinned Chainguard digests are proper OCI indexes carrying linux/amd64 AND linux/arm64.
+        # That leaves this as the one changed input to the arm64 path that has not been ruled out.
+        # If the build succeeds on v3, that is the answer and this pin stays with the evidence.
+        # If it hangs anyway, the cause is elsewhere and this comment should be deleted, not kept.
+        uses: docker/setup-qemu-action@v3
         with:
           platforms: arm64
 
@@ -146,6 +159,11 @@ jobs:
       # =============================================================================
       - name: Build and push Docker image to both registries
         uses: docker/build-push-action@v7
+        # Plain progress so a hang is DIAGNOSABLE. With the default (auto/tty) mode the output is
+        # rewritten in place and a cancelled step flushes nothing -- both v3.9.0 hangs produced zero
+        # buildx lines, so there was no way to tell which stage or which platform was stuck.
+        env:
+          BUILDKIT_PROGRESS: plain
         with:
           context: .
           file: Dockerfile.mcp
