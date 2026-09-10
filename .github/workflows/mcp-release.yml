@@ -54,7 +54,7 @@ jobs:
       # Revisit if the build slows materially: the matrix is the right answer at 30 minutes, and
       # the deciding number is in this comment so a future reader can re-measure rather than guess.
       - name: Set up QEMU for multi-platform builds
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
         with:
           platforms: arm64
 
@@ -414,7 +414,7 @@ jobs:
       # The release-creation step at line 253 already guards this way; these now match it.
       - name: Set up Node for npm publish
         if: "github.ref_type == 'tag' && !startsWith(github.ref_name, 'v1.')"
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version: '26'
           registry-url: 'https://registry.npmjs.org'

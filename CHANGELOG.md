@@ -7,7 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.9.0] - 2026-09-10
+
 ### Added
+
+- **Two gates that measure rather than compare.**
+  `tests/mcp/workflow-integrity.test.mjs` asserts one version per action across every workflow and
+  `bash -n`-parses all 137 shell blocks in 16 of them; `tests/mcp/tool-surface-figures.test.mjs`
+  gains a fifth test that spawns a real MCP client against each of the three surfaces and compares
+  the live byte count to the canonical table. The four tests already there could only establish that
+  documents agreed with **each other** — which is why v3.8.0 shipped an artefact serving 44,493
+  bytes while every document said 44,406, and every test passed. Both new gates were verified by
+  reintroducing the real defect.
+
 
 - **`cert_chain` reports `chain_valid_from`**, the missing half of a claim it had been making. A
   chain's validity window is the **intersection** of its members', and `chain_valid_until`
@@ -55,6 +67,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `arm64-machine.txt` looks worth keeping — it records the machine a measurement came from — but a
   committed copy is a snapshot of one runner that goes stale on the next run; the durable record
   belongs in `docs/internal/measurements/`.
+- **`cyberchef_magic` ranked a decoded plaintext below the container it came out of** (#130). A
+  three-layer payload returned the answer at rank 3, beneath raw gzip. Upstream's comparator clamps
+  any file-signature match to a score of 500 while text candidates keep chi-squared scores in the
+  thousands, so a detected container always outranks its own decoded contents — worse the deeper the
+  nesting. Fixed in the MCP layer, because `src/core/lib/Magic.mjs` is mirrored from upstream
+  verbatim. `promoteDecodings` lifts a UTF-8 result above a container **whose recipe it extends**,
+  and nothing else: a first attempt promoted any longer UTF-8 result and handed rank 1 to a
+  `From Hexdump` branch returning one character, regressing a case that had been correct. Recipe
+  length is *not* the cause — it contributes two points of a 723-point gap — and that wrong cause
+  was asserted before the arithmetic was done.
+- **`upstream-monitor.yml` compared a release tag against unreleased master** (#129), so its issues
+  named a version while their contents described work that version does not contain. This
+  repository was already on v11.4.0 and the "new operation" it reported is not in the v11.4.0 tag.
+  The comparison is now pinned to the tag the headline names, with master drift reported separately.
+- **`upstream-monitor.yml` could never report "up to date."** It compared this fork's own semver
+  against an upstream CyberChef tag, because it read `package.json` `version` where it meant
+  `cyberchefUpstreamVersion` — a field that has existed since v2.2.0. The comparison could not be
+  equal, so a release issue was raised on every run and the `Already up-to-date` branch has never
+  executed. The same field also generated a compare link pointing at a ref that does not exist.
+- **Three major versions of `actions/checkout` in one repository**, and three of `actions/setup-node`.
+  Dependabot reports the lowest version it finds, so #125 and #126 would have merged green leaving
+  two workflows on v6. Every action now sits at one version, with a gate that discovers them.
+- **Surface figures corrected to what the server actually serves** — 44,493 / 107,739 / 424,897 for
+  index / curated / all, across ten live documents. The previously published figures are left as
+  they stand in the CHANGELOG and prior release notes: they record what was claimed at the time.
+
+### Changed
+
+- **Dependencies to their latest compatible versions.** `@noble/hashes` 2.3.0 → 2.4.0 and `otpauth`
+  9.5.1 → 9.5.2, both of which align with upstream rather than diverging from it, plus a lockfile
+  refresh across `@codemirror/*`, `autoprefixer`, `cspell`, `dompurify`, `eslint`,
+  `eslint-plugin-jsdoc`, `postcss`, `tinybench`, `webpack-bundle-analyzer` and `zod`.
+  `@xmldom/xmldom` 0.9, `geodesy` 2.x and `jq-web` 0.6 stay **held**, each hold re-verified against
+  its stated trigger: upstream still pins the old line for all three.
+- **vitest 4 → 5**, taken seven days into this project's own fourteen-day cooldown for majors. The
+  cooldown exists to avoid being the first to find out; running the full suite is finding out, which
+  is cheap for a test runner and is not why the policy was written. Coverage under vitest 5 measures
+  96.56 / 89.61 / 96.6 / 95.53 — unchanged to within a rounding step, which is what settles the one
+  breaking change that could have moved the gate.
+- **GitHub Actions**: `docker/setup-qemu-action` v3 → v4 and `azure/setup-helm` v4 → v5, both Node-24
+  runtime bumps with no input changes. The SHA-pinned `actions/checkout` in `antigravity-review.yml`
+  is deliberately left pinned and was verified to equal what `v7` resolves to today.
+- **Base image** re-pinned to Chainguard Node **v26.8.2**, digests and prose comments together.
+  `latest-slim` remains Node v25.9.0, so the shell-free base image is declined a third release on
+  the same measurement.
 
 ## [3.8.0] - 2026-09-04
 

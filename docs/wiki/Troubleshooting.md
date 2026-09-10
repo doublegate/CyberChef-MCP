@@ -27,8 +27,8 @@ the operation set changed.
 
 ## I only see 42 tools, not 500
 
-**Working as intended.** `tools/list` is an *index* by default: 42 tools and 44,406 bytes,
-rather than 545 tools and 424,810 bytes. Nothing is unreachable — `cyberchef_bake` runs any of the 504
+**Working as intended.** `tools/list` is an *index* by default: 42 tools and 44,493 bytes,
+rather than 545 tools and 424,897 bytes. Nothing is unreachable — `cyberchef_bake` runs any of the 504
 operations by name, and `cyberchef_categories` → `cyberchef_list_operations` →
 `cyberchef_describe_operation` walks down to any of them with its full argument schema.
 

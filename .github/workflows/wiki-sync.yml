@@ -37,7 +37,7 @@ jobs:
     name: Publish docs/wiki to the wiki
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Check for the wiki token
         id: guard
