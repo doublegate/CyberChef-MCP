@@ -164,10 +164,39 @@ function likelyLanguage(scores, sampleLength) {
 }
 
 /**
+ * Structural equality for two operation arguments.
+ *
+ * Small and hand-written rather than a dependency: Magic's args are positional arrays of
+ * primitives and shallow option objects (`{option, string}`), so this covers them exactly.
+ *
+ * @param {*} a - One argument.
+ * @param {*} b - The other.
+ * @returns {boolean} True when they are structurally identical.
+ */
+function sameArg(a, b) {
+    if (a === b) return true;
+    if (Array.isArray(a) || Array.isArray(b)) {
+        if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+        return a.every((x, i) => sameArg(x, b[i]));
+    }
+    if (a && b && typeof a === "object" && typeof b === "object") {
+        const ka = Object.keys(a), kb = Object.keys(b);
+        if (ka.length !== kb.length) return false;
+        return ka.every(k => Object.hasOwn(b, k) && sameArg(a[k], b[k]));
+    }
+    return false;
+}
+
+/**
  * Does `longer` continue `shorter` -- i.e. is `shorter` a STRICT prefix of it?
  *
- * Compared by operation name only. Two steps with the same op but different args are different
- * decodings, but a prefix relationship is about the PATH taken, and the path is the ops.
+ * Compares operation name AND arguments, step for step. Comparing names alone was the first
+ * version and it is wrong, which was measured rather than argued: on one intensive-mode payload,
+ * 6 of 11 distinct op-paths carried MORE THAN ONE argument set, and `From Base64 -> XOR` alone
+ * carried seventeen. Those are sibling branches of the search tree, not one path -- a different
+ * base64 alphabet or a different XOR key is a different decoding that happens to share a name. By
+ * name alone, text produced down one branch counts as "continuing" a container found down another,
+ * and gets promoted past something it never decoded. Reviewer-found.
  *
  * @param {Object[]} shorter - The candidate recipe that might be extended.
  * @param {Object[]} longer - The candidate recipe that might extend it.
@@ -175,7 +204,8 @@ function likelyLanguage(scores, sampleLength) {
  */
 function extendsRecipe(shorter, longer) {
     if (longer.length <= shorter.length) return false;
-    return shorter.every((step, i) => step.op === longer[i].op);
+    return shorter.every((step, i) =>
+        step.op === longer[i].op && sameArg(step.args ?? [], longer[i].args ?? []));
 }
 
 /**
@@ -444,4 +474,4 @@ function renderMagicReport(result) {
     return lines.join("\n");
 }
 
-export { runMagic, renderMagicReport, describeEntropy, toPreview, likelyLanguage, shapeCandidate, DEFAULTS };
+export { runMagic, renderMagicReport, describeEntropy, toPreview, likelyLanguage, shapeCandidate, promoteDecodings, extendsRecipe, DEFAULTS };

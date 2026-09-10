@@ -200,10 +200,17 @@ describe("the canonical table against a live measurement", () => {
         const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
         const { StdioClientTransport } = await import("@modelcontextprotocol/sdk/client/stdio.js");
         const client = new Client({ name: "surface-gate", version: "0.0.0" }, { capabilities: {} });
+        // CYBERCHEF_TOOL_ALLOWLIST and CYBERCHEF_EXPOSE_ALL_OPS both OUTRANK
+        // CYBERCHEF_TOOL_SURFACE, so inheriting either from the ambient environment would measure
+        // a surface other than the one named and compare it against the table anyway -- a false
+        // failure on someone's machine, or worse a false pass. Reviewer-found.
+        const env = { ...process.env, CYBERCHEF_TOOL_SURFACE: surface, CYBERCHEF_LOG_LEVEL: "silent" };
+        delete env.CYBERCHEF_TOOL_ALLOWLIST;
+        delete env.CYBERCHEF_EXPOSE_ALL_OPS;
         await client.connect(new StdioClientTransport({
             command: process.execPath,
             args: [SERVER],
-            env: { ...process.env, CYBERCHEF_TOOL_SURFACE: surface, CYBERCHEF_LOG_LEVEL: "silent" }
+            env
         }));
         try {
             const { tools } = await client.listTools();

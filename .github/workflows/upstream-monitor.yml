@@ -326,7 +326,22 @@ jobs:
 
       - name: Commit ref-proj updates
         if: steps.compare_ops.outputs.needs_update == 'true'
+        env:
+          MASTER_SHA: ${{ steps.upstream.outputs.master_sha }}
         run: |
+          # Put the reference clone BACK on master before committing it.
+          #
+          # The comparison step above checks out the release tag, which leaves the working tree
+          # detached. Without this, `git add ref-proj/CyberChef` below would commit a TAG checkout
+          # under a message that says "update ref-proj/CyberChef to latest upstream" -- and the next
+          # run's `git pull origin master` would start from a detached HEAD. Reviewer-found: the
+          # tag checkout was added to fix a comparison bug and quietly broke the persistence step
+          # three steps later.
+          if [ -n "${MASTER_SHA:-}" ] && [ -d "ref-proj/CyberChef/.git" ]; then
+            git -C ref-proj/CyberChef checkout --quiet master 2>/dev/null \
+              || git -C ref-proj/CyberChef checkout --quiet --detach "$MASTER_SHA"
+          fi
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add ref-proj/CyberChef

@@ -20,7 +20,7 @@ import { gzipSync } from "node:zlib";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
-import { runMagic, renderMagicReport, likelyLanguage, toPreview, describeEntropy } from "../../src/node/lib/magic.mjs";
+import { runMagic, renderMagicReport, likelyLanguage, toPreview, describeEntropy, promoteDecodings, extendsRecipe } from "../../src/node/lib/magic.mjs";
 import { mapArgsToZod } from "../../src/node/lib/tool-schema.mjs";
 import OperationConfig from "../../src/core/config/OperationConfig.json" with { type: "json" };
 
@@ -471,5 +471,98 @@ describe("candidate ranking: a decoding must not sit below what it decoded", () 
         expect(result.candidates.some(c => c.fileType)).toBe(false);
         const promoted = result.candidates.filter((c, i) => c.rank !== i + 1);
         expect(promoted).toEqual([]);
+    });
+});
+
+describe("promoteDecodings, on synthetic candidates", () => {
+    // Asserting on `rank` alone is weak, and a reviewer was right to say so: `shapeCandidate`
+    // assigns rank as the final index plus one, so it describes the order rather than testing it.
+    // These assert OBJECT IDENTITY order out of the pure function, which cannot be satisfied by
+    // renumbering.
+    const opt = (ops, extra = {}) => ({
+        recipe: ops.map(o => (typeof o === "string" ? { op: o, args: [] } : o)),
+        isUTF8: true, fileType: null, languageScores: [{ score: 1, probability: 0 }],
+        entropy: 4, ...extra
+    });
+
+    it("moves a text decoding above the container whose recipe it extends", () => {
+        const container = opt(["From Hex", "From Base64"], { isUTF8: false, fileType: { mime: "application/gzip" } });
+        const decoded = opt(["From Hex", "From Base64", "Gunzip"]);
+        const unrelated = opt(["From Base85"]);
+
+        const out = promoteDecodings([container, unrelated, decoded]);
+        expect(out[0]).toBe(decoded);
+        expect(out).toContain(container);
+        expect(out).toHaveLength(3);
+    });
+
+    it("does not move it past a candidate that is merely shorter", () => {
+        // No detected file type anywhere: nothing is a container, so nothing is promoted and the
+        // input order survives exactly.
+        const shorter = opt(["From Hex"]);
+        const longer = opt(["From Hex", "From Base64"]);
+        expect(promoteDecodings([shorter, longer])).toEqual([shorter, longer]);
+    });
+
+    it("treats a different argument set as a different branch, not a continuation", () => {
+        // The reviewer-found case. `From Base64` with two different alphabets are sibling branches
+        // of the search tree; text down one must not be promoted past a container down the other.
+        const containerA = opt(
+            [{ op: "From Base64", args: ["A-Za-z0-9+/=", true, false] }],
+            { isUTF8: false, fileType: { mime: "application/gzip" } });
+        const textB = opt([
+            { op: "From Base64", args: ["0-9A-Za-z+/=", true, false] },
+            { op: "XOR", args: [{ option: "Hex", string: "5a" }, "Standard", false] }
+        ]);
+
+        expect(extendsRecipe(containerA.recipe, textB.recipe)).toBe(false);
+        expect(promoteDecodings([containerA, textB])).toEqual([containerA, textB]);
+
+        // ...and the SAME alphabet still counts as a continuation, so the args check narrowed the
+        // rule rather than disabling it.
+        const textA = opt([
+            { op: "From Base64", args: ["A-Za-z0-9+/=", true, false] },
+            { op: "XOR", args: [{ option: "Hex", string: "5a" }, "Standard", false] }
+        ]);
+        expect(extendsRecipe(containerA.recipe, textA.recipe)).toBe(true);
+        expect(promoteDecodings([containerA, textA])[0]).toBe(textA);
+    });
+});
+
+describe("extendsRecipe argument comparison", () => {
+    // Drives every branch of the structural comparison. These are not decorative: the comparison
+    // decides whether two candidates are one path or two, and a wrong `true` promotes a decoding
+    // past something it never decoded.
+    const step = (op, args) => ({ op, args });
+
+    it("accepts an identical prefix, including nested option objects", () => {
+        const a = [step("XOR", [{ option: "Hex", string: "5a" }, "Standard", false])];
+        const b = [step("XOR", [{ option: "Hex", string: "5a" }, "Standard", false]), step("Gunzip", [])];
+        expect(extendsRecipe(a, b)).toBe(true);
+    });
+
+    it("rejects a shorter or equal-length candidate", () => {
+        expect(extendsRecipe([step("A", [])], [step("A", [])])).toBe(false);
+        expect(extendsRecipe([step("A", []), step("B", [])], [step("A", [])])).toBe(false);
+    });
+
+    it("rejects differing primitives, lengths, and shapes", () => {
+        const ext = (x, y) => extendsRecipe([step("Op", x)], [step("Op", y), step("Next", [])]);
+        expect(ext(["a"], ["b"])).toBe(false);              // primitive mismatch
+        expect(ext(["a"], ["a", "b"])).toBe(false);         // array length mismatch
+        expect(ext(["a"], "a")).toBe(false);                // array vs non-array
+        expect(ext([{ k: 1 }], [{ k: 1, extra: 2 }])).toBe(false);   // key-count mismatch
+        expect(ext([{ k: 1 }], [{ j: 1 }])).toBe(false);    // same count, different key
+        expect(ext([{ k: 1 }], [null])).toBe(false);        // object vs null
+        expect(ext([1], [{ k: 1 }])).toBe(false);           // primitive vs object
+    });
+
+    it("treats a missing args field as an empty argument list", () => {
+        expect(extendsRecipe([{ op: "A" }], [{ op: "A" }, { op: "B" }])).toBe(true);
+        expect(extendsRecipe([{ op: "A", args: [] }], [{ op: "A" }, { op: "B" }])).toBe(true);
+    });
+
+    it("rejects a differing op even when the args match", () => {
+        expect(extendsRecipe([step("A", [1])], [step("Z", [1]), step("B", [])])).toBe(false);
     });
 });

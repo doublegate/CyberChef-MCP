@@ -46,6 +46,17 @@ const WORKFLOWS = join(ROOT, ".github", "workflows");
 const SHA = /^[0-9a-f]{40}$/;
 
 /**
+ * The comment beside a SHA pin, which must be a READABLE version and not merely present.
+ *
+ * Reviewer-found: the first version of this file only checked the comment was non-empty, so
+ * `# current` or `# pinned` passed and `effectiveVersion()` then reconciled the pin against tag
+ * references using that string as its version -- which cannot ever match `v7`, so the convergence
+ * test would report a split that is really an unreadable annotation, or worse compare two
+ * unreadable ones and call them equal.
+ */
+const VERSION_COMMENT = /^v\d+(?:\.\d+){0,2}$/;
+
+/**
  * Every `uses:` reference in every workflow file.
  *
  * @returns {{file: string, line: number, action: string, ref: string, comment: ?string}[]} Uses.
@@ -86,7 +97,8 @@ function collectUses() {
  */
 function effectiveVersion(use) {
     if (!SHA.test(use.ref)) return use.ref;
-    return use.comment ?? null;
+    if (!use.comment || !VERSION_COMMENT.test(use.comment)) return null;
+    return use.comment;
 }
 
 describe("workflow action versions", () => {
@@ -104,8 +116,9 @@ describe("workflow action versions", () => {
         // A bare SHA with no `# vN` beside it cannot be reconciled with the tag-referenced uses of
         // the same action, and Dependabot cannot keep it current either. Both failures are silent.
         const unreadable = uses
-            .filter(u => SHA.test(u.ref) && !u.comment)
-            .map(u => `${u.file}:${u.line} ${u.action}@${u.ref.slice(0, 12)} has no "# vN" comment`);
+            .filter(u => SHA.test(u.ref) && !VERSION_COMMENT.test(u.comment ?? ""))
+            .map(u => `${u.file}:${u.line} ${u.action}@${u.ref.slice(0, 12)} needs a "# vN" comment` +
+                (u.comment ? `, found "# ${u.comment}"` : ", found none"));
         expect(unreadable).toEqual([]);
     });
 

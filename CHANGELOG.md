@@ -104,7 +104,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **vitest 4 → 5**, taken seven days into this project's own fourteen-day cooldown for majors. The
   cooldown exists to avoid being the first to find out; running the full suite is finding out, which
   is cheap for a test runner and is not why the policy was written. Coverage under vitest 5 measures
-  96.56 / 89.53 / 96.58 / 95.51 — unchanged to within a rounding step, which is what settles the one
+  96.56 / 89.61 / 96.6 / 95.53 — unchanged to within a rounding step, which is what settles the one
   breaking change that could have moved the gate.
 - **GitHub Actions**: `docker/setup-qemu-action` v3 → v4 and `azure/setup-helm` v4 → v5, both Node-24
   runtime bumps with no input changes. The SHA-pinned `actions/checkout` in `antigravity-review.yml`
