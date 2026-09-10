@@ -13,7 +13,7 @@
  * @license GPL-3.0-or-later
  */
 
-import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, beforeAll } from "vitest";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -254,12 +254,7 @@ describe("quota accounting through the real dispatch path", () => {
 
     beforeAll(async () => {
         storageDir = await mkdtemp(join(tmpdir(), "cyberchef-quota-"));
-        process.env.CYBERCHEF_RECIPE_STORAGE = join(storageDir, "recipes.json");
-        process.env.CYBERCHEF_RECIPE_BACKUP = "false";
-        ({ createMcpServer, quotaTracker } = await import("../../src/node/mcp-server.mjs"));
-    });
-
-    afterAll(async () => {
+        // This directory is deliberately NEVER removed.
         // NOT removed, deliberately. Importing `mcp-server.mjs` above runs `runServer()` --
         // it is called at module scope with no main-module guard, so a real stdio server starts in
         // this very process and its recipe manager holds this path for the life of the worker.
@@ -269,6 +264,9 @@ describe("quota accounting through the real dispatch path", () => {
         // for v3.9.0, while passing locally, because the race is timing-dependent and CI is slower.
         // `tests/mcp/setup/recipe-store-isolation.mjs` already declines to remove its own directory
         // for the same underlying reason. The directory is a small one under `os.tmpdir()`.
+        process.env.CYBERCHEF_RECIPE_STORAGE = join(storageDir, "recipes.json");
+        process.env.CYBERCHEF_RECIPE_BACKUP = "false";
+        ({ createMcpServer, quotaTracker } = await import("../../src/node/mcp-server.mjs"));
     });
 
     it("leaves no slot charged after a cache HIT", async () => {

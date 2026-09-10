@@ -53,8 +53,12 @@ const SHA = /^[0-9a-f]{40}$/;
  * references using that string as its version -- which cannot ever match `v7`, so the convergence
  * test would report a split that is really an unreadable annotation, or worse compare two
  * unreadable ones and call them equal.
+ *
+ * Pre-release suffixes are accepted (`v2.0.0-rc.1`). No action pins one today, but a gate that
+ * rejects a legitimate pin fails on a CORRECT change, which is the worse of the two errors.
+ * Reviewer-suggested.
  */
-const VERSION_COMMENT = /^v\d+(?:\.\d+){0,2}$/;
+const VERSION_COMMENT = /^v\d+(?:\.\d+){0,2}(?:-[0-9A-Za-z.-]+)?$/;
 
 /**
  * Every `uses:` reference in every workflow file.

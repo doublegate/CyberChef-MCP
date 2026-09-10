@@ -240,8 +240,8 @@ jobs:
           TIMESTAMP=$(date -u +'%Y-%m-%d %H:%M:%S UTC')
 
           # Read operation lists
-          NEW_OPS_LIST=$(cat /tmp/new_ops.txt)
-          MODIFIED_OPS_LIST=$(cat /tmp/modified_ops.txt)
+          NEW_OPS_LIST=$(< /tmp/new_ops.txt)
+          MODIFIED_OPS_LIST=$(< /tmp/modified_ops.txt)
 
           # Two different claims, kept apart. "A release you are not on exists" and "master has
           # moved since the release you ARE on" are both worth knowing and need different action;
