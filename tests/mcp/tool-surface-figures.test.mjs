@@ -174,3 +174,69 @@ describe("documented tool-surface figures", () => {
         expect(Number(m[3])).toBeCloseTo(bySurface.all.bytes / roundTrip, 1);
     });
 });
+
+describe("the canonical table against a live measurement", () => {
+    // WHY THIS EXISTS, and why the four tests above do not cover it.
+    //
+    // Every check above compares documents to the table in `tool-catalog.mjs`'s header. That
+    // establishes AGREEMENT, not TRUTH -- if the table itself drifts, every document agrees with a
+    // stale number and all four pass. `registry-tool-docs.test.mjs` says exactly this in its own
+    // header ("three documents can be consistently stale and it passes") and it is not hypothetical:
+    // entering v3.9.0 the table read 44,406 / 107,652 / 424,810 while the server actually served
+    // 44,493 / 107,739 / 424,897. A uniform +87 across all three surfaces, and the gate was green.
+    //
+    // So this measures. Same method as `npm run measure:surfaces` -- a real MCP client against a
+    // real server, `Buffer.byteLength(JSON.stringify({tools}))`, envelope excluded -- because a
+    // figure derived a second way is a second figure, not a check on the first.
+    const SERVER = resolve(ROOT, "src/node/mcp-server.mjs");
+
+    /**
+     * `tools/list` as it actually goes over the wire for one surface.
+     *
+     * @param {string} surface - `index`, `curated` or `all`.
+     * @returns {Promise<{tools: number, bytes: number}>} The measured pair.
+     */
+    async function measure(surface) {
+        const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+        const { StdioClientTransport } = await import("@modelcontextprotocol/sdk/client/stdio.js");
+        const client = new Client({ name: "surface-gate", version: "0.0.0" }, { capabilities: {} });
+        await client.connect(new StdioClientTransport({
+            command: process.execPath,
+            args: [SERVER],
+            env: { ...process.env, CYBERCHEF_TOOL_SURFACE: surface, CYBERCHEF_LOG_LEVEL: "silent" }
+        }));
+        try {
+            const { tools } = await client.listTools();
+            return { tools: tools.length, bytes: Buffer.byteLength(JSON.stringify({ tools }), "utf8") };
+        } finally {
+            await client.close();
+        }
+    }
+
+    it("serves exactly the tool counts and byte sizes the table records", async () => {
+        const recorded = Object.fromEntries(canonical().map(r => [r.surface, r]));
+        const wrong = [];
+
+        for (const surface of ["index", "curated", "all"]) {
+            const live = await measure(surface);
+            const said = recorded[surface];
+            if (!said) {
+                wrong.push(`${surface}: absent from the canonical table`);
+                continue;
+            }
+            if (live.tools !== said.tools) {
+                wrong.push(`${surface} tools: table says ${said.tools}, server serves ${live.tools}`);
+            }
+            // EXACT, not a tolerance. These are deterministic serialisations of a fixed catalogue,
+            // so any difference at all is a real change that the documents must follow. A tolerance
+            // here would let the drift this test was written for accumulate silently under it.
+            if (live.bytes !== said.bytes) {
+                wrong.push(`${surface} bytes: table says ${said.bytes}, server serves ${live.bytes}` +
+                    ` (${live.bytes - said.bytes >= 0 ? "+" : ""}${live.bytes - said.bytes})` +
+                    ` -- re-run \`npm run measure:surfaces\` and update the table and every document`);
+            }
+        }
+
+        expect(wrong.join("\n")).toBe("");
+    }, 180000);
+});

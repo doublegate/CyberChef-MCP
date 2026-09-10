@@ -63,7 +63,7 @@ inherits your desktop environment's `PATH`, so a bare `podman`/`docker` resolves
 needed.
 
 **Set the tool surface deliberately for a local model.** The default (`index`, 42 tools,
-44,406 bytes) is usually right; `all` is 545 tools and 424,810 bytes, which will swamp most
+44,493 bytes) is usually right; `all` is 545 tools and 424,897 bytes, which will swamp most
 locally-hosted context windows:
 
 ```json
