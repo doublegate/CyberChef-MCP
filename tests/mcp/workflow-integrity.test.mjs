@@ -165,9 +165,16 @@ describe("workflow shell blocks", () => {
             const doc = loadYaml(readFileSync(join(WORKFLOWS, name), "utf8"));
             for (const job of Object.values(doc?.jobs ?? {})) {
                 const jobShell = job?.defaults?.run?.shell;
+                // GitHub's DEFAULT shell is not universally bash: on a Windows runner an
+                // unannotated `run:` is pwsh. Assuming bash there would `bash -n` a PowerShell
+                // script and fail a perfectly valid workflow. No Windows runner exists in this
+                // repository today, which is exactly why the assumption would go unnoticed until
+                // someone added one. Reviewer-suggested.
+                const runsOn = JSON.stringify(job?.["runs-on"] ?? "").toLowerCase();
+                const defaultShell = runsOn.includes("windows") ? "pwsh" : "bash";
                 for (const step of job?.steps ?? []) {
                     if (typeof step?.run !== "string") continue;
-                    const shell = step.shell ?? jobShell ?? "bash";
+                    const shell = step.shell ?? jobShell ?? defaultShell;
                     // pwsh/python/node steps are not ours to syntax-check with `bash -n`.
                     if (shell !== "bash" && shell !== "sh") continue;
                     out.push({ file: name, step: step.name ?? "(unnamed)", shell, script: step.run });
