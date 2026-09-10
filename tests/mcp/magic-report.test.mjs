@@ -414,3 +414,62 @@ describe("magic through a real MCP client", () => {
             .toContain("Meet me at the docks at midnight");
     }, BOOT_TIMEOUT_MS);
 });
+
+describe("candidate ranking: a decoding must not sit below what it decoded", () => {
+    // Issue #130. Upstream's comparator clamps any file-signature match to a score of 500 while
+    // text candidates keep chi-squared scores in the thousands, so a detected CONTAINER outranks
+    // the plaintext extracted from it -- and worse the deeper the nesting, since deeper nesting
+    // means more intermediate containers to outrank the answer.
+    //
+    // Built here rather than hardcoded, so the fixture cannot drift from what the ops actually do.
+    const layered = Buffer.from(
+        gzipSync(Buffer.from(
+            "FLAG{magic_walks_the_tree_not_the_data} The quick brown fox jumps over the lazy " +
+            "dog, and the analyst who trusts a single detection deserves the false positive " +
+            "that follows.", "utf8"))
+    ).toString("base64");
+    const hexed = Buffer.from(layered, "utf8").toString("hex");
+
+    it("ranks the fully decoded plaintext first, not the gzip it came out of", async () => {
+        const result = await runMagic(hexed, { depth: 3 });
+        const top = result.candidates[0];
+
+        expect(top.operations).toEqual(["From Hex", "From Base64", "Gunzip"]);
+        expect(top.preview).toContain("FLAG{magic_walks_the_tree_not_the_data}");
+
+        // The container must still be PRESENT -- this is a re-ranking, not a filter. Suppressing
+        // intermediate results would lose information a caller may want.
+        const container = result.candidates.find(c => c.fileType?.mime === "application/gzip");
+        expect(container, "the gzip intermediate should still be reported").toBeDefined();
+        expect(container.rank).toBeGreaterThan(top.rank);
+    });
+
+    it("promotes only past a detected container, never past plain text", async () => {
+        // The guard that a first attempt at this fix lacked. Without anchoring on the container,
+        // ANY utf8-producing extension gets promoted -- and on this payload
+        // `From Base64 -> XOR -> From Hexdump` extends the right answer, returns the single
+        // character "X" at entropy 0, and took rank 1 from the actual plaintext.
+        const xored = Buffer.from(
+            [...Buffer.from("The key is a single byte and the analyst must brute force it.", "utf8")]
+                .map(b => b ^ 0x5a)
+        ).toString("base64");
+
+        const result = await runMagic(xored, { depth: 3, intensive: true });
+        const top = result.candidates[0];
+
+        expect(top.operations).toEqual(["From Base64", "XOR"]);
+        expect(top.preview).toBe("The key is a single byte and the analyst must brute force it.");
+    }, 120000);
+
+    it("leaves order alone when no candidate is a container", async () => {
+        // The order-preserving claim, checked rather than asserted: promotion is anchored on a
+        // detected file type, so a tree with none in it must come back exactly as upstream sorted
+        // it. A re-rank that quietly reshuffles everything else would be a different change.
+        const plain = Buffer.from("Attack at dawn, and bring the maps.", "utf8").toString("base64");
+        const result = await runMagic(plain, { depth: 2 });
+
+        expect(result.candidates.some(c => c.fileType)).toBe(false);
+        const promoted = result.candidates.filter((c, i) => c.rank !== i + 1);
+        expect(promoted).toEqual([]);
+    });
+});

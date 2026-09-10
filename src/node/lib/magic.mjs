@@ -164,6 +164,95 @@ function likelyLanguage(scores, sampleLength) {
 }
 
 /**
+ * Does `longer` continue `shorter` -- i.e. is `shorter` a STRICT prefix of it?
+ *
+ * Compared by operation name only. Two steps with the same op but different args are different
+ * decodings, but a prefix relationship is about the PATH taken, and the path is the ops.
+ *
+ * @param {Object[]} shorter - The candidate recipe that might be extended.
+ * @param {Object[]} longer - The candidate recipe that might extend it.
+ * @returns {boolean} True when `longer` is `shorter` plus at least one more step.
+ */
+function extendsRecipe(shorter, longer) {
+    if (longer.length <= shorter.length) return false;
+    return shorter.every((step, i) => step.op === longer[i].op);
+}
+
+/**
+ * Re-rank so a decoding cannot sit below the thing it decoded.
+ *
+ * WHY THIS EXISTS -- issue #130. Upstream's comparator (`src/core/lib/Magic.mjs:328`) ranks a
+ * DETECTED CONTAINER above the plaintext extracted from it. Measured on a three-layer payload
+ * (`Gzip` -> `To Base64` -> `To Hex`), the fully decoded English text came back at rank 3, beneath
+ * raw gzip bytes at rank 1:
+ *
+ *   From Hex -> From Base64            lang 421,308.72 -> clamped to 500   final   508.62
+ *   From Hex                           lang   4,853.05                     final 4,759.84
+ *   From Hex -> From Base64 -> Gunzip  lang   5,575.92                     final 5,483.44   <- correct
+ *
+ * Two upstream effects produce that. `if (a.fileType && aScore > 500) aScore = 500` collapses any
+ * file-signature match to ~500 while text candidates keep chi-squared scores in the thousands, so a
+ * container always outranks its own contents -- and worse the deeper the nesting, since deeper
+ * nesting means more intermediate containers. Separately, the chi-squared scorer rated the base64
+ * string (4,853) as more language-like than the actual English (5,576). Recipe length is NOT the
+ * cause: it contributes 3 against 1, two points of a 723-point gap.
+ *
+ * `src/core/lib/Magic.mjs` is mirrored from upstream verbatim and no `patches/fork/*.patch` touches
+ * it, so this is fixed HERE rather than there -- a patch against upstream-owned code has to keep
+ * applying forever, which is how the SafeRegex mitigation was lost for four releases.
+ *
+ * The rule is deliberately narrow, and the narrowness was forced by measurement. B ranks above A
+ * only when ALL of these hold: B's recipe is A's recipe plus at least one more step; **A produced a
+ * DETECTED FILE TYPE**; and B produced UTF-8 text that is not itself a detected container. B is
+ * then literally "A, continued", where A is a container and continuing produced text.
+ *
+ * The middle condition is not decoration. A first attempt dropped it and promoted any UTF-8
+ * extension, which REGRESSED a case that was already correct: on the single-byte-XOR payload,
+ * `From Base64 -> XOR -> From Hexdump` extends the right answer and returns the single character
+ * "X" at entropy 0 -- incidental UTF-8, not a decoding. That took rank 1 from the actual plaintext.
+ * Anchoring on the container is what makes the promotion mean "you decoded the container" instead
+ * of "you ran one more operation".
+ *
+ * Requiring a positive language probability instead would ALSO be wrong, and that was checked
+ * rather than assumed: the correct answer in the issue's own payload scores no language at all
+ * (every `languageScores` probability is 0), so a language test would suppress the exact promotion
+ * this exists to make.
+ *
+ * It is ORDER-PRESERVING everywhere else. Candidates with no prefix relationship, and any chain
+ * with no detected container in it, keep upstream's order untouched -- which is why the XOR case
+ * above is now bit-identical before and after.
+ *
+ * @param {Object[]} options - Raw options from `speculativeExecution`, best-first.
+ * @returns {Object[]} The same options, re-ordered.
+ */
+function promoteDecodings(options) {
+    const recipeOf = o => (Array.isArray(o.recipe) ? o.recipe : []);
+    const isPlainText = o => Boolean(o.isUTF8) && !o.fileType;
+    const isContainer = o => Boolean(o.fileType);
+
+    // Each option's key is the earliest position of anything it supersedes, so it floats to just
+    // above them; the middle term puts a superseder ahead of what it superseded on a tie, and the
+    // last term keeps upstream's order for everything unrelated. A stable sort over an explicit
+    // key, rather than a comparator encoding a non-total relation, which would be inconsistent.
+    const keyed = options.map((option, index) => {
+        let earliest = index;
+        if (isPlainText(option)) {
+            options.forEach((other, otherIndex) => {
+                if (otherIndex === index) return;
+                if (isContainer(other) && extendsRecipe(recipeOf(other), recipeOf(option))) {
+                    earliest = Math.min(earliest, otherIndex);
+                }
+            });
+        }
+        return { option, index, earliest, promoted: earliest < index ? 0 : 1 };
+    });
+
+    keyed.sort((a, b) =>
+        a.earliest - b.earliest || a.promoted - b.promoted || a.index - b.index);
+    return keyed.map(entry => entry.option);
+}
+
+/**
  * Reduce one raw Magic option to the fields a caller can act on.
  *
  * @param {Object} option - A raw option from `speculativeExecution`.
@@ -243,6 +332,7 @@ async function runMagic(input, options = {}) {
     // asked for extra languages and vice versa, with no error either way.
     let candidates = await magic.speculativeExecution(depth, extLang, intensive, [], false, cribRegex);
     if (cribRegex) candidates = candidates.filter(option => option.matchesCrib);
+    candidates = promoteDecodings(candidates);
 
     const inputEntropy = magic.calcEntropy();
     const detectedType = magic.detectFileType();
