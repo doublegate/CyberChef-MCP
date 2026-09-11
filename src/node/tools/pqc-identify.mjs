@@ -42,6 +42,26 @@ import { createInputError } from "../errors.mjs";
  * `pub`/`priv` are raw key sizes in bytes; `sig` is a signature; `ct` a KEM ciphertext. Extracted
  * from Node-generated material -- see this file's header.
  */
+/**
+ * The longest OBJECT IDENTIFIER body this will decode, in bytes.
+ *
+ * NOT a tidiness limit -- it closes a denial of service, found in review and measured before it was
+ * fixed. `decodeOid` accumulates into a BigInt for as long as the continuation bit is set, and
+ * `value << 7n` costs O(size of value), so a body of N continuation bytes is O(N^2). A DER
+ * structure whose OID body is half a megabyte of `0xFF` is well inside the 1 MB input cap and
+ * stalled the event loop **synchronously for 87 seconds** on one call:
+ *
+ *     10,000 bytes     32 ms
+ *     40,000 bytes    207 ms
+ *     80,000 bytes    987 ms
+ *    520,000 bytes  86,900 ms
+ *
+ * 256 is far above any real OID -- the longest registered arcs are a few dozen bytes, and every
+ * NIST PQC OID here is nine -- so this rejects nothing legitimate. The bound is on the INPUT to the
+ * loop rather than on elapsed time, because a timeout cannot interrupt synchronous work.
+ */
+const MAX_OID_BODY_BYTES = 256;
+
 const BY_OID = {
     "2.16.840.1.101.3.4.3.17": { name: "ML-DSA-44", kind: "signature", standard: "FIPS 204", pub: 1312, sig: 2420 },
     "2.16.840.1.101.3.4.3.18": { name: "ML-DSA-65", kind: "signature", standard: "FIPS 204", pub: 1952, sig: 3309 },
@@ -110,7 +130,7 @@ function readTlv(buf, off, limit = buf.length) {
  * @returns {?string} Dotted form, or null when empty.
  */
 function decodeOid(body) {
-    if (body.length === 0) return null;
+    if (body.length === 0 || body.length > MAX_OID_BODY_BYTES) return null;
 
     // Every subidentifier is base-128, INCLUDING the first. Reading `body[0]` directly and
     // splitting it by 40 assumes the first one is a single byte, which is true for the NIST OIDs
@@ -267,7 +287,9 @@ export default {
         "DEFINITE answer; raw bytes give a candidate list by length, which is genuinely ambiguous " +
         "in two documented cases and says so rather than guessing: ML-KEM-1024's public key and " +
         "ciphertext are both 1568 bytes, and SLH-DSA public keys (32/48/64) are the same lengths " +
-        "as common hashes and Ed25519 keys. Identification only -- it does no PQC arithmetic.",
+        "as common hashes and Ed25519 keys. The DER path reads a SubjectPublicKeyInfo or a " +
+        "PrivateKeyInfo -- NOT a full X.509 certificate, whose first element is a TBSCertificate; " +
+        "extract the public key first. Identification only -- it does no PQC arithmetic.",
     inputSchema: z.object({
         input: z.string().min(1).max(1048576)
             .describe("The key, signature or ciphertext. PEM, base64, hex or raw bytes."),

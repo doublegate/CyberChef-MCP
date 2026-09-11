@@ -148,9 +148,9 @@ v2.4.0, not estimated:
 
 | `CYBERCHEF_TOOL_SURFACE` | Tools in `tools/list` | Payload |
 |---|---|---|
-| **`index`** *(default)* | 43 | **45,647 bytes** |
-| `curated` | 121 | 108,893 bytes |
-| `all` | 546 | 426,051 bytes |
+| **`index`** *(default)* | 43 | **45,813 bytes** |
+| `curated` | 121 | 109,059 bytes |
+| `all` | 546 | 426,217 bytes |
 
 Bytes, measured on the serialised `tools/list` payload with `npm run measure:surfaces`, not
 estimated. Earlier versions of this table gave token figures; this repository has never contained a
@@ -189,7 +189,7 @@ Unlike an operation, none of them is reachable through `cyberchef_bake`: they ar
 `OperationConfig`, because each performs an analysis rather than a transformation. Hiding one
 behind a surface setting would make it unreachable rather than merely inconvenient, and listing
 must never be stricter than dispatch. That is why the index doubled in v3.3.0: the twelve new
-tools account for roughly 20 KB of the 45,647-byte payload, and there is no honest way to avoid
+tools account for roughly 20 KB of the 45,813-byte payload, and there is no honest way to avoid
 paying it.
 
 Fine-grained control:

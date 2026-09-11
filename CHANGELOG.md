@@ -58,8 +58,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Tool surfaces re-measured**, as a release adding a tool requires: `index` 42 → **43 tools /
-  45,647 bytes**, `curated` 120 → **121 / 108,893**, `all` 545 → **546 / 426,051**. Index plus one
-  operation schema is **47,425 bytes, 9.0x cheaper than `all`**. The new tool costs 1,154 bytes on
+  45,813 bytes**, `curated` 120 → **121 / 109,059**, `all` 545 → **546 / 426,217**. Index plus one
+  operation schema is **47,591 bytes, 9.0x cheaper than `all`**. The new tool costs 1,320 bytes on
   the index; a registry tool has no navigation path, so one that is not listed cannot be called at
   all, which is why it is in every surface.
 - **Coverage**: 96.1% lines / 89.41% branches / 96.64% functions / **95.14% statements**. The thin

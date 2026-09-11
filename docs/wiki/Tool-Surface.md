@@ -6,7 +6,7 @@ answer is a deliberate design decision rather than a limitation.
 ## The problem
 
 `tools/list` is sent to the model on **every** request. Exposing all 504 operations plus the
-meta-tools costs roughly **426,051 bytes** before the user has typed anything — and model
+meta-tools costs roughly **426,217 bytes** before the user has typed anything — and model
 tool-selection quality is known to degrade well before that many definitions are in play.
 
 So the default is an **index**, not a catalogue.
@@ -18,9 +18,9 @@ bytes of the `tools/list` payload, rather than estimated:
 
 | `CYBERCHEF_TOOL_SURFACE` | Tools | Payload | Exact bytes |
 |---|---|---|---|
-| **`index`** *(default)* | 43 | 45 KB | **45,647** |
-| `curated` | 121 | 106 KB | 108,893 |
-| `all` | 546 | 416 KB | 426,051 |
+| **`index`** *(default)* | 43 | 45 KB | **45,813** |
+| `curated` | 121 | 107 KB | 109,059 |
+| `all` | 546 | 416 KB | 426,217 |
 
 The 43 in the default index are 23 meta-tools, `cyberchef_magic`, and the nineteen
 [analysis tools](Analysis-Tools) — and that arithmetic is the point: 23 + 1 + 19 = 43, matching the
@@ -54,7 +54,7 @@ Making it three calls deep would invert the cost.
 
 **The nineteen analysis tools**, because unlike an operation, none of them is reachable through
 `cyberchef_bake` — they are not in `OperationConfig`. Hiding them behind a surface setting would
-make them unreachable rather than merely inconvenient. They form part of the 45,647-byte index
+make them unreachable rather than merely inconvenient. They form part of the 45,813-byte index
 payload.
 
 ## Shaping it yourself

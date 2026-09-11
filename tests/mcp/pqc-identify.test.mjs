@@ -198,6 +198,53 @@ describe("pqc_identify", () => {
         });
     });
 
+    describe("a hostile OID cannot stall the event loop", () => {
+        /**
+         * DER wrapping an OBJECT IDENTIFIER whose body is `n` continuation bytes.
+         *
+         * @param {number} n - Body length in bytes.
+         * @returns {Buffer} outer SEQUENCE > AlgorithmIdentifier > OBJECT IDENTIFIER.
+         */
+        function craftLongOid(n) {
+            const be32 = v => {
+                const b = Buffer.alloc(4);
+                b.writeUInt32BE(v);
+                return b;
+            };
+            // Every byte has the continuation bit set, so the arc never terminates and the BigInt
+            // accumulator grows for the whole body.
+            const oid = Buffer.concat([Buffer.from([0x06, 0x84]), be32(n), Buffer.alloc(n, 0xff)]);
+            const alg = Buffer.concat([Buffer.from([0x30, 0x84]), be32(oid.length), oid]);
+            return Buffer.concat([Buffer.from([0x30, 0x84]), be32(alg.length), alg]);
+        }
+
+        it("rejects an absurdly long OID body instead of decoding it", () => {
+            // `value << 7n` costs O(size of value), so N continuation bytes is O(N^2). At 520,000
+            // bytes -- comfortably inside the 1 MB input cap -- this stalled SYNCHRONOUSLY for 87
+            // seconds before the bound was added. A timeout cannot interrupt synchronous work,
+            // which is why the limit is on the input to the loop. Reviewer-found (Antigravity).
+            const started = Date.now();
+            const r = run({ input: craftLongOid(520000).toString("hex"), "input_format": "Hex" });
+            const elapsed = Date.now() - started;
+
+            expect(r.identified).toBe(false);
+            // Generous by three orders of magnitude against the 87s it took, so this asserts "the
+            // bound is there" and not "this machine is fast".
+            expect(elapsed, `took ${elapsed}ms; the length bound is not being applied`).toBeLessThan(2000);
+        });
+
+        it("still decodes an OID body of a length real OIDs actually use", () => {
+            // The bound must reject the attack and nothing else. Every NIST PQC OID body is nine
+            // bytes; this is a well-formed arc far longer than any of them and still under the cap.
+            const body = Buffer.concat([Buffer.from([0x60]), Buffer.alloc(60, 0x81), Buffer.from([0x01])]);
+            const oid = Buffer.concat([Buffer.from([0x06, body.length]), body]);
+            const alg = Buffer.concat([Buffer.from([0x30, oid.length]), oid]);
+            const der = Buffer.concat([Buffer.from([0x30, alg.length]), alg]);
+            expect(run({ input: der.toString("hex"), "input_format": "Hex" }).notes.join(" "))
+                .toMatch(/OID 2\.16\./);
+        });
+    });
+
     describe("OID arcs are decoded as DER defines them", () => {
         // Every subidentifier is base-128, INCLUDING the first. Splitting `body[0]` by 40 is right
         // only while the first subidentifier is a single byte -- true of every NIST PQC OID, which
