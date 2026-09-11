@@ -1925,8 +1925,15 @@ async function runServer() {
     logger.info(describeSurface(allOps.filter(isExposed).length, allOps.length));
     // A removed setting that is still set is worth a WARNING, not silence: the operator's
     // deployment just changed behaviour and nothing else would tell them why.
+    /* v8 ignore start -- startup banner: it runs once, at boot, so in-process coverage cannot see
+       it. Both directions ARE tested, from a child process, in `tests/mcp/entry-point.test.mjs`
+       ("the startup banner reports a removed setting that is still set") -- which is the only way
+       to observe boot-time behaviour once the worker has already imported the module. The message
+       itself is unit-tested in `lib-internals.test.mjs`; this marker covers the WIRING, and the
+       distinction matters: a correct warning nothing calls is the same as no warning. */
     const removedAlias = removedAliasWarning();
     if (removedAlias) logger.warn(removedAlias);
+    /* v8 ignore stop */
     logger.info("=====================================");
 }
 
