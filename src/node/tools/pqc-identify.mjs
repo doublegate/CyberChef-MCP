@@ -192,7 +192,15 @@ function algorithmOid(der) {
 
     const oid = readTlv(der, first.valueStart, first.end);
     if (!oid || oid.tag !== 0x06) return null;
-    return decodeOid(der.subarray(oid.valueStart, oid.end));
+    const dotted = decodeOid(der.subarray(oid.valueStart, oid.end));
+    if (!dotted) return null;
+
+    // Whether anything FOLLOWS the AlgorithmIdentifier inside the outer SEQUENCE. A real
+    // SubjectPublicKeyInfo has a BIT STRING and a PKCS#8 PrivateKeyInfo an OCTET STRING; a bare
+    // AlgorithmIdentifier has neither and is not a key at all. The OID still names the algorithm
+    // truthfully, so this is reported rather than rejected -- but a caller reading `definite`
+    // beside a 15-byte input should be told which of the two it has. Reviewer-found.
+    return { oid: dotted, hasPayload: outer.end > first.end };
 }
 
 /**
@@ -306,9 +314,17 @@ export default {
         const { bytes, decodedAs } = decodeInput(args.input, args.input_format);
         const notes = [];
 
-        const oid = algorithmOid(bytes);
+        const found = algorithmOid(bytes);
+        const oid = found?.oid ?? null;
         if (oid && BY_OID[oid]) {
             const spec = BY_OID[oid];
+            const structureNotes = ["The OID names the algorithm outright; no inference from length was needed."];
+            if (!found.hasPayload) {
+                structureNotes.push(
+                    "The structure carries an AlgorithmIdentifier and NO key material -- no BIT " +
+                    "STRING and no OCTET STRING follows it. The algorithm is named correctly; this " +
+                    "is not a key, a signature or a ciphertext.");
+            }
             return {
                 identified: true,
                 confidence: "definite",
@@ -317,10 +333,11 @@ export default {
                 standard: spec.standard,
                 oid,
                 kind: spec.kind,
+                "carries_key_material": found.hasPayload,
                 "input_bytes": bytes.length,
                 "decoded_as": decodedAs,
                 sizes: { "public_key": spec.pub, signature: spec.sig ?? null, ciphertext: spec.ct ?? null },
-                notes: ["The OID names the algorithm outright; no inference from length was needed."]
+                notes: structureNotes
             };
         }
         if (oid) {
@@ -332,7 +349,14 @@ export default {
             return {
                 identified: false,
                 confidence: "none",
-                basis: "no OID, and the length matches no known parameter set",
+                // An OID that was READ and not recognised is a different fact from no OID at all,
+                // and the basis said "no OID" for both -- contradicting, in the same result, the
+                // note that named the OID it had just found. The test beside it asserted the note
+                // and never read the basis, so it passed. Reviewer-found.
+                basis: oid ?
+                    `algorithm OID ${oid} is not a NIST PQC algorithm, and the length matches no known parameter set` :
+                    "no OID, and the length matches no known parameter set",
+                oid,
                 "input_bytes": bytes.length,
                 "decoded_as": decodedAs,
                 candidates: [],
@@ -365,6 +389,10 @@ export default {
             identified: true,
             confidence: candidates.length === 1 ? "probable" : "ambiguous",
             basis: "byte length only",
+            // Always present, `null` when no OID was read, so the field means the same thing in
+            // every branch. It was absent here and present in the branch above, which makes
+            // "no OID" and "this result shape omits it" indistinguishable to a caller.
+            oid,
             "input_bytes": bytes.length,
             "decoded_as": decodedAs,
             candidates,

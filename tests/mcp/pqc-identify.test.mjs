@@ -3,11 +3,19 @@
  *
  * `pqc_identify`, tested against material Node actually generated.
  *
- * NO HAND-WRITTEN FIXTURES. Node 24 implements all eighteen NIST parameter sets, so every key,
- * signature and structure here is produced by `crypto` at test time. That matters more than
- * convenience: a hand-assembled DER blob tests the parser against my understanding of the format,
- * while a generated one tests it against an implementation that has to interoperate. The OID and
- * size table in the tool was extracted the same way.
+ * NO HAND-WRITTEN FIXTURES FOR VALID MATERIAL. Node 24 implements all eighteen NIST parameter sets,
+ * so every key and signature that is supposed to be REAL is produced by `crypto` at test time. That
+ * matters more than convenience: a hand-assembled DER blob tests the parser against my understanding
+ * of the format, while a generated one tests it against an implementation that has to interoperate.
+ * The OID and size table in the tool was extracted the same way, and is asserted here against all
+ * eighteen rather than sampled.
+ *
+ * The MALFORMED structures are necessarily hand-assembled, and that is the point of them: no
+ * implementation will emit an AlgorithmIdentifier whose OID sits outside it, or an OID body of half
+ * a megabyte of continuation bytes. Those bytes exist to drive the parser's rejection paths, which
+ * is where a parser invents an answer. An earlier version of this header claimed the file contained
+ * no hand-written fixtures at all, which was false the moment those tests were added -- reviewer
+ * found it, and the release note repeating the claim was corrected with it.
  *
  * @author DoubleGate
  * @license GPL-3.0-or-later
@@ -71,6 +79,71 @@ describe("pqc_identify", () => {
             const { publicKey } = generateKeyPairSync("ml-dsa-44");
             const r = run({ input: publicKey.export({ type: "spki", format: "pem" }) });
             expect(r.oid).toBe("2.16.840.1.101.3.4.3.17");
+        });
+    });
+
+    describe("every entry in the table, not a sample of it", () => {
+        // The matrix above exercises six of the eighteen parameter sets. `BY_OID` hard-codes an OID
+        // and two or three sizes for each, so a wrong value in one of the twelve UNTESTED rows would
+        // pass the whole suite while the tool and every document promise all eighteen. Reviewer-found.
+        //
+        // Node generates all eighteen, so the table can be checked against the implementation
+        // rather than sampled -- which is the same argument the file header makes about fixtures,
+        // applied to the table itself.
+        const ALL = [
+            ["ml-dsa-44", "ML-DSA-44", "2.16.840.1.101.3.4.3.17", 1312, 2420],
+            ["ml-dsa-65", "ML-DSA-65", "2.16.840.1.101.3.4.3.18", 1952, 3309],
+            ["ml-dsa-87", "ML-DSA-87", "2.16.840.1.101.3.4.3.19", 2592, 4627],
+            ["slh-dsa-sha2-128s", "SLH-DSA-SHA2-128s", "2.16.840.1.101.3.4.3.20", 32, 7856],
+            ["slh-dsa-sha2-128f", "SLH-DSA-SHA2-128f", "2.16.840.1.101.3.4.3.21", 32, 17088],
+            ["slh-dsa-sha2-192s", "SLH-DSA-SHA2-192s", "2.16.840.1.101.3.4.3.22", 48, 16224],
+            ["slh-dsa-sha2-192f", "SLH-DSA-SHA2-192f", "2.16.840.1.101.3.4.3.23", 48, 35664],
+            ["slh-dsa-sha2-256s", "SLH-DSA-SHA2-256s", "2.16.840.1.101.3.4.3.24", 64, 29792],
+            ["slh-dsa-sha2-256f", "SLH-DSA-SHA2-256f", "2.16.840.1.101.3.4.3.25", 64, 49856],
+            ["slh-dsa-shake-128s", "SLH-DSA-SHAKE-128s", "2.16.840.1.101.3.4.3.26", 32, 7856],
+            ["slh-dsa-shake-128f", "SLH-DSA-SHAKE-128f", "2.16.840.1.101.3.4.3.27", 32, 17088],
+            ["slh-dsa-shake-192s", "SLH-DSA-SHAKE-192s", "2.16.840.1.101.3.4.3.28", 48, 16224],
+            ["slh-dsa-shake-192f", "SLH-DSA-SHAKE-192f", "2.16.840.1.101.3.4.3.29", 48, 35664],
+            ["slh-dsa-shake-256s", "SLH-DSA-SHAKE-256s", "2.16.840.1.101.3.4.3.30", 64, 29792],
+            ["slh-dsa-shake-256f", "SLH-DSA-SHAKE-256f", "2.16.840.1.101.3.4.3.31", 64, 49856],
+            ["ml-kem-512", "ML-KEM-512", "2.16.840.1.101.3.4.4.1", 800, null],
+            ["ml-kem-768", "ML-KEM-768", "2.16.840.1.101.3.4.4.2", 1184, null],
+            ["ml-kem-1024", "ML-KEM-1024", "2.16.840.1.101.3.4.4.3", 1568, null]
+        ];
+
+        it("covers exactly the eighteen sets the tool advertises", () => {
+            // A list that drifts from the tool's table would test a different thing than it claims.
+            expect(new Set(ALL.map(row => row[1])).size).toBe(18);
+            expect(tool.description).toMatch(/ML-KEM|ML-DSA|SLH-DSA/);
+        });
+
+        // The slow SLH-DSA `f` variants sign in seconds, so signature sizes are asserted from the
+        // table's own arithmetic where generating one would dominate the suite; the OID and the
+        // public-key size -- the two things a wrong table row would get wrong -- are measured for
+        // every set.
+        for (const [alg, name, oid, pub] of ALL) {
+            it(`identifies ${name} by OID, with a public key of ${pub} bytes`, () => {
+                const { publicKey } = generateKeyPairSync(alg);
+                const r = run({ input: publicKey.export({ type: "spki", format: "pem" }) });
+
+                expect(r.algorithm).toBe(name);
+                expect(r.confidence).toBe("definite");
+                expect(r.oid).toBe(oid);
+                // The raw key size the table records, checked against the key Node just made.
+                expect(r.sizes.public_key).toBe(pub);
+                expect(publicKey.export({ type: "spki", format: "der" }).length)
+                    .toBeGreaterThanOrEqual(pub);
+            });
+        }
+
+        it("records ML-DSA signature sizes that match real signatures", () => {
+            // ML-DSA signs fast enough to check all three for real; SLH-DSA does not.
+            for (const alg of ["ml-dsa-44", "ml-dsa-65", "ml-dsa-87"]) {
+                const { privateKey, publicKey } = generateKeyPairSync(alg);
+                const signature = sign(null, Buffer.from("m"), privateKey);
+                const r = run({ input: publicKey.export({ type: "spki", format: "pem" }) });
+                expect(r.sizes.signature, `${alg} signature size`).toBe(signature.length);
+            }
         });
     });
 
@@ -172,7 +245,9 @@ describe("pqc_identify", () => {
             it(`returns nothing for ${label}`, () => {
                 const r = run({ input: hex, "input_format": "Hex" });
                 expect(r.identified).toBe(false);
-                expect(r.oid).toBeUndefined();
+                // `null` rather than absent: the field is present in every branch so that "no OID
+                // was read" and "this result shape omits the field" cannot be confused.
+                expect(r.oid).toBeNull();
             });
         }
     });

@@ -62,7 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   operation schema is **47,591 bytes, 9.0x cheaper than `all`**. The new tool costs 1,320 bytes on
   the index; a registry tool has no navigation path, so one that is not listed cannot be called at
   all, which is why it is in every surface.
-- **Coverage**: 96.1% lines / 89.41% branches / 96.64% functions / **95.14% statements**. The thin
+- **Coverage**: 96.08% lines / 89.41% branches / 96.64% functions / **95.13% statements**. The thin
   margin v3.10.0 documented was hit on the first release after it — statements fell to 94.99%
   against a threshold of 95 — and was fixed the way that note said to fix it, by covering the code
   rather than moving the bar.
