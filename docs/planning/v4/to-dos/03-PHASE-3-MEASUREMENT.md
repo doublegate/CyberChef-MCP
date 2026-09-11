@@ -1,6 +1,10 @@
-# Phase 3 — Measurement (v4.4.0)
+# Phase 3 — Measurement (v4.6.0)
 
-Charter: [`../charters/v4.4.0.md`](../charters/v4.4.0.md). Turning the arm64 benchmark from
+> **Renumbered 2026-09-11**, from v4.4.0. The work is unchanged; it moved behind the surface and
+> tool charters because those have fired triggers and this one has not — one arm64 measurement file
+> exists and the trigger wants twenty runs across three releases.
+
+Charter: [`../charters/v4.6.0.md`](../charters/v4.6.0.md). Turning the arm64 benchmark from
 reporting into gating — **if** the numbers permit, which is the open question.
 
 ## Sprint 3.1 — Accumulate before deciding
