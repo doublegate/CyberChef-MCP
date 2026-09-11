@@ -17,6 +17,7 @@ By running this server, you enable AI assistants (like Claude, Cursor AI, and ot
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D26%20%3C27-brightgreen)](https://nodejs.org/)
 [![Security Scan](https://github.com/doublegate/CyberChef-MCP/actions/workflows/security-scan.yml/badge.svg)](https://github.com/doublegate/CyberChef-MCP/actions/workflows/security-scan.yml)
 [![codecov](https://codecov.io/gh/doublegate/CyberChef-MCP/branch/master/graph/badge.svg)](https://codecov.io/gh/doublegate/CyberChef-MCP)
+[![CyberChef MCP Server – quality and maintenance score on Glama](https://glama.ai/mcp/servers/doublegate/CyberChef-MCP/badges/score.svg)](https://glama.ai/mcp/servers/doublegate/CyberChef-MCP)
 
 ## Project Context
 
@@ -836,7 +837,20 @@ For contributions to the core CyberChef operations, please credit the original [
         *   Still has the single process-wide HTTP transport that
             [#36](https://github.com/doublegate/CyberChef-MCP/issues/36) reported, so **only one
             HTTP client can connect at a time**. Fixed in v2.x, not backported.
+*   **npm Package**: [cyberchef-mcp](https://www.npmjs.com/package/cyberchef-mcp) — published from
+    CI on each version tag since v2.5.0. `npx cyberchef-mcp` runs the server without installing it;
+    `npm install -g cyberchef-mcp` installs the `cyberchef-mcp` bin. The package is the artefact the
+    MCP registry listing points at, which is why the release job waits for npm to serve it before
+    publishing that listing.
+*   **Glama Listing**: [doublegate/CyberChef-MCP](https://glama.ai/mcp/servers/doublegate/CyberChef-MCP)
+    — an independent third-party directory that **starts the server and introspects it** rather than
+    reading its README, and scores quality and maintenance from what it finds. Ownership is declared
+    in [`glama.json`](glama.json) at the repository root. The badges above and below render its
+    current scores live; they are deliberately not transcribed into this file, because a number
+    copied out of a service is a number that rots.
 *   **Issue Tracker**: [GitHub Issues](https://github.com/doublegate/CyberChef-MCP/issues)
+
+[![CyberChef MCP Server – quality and maintenance score on Glama](https://glama.ai/mcp/servers/doublegate/CyberChef-MCP/badges/card.svg)](https://glama.ai/mcp/servers/doublegate/CyberChef-MCP)
 
 ## Support
 
