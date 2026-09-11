@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   third-party MCP directory that starts a server and introspects it rather than reading its README.
   Written against the schema it references, which defines exactly one property (`maintainers`), so
   the file is deliberately minimal. **The listing was already claimed via GitHub auto-association,
-  and a change here does not sync until the claim flow is run again** -- both are easy to assume
+  and a change here does not sync until the claim flow is run again** — both are easy to assume
   otherwise.
 - **Glama score and card badges** in `README.md`, plus **npm Package** and **Glama Listing**
   entries under Repository Information. The live scores are not transcribed into the prose; the
