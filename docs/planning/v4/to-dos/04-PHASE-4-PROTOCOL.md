@@ -5,11 +5,11 @@
 > the measurement said this project needs the mechanism regardless of whether the specification
 > standardises one, so it is now [v4.1.0](../charters/v4.1.0.md) and first in the line.
 
-Charters: [`v4.7.0`](../charters/v4.7.0.md), [`v4.8.0`](../charters/v4.8.0.md),
-[`v4.7.0`](../charters/v4.7.0.md), [`v4.8.0`](../charters/v4.8.0.md).
+Charters: [`v4.7.0`](../charters/v4.7.0.md) (result contracts),
+[`v4.8.0`](../charters/v4.8.0.md) (auth metadata + audit context, merged).
 
-**None of these may start until its trigger fires** — see
-[`00-PHASE-0-TRIGGER-WATCH.md`](./00-PHASE-0-TRIGGER-WATCH.md). All four are currently *watching*.
+**Neither may start until its trigger fires** — see
+[`00-PHASE-0-TRIGGER-WATCH.md`](./00-PHASE-0-TRIGGER-WATCH.md). Both are currently *watching*.
 
 ## The gate every one of them passes through first
 
@@ -25,12 +25,14 @@ Charters: [`v4.7.0`](../charters/v4.7.0.md), [`v4.8.0`](../charters/v4.8.0.md),
 
 ## Per-charter entry conditions
 
-| Charter | Do not start until |
-|---|---|
-| v4.5.0 result contracts | SEP-2419 `final`, or a result-envelope SEP in the draft changelog |
-| v4.6.0 auth metadata | SEP-1488 `final`, or in the draft changelog |
-| v4.7.0 progressive discovery | A SEP **number** exists **and** it is in the draft changelog |
-| v4.8.0 audit context | SEP-2817 or SEP-3004 `final`, or in the draft changelog |
+| Charter | Watch | Do not start until |
+|---|---|---|
+| **v4.7.0** result contracts | T-4 | SEP-2145 reaches `final`, or SEP-2998 / SEP-3279 does, or a result-shape SEP appears in the draft changelog, or the SDK ships it — **read the source, not the changelog**. Note the correction: **SEP-2419 is `cache_hint`, not result contracts**, and this row named it wrongly until 2026-09-11 |
+| **v4.8.0** auth metadata + audit | T-6, T-7 | SEP-1488, SEP-2817 **or** SEP-3004 reaches `final`, **and** the standard is expressible without recording tool arguments and without resolving authorization from arguments. Both audit SEPs are at `proposal` and SEP-2817 is still seeking a sponsor |
+
+Progressive discovery **left this phase**: four SEP attempts are closed and the owning WG is
+unformed (T-5), so this project builds the mechanism itself in [v4.1.0](../charters/v4.1.0.md)
+rather than waiting on a standard that has not arrived in eighteen months of trying.
 
 ## Non-negotiables that survive any adoption
 
