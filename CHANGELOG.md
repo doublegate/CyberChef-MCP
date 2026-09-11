@@ -50,7 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   byte — but the tool reports the OID for algorithms it does not know.
 - **The tool-surface gate now checks the round-trip multiplier in `docs/guides/user_guide.md`**, not
   only in `tool-catalog.mjs`. The guide said 9.9x while the canonical table said 9.2x and the truth
-  was 9.0x, stale across releases: a gate covering one occurrence of a claim reads as covering the
+  was 8.9x, stale across releases: a gate covering one occurrence of a claim reads as covering the
   claim. Verified by reintroducing the stale figure.
 - **The Helm chart's own `version` no longer moves with the application.** It was bumped to 0.5.9
   with no template change, against the rule written in `Chart.yaml` itself; reverted to 0.5.8.
@@ -58,8 +58,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Tool surfaces re-measured**, as a release adding a tool requires: `index` 42 → **43 tools /
-  45,813 bytes**, `curated` 120 → **121 / 109,059**, `all` 545 → **546 / 426,217**. Index plus one
-  operation schema is **47,591 bytes, 9.0x cheaper than `all`**. The new tool costs 1,320 bytes on
+  45,963 bytes**, `curated` 120 → **121 / 109,209**, `all` 545 → **546 / 426,367**. Index plus one
+  operation schema is **47,741 bytes, 8.9x cheaper than `all`**. The new tool costs 1,470 bytes on
   the index; a registry tool has no navigation path, so one that is not listed cannot be called at
   all, which is why it is in every surface.
 - **Coverage**: 96.11% lines / 89.44% branches / 96.64% functions / **95.15% statements**. The thin

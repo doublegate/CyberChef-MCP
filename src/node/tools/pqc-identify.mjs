@@ -111,7 +111,9 @@ function readTlv(buf, off, limit = buf.length) {
     let length = buf[i++];
     if (length & 0x80) {
         const count = length & 0x7f;
-        // Indefinite length (0x80) and absurd counts are not valid here.
+        // A bare 0x80 is the INDEFINITE-length indicator, not a zero-byte count -- BER allows it
+        // and DER does not, so it is rejected rather than decoded. Above four length bytes is a
+        // structure larger than anything this tool accepts.
         if (count === 0 || count > 4 || i + count > bound) return null;
         length = 0;
         for (let k = 0; k < count; k++) length = length * 256 + buf[i++];
@@ -327,7 +329,10 @@ export default {
         input: z.string().min(1).max(1048576)
             .describe("The key, signature or ciphertext. PEM, base64, hex or raw bytes."),
         "input_format": z.enum(["Auto", "PEM", "Base64", "Hex", "Raw"]).default("Auto")
-            .describe("How `input` is encoded. Auto detects PEM, then hex, then base64, then raw.")
+            .describe(
+                "How `input` is encoded. Auto detects PEM, then hex, then base64, then raw. " +
+                "Prefer PEM, Base64 or Hex for binary: tool arguments travel as UTF-8 JSON " +
+                "strings, so raw bytes can be altered by the client before they arrive here.")
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
 
