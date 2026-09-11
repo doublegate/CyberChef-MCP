@@ -15,6 +15,13 @@ export default [
             "build/**",
             // Separate package with its own toolchain; it is not part of the server build.
             "docs-site/**",
+            // The upstream reference checkouts. `.gitignore` excludes `/ref-proj/*`, so CI never
+            // has them and CI lint was always clean -- but anyone who clones the reference server
+            // locally gets `Cannot find package '@eslint/eslintrc'` from ITS nested flat config,
+            // which ESLint 10 discovers by walking the tree and which has no relation to this
+            // repository's lint. A gate that fails on a developer machine for a reason CI cannot
+            // reproduce is a gate that stops being run locally, which is where it is cheapest.
+            "ref-proj/**",
             "node_modules/**"
         ]
     },
