@@ -163,7 +163,7 @@ describe("the server module's entry point", () => {
         expect(r.stdout + r.stderr).toContain("SERVER_STARTED");
     }, 90000);
 
-    it("DOES start through an npm-style bin symlink", () => {
+    it("DOES start through an npm-style bin symlink", (ctx) => {
         // `package.json` maps the `cyberchef-mcp` bin at this file, and npm installs bins as
         // SYMLINKS on unix. A main-module check comparing `import.meta.url` to `process.argv[1]`
         // without resolving symlinks therefore fails for every `npx cyberchef-mcp` user while
@@ -171,7 +171,19 @@ describe("the server module's entry point", () => {
         // test that proves it.
         const bin = tempDir("cyberchef-bin-");
         const link = join(bin, "cyberchef-mcp");
-        symlinkSync(SERVER, link);
+        try {
+            symlinkSync(SERVER, link);
+        } catch (error) {
+            // Windows refuses symlink creation with EPERM unless Developer Mode is on or the
+            // process is elevated. Skipping beats failing a Windows contributor's suite for a
+            // platform capability rather than a defect -- but ONLY for that error, so a real
+            // failure still fails. Reviewer-suggested.
+            if (error.code === "EPERM" || error.code === "EACCES") {
+                ctx.skip();
+                return;
+            }
+            throw error;
+        }
 
         const r = runScript(`
             import { spawn } from "node:child_process";
@@ -234,12 +246,20 @@ describe("isEntryPoint", () => {
         expect(isEntryPoint()).toBe(true);
     });
 
-    it("is true through a symlink, which is how npm installs the bin", () => {
+    it("is true through a symlink, which is how npm installs the bin", (ctx) => {
         // The case that would break `npx cyberchef-mcp` if the guard compared strings. npm installs
         // bins as symlinks, so argv[1] is the link and `import.meta.filename` is the target.
         const dir = tempDir("cyberchef-guard-");
         const link = join(dir, "cyberchef-mcp");
-        symlinkSync(SERVER, link);
+        try {
+            symlinkSync(SERVER, link);
+        } catch (error) {
+            if (error.code === "EPERM" || error.code === "EACCES") {
+                ctx.skip();
+                return;
+            }
+            throw error;
+        }
         process.argv[1] = link;
         expect(isEntryPoint()).toBe(true);
     });

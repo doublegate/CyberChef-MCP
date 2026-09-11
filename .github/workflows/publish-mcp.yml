@@ -166,7 +166,7 @@ jobs:
           sibling_state() {
             gh run list --repo "$GITHUB_REPOSITORY" --workflow mcp-release.yml \
               --commit "$GITHUB_SHA" --limit 1 \
-              --json status,conclusion --jq '.[0] | "\(.status)/\(.conclusion // "-")"' 2>/dev/null || echo ""
+              --json status,conclusion --jq '.[0] // empty | "\(.status)/\(.conclusion // "-")"' 2>/dev/null || echo ""
           }
 
           for attempt in $(seq 1 75); do
@@ -178,6 +178,9 @@ jobs:
             # Check the sibling every fifth attempt: often enough to fail fast, rarely enough not to
             # spend the budget on API calls.
             if [ $((attempt % 5)) -eq 0 ]; then
+              # `.[0] // empty` rather than `.[0]`: on an empty result jq would render "null/-",
+              # which falls through the case safely but logs as though a state had been read.
+              # Empty means "no run found yet", and the log should say that. Reviewer-suggested.
               state="$(sibling_state)"
               echo "attempt $attempt/75: not on npm yet; mcp-release.yml is ${state:-unknown}"
               case "$state" in

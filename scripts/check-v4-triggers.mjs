@@ -225,10 +225,10 @@ try {
 }
 
 const fired = results.filter(r => r.fired);
-// `|| 0` guards the empty case: `Math.max()` of nothing is -Infinity and `padEnd` then
-// throws a RangeError, turning a reporting bug into a crash. `results` is always populated
-// today; this costs nothing and removes the sharp edge. Reviewer-suggested.
-const width = Math.max(...results.map(r => r.what.length), 0) || 0;
+// The trailing `, 0` guards the empty case: `Math.max()` of nothing is -Infinity and
+// `padEnd` then throws a RangeError, turning a reporting bug into a crash. A second
+// `|| 0` was belt and braces and a reviewer rightly called it redundant.
+const width = Math.max(...results.map(r => r.what.length), 0);
 process.stdout.write("\nv4.0.0 trigger watch\n\n");
 for (const r of results) {
     process.stdout.write(`  ${r.fired ? "FIRED " : "  --  "} ${r.id.padEnd(5)} ${r.what.padEnd(width)}  ${r.detail}\n`);
