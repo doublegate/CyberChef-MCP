@@ -3,7 +3,7 @@
 ## Why do I only see 23 tools when you say there are 504 operations?
 
 Because `tools/list` goes to the model on **every** request, and sending all 545 costs about
-426,377 bytes before anyone types anything. The default is an index: 23 tools, 15,291 bytes.
+426,706 bytes before anyone types anything. The default is an index: 23 tools, 15,620 bytes.
 
 **Nothing becomes unreachable.** `cyberchef_bake` runs any of the 504 by name, and
 `cyberchef_categories` → `cyberchef_list_operations` → `cyberchef_describe_operation` walks down to
@@ -25,8 +25,10 @@ set behind a key, signature or ciphertext, from the OID where there is DER to re
 length where there is not — reporting every candidate, rather than one, when the length is
 ambiguous). An
 operation is a pure `run(input, args)` over one input, which cannot express an *analysis* — and
-`cyberchef_bake` cannot either, because a recipe is a pipeline, not a loop. They are in every tool
-surface because none is reachable through `bake`. See **[Analysis Tools](Analysis-Tools)**.
+`cyberchef_bake` cannot either, because a recipe is a pipeline, not a loop. Since v4.1.0 they are **not** listed on the default
+`index` surface — run one with `cyberchef_analyse({tool, arguments})`, and find or inspect it with
+`cyberchef_categories` and `cyberchef_describe_operation`. They are still listed outright on
+`curated` and `all`. See **[Analysis Tools](Analysis-Tools)**.
 
 ## Is this GCHQ's CyberChef?
 

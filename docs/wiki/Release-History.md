@@ -13,7 +13,7 @@ Full notes for every version live in
 
 ## v4.1.0 — registry tools get a navigation path
 
-The default tool surface fell from **41 tools / 44,968 bytes to 23 / 15,291** — 66% — with nothing
+The default tool surface fell from **41 tools / 44,968 bytes to 23 / 15,620** — 66% — with nothing
 made unreachable.
 
 Nineteen analysis tools were **68% of the index**, and not by oversight:

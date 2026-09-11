@@ -1148,7 +1148,13 @@ describe("per-tool authorisation at dispatch, against the real server", () => {
         // resolves to nothing, requires nothing, and is allowed through to be diagnosed.
         const out = await callTool(mint(""), "cyberchef_analyse",
             { tool: "no_such_tool_at_all", arguments: {} });
-        expect(out.text, `status ${out.status}, body: ${out.text}`)
-            .toMatch(/requires scope|Unknown analysis tool/);
+        // `requires scope` ONLY. The alternation this used to allow (`|Unknown analysis tool`) was
+        // unreachable and therefore weakened the test to nothing: authorisation runs BEFORE
+        // dispatch, so a scopeless token never reaches the branch that diagnoses a bad name. A
+        // test that accepts either answer cannot distinguish "refused correctly" from "resolved to
+        // nothing, required nothing, and was allowed through to be diagnosed" -- which is the exact
+        // failure this guards. Reviewer-found.
+        expect(out.text, `status ${out.status}, body: ${out.text}`).toMatch(/requires scope/);
+        expect(out.text).not.toMatch(/Unknown analysis tool/);
     }, 120000);
 });

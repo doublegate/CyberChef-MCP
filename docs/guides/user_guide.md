@@ -152,9 +152,9 @@ So the default is an **index**, not a catalogue. Measured on the serialised `too
 
 | `CYBERCHEF_TOOL_SURFACE` | Tools in `tools/list` | Payload |
 |---|---|---|
-| **`index`** *(default)* | 23 | **15,291 bytes** |
-| `curated` | 120 | 109,219 bytes |
-| `all` | 545 | 426,377 bytes |
+| **`index`** *(default)* | 23 | **15,620 bytes** |
+| `curated` | 120 | 109,548 bytes |
+| `all` | 545 | 426,706 bytes |
 
 Bytes, measured on the serialised `tools/list` payload with `npm run measure:surfaces`, not
 estimated. Earlier versions of this table gave token figures; this repository has never contained a
@@ -163,7 +163,7 @@ tokenizer and every one of those was bytes divided by four.
 The index doubled at v3.3.0, from 28 tools and 20,297 bytes. Twelve registry tools were added, and
 a registry tool has no navigation path — `cyberchef_bake` runs recipes of *operations* — so one
 that is not listed cannot be called at all. The ratio between the three modes is what matters, and
-the index plus one operation schema is still 25.0x cheaper than `all`.
+the index plus one operation schema is still 24.5x cheaper than `all`.
 
 **Nothing becomes unreachable.** `cyberchef_bake` runs any of the 504 operations by name, and three
 navigation tools let a client find the name and its arguments:
@@ -180,7 +180,7 @@ cyberchef_categories            16 categories, with counts and examples   (~2 KB
 **`Magic` is exposed in every surface**, including `index`. It is what you reach for *before* you
 know what you are looking at, so making it three calls deep would invert the cost.
 
-**The nineteen analysis tools are in every surface too.** Four since v2.4.0 —
+**The nineteen analysis tools are reachable from every surface, and listed on two of three.** Four since v2.4.0 —
 `cyberchef_xor_key_length`, `cyberchef_cyclic_pattern`, `cyberchef_hash_identify`,
 `cyberchef_rsa_attack` — twelve added in v3.3.0: `cyberchef_classical_cipher`,
 `cyberchef_corpus_diff`, `cyberchef_crib_drag`, `cyberchef_entropy_scan`, `cyberchef_hash_crack`,
@@ -190,12 +190,17 @@ know what you are looking at, so making it three calls deep would invert the cos
 in v3.8.0 and `cyberchef_pqc_identify` in v3.11.0.
 
 Unlike an operation, none of them is reachable through `cyberchef_bake`: they are not in
-`OperationConfig`, because each performs an analysis rather than a transformation. Hiding one
-behind a surface setting would make it unreachable rather than merely inconvenient, and listing
-must never be stricter than dispatch. That is why the index doubled in v3.3.0: the twelve new
-tools accounted for roughly 30 KB of the old 44,968-byte payload; v4.1.0 moved them behind
-`cyberchef_analyse`, and there is no honest way to avoid
-paying it.
+`OperationConfig`, because each performs an analysis rather than a transformation. Until v4.1.0
+that meant they had to be **listed** everywhere — `cyberchef_describe_operation` refused them and
+pointed at `tools/list`, so the listing was their only schema path, and hiding one behind a surface
+setting would have made it unreachable rather than merely inconvenient. That is why the index
+doubled in v3.3.0: nineteen of them were 30,683 of the old 44,968-byte payload, 68%.
+
+v4.1.0 removed the reason instead of the tools. `describe_operation` serves their schemas,
+`cyberchef_categories` lists them under `analysisTools`, and **`cyberchef_analyse({tool,
+arguments})`** runs them — so on the default `index` surface they are reachable without being
+listed, and on `curated`/`all` they are still listed and callable directly by name. Listing is
+still never stricter than dispatch: nothing is hidden that a caller could invoke.
 
 Fine-grained control:
 

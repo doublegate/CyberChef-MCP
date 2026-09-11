@@ -412,7 +412,18 @@ const META_TOOLS = [
                 examples: z.array(z.string())
             })),
             totalOperations: z.number(),
-            usage: z.string()
+            usage: z.string(),
+            // OPTIONAL, and present only when registry tools are registered. Added with the field
+            // itself in v4.1.0: a handler that returns a member its declared `outputSchema` does
+            // not describe is undiscoverable to a schema-driven client and unvalidatable by one,
+            // which for the tool that is now the ONLY route to the analysis tools would hide the
+            // navigation path this release exists to provide.
+            analysisTools: z.object({
+                count: z.number(),
+                description: z.string(),
+                tools: z.array(z.object({ tool: z.string(), title: z.string() })),
+                usage: z.string()
+            }).optional()
         }))
     },
     {

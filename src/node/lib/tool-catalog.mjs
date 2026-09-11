@@ -9,9 +9,9 @@
  * numbers now come from `npm run measure:surfaces`, which drives a real client and counts the
  * exact bytes of the result, rather than from a comment:
  *
- *     all       545 tools   426,377 bytes   416 KB
- *     curated   120 tools   109,219 bytes   107 KB
- *     index      23 tools    15,291 bytes    15 KB
+ *     all       545 tools   426,706 bytes   416 KB
+ *     curated   120 tools   109,548 bytes   107 KB
+ *     index      23 tools    15,620 bytes    15 KB
  *
  * Both presets pay up front for schemas the session may never use. `curated` is cheaper only
  * because it guesses which operations matter, and it is wrong for anyone whose work is the rest.
@@ -48,12 +48,12 @@
  * one schema instead of 504.
  *
  * The trade is honest and worth stating: reaching an operation costs an extra round trip the first
- * time. Measured, that trade is the index plus one operation schema -- 17,069 bytes against
- * 426,377, or **25.0x cheaper** than `all`. (This line read "42,415 bytes ... 9.5x" until v3.8.0,
+ * time. Measured, that trade is the index plus one operation schema -- 17,398 bytes against
+ * 426,706, or **24.5x cheaper** than `all`. (This line read "42,415 bytes ... 9.5x" until v3.8.0,
  * which is a figure SMALLER than the index alone and therefore impossible on its face -- the byte
  * column above was re-measured and this sentence was not. It was caught in review, not by a gate:
  * `check:versions` covers operation counts and does not cover tool-surface counts.) That
- * multiplier was 18.2x in v3.2.0, fell to 9.1x by v3.11.0, and is now 25.0x -- higher than it has
+ * multiplier was 18.2x in v3.2.0, fell to 9.1x by v3.11.0, and is now 24.5x -- higher than it has
  * ever been. The round trip is worth recording rather than quietly restating, because the fall and
  * the recovery have the same cause. Twelve registry tools were added in v3.3.0, and a registry
  * tool then had no navigation path: `describe_operation` refused it and pointed at `tools/list`,
@@ -63,7 +63,7 @@
  *
  * v4.1.0 removed the dependency rather than the tools. `describe_operation` now serves their
  * schemas, `categories` lists them, and `cyberchef_analyse` dispatches to them by name, so they
- * are reachable without being listed. The index dropped to 23 tools and 15,291 bytes, and the
+ * are reachable without being listed. The index dropped to 23 tools and 15,620 bytes, and the
  * growth curve is flat: a twentieth or a hundredth registry tool leaves it unchanged.
  *
  * The tool COUNT matters as much as the bytes, and is the half this design did not originally
@@ -263,7 +263,12 @@ export function summariseSearch(query, results, registryTools) {
         } : {}),
         next: found.length || registryHits.length ?
             "Use cyberchef_describe_operation for argument schemas, then cyberchef_bake to run. " +
-            "Analysis tools are called directly; their schemas are already in tools/list." :
+            // Was "Analysis tools are called directly; their schemas are already in tools/list."
+            // Both halves became false in v4.1.0: they are not in `tools/list` on the default
+            // surface, and a direct call is not available there either. Advice that names the
+            // wrong route is worse than no advice, because the caller follows it.
+            "Analysis tools are not operations: run one with cyberchef_analyse, or call it " +
+            "directly on CYBERCHEF_TOOL_SURFACE=curated|all where it is listed." :
             "No match. Try cyberchef_categories to browse, or a shorter or more general keyword."
     };
 }

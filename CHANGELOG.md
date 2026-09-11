@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [4.1.0] - 2026-09-11
 
 Registry tools get a navigation path, and leave the default surface. The index falls from
-41 tools / 44,968 bytes to **23 / 15,291** — 66% smaller — with nothing made unreachable.
+41 tools / 44,968 bytes to **23 / 15,620** — 66% smaller — with nothing made unreachable.
 
 ### Added
 
@@ -39,7 +39,7 @@ Registry tools get a navigation path, and leave the default surface. The index f
   `cyberchef_batch` in `RECIPE_SCOPED_TOOLS`. Authorising it by its own annotations would have run
   the check against a wrapper while the work ran against the caller's choice — a scope-filtering
   bypass shipping in the same release that stops listing the tools behind it.
-- **The round-trip multiplier is 25.0x**, up from 9.1x and higher than it has ever been. It was
+- **The round-trip multiplier is 24.5x**, up from 9.1x and higher than it has ever been. It was
   18.2x in v3.2.0 and fell as registry tools accumulated on the index.
 
 ### Fixed
