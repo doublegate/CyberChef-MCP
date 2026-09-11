@@ -36,7 +36,7 @@ dated banner**, never deleted.
 
 | | Why |
 |---|---|
-| **Lattice work** (`hnp_recover`, Coppersmith) | No LLL on npm; no WASM fplll/flatter/NTL. The one TypeScript proof caps at 32 signatures with float Gram-Schmidt. Ships only with a declared feasibility envelope in its own output |
+| **Lattice work** (`hnp_recover`, Coppersmith) | An LLL does exist on npm (`lll-reduction`, indutny, MIT) — this row said otherwise until 2026-09-11. What is absent is an *industrial* reduction: no WASM fplll/flatter/NTL. The one TypeScript proof caps at 32 signatures with float Gram-Schmidt. Ships only with a declared feasibility envelope in its own output |
 | **Shellcode emulation** | Running untrusted shellcode inside the server is a security-posture change, not a feature, and is not decided by a feature charter |
 | **Detect It Easy's 2,077 signature files** | They are JavaScript `function detect(){}` files. Loading them is what ADR 0002 forbids; `node:vm` is not a boundary |
 | **Composite PQC certificates** | Drafts at rev 19 and 21 — an identifier built today chases a moving OID table |

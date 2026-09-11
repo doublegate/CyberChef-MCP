@@ -96,5 +96,6 @@ image size       re-measured; 453 MB today
 
 - **Start before Phase 1 lands.** The measurement says the surface runs out at 59 registry tools.
 - **Count an extension as a tool.** PQC verification extends two existing tools.
-- **Build lattice work as though it were cheap.** There is no LLL on npm; see the charter.
+- **Build lattice work as though it were cheap.** An LLL exists on npm; an *industrial* reduction
+  does not, and that is the constraint. See the charter.
 - **Add an emulator.** Running untrusted shellcode in-process is a posture change, not a feature.
