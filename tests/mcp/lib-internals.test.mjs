@@ -19,7 +19,7 @@ import { join } from "node:path";
 import { dishToText } from "../../src/node/lib/dish-output.mjs";
 import { RateLimiter } from "../../src/node/lib/rate-limit.mjs";
 import {
-    surfaceMode, configuredAllowlist, isExposed, describeSurface
+    surfaceMode, configuredAllowlist, isExposed, describeSurface, removedAliasWarning
 } from "../../src/node/lib/tool-surface.mjs";
 import { toCoreRecipe } from "../../src/node/lib/core-recipe.mjs";
 import { validateInputSize, toolArgName, assertKnownArgs } from "../../src/node/lib/tool-schema.mjs";
@@ -184,18 +184,70 @@ describe("tool-surface: which operations become tools", () => {
         }
     });
 
-    it("honours the legacy CYBERCHEF_EXPOSE_ALL_OPS in both directions", () => {
+    it("IGNORES the removed CYBERCHEF_EXPOSE_ALL_OPS, in both directions", () => {
+        // REMOVED IN v4.0.0, and this is the tripwire rather than an absence of tests.
+        // From v2.1.0 to v3.11.0 this variable silently outranked CYBERCHEF_TOOL_SURFACE, so
+        // setting it to "true" three years ago and forgetting still served all 546 tools. A
+        // silent alias for the single most expensive configuration change this server has is
+        // worth being explicit about; `CYBERCHEF_TOOL_SURFACE=all` says the same thing out loud.
+        //
+        // It must be INERT, not merely unsupported: an alias that half-works is worse than one
+        // that is gone, so both directions are pinned.
         process.env.CYBERCHEF_EXPOSE_ALL_OPS = "true";
-        expect(surfaceMode()).toBe("all");
+        expect(surfaceMode()).toBe("index");
 
         process.env.CYBERCHEF_EXPOSE_ALL_OPS = "false";
-        expect(surfaceMode()).toBe("curated");
+        expect(surfaceMode()).toBe("index");
     });
 
-    it("lets the legacy variable win over the new one, since it is the more explicit ask", () => {
+    it("WARNS that the removed variable is being ignored, rather than failing silently", () => {
+        // The removal is right; delivering it silently was not. A deployment that set
+        // CYBERCHEF_EXPOSE_ALL_OPS=true once and forgot drops from 544 tools to 41 with no
+        // explanation, and the operator has no thread to pull. Reviewer-found (Antigravity).
+        //
+        // It REPORTS rather than restores: honouring the variable again would undo the removal.
         process.env.CYBERCHEF_EXPOSE_ALL_OPS = "true";
-        process.env.CYBERCHEF_TOOL_SURFACE = "index";
-        expect(surfaceMode()).toBe("all");
+        const warning = removedAliasWarning();
+        expect(warning).toContain("CYBERCHEF_EXPOSE_ALL_OPS");
+        expect(warning).toContain("IGNORED");
+        expect(warning).toContain("CYBERCHEF_TOOL_SURFACE");
+        // ...and it names the surface actually in force, which is the fact the operator needs.
+        expect(warning).toContain('"index"');
+        // The variable is still inert.
+        expect(surfaceMode()).toBe("index");
+    });
+
+    it("cannot be used to forge a second log record, or to flood one", () => {
+        // The value is caller-controlled and goes into a log line. Newlines would let it close the
+        // record and open another; 4 KB of anything would bury the run. Reviewer-found -- the
+        // warning was right, interpolating the raw value into it was not.
+        process.env.CYBERCHEF_EXPOSE_ALL_OPS = "true\n{\"level\":\"info\",\"msg\":\"FORGED\"}";
+        const forged = removedAliasWarning();
+        // The property that matters is that it cannot ESCAPE the record. Control characters are
+        // the vector; the remaining text is inert data inside one log line, and asserting the
+        // payload's words are absent would be testing the truncation length, not the safety.
+        expect(forged).not.toMatch(/[\u0000-\u001f\u007f]/);
+        expect(forged).toContain("?");   // the newline, replaced rather than dropped
+
+        process.env.CYBERCHEF_EXPOSE_ALL_OPS = "x".repeat(4000);
+        const long = removedAliasWarning();
+        expect(long.length).toBeLessThan(300);
+        expect(long).toContain("truncated");
+        // The facts that matter survive either way: it is set, and which surface is in force.
+        expect(long).toContain("IGNORED");
+        expect(long).toContain('"index"');
+    });
+
+    it("says nothing when the removed variable is absent", () => {
+        // A warning that fires for everyone is noise, and noise is how a real warning gets muted.
+        delete process.env.CYBERCHEF_EXPOSE_ALL_OPS;
+        expect(removedAliasWarning()).toBeNull();
+    });
+
+    it("lets CYBERCHEF_TOOL_SURFACE decide, with the removed variable set alongside it", () => {
+        process.env.CYBERCHEF_EXPOSE_ALL_OPS = "true";
+        process.env.CYBERCHEF_TOOL_SURFACE = "curated";
+        expect(surfaceMode()).toBe("curated");
     });
 
     it("exposes Magic in every surface, including index", () => {

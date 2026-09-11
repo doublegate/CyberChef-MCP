@@ -20,6 +20,8 @@
 
 import { describe, it, expect } from "vitest";
 import { spawnSync } from "node:child_process";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, resolve, join } from "node:path";
 
@@ -73,8 +75,14 @@ function runWith(overrides = {}) {
             throw new Error("unexpected fetch in test: " + u);
         };
     `;
+    // `scriptUrl` lets a test drive a COPY of the script over a copy of the tree. T-13 reads
+    // `src/node/` relative to the script, and mutating the real files to make it fire would race
+    // every other test file: vitest runs files in PARALLEL, and `tool-surface-figures` spawns a
+    // real server from `src/node/mcp-server.mjs`. The first version of that test did exactly this
+    // and made the surface gate fail intermittently with a tool count one too high.
+    const scriptUrl = overrides.scriptUrl ?? SCRIPT_URL;
     const r = spawnSync(process.execPath,
-        ["--input-type=module", "-e", `${preload}\nawait import(${JSON.stringify(SCRIPT_URL)});`],
+        ["--input-type=module", "-e", `${preload}\nawait import(${JSON.stringify(scriptUrl)});`],
         { cwd: ROOT, encoding: "utf8", timeout: 60000 });
     return { status: r.status ?? 1, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
 }
@@ -165,6 +173,127 @@ describe("check-v4-triggers", () => {
         const r = runWith({ changelog: "<html id=\"__next_error__\"></html>" });
         expect(r.stderr).toContain("could not complete");
         expect(r.status).toBe(2);
+    });
+
+    it("reports T-13 as clear, and reads it from the real tree rather than a fixture", () => {
+        // T-13 is the INTERNAL trigger added in v4.0.0, and the only one here that is offline:
+        // it asks whether this repository still advertises deprecated surface. There is no stub
+        // for it because there is nothing to stub -- it reads `src/node/`.
+        const r = runWith();
+        expect(r.stdout).toMatch(/T-13\s+deprecated surface still advertised to callers\s+none/);
+        expect(r.status).toBe(0);
+    });
+
+    /**
+     * An isolated copy of the tree, so T-13 can be driven against a planted defect.
+     *
+     * The real files are never written to: vitest runs test files in PARALLEL and
+     * `tool-surface-figures` boots a real server from `src/node/mcp-server.mjs`, so planting there
+     * raced it and produced a tool count one too high -- passing alone, passing under coverage, and
+     * failing the full suite in a file this one never touched.
+     *
+     * @param {(dir: string) => void} plant - Mutates the copy.
+     * @returns {{status: number, stdout: string, stderr: string}} What the script produced.
+     */
+    function runT13With(plant) {
+        const dir = mkdtempSync(join(tmpdir(), "cyberchef-t13-"));
+        try {
+            mkdirSync(join(dir, "scripts"), { recursive: true });
+            mkdirSync(join(dir, "src/node/lib"), { recursive: true });
+            copyFileSync(SCRIPT, join(dir, "scripts/check-v4-triggers.mjs"));
+            const inputs = [
+                "package.json",
+                "src/node/mcp-server.mjs",
+                "src/node/lib/config-file.mjs",
+                "src/node/lib/tool-surface.mjs"
+            ];
+            for (const rel of inputs) copyFileSync(join(ROOT, rel), join(dir, rel));
+            plant(dir);
+            return runWith({ scriptUrl: pathToFileURL(join(dir, "scripts/check-v4-triggers.mjs")).href });
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    }
+
+    /**
+     * @param {string} dir - Copy root.
+     * @param {string} rel - File within it.
+     * @param {(text: string) => string} edit - The mutation.
+     * @returns {void}
+     */
+    function patch(dir, rel, edit) {
+        const path = join(dir, rel);
+        const before = readFileSync(path, "utf8");
+        const after = edit(before);
+        expect(after, `the anchor this test plants against has moved in ${rel}`).not.toBe(before);
+        writeFileSync(path, after);
+    }
+
+    // Four surfaces, because T-13's first version was blind to two of them and BOTH reviewers
+    // found it: it keyed on tool NAMES, so a renamed tool advertising a migration evaded it, and
+    // it never read `package.json`, so re-publishing the removed `cyberchef-migrate` bin -- public
+    // surface this very release deleted -- reported "none". A zero that cannot become a one for
+    // the case you care about is not a measurement.
+    it("T-13 fires when a retired tool name is declared again", () => {
+        const r = runT13With(dir => patch(dir, "src/node/mcp-server.mjs", t =>
+            t.replace(`        name: "cyberchef_worker_stats",`, `        name: "cyberchef_deprecation_stats",`)));
+        expect(r.stdout).toMatch(/FIRED\s+T-13/);
+        expect(r.stdout).toContain("cyberchef_deprecation_stats is declared again");
+        expect(r.status).toBe(1);
+    });
+
+    it("T-13 fires on a RENAMED tool that advertises a migration", () => {
+        // The rename case. A description is what reaches the model; the identifier is not.
+        const r = runT13With(dir => patch(dir, "src/node/mcp-server.mjs", t =>
+            t.replace(`        name: "cyberchef_worker_stats",\n        description: "Get worker`,
+                `        name: "cyberchef_recipe_converter",\n        description: "Migrate v1 recipes to v2. Get worker`)));
+        expect(r.stdout).toMatch(/FIRED\s+T-13/);
+        expect(r.stdout).toContain("advertises a migration");
+        expect(r.status).toBe(1);
+    });
+
+    it("T-13 fires on migration wording in a LATER concatenated description segment", () => {
+        // This server writes long descriptions as concatenated string literals -- nine of them --
+        // so a check that captured only the first quoted segment read a convenient part of the
+        // text rather than the text. Reviewer-found, and the same shape of miss as keying on the
+        // tool's name: both looked at the wrong thing confidently.
+        const r = runT13With(dir => patch(dir, "src/node/mcp-server.mjs", t =>
+            t.replace(`        description: "Get worker thread pool statistics`,
+                `        description: "Get worker thread pool statistics." +\n` +
+                `            " Use this to migrate v1 recipes to v2 format`)));
+        expect(r.stdout).toMatch(/FIRED\s+T-13/);
+        expect(r.stdout).toContain("advertises a migration");
+        expect(r.status).toBe(1);
+    });
+
+    it("T-13 fires when a retired bin is published again", () => {
+        const r = runT13With(dir => patch(dir, "package.json", t => {
+            const pkg = JSON.parse(t);
+            pkg.bin["cyberchef-migrate"] = "src/node/cli/migrate.mjs";
+            return `${JSON.stringify(pkg, null, 2)}\n`;
+        }));
+        expect(r.stdout).toMatch(/FIRED\s+T-13/);
+        expect(r.stdout).toContain("cyberchef-migrate is published again");
+        expect(r.status).toBe(1);
+    });
+
+    it("T-13 fires when a retired setting is mapped again", () => {
+        const r = runT13With(dir => patch(dir, "src/node/lib/config-file.mjs", t =>
+            t.replace("        allowlist:", `        exposeAllOps: "CYBERCHEF_EXPOSE_ALL_OPS",\n        allowlist:`)));
+        expect(r.stdout).toMatch(/FIRED\s+T-13/);
+        expect(r.stdout).toContain("exposeAllOps is mapped again");
+        expect(r.status).toBe(1);
+    });
+
+    it("T-13 does NOT fire on legitimate legacy-format support", () => {
+        // `legacy` was evidence in the first version, which would have flagged the several places
+        // this server deliberately accepts an older FORMAT. Supporting a legacy input is not
+        // advertising a migration away from one. Reviewer-found.
+        const r = runT13With(dir => patch(dir, "src/node/mcp-server.mjs", t =>
+            t.replace(`        description: "Get worker`,
+                `        description: "Accepts the legacy positional argument form. Get worker`)));
+        expect(r.stdout).not.toContain("FIRED");
+        expect(r.status).toBe(0);
     });
 
     it("exits 2 when the schema listing comes back empty", () => {

@@ -7,15 +7,15 @@ native crypto and image libraries.
 ## Docker
 
 ```bash
-docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v3:latest
+docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v4:latest
 ```
 
 | Tag | Points at |
 |---|---|
 | `latest` | The newest release |
-| `3.0.0` | An exact version — **use this in anything you depend on** |
-| `3.0` | The newest patch of 3.0 |
-| `3` | The newest 3.x |
+| `4.0.0` | An exact version — **use this in anything you depend on** |
+| `4.0` | The newest patch of 4.0 |
+| `4` | The newest 4.x |
 
 The package name carries the major, so the v2.x line stays reachable at
 `ghcr.io/doublegate/cyberchef-mcp_v2` with its own `2.10.0` / `2.10` / `2` / `latest` tags, and
@@ -44,9 +44,10 @@ The image runs as UID 65532 (`nonroot`) on a Chainguard Wolfi base.
 npx cyberchef-mcp
 ```
 
-Published as `cyberchef-mcp` since **2.5.0**. Requires **Node `>=24 <27`**, matching upstream
-CyberChef's own floor, and carries a second binary — `cyberchef-migrate`, the v1-to-v2 migration
-helper.
+Published as `cyberchef-mcp` since **2.5.0**. Requires **Node `>=26 <27`** since v4.0.0, which
+raised the floor from 24 so that the declared minimum and the version the image actually runs are
+the same. It ships one binary: `cyberchef-mcp`. The `cyberchef-migrate` helper was removed in
+v4.0.0 — v1-format recipes bake unchanged, so there was nothing left for it to convert.
 
 > This section said "prepared, not yet published" until v3.0.0. Publishing was *prepared* in
 > v2.3.0; the first release that actually published was v2.5.0, and no document was updated when
@@ -92,7 +93,7 @@ A one-line ping is still a useful *container* smoke test — it proves the image
 
 ```bash
 echo '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' \
-  | docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v3:latest
+  | docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v4:latest
 ```
 
 Next: **[Client Setup](Client-Setup)**.

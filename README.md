@@ -4,7 +4,7 @@ This project provides a **Model Context Protocol (MCP)** server interface for **
 
 By running this server, you enable AI assistants (like Claude, Cursor AI, and others) to natively utilize CyberChef's extensive library of **504 data manipulation operations**—including encryption, encoding, compression, and forensic analysis—as executable tools.
 
-**Latest Release:** v3.11.0 | [Release Notes](docs/releases/v3.11.0.md) | [Tutorial](docs/guides/tutorial.md) | [Examples](examples/) | [Breaking Changes](docs/v2.0.0-breaking-changes.md) | [Security Policy](SECURITY.md)
+**Latest Release:** v4.0.0 | [Release Notes](docs/releases/v4.0.0.md) | [Tutorial](docs/guides/tutorial.md) | [Examples](examples/) | [Breaking Changes](docs/v2.0.0-breaking-changes.md) | [Security Policy](SECURITY.md)
 
 **Upstream base:** GCHQ CyberChef **v11.4.0** | **Licence:** GPL-3.0-or-later (from v2.0.0; v1.9.x and earlier remain Apache-2.0)
 
@@ -14,7 +14,7 @@ By running this server, you enable AI assistants (like Claude, Cursor AI, and ot
 [![MCP Enabled](https://img.shields.io/badge/MCP-Enabled-blue)](https://modelcontextprotocol.io/)
 [![License](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
 [![Docker Version](https://img.shields.io/github/v/release/doublegate/CyberChef-MCP?logo=docker&label=docker)](https://github.com/doublegate/CyberChef-MCP/releases)
-[![Node.js Version](https://img.shields.io/badge/node-%3E%3D24%20%3C27-brightgreen)](https://nodejs.org/)
+[![Node.js Version](https://img.shields.io/badge/node-%3E%3D26%20%3C27-brightgreen)](https://nodejs.org/)
 [![Security Scan](https://github.com/doublegate/CyberChef-MCP/actions/workflows/security-scan.yml/badge.svg)](https://github.com/doublegate/CyberChef-MCP/actions/workflows/security-scan.yml)
 [![codecov](https://codecov.io/gh/doublegate/CyberChef-MCP/branch/master/graph/badge.svg)](https://codecov.io/gh/doublegate/CyberChef-MCP)
 
@@ -63,7 +63,7 @@ The server exposes CyberChef operations as MCP tools:
 *   **Tool annotations on every tool** (v2.2.0): `readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint` and a readable `title`, so a client can skip the approval prompt for a pure operation. The exceptions were measured, not guessed — only `HTTP request` and `DNS over HTTPS` reach the network, and non-idempotence was determined by running each candidate twice and comparing.
 *   **Prompts and resources** (v2.2.0): five workflow prompts (`analyse-unknown-data`, `extract-iocs`, `deobfuscate-script`, `identify-hash`, `decode-chain`) for when you do not yet know which of 504 operations you need, and saved recipes exposed as readable resources at `recipe://<id>`.
 *   **`cyberchef_bake`**: The "Omni-tool". Executes a full CyberChef recipe (a chain of operations) on an input. Ideal for complex, multi-step transformations (e.g., "Decode Base64, then Gunzip, then prettify JSON").
-*   **All 504 operations, without paying for 504 schemas** (v2.1.0): `tools/list` is an **index** by default — 43 tools and 45,963 bytes, rather than 546 tools and 426,367 bytes. The index grew in v3.3.0 because twelve new registry tools have no navigation path of their own — a registry tool that is not listed cannot be called at all. Every operation stays reachable: `cyberchef_categories` -> `cyberchef_list_operations` -> `cyberchef_describe_operation` walks down to any of them, `cyberchef_search` finds one by keyword, and `cyberchef_bake` runs any of them by name. `CYBERCHEF_TOOL_SURFACE=curated` (121 tools, 109,209 bytes) or `=all` (all 546, 426,367 bytes) if you would rather pre-load. See the [User Guide](docs/guides/user_guide.md#the-tool-surface--how-many-tools-you-see-and-why).
+*   **All 504 operations, without paying for 504 schemas** (v2.1.0): `tools/list` is an **index** by default — 41 tools and 44,968 bytes, rather than 544 tools and 425,372 bytes. The index grew in v3.3.0 because twelve new registry tools have no navigation path of their own — a registry tool that is not listed cannot be called at all. Every operation stays reachable: `cyberchef_categories` -> `cyberchef_list_operations` -> `cyberchef_describe_operation` walks down to any of them, `cyberchef_search` finds one by keyword, and `cyberchef_bake` runs any of them by name. `CYBERCHEF_TOOL_SURFACE=curated` (119 tools, 108,214 bytes) or `=all` (all 544, 425,372 bytes) if you would rather pre-load. See the [User Guide](docs/guides/user_guide.md#the-tool-surface--how-many-tools-you-see-and-why).
     *   `cyberchef_to_base64` / `cyberchef_from_base64`
     *   `cyberchef_aes_decrypt`
     *   `cyberchef_sha2`
@@ -80,14 +80,12 @@ The server exposes CyberChef operations as MCP tools:
     *   `cyberchef_telemetry_export` - Privacy-first usage analytics (opt-in)
     *   `cyberchef_cache_stats` / `cyberchef_cache_clear` - Cache inspection and management
     *   `cyberchef_quota_info` - Resource quota and usage tracking
-*   **Migration Tools** (v1.8.0): Comprehensive v2.0.0 preparation and migration assistance
-    *   `cyberchef_migration_preview` - Analyze recipes for v2.0.0 compatibility with two modes:
-        - `analyze` mode: Check recipes for breaking changes with detailed diagnostics
-        - `transform` mode: Automatically convert recipes to v2.0.0 format
-    *   `cyberchef_deprecation_stats` - Track deprecated API usage statistics
-        - Shows deprecation warnings triggered in current session
-        - Reports session duration, suppression status, and v2 compatibility mode
-        - Lists all 8 deprecation codes (DEP001-DEP008) with details
+*   **Migration tooling — REMOVED in v4.0.0.** `cyberchef_migration_preview`,
+    `cyberchef_deprecation_stats` and the `cyberchef-migrate` binary existed to help callers reach
+    **v2.0.0**, nine minors earlier. They were advertised on every surface and cost 995 bytes of
+    every `tools/list`, while the only warning still emitted was `DEP007` — a **withdrawn** code
+    whose own text read "No action required". Your v1-format recipes need no migration: positional
+    arguments, bare string operations and named-object arguments all bake identically today.
     *   **The `cyberchef_` prefix is permanent.** DEP001, DEP007 and DEP008 announced its removal in v1.8.0 and were **withdrawn** in v2.0.0: removing it saves 2.6% of the `tools/list` payload while colliding 19 tool names in MCP's flat namespace and breaking every existing integration. Keep using `cyberchef_to_base64`, `cyberchef_bake` and `cyberchef_search`. See [v2.0.0 Breaking Changes](docs/v2.0.0-breaking-changes.md#withdrawn-changes-dep001-dep007-dep008).
 *   **Worker Thread Pool** (v1.9.0): CPU-intensive operations offloaded to worker threads
     *   `cyberchef_worker_stats` - Monitor worker pool utilization, active/completed tasks, and pool configuration
@@ -102,7 +100,7 @@ The server exposes CyberChef operations as MCP tools:
 *   **MCP Streaming with Progress** (v1.9.0): Operations send `notifications/progress` via the MCP SDK progress token mechanism for real-time status updates during long-running tasks.
 *   **Worker Thread Pool** (v1.9.0): Piscina-based worker threads offload CPU-intensive operations (AES, Blowfish, bcrypt, scrypt, PBKDF2, etc.) to prevent event loop blocking. Configurable pool size and routing thresholds.
 *   **Schema Validation**: All inputs are validated against schemas derived from CyberChef's internal type system using `zod`.
-*   **Modern Node.js**: Requires Node.js `>=24 <27`, matching upstream exactly. The published image runs Node 26.8.1.
+*   **Modern Node.js**: Requires Node.js `>=26 <27` since v4.0.0, and the published image runs Node 26 -- floor and runtime are now the same version rather than two majors apart.
 *   **Recipe Management** (v1.6.0): Save and reuse multi-operation workflows with full CRUD operations, import/export in multiple formats (JSON/YAML/URL/CyberChef), recipe composition with nesting support, and curated library of 25+ production-ready recipes across 5 categories. See [Recipe Management Guide](docs/guides/recipe_management.md) for details.
 *   **Advanced Features** (v1.7.0): Enterprise-grade capabilities with batch processing (parallel/sequential execution of up to 100 operations), privacy-first telemetry collection (disabled by default, no input/output data captured), sliding window rate limiting for resource protection, enhanced caching with inspection tools, and resource quota tracking (concurrent operations, data sizes). All features are configurable via environment variables with secure defaults. See [Release Notes](docs/releases/v1.7.0.md) for details.
 *   **Enhanced Observability** (v1.5.0): Structured JSON logging with Pino for production monitoring, comprehensive error handling with actionable recovery suggestions, automatic retry logic with exponential backoff, request correlation with UUID tracking, circuit breaker pattern for cascading failure prevention, and streaming infrastructure for progressive results on large operations. See [Release Notes](docs/releases/v1.5.0.md) for details.
@@ -114,7 +112,7 @@ The server exposes CyberChef operations as MCP tools:
 ## Quick Start
 
 ### Prerequisites
-*   **Node.js** `>=24 <27` for the npm install, or **Docker** for the container.
+*   **Node.js** `>=26 <27` for the npm install, or **Docker** for the container.
 
 ### Installation Options
 
@@ -135,7 +133,7 @@ No clone, no build, no Docker daemon. For an MCP client, point it at the same co
 ```
 
 Installing it permanently works too — `npm install -g cyberchef-mcp`, then run `cyberchef-mcp`.
-The package also ships `cyberchef-migrate`, which checks and converts v1.x recipes for v2.x.
+That is the only binary the package ships; `cyberchef-migrate` was removed in v4.0.0.
 
 **Option 2: Pull from Docker Hub**
 ```bash
@@ -147,8 +145,8 @@ docker run -i --rm cyberchef-mcp
 
 **Option 2b: Pull from GitHub Container Registry (Alternative)**
 ```bash
-docker pull ghcr.io/doublegate/cyberchef-mcp_v3:latest
-docker tag ghcr.io/doublegate/cyberchef-mcp_v3:latest cyberchef-mcp
+docker pull ghcr.io/doublegate/cyberchef-mcp_v4:latest
+docker tag ghcr.io/doublegate/cyberchef-mcp_v4:latest cyberchef-mcp
 docker run -i --rm cyberchef-mcp
 ```
 
@@ -159,13 +157,13 @@ For environments without direct GHCR access, download the pre-built Docker image
 1.  **Download the tarball** (**141 MB** compressed; measured against the published v3.1.0 asset, not estimated):
     ```bash
     # Download from GitHub Releases
-    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v3.11.0/cyberchef-mcp-v3.11.0-docker-image.tar.gz
+    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v4.0.0/cyberchef-mcp-v4.0.0-docker-image.tar.gz
     ```
 
 2.  **Load the image into Docker:**
 
     ```bash
-    docker load < cyberchef-mcp-v3.11.0-docker-image.tar.gz
+    docker load < cyberchef-mcp-v4.0.0-docker-image.tar.gz
     ```
 
 3.  **Tag for easier usage:**
@@ -285,7 +283,7 @@ the server behaves exactly as it always has.
 ```
 
 A malformed file, an unknown section or an unknown setting stops the server with a message naming
-the mistake, rather than starting on defaults nobody chose. All 64 settings, their sections and
+the mistake, rather than starting on defaults nobody chose. All 61 settings, their sections and
 their environment-variable equivalents are in the
 **[configuration guide](docs/guides/configuration.md)**.
 
@@ -372,7 +370,7 @@ docker run -i --rm --memory=4g \
   -e CYBERCHEF_STREAMING_THRESHOLD=52428800 \
   -e CYBERCHEF_CACHE_MAX_SIZE=524288000 \
   -e CYBERCHEF_OPERATION_TIMEOUT=120000 \
-  ghcr.io/doublegate/cyberchef-mcp_v3:latest
+  ghcr.io/doublegate/cyberchef-mcp_v4:latest
 ```
 
 **Low-Memory Environment**
@@ -382,7 +380,7 @@ docker run -i --rm --memory=512m \
   -e CYBERCHEF_STREAMING_THRESHOLD=5242880 \
   -e CYBERCHEF_CACHE_MAX_SIZE=10485760 \
   -e CYBERCHEF_CACHE_MAX_ITEMS=100 \
-  ghcr.io/doublegate/cyberchef-mcp_v3:latest
+  ghcr.io/doublegate/cyberchef-mcp_v4:latest
 ```
 
 **Claude Desktop with Custom Limits**
@@ -395,7 +393,7 @@ docker run -i --rm --memory=512m \
         "run", "-i", "--rm",
         "-e", "CYBERCHEF_MAX_INPUT_SIZE=209715200",
         "-e", "CYBERCHEF_CACHE_MAX_SIZE=209715200",
-        "ghcr.io/doublegate/cyberchef-mcp_v3:latest"
+        "ghcr.io/doublegate/cyberchef-mcp_v4:latest"
       ]
     }
   }
@@ -407,7 +405,7 @@ docker run -i --rm --memory=512m \
 docker run -i --rm \
   -e LOG_LEVEL=debug \
   -e CYBERCHEF_MAX_RETRIES=5 \
-  ghcr.io/doublegate/cyberchef-mcp_v3:latest
+  ghcr.io/doublegate/cyberchef-mcp_v4:latest
 ```
 
 **Worker Thread Pool for CPU-Intensive Operations (v1.9.0+)**
@@ -416,7 +414,7 @@ docker run -i --rm \
   -e CYBERCHEF_ENABLE_WORKERS=true \
   -e CYBERCHEF_WORKER_MAX_THREADS=8 \
   -e CYBERCHEF_WORKER_IDLE_TIMEOUT=60000 \
-  ghcr.io/doublegate/cyberchef-mcp_v3:latest
+  ghcr.io/doublegate/cyberchef-mcp_v4:latest
 ```
 
 **HTTP Transport for Browser/Remote Clients (v1.9.0+)**
@@ -426,7 +424,7 @@ docker run --rm -p 3000:3000 \
   -e CYBERCHEF_HTTP_PORT=3000 \
   -e CYBERCHEF_HTTP_HOST=0.0.0.0 \
   -e CYBERCHEF_ALLOWED_HOSTS=localhost:3000,127.0.0.1:3000 \
-  ghcr.io/doublegate/cyberchef-mcp_v3:latest
+  ghcr.io/doublegate/cyberchef-mcp_v4:latest
 ```
 
 `CYBERCHEF_ALLOWED_HOSTS` is new in v2.0.0. **DNS-rebinding protection is on by default** — with
@@ -740,7 +738,7 @@ If you want to modify the server code without Docker:
 This project uses GitHub Actions to ensure stability and security:
 
 **Core Development Workflows:**
-*   **MCP Server CI** ([`core-ci.yml`](.github/workflows/core-ci.yml)): Tests the underlying CyberChef logic and configuration generation on Node.js 24
+*   **MCP Server CI** ([`core-ci.yml`](.github/workflows/core-ci.yml)): Tests the underlying CyberChef logic and configuration generation on Node.js 26
 *   **Docker Build** ([`mcp-docker-build.yml`](.github/workflows/mcp-docker-build.yml)): Builds, verifies, and security scans the `cyberchef-mcp` Docker image
 *   **Pull Request Checks** ([`pull_requests.yml`](.github/workflows/pull_requests.yml)): Automated testing and validation for pull requests
 *   **Performance Benchmarks** ([`performance-benchmarks.yml`](.github/workflows/performance-benchmarks.yml)): Automated performance regression testing on code changes (v1.4.0+)
@@ -777,10 +775,10 @@ All workflows use the latest CodeQL Action v4 for security scanning and SARIF up
 
 ### Testing
 ```bash
-# Run all tests (requires Node.js >=24 <27; 241 Node-API + 2,289 operation tests)
+# Run all tests (requires Node.js >=26 <27; 241 Node-API + 2,289 operation tests)
 npm test
 
-# Run MCP validation test suite (1,246 tests across 46 files, with Vitest)
+# Run MCP validation test suite (1,713 tests across 74 files, with Vitest)
 npm run test:mcp
 
 # Run MCP tests with coverage report
@@ -801,9 +799,9 @@ npm run lint
 
 **Test Coverage:**
 The MCP server maintains comprehensive test coverage:
-- **1,246 MCP tests** across 46 suites, plus 241 Node-API tests, 2,289 operation tests and 9 runnable examples executed by CI
-- **Coverage thresholds** (`vitest.config.mjs`): 96% lines, 95% statements, 88% branches, 96% functions, with `src/node/lib/**` held separately at 99 lines / 99 statements / 94 branches / 100 functions
-- **Current coverage**: 96.50% lines, 95.67% statements, 96.43% functions, 89.16% branches
+- **1,713 MCP tests** across 74 suites, plus 241 Node-API tests, 2,289 operation tests and 9 runnable examples executed by CI
+- **Coverage thresholds** (`vitest.config.mjs`): 96% lines, 95% statements, 89% branches, 96% functions, with `src/node/lib/**` held separately at 99 lines / 99 statements / 94 branches / 100 functions
+- **Current coverage**: 96.08% lines, 95.1% statements, 96.54% functions, 89.43% branches (thresholds 96/89/96/95, lines/branches/functions/statements)
 - Note: individual suite names are not listed here because the list went stale three times;
   `ls tests/mcp/*.test.mjs` is authoritative.
 
@@ -831,7 +829,7 @@ For contributions to the core CyberChef operations, please credit the original [
 *   **MCP Fork**: [doublegate/CyberChef-MCP](https://github.com/doublegate/CyberChef-MCP)
 *   **Container Registries**:
     *   **Docker Hub** (Primary): [parobek/cyberchef-mcp](https://hub.docker.com/r/parobek/cyberchef-mcp) - With Docker Scout health scores and attestations
-    *   **GHCR** (Secondary): [ghcr.io/doublegate/cyberchef-mcp_v3](https://github.com/doublegate/CyberChef-MCP/pkgs/container/cyberchef-mcp_v3) — v3.x. The package name carries the major, so v2.x stays at [`cyberchef-mcp_v2`](https://github.com/doublegate/CyberChef-MCP/pkgs/container/cyberchef-mcp_v2) and is not superseded in place.
+    *   **GHCR** (Secondary): [ghcr.io/doublegate/cyberchef-mcp_v4](https://github.com/doublegate/CyberChef-MCP/pkgs/container/cyberchef-mcp_v4) — v4.x. The package name carries the major, so each line keeps its own image and is not superseded in place: v3.x stays at [`cyberchef-mcp_v3`](https://github.com/doublegate/CyberChef-MCP/pkgs/container/cyberchef-mcp_v3), v2.x at [`cyberchef-mcp_v2`](https://github.com/doublegate/CyberChef-MCP/pkgs/container/cyberchef-mcp_v2).
     *   **GHCR (v1, frozen)**: [ghcr.io/doublegate/cyberchef-mcp_v1](https://github.com/doublegate/CyberChef-MCP/pkgs/container/cyberchef-mcp_v1)
         *   Remains pullable; receives security-only patches on the `v1.9.x` line until ~March 2027.
         *   Apache-2.0, not GPL-3.0-or-later.

@@ -624,31 +624,28 @@ describe("in-process handlers: subsystem tools", () => {
         }
     });
 
-    it("previews a migration in both modes and rejects a third", async () => {
+    it("no longer serves the v2.0.0 migration tools, and says so through a real client", async () => {
+        // REMOVED IN v4.0.0. A tripwire rather than an absence of tests, matching how this server
+        // pins its other deliberate non-features (tasks, `extensions`).
+        //
+        // They were advertised on EVERY surface and cost 995 bytes of every `tools/list` -- two
+        // thirds of an entire new tool -- to help a caller migrate to v2.0.0, nine minors ago.
+        // The only deprecation warning a normal `cyberchef_bake` call still produced was DEP007,
+        // a WITHDRAWN code whose own text read "No action required."
         const { client, close } = await connected();
         try {
-            const recipe = [{ op: "To Base64", args: [] }];
-            expect(await callJson(client, "cyberchef_migration_preview", { recipe })).toBeTruthy();
+            const advertised = new Set((await client.listTools()).tools.map(t => t.name));
+            expect(advertised.has("cyberchef_migration_preview")).toBe(false);
+            expect(advertised.has("cyberchef_deprecation_stats")).toBe(false);
 
-            const transformed = await callJson(client, "cyberchef_migration_preview", {
-                recipe, mode: "transform"
-            });
-            expect(transformed).toHaveProperty("transformed");
+            // Listing must never be stricter than dispatch, and the converse holds too: a tool
+            // that is not listed must not be callable either.
+            for (const name of ["cyberchef_migration_preview", "cyberchef_deprecation_stats"]) {
+                const result = await client.callTool({ name, arguments: {} }).catch(error => error);
+                expect(String(result?.message ?? JSON.stringify(result)), name).toMatch(/[Uu]nknown|not found|UNSUPPORTED/);
+            }
 
-            const bad = await client.callTool({
-                name: "cyberchef_migration_preview",
-                arguments: { recipe, mode: "nonsense" }
-            });
-            expect(bad.isError).toBe(true);
-        } finally {
-            await close();
-        }
-    });
-
-    it("reports deprecation and worker-pool state", async () => {
-        const { client, close } = await connected();
-        try {
-            expect(await callJson(client, "cyberchef_deprecation_stats")).toBeTruthy();
+            // The tool that shared their dispatch block is untouched.
             expect(await callJson(client, "cyberchef_worker_stats")).toHaveProperty("enabled");
         } finally {
             await close();

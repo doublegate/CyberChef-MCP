@@ -5,7 +5,7 @@ operations** for encryption, encoding, compression and forensics, plus **ninetee
 that an operation cannot express.
 
 ```bash
-docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v3:latest
+docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v4:latest
 ```
 
 The `-i` is not optional. Without it the container exits immediately and your client reports the
@@ -29,7 +29,7 @@ If the site and this wiki ever disagree, **the site is right** and this wiki nee
 |---|---|
 | **[Installation](Installation)** | Docker, npm, or from source |
 | **[Client Setup](Client-Setup)** | Claude Code, Claude Desktop, LM Studio, Cursor, MCP Inspector |
-| **[The Tool Surface](Tool-Surface)** | Why you see 43 tools and not 546 — the most common question |
+| **[The Tool Surface](Tool-Surface)** | Why you see 41 tools and not 544 — the most common question |
 | **[Analysis Tools](Analysis-Tools)** | XOR key length, cyclic patterns, hash identification, RSA attacks |
 | **[Troubleshooting](Troubleshooting)** | The failures people actually hit, and what causes them |
 

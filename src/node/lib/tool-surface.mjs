@@ -126,12 +126,12 @@ const CURATED_SET = new Set(CURATED_OPERATIONS);
  *   server from starting, and the startup log states which surface is actually in force.
  */
 export function surfaceMode() {
-    // CYBERCHEF_EXPOSE_ALL_OPS is honoured in both directions, because the v2.0.0 planning
-    // documents named it as the way to get every operation and someone may already have set it.
-    const legacy = process.env.CYBERCHEF_EXPOSE_ALL_OPS;
-    if (legacy === "true") return "all";
-    if (legacy === "false") return "curated";
-
+    // CYBERCHEF_EXPOSE_ALL_OPS was honoured here in both directions from v2.1.0 to v3.11.0,
+    // because the v2.0.0 planning documents named it as the way to expose every operation. It is
+    // REMOVED in v4.0.0: it was documented as a historical alias for three years, it is the kind
+    // of setting that is set once and forgotten, and a silent alias for the single most expensive
+    // configuration change this server has is worth being explicit about. Use
+    // CYBERCHEF_TOOL_SURFACE=all.
     const mode = process.env.CYBERCHEF_TOOL_SURFACE;
     return ["all", "curated", "index"].includes(mode) ? mode : "index";
 }
@@ -170,6 +170,37 @@ export function isExposed(opName) {
 }
 
 /**
+ * A warning for anyone still setting the variable v4.0.0 removed, or `null`.
+ *
+ * WHY THIS EXISTS. `CYBERCHEF_EXPOSE_ALL_OPS=true` used to mean "expose all 544 tools" and now
+ * means nothing, so a deployment that set it once and forgot drops from 544 tools to 41 with no
+ * explanation anywhere. That is the most visible behaviour change in this release, and silence is
+ * the worst way to deliver it: the caller sees a tool count collapse and has no thread to pull.
+ * Reviewer-found -- the removal was right, announcing it was missing.
+ *
+ * It REPORTS rather than restores. Honouring the variable again would undo the removal, and
+ * guessing what the operator meant is exactly what the silent alias did wrong.
+ *
+ * @returns {?string} The warning, or null when the variable is not set.
+ */
+export function removedAliasWarning() {
+    const legacy = process.env.CYBERCHEF_EXPOSE_ALL_OPS;
+    if (legacy === undefined) return null;
+    // The VALUE is caller-controlled, and it is going into a log line. Bounded and stripped of
+    // control characters -- including the newlines and escapes that let an attacker-supplied
+    // string forge a second log record -- because "it is only an environment variable" is the
+    // assumption behind every log-injection finding. Reviewer-found.
+    //
+    // Only the shape matters to the reader anyway: the useful facts are that the variable is set
+    // and which surface is actually in force, not the 4 KB somebody put in it.
+    const shown = String(legacy).replace(/[^\x20-\x7e]/g, "?").slice(0, 40);
+    const elided = String(legacy).length > 40 ? "... (truncated)" : "";
+    return `CYBERCHEF_EXPOSE_ALL_OPS=${shown}${elided} is set and is IGNORED: it was removed in ` +
+        `v4.0.0. The tool surface is "${surfaceMode()}" -- set ` +
+        "CYBERCHEF_TOOL_SURFACE=all|curated|index to choose one explicitly.";
+}
+
+/**
  * A one-line summary of the active surface, for the startup log.
  *
  * Logged rather than left implicit because "why can the model not see this tool" is otherwise a
@@ -196,7 +227,7 @@ export function describeSurface(exposed, total) {
     // BYTES, not tokens. This line read "~86k tokens per tools/list" from the release that
     // introduced the index until v3.8.0, and was wrong in both dimensions: no tokenizer has
     // ever been in this repository, so the figure was bytes/4 wearing a token label -- and
-    // the payload has since grown to 426,367 bytes (~107k under that same convention), so
+    // the payload has since grown to 425,372 bytes (~107k under that same convention), so
     // even the disguised number had drifted by a fifth. Re-measure with
     // `npm run measure:surfaces` rather than editing this by eye.
     return `tool surface: all (${exposed}/${total} operations; ~416 KB per tools/list)`;

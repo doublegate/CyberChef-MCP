@@ -55,7 +55,6 @@ export default defineConfig({
                 "src/node/recipe-manager.mjs",
                 "src/node/worker-pool.mjs",
                 "src/node/transports.mjs",
-                "src/node/deprecation.mjs",
                 // Added in v2.3.0. It is our code on the worker-threads path and had never been
                 // measured -- absent from this list, so present in no report.
                 "src/node/worker.mjs",

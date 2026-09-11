@@ -10,7 +10,7 @@ the client reports the server as failed. It is the single most common setup mist
 ## Claude Code
 
 ```bash
-claude mcp add cyberchef -- docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v3:latest
+claude mcp add cyberchef -- docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v4:latest
 ```
 
 Or add it to `.mcp.json` in your project:
@@ -20,7 +20,7 @@ Or add it to `.mcp.json` in your project:
   "mcpServers": {
     "cyberchef": {
       "command": "docker",
-      "args": ["run", "-i", "--rm", "ghcr.io/doublegate/cyberchef-mcp_v3:latest"]
+      "args": ["run", "-i", "--rm", "ghcr.io/doublegate/cyberchef-mcp_v4:latest"]
     }
   }
 }
@@ -36,7 +36,7 @@ Or add it to `.mcp.json` in your project:
   "mcpServers": {
     "cyberchef": {
       "command": "docker",
-      "args": ["run", "-i", "--rm", "ghcr.io/doublegate/cyberchef-mcp_v3:latest"]
+      "args": ["run", "-i", "--rm", "ghcr.io/doublegate/cyberchef-mcp_v4:latest"]
     }
   }
 }
@@ -52,7 +52,7 @@ Edit mcp.json**, or directly at `~/.lmstudio/mcp.json`:
   "mcpServers": {
     "CyberChef-MCP": {
       "command": "podman",
-      "args": ["run", "-i", "--rm", "ghcr.io/doublegate/cyberchef-mcp_v3:latest"]
+      "args": ["run", "-i", "--rm", "ghcr.io/doublegate/cyberchef-mcp_v4:latest"]
     }
   }
 }
@@ -62,13 +62,13 @@ Use `docker` in place of `podman` if that is what you have. If LM Studio runs as
 inherits your desktop environment's `PATH`, so a bare `podman`/`docker` resolves — no absolute path
 needed.
 
-**Set the tool surface deliberately for a local model.** The default (`index`, 43 tools,
-45,963 bytes) is usually right; `all` is 546 tools and 426,367 bytes, which will swamp most
+**Set the tool surface deliberately for a local model.** The default (`index`, 41 tools,
+44,968 bytes) is usually right; `all` is 544 tools and 425,372 bytes, which will swamp most
 locally-hosted context windows:
 
 ```json
 "args": ["run", "-i", "--rm", "-e", "CYBERCHEF_TOOL_SURFACE=curated",
-         "ghcr.io/doublegate/cyberchef-mcp_v3:latest"]
+         "ghcr.io/doublegate/cyberchef-mcp_v4:latest"]
 ```
 
 ## Cursor
@@ -80,7 +80,7 @@ locally-hosted context windows:
 Useful for seeing exactly what the server advertises:
 
 ```bash
-npx @modelcontextprotocol/inspector docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v3:latest
+npx @modelcontextprotocol/inspector docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v4:latest
 ```
 
 ## Running from a checkout instead of a container
@@ -107,7 +107,7 @@ docker run -d --name cyberchef-mcp -p 127.0.0.1:3000:3000 \
   -e CYBERCHEF_TRANSPORT=http \
   -e CYBERCHEF_HTTP_HOST=0.0.0.0 \
   -e CYBERCHEF_ALLOWED_HOSTS=localhost:3000,127.0.0.1:3000 \
-  ghcr.io/doublegate/cyberchef-mcp_v3:latest
+  ghcr.io/doublegate/cyberchef-mcp_v4:latest
 ```
 
 **Note the `127.0.0.1:` in front of the port mapping.** A bare `-p 3000:3000` publishes on *every*

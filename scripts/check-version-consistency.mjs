@@ -35,6 +35,7 @@
  * @license GPL-3.0-or-later
  */
 
+import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
@@ -158,7 +159,7 @@ try {
  * Three things this has to get right, and a plain `<ns>/cyberchef-mcp` gets all three wrong -- it
  * fired on an npm badge, the npm package page and a Unix socket path on the first run:
  *
- *   - **GHCR is excluded** by `(?![\w-])`. That package is `cyberchef-mcp_v3`, and an underscore
+ *   - **GHCR is excluded** by `(?![\w-])`. That package is `cyberchef-mcp_v4`, and an underscore
  *     is a word character, so the name never completes.
  *   - **A deeper URL path segment is not a namespace.** The lookbehind rejects a match whose
  *     namespace is itself preceded by `/`, which is what `.../npm/v/cyberchef-mcp`,
@@ -417,6 +418,133 @@ const LOCATIONS = [
 
 const problems = [];
 const checked = [];
+
+/**
+ * Every GHCR reference must pair the package's major suffix with a tag of that same major.
+ *
+ * WHY THIS IS A SEPARATE SWEEP. The checks below compare a value against the CURRENT version, so
+ * they cannot look at `cyberchef-mcp_v3:3.1.0` -- a deliberate reference to a PUBLISHED older
+ * image, which is correct and must stay. The invariant that does hold for every such reference,
+ * old or new, is internal: the suffix carries the major (`mcp-release.yml` derives the package
+ * from the tag's major), so `_v4:3.0.0` and `_v3:4.0.0` name images that can never exist.
+ *
+ * Found the hard way in v4.0.0. The major bump renames the image, a blanket `_v3` -> `_v4` sweep
+ * across ~20 documents rewrote SEVEN historical examples into impossible references, and
+ * `check:versions` passed throughout because GHCR is explicitly excluded from the namespace scan
+ * above. Reviewer-found; this is the rule that would have caught it.
+ *
+ * It reads every tracked Markdown and workflow file rather than a list, for the reason the
+ * operation-count half already discovers its files: a hand-written list reports `ok` for the
+ * files it forgot.
+ */
+const GHCR_MISMATCH_EXEMPT = new Map([
+    ["docs/internal/v3.0.0-findings-log.md", "Quotes `_v2:3.0.0` as the defect v3.0.0 found: the chart paired an un-bumped repository with a bumped tag."],
+    ["docs/internal/v4.0.0-findings-log.md", "Quotes `_v3:4.0.0` as the defect v4.0.0 found, when bump-version.mjs did not rename the image."],
+    ["docs/releases/v4.0.0.md", "Same quotation as the v4.0.0 findings log, in the published release note."],
+    ["scripts/check-version-consistency.mjs", "This file's own prose quotes both mismatches to explain why the rule exists."]
+]);
+
+/**
+ * Is this mismatch a deliberate QUOTATION of the defect rather than an instance of it?
+ *
+ * Two conditions, both required. The file must be exempt by name -- a narrow, written list -- AND
+ * the surrounding line must actually say the image is impossible. The second half is what stops
+ * the exemption becoming a blanket amnesty for a file: a genuine broken reference added to a
+ * release note later still fails, because it will not carry that language.
+ *
+ * @param {string} file - Repository-relative path.
+ * @param {string} text - The whole file.
+ * @param {number} index - Offset of the match.
+ * @returns {boolean} True when the mismatch is being described rather than used.
+ */
+function isQuotedDefect(file, text, index) {
+    if (!GHCR_MISMATCH_EXEMPT.has(file)) return false;
+    // The matched line AND the one after it -- no further. An earlier version accepted a
+    // 200-character window in both directions, which contradicted this function's own contract:
+    // unrelated defect wording a few lines away would have exempted a genuinely broken reference.
+    // Reviewer-found, in the docblock's own words.
+    //
+    // Line-only is too tight, though, and that is a fact about prose rather than a compromise:
+    // these files wrap at 100 characters, so "... `cyberchef-mcp_v3:4.0.0` -- a tag that" ends a
+    // line and "will never be pushed" begins the next. The explanation is in the same SENTENCE,
+    // which is the real contract; one following line is what that costs to express.
+    const from = text.lastIndexOf("\n", index) + 1;
+    let end = text.indexOf("\n", index);
+    if (end !== -1) end = text.indexOf("\n", end + 1);
+    const sentence = text.slice(from, end === -1 ? undefined : end);
+    return /never be pushed|will never exist|cannot exist|does not and cannot|an image that/i.test(sentence);
+}
+
+/**
+ * Run the GHCR suffix/tag-major sweep, appending to `problems` and `checked`.
+ *
+ * @returns {void}
+ */
+function checkGhcrMajors() {
+    let files;
+    try {
+        // EVERY tracked file, not a list of extensions. A fixed list is the defect this whole
+        // rule exists to catch, one level up: a GHCR reference added to a Dockerfile, a shell
+        // script or a Helm template would be skipped silently. Unreadable files (binaries) are
+        // skipped individually below, which costs nothing and cannot go blind.
+        files = execFileSync("git", ["ls-files"], { cwd: ROOT, encoding: "utf8" })
+            .split("\n").filter(Boolean);
+    } catch (error) {
+        problems.push(`GHCR reference scan: could not list tracked files -- ${error.message}`);
+        return;
+    }
+
+    let seen = 0;
+    const quoted = new Set();
+    for (const file of files) {
+        let text;
+        try {
+            text = read(file);
+        } catch {
+            continue;
+        }
+        // `mcp-release.yml` publishes MAJOR, MINOR and full-semver tags, so `_v3:4` and
+        // `_v3:4.0` are equally impossible and were equally unchecked. Reviewer-found.
+        // `latest` carries no major and is correctly not matched.
+        for (const m of text.matchAll(/cyberchef-mcp_v([0-9]+):([0-9]+)(?:\.[0-9]+){0,2}(?![\w.-])/g)) {
+            seen++;
+            const [suffix, tagMajor] = [m[1], m[2]];
+            if (suffix === tagMajor) continue;
+            if (isQuotedDefect(file, text, m.index)) {
+                quoted.add(file);
+                continue;
+            }
+            problems.push(
+                `${file}: "${m[0]}" pairs package _v${suffix} with a v${tagMajor} tag. The GHCR ` +
+                "package carries the major, so that image does not and cannot exist.");
+            checked.push(`BAD  ${file} (GHCR reference): ${m[0]}`);
+        }
+    }
+
+    // A scan that matches nothing is not a pass -- the same rule the rest of this file follows.
+    if (seen === 0) {
+        problems.push(
+            "GHCR reference scan: found no `cyberchef-mcp_vN:X.Y.Z` references at all. This " +
+            "repository documents the image in dozens of places, so the pattern has stopped " +
+            "matching and the rule is no longer being checked.");
+    } else {
+        checked.push(`ok  GHCR references (suffix major matches tag major): ${seen} checked` +
+            (quoted.size ? `, ${quoted.size} file(s) quoting the defect deliberately` : ""));
+    }
+
+    // An exemption for a file that no longer contains a quoted mismatch is an exemption nobody
+    // will re-examine, and it silently widens the moment that file changes. Same rule the
+    // registry-tool inventory exemptions follow.
+    for (const [file, reason] of GHCR_MISMATCH_EXEMPT) {
+        if (!quoted.has(file)) {
+            problems.push(
+                `GHCR mismatch exemption for ${file} matched nothing -- the quoted example is ` +
+                `gone, so drop the exemption. Reason on file: ${reason}`);
+        }
+    }
+}
+
+checkGhcrMajors();
 
 for (const location of LOCATIONS) {
     let occurrences;

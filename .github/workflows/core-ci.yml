@@ -26,23 +26,27 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
-    # BOTH ENDS OF THE SUPPORTED RANGE.
+    # BOTH ENDS OF THE SUPPORTED RANGE -- which since v4.0.0 is one version.
     #
-    # `package.json` declares `engines: >=24 <27`, and until now every workflow tested 24 while the
-    # published image ran **26.8.1**. So the runtime that actually ships was never tested, and the
-    # floor was the only thing that was -- a gap that a green pipeline hid completely.
+    # `package.json` declares `engines: >=26 <27`. The floor was `>=24` until v4.0.0, and before
+    # v2.8.1 every workflow tested 24 while the published image ran 26, so the runtime that
+    # actually ships was never tested and the floor was the only thing that was -- a gap a green
+    # pipeline hid completely. Testing both boundaries was the fix.
     #
-    # Bumping everything to 26 would have inverted the bug rather than fixed it: 24 is a supported
-    # version for anyone installing from npm, and an untested floor is exactly what this was.
-    # Testing both boundaries is the only claim the manifest can honestly make.
+    # Raising the floor to 26 is NOT a re-inversion of that bug: it narrows the CLAIM to match,
+    # rather than narrowing the testing while the claim stays wide. Both ends are still tested;
+    # there is now one end. Widen `engines` and this matrix widens with it.
     #
     # `fail-fast: false` so a failure on one version still reports the other -- when a Node version
     # is the variable under test, "which ones broke" is the entire result.
     strategy:
       fail-fast: false
       matrix:
-        # 24 = the declared floor. 26 = what Dockerfile.mcp actually runs.
-        node-version: ['24', '26']
+        # 26 = the declared floor AND what Dockerfile.mcp runs, since v4.0.0 raised the floor
+        # from 24. The matrix is kept rather than collapsed to a bare value: `engines` is
+        # `>=26 <27` today and the next Node LTS will widen it again, at which point the second
+        # entry goes back in here rather than someone having to remember this file exists.
+        node-version: ['26']
 
     name: test (node ${{ matrix.node-version }})
     steps:

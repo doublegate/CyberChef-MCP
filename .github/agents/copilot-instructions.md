@@ -41,7 +41,7 @@ This repository hosts the **Model Context Protocol (MCP) Server** adaptation of 
 - **Core Operations:** `src/core/operations/` - Individual CyberChef operation implementations
 
 ### Technology Stack
-- **Runtime:** Node.js **>=24 <27** (matches `package.json` `engines`, and upstream
+- **Runtime:** Node.js **>=26 <27** (matches `package.json` `engines`; raised from 24 in v4.0.0, and upstream
   v11.4.0's floor). Chainguard distroless, Wolfi-based, in Docker - NOT Alpine.
 - **Protocol:** Model Context Protocol (MCP) via `@modelcontextprotocol/server` +
   `@modelcontextprotocol/node` (SDK v2). Serves protocol revision **2026-07-28** and the
@@ -52,7 +52,7 @@ This repository hosts the **Model Context Protocol (MCP) Server** adaptation of 
 
 ## Critical Development Requirements
 
-### Node.js >=24 Compatibility
+### Node.js >=26 Compatibility
 - **ALWAYS** use `import ... with {type: "json"}` for JSON imports
 - **NEVER** use `assert {type: "json"}` syntax (deprecated)
 - **SlowBuffer Patches:** Dependencies `avsc` and `buffer-equal-constant-time` require patches in `Dockerfile.mcp` for Node >=24 compatibility
@@ -100,7 +100,10 @@ This generates:
 
 ### Production Docker Image
 - **File:** `Dockerfile.mcp`
-- **Base Image:** `node:22-alpine`
+- **Base Image:** two-stage and digest-pinned Chainguard Node 26 --
+  `cgr.dev/chainguard/node:latest-dev` (builder) and `cgr.dev/chainguard/node:latest` (runtime).
+  NOT `node:22-alpine`, which this file claimed for several releases while the Dockerfile said
+  otherwise; the runtime image is not shell-free (BusyBox and npm are present, apk/wget/curl are not).
 - **Key Steps:**
   1. Install dependencies with `npm ci --ignore-scripts`
   2. Apply SlowBuffer patches to `avsc` and `buffer-equal-constant-time`

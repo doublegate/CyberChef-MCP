@@ -34,6 +34,14 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const SERVER = join(ROOT, "src/node/mcp-server.mjs");
 
 /**
+ * How long to let the server boot before giving up.
+ *
+ * Generous on purpose: booting builds a 500-tool schema, and a timeout here should mean "broken",
+ * not "busy CI runner". The child is fed an empty stdin, so it exits on EOF rather than hanging.
+ */
+const BOOT_TIMEOUT_MS = 120_000;
+
+/**
  * `SERVER` as a `file://` URL, for dynamic import.
  *
  * `await import("C:\\path\\to\\file.mjs")` throws `ERR_UNSUPPORTED_ESM_URL_SCHEME` on Windows --
@@ -288,6 +296,41 @@ describe("isEntryPoint", () => {
         process.argv[1] = join(tmpdir(), "cyberchef-does-not-exist-" + Date.now());
         expect(isEntryPoint()).toBe(false);
     });
+});
+
+describe("the startup banner reports a removed setting that is still set", () => {
+    // WHY THIS IS A CHILD PROCESS. `removedAliasWarning()` is unit-tested in
+    // `lib-internals.test.mjs`, which proves the MESSAGE. It cannot prove the WIRING: the startup
+    // block that calls it runs once, at boot, and in-process v8 coverage never sees it -- the
+    // same blind spot v3.10.0 recorded about the entry point, in the same file.
+    //
+    // The distinction matters here. A correct warning that nothing calls is indistinguishable
+    // from no warning at all, and the operator this exists for would be told nothing either way.
+    it("warns on stderr when CYBERCHEF_EXPOSE_ALL_OPS is set", () => {
+        const r = spawnSync(process.execPath, [SERVER], {
+            input: "",
+            encoding: "utf8",
+            timeout: BOOT_TIMEOUT_MS,
+            env: { ...process.env, CYBERCHEF_EXPOSE_ALL_OPS: "true", CYBERCHEF_TOOL_SURFACE: "index" }
+        });
+        expect(r.stderr).toContain("CYBERCHEF_EXPOSE_ALL_OPS");
+        expect(r.stderr).toContain("IGNORED");
+        expect(r.stderr).toContain("removed in v4.0.0");
+        // The surface really is index -- the variable did not quietly resurrect `all`.
+        expect(r.stderr).toContain("tool surface: index");
+        // On stderr, never stdout: stdout is the JSON-RPC channel and one stray byte breaks it.
+        expect(r.stdout ?? "").not.toContain("CYBERCHEF_EXPOSE_ALL_OPS");
+    }, BOOT_TIMEOUT_MS + 5000);
+
+    it("says nothing about it when the variable is absent", () => {
+        const env = { ...process.env };
+        delete env.CYBERCHEF_EXPOSE_ALL_OPS;
+        const r = spawnSync(process.execPath, [SERVER], {
+            input: "", encoding: "utf8", timeout: BOOT_TIMEOUT_MS, env
+        });
+        expect(r.stderr).toContain("tool surface:");   // it did boot
+        expect(r.stderr).not.toContain("CYBERCHEF_EXPOSE_ALL_OPS");
+    }, BOOT_TIMEOUT_MS + 5000);
 });
 
 afterAll(async () => {

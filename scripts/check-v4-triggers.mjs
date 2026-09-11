@@ -2,10 +2,15 @@
 /**
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * The v4.0.0 trigger watch, executed rather than remembered.
+ * The next-major trigger watch, executed rather than remembered.
  *
- * WHY THIS EXISTS. `docs/planning/v4/v4.0.0-plan.md` concludes that v4.0.0 must not be cut, because
- * none of its triggers has fired. That conclusion has an expiry date nobody can see: the thing
+ * THE NAME IS HISTORICAL. It was written to watch v4.0.0's triggers; v4.0.0 shipped, and the
+ * question it answers -- "is a major due yet?" -- did not go with it. The filename and the
+ * `check:v4-triggers` script name are kept so the workflow, the to-do and three documents do not
+ * have to move for a rename; every message below talks about "the next major".
+ *
+ * WHY THIS EXISTS. `docs/planning/v4/v4.0.0-plan.md` concluded that v4.0.0 must not be cut, because
+ * none of its triggers had fired. That conclusion has an expiry date nobody can see: the thing
  * blocking v4.0.0 is not effort, it is NOTICING. `to-dos/00-PHASE-0-TRIGGER-WATCH.md` lists twelve
  * checks and says to run them once per release, by hand -- and two of the twelve (T-11, T-12) were
  * missing from that file until the day after it was written, which is the failure mode exactly.
@@ -21,6 +26,12 @@
  * @author DoubleGate
  * @license GPL-3.0-or-later
  */
+
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 /**
  * Documentation URLs, in their MARKDOWN form.
@@ -243,7 +254,107 @@ async function run() {
     }
     record("T-10", `a server.json schema newer than ${CURRENT_SCHEMA}`,
         newestSchema !== CURRENT_SCHEMA, `newest resolving schema: ${newestSchema}`);
+
+    // The internal trigger. Last, and offline: it asks about this repository rather than the
+    // ecosystem, and it must run even if every network check above has already answered.
+    checkAccumulatedRemovals();
 }
+
+/**
+ * T-13 -- accumulated removals. The INTERNAL trigger, and the reason v4.0.0 exists.
+ *
+ * WHY THIS IS HERE. Every other trigger in this file is an external specification event, so under
+ * the original plan a major could only ever be forced by someone else. Three consequences, all of
+ * which happened: v4.0.0 waited on something that might never arrive, deprecated surface piled up
+ * with no mechanism able to remove it, and the version number stopped carrying information. By
+ * v3.11.0 the only deprecation warning a normal `cyberchef_bake` call produced was DEP007 -- a
+ * WITHDRAWN code whose own text read "No action required" -- and the two migration tools it
+ * belonged to cost 995 bytes of EVERY `tools/list`. See `docs/internal/v4.0.0-findings-log.md`, F-01.
+ *
+ * WHAT IT MEASURES. Surface that is still advertised to callers while describing a migration that
+ * is finished, withdrawn, or decided against. Offline and file-based, unlike its neighbours: the
+ * question is about this repository, not about the ecosystem.
+ *
+ * IT MUST BE ABLE TO FAIL, and it reads zero today only because v4.0.0 removed what it counts --
+ * verified by planting a marker and watching it fire, not by trusting the zero.
+ */
+function checkAccumulatedRemovals() {
+    // Structured, so the rule is a CONTRACT rather than a regex someone has to reverse-engineer.
+    // Both reviewers found the first version brittle in the same two ways: it keyed on tool NAMES,
+    // so `cyberchef_recipe_converter` described as "Migrate v1 recipes to v2" evaded it entirely;
+    // and it treated bare `legacy` as evidence, which would have flagged legitimate
+    // legacy-FORMAT support. It also never read `package.json`, so re-adding the
+    // `cyberchef-migrate` bin -- public surface, removed in this very release -- reported "none".
+    const RETIRED = {
+        /** Tool names v4.0.0 removed. Re-adding one is the trigger whatever else changes. */
+        tools: ["cyberchef_migration_preview", "cyberchef_deprecation_stats"],
+        /** Published binaries v4.0.0 removed, checked against `package.json` `bin`. */
+        bins: ["cyberchef-migrate"],
+        /** Configuration keys v4.0.0 removed, checked against the settings table. */
+        settings: ["suppressDeprecations", "v2CompatibilityMode", "exposeAllOps"]
+    };
+
+    // Wording that means a tool exists to move callers OFF something. Name-independent on purpose,
+    // so a rename does not evade it. `legacy` is deliberately absent: supporting a legacy format is
+    // not the same as advertising a migration, and this project does support several.
+    const MIGRATION_WORDING = /\b(migrat(e|es|ing|ion)|deprecat(ed|ion)|v2\.0\.0 compatibility)\b/i;
+
+    const hits = [];
+
+    /**
+     * @param {string} file - Repository-relative path.
+     * @returns {string} Its contents.
+     */
+    const source = (file) => {
+        try {
+            return readFileSync(resolve(ROOT, file), "utf8");
+        } catch {
+            // A file this check names must exist. Missing means the layout moved and the check has
+            // quietly stopped checking -- the failure mode this whole script is about.
+            throw new Error(`T-13 cannot read ${file}; the layout moved and this check is now blind`);
+        }
+    };
+
+    // 1. Retired tool names, anywhere they would be declared.
+    const server = source("src/node/mcp-server.mjs");
+    for (const name of RETIRED.tools) {
+        if (new RegExp(`name:\\s*"${name}"`).test(server)) hits.push(`tool ${name} is declared again`);
+    }
+
+    // 2. Any tool description that advertises a migration, whatever the tool is called. This is
+    //    the half that survives a rename.
+    //
+    //    The description is read to the end of the DECLARATION, not to the first closing quote.
+    //    This file writes long descriptions as concatenated string literals -- nine of them -- so
+    //    matching `"([^"]*)"` captured only the first segment, and wording in a later one was
+    //    invisible. Reviewer-found, and it is the same shape of miss as keying on the name: the
+    //    check was reading a convenient part of the text rather than the text. Stopping at
+    //    `inputSchema:` keeps it to the one declaration.
+    for (const m of server.matchAll(/name:\s*"(cyberchef_[a-z_]+)",\s*\n\s*description:([\s\S]*?)(?:\n\s*inputSchema:|\n\s*\})/g)) {
+        const described = m[2];
+        if (MIGRATION_WORDING.test(described)) {
+            hits.push(`tool ${m[1]} advertises a migration: "${described.replace(/\s+/g, " ").trim().slice(0, 60)}"`);
+        }
+    }
+
+    // 3. Retired configuration keys, in the committed settings table.
+    const settings = source("src/node/lib/config-file.mjs");
+    for (const key of RETIRED.settings) {
+        if (new RegExp(`^\\s*${key}\\s*:`, "m").test(settings)) hits.push(`setting ${key} is mapped again`);
+    }
+
+    // 4. Retired binaries. Public surface that lives nowhere near the server.
+    const bins = Object.keys(JSON.parse(source("package.json")).bin ?? {});
+    for (const bin of bins) {
+        if (RETIRED.bins.includes(bin)) hits.push(`bin ${bin} is published again`);
+        else if (MIGRATION_WORDING.test(bin)) hits.push(`bin ${bin} names a migration`);
+    }
+
+    record("T-13", "deprecated surface still advertised to callers",
+        hits.length > 0,
+        hits.length === 0 ? "none" : `${hits.length}: ${hits[0]}`);
+}
+
 
 try {
     await run();
@@ -265,7 +376,7 @@ for (const r of results) {
 }
 
 if (fired.length === 0) {
-    process.stdout.write("\nNothing fired. v4.0.0 stays unscheduled; ship the next minor.\n" +
+    process.stdout.write("\nNothing fired. No major is due; ship the next minor.\n" +
         "Checks not covered here are in docs/planning/v4/to-dos/00-PHASE-0-TRIGGER-WATCH.md --\n" +
         "T-3 to T-7 track individual SEPs and T-11/T-12 need judgement, so they stay manual.\n");
     process.exit(0);

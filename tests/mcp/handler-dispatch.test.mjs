@@ -10,7 +10,7 @@
  */
 
 import { expectValidVersion } from "./helpers/version.mjs";
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
     LRUCache,
     TelemetryCollector,
@@ -41,17 +41,6 @@ import {
     rateLimiter,
     quotaTracker,
     batchProcessor,
-    V2_COMPATIBILITY_MODE,
-    SUPPRESS_DEPRECATIONS,
-    getDeprecationStats,
-    resetDeprecations,
-    analyzeRecipeCompatibility,
-    transformRecipeToV2,
-    getToolName,
-    stripToolPrefix,
-    isV2CompatibilityMode,
-    areSuppressed,
-    DEPRECATION_CODES,
     getPoolStats
 } from "../../src/node/mcp-server.mjs";
 
@@ -549,55 +538,6 @@ describe("Handler Dispatch Tests", () => {
         });
     });
 
-    describe("Deprecation Integration", () => {
-        beforeEach(() => {
-            resetDeprecations();
-        });
-
-        it("should analyze recipe compatibility", () => {
-            const result = analyzeRecipeCompatibility([
-                { op: "To Base64", args: ["A-Za-z0-9+/="] }
-            ]);
-            expect(result).toBeDefined();
-            expect(result.compatible).toBeDefined();
-        });
-
-        it("should transform recipe to v2 format", () => {
-            const result = transformRecipeToV2([
-                { op: "To Base64", args: ["A-Za-z0-9+/="] }
-            ]);
-            expect(result).toBeDefined();
-        });
-
-        it("should get tool name", () => {
-            const name = getToolName("To Base64");
-            expect(name).toBeDefined();
-        });
-
-        it("should strip tool prefix", () => {
-            expect(stripToolPrefix("cyberchef_to_base64")).toBeDefined();
-        });
-
-        it("should report v2 compatibility mode", () => {
-            expect(typeof isV2CompatibilityMode()).toBe("boolean");
-        });
-
-        it("should report suppression state", () => {
-            expect(typeof areSuppressed()).toBe("boolean");
-        });
-
-        it("should have valid deprecation codes", () => {
-            expect(DEPRECATION_CODES).toBeDefined();
-            expect(DEPRECATION_CODES.DEP001).toBeDefined();
-            expect(DEPRECATION_CODES.DEP001.code).toBe("DEP001");
-        });
-
-        it("should return deprecation stats", () => {
-            const stats = getDeprecationStats();
-            expect(stats).toBeDefined();
-        });
-    });
-
     describe("Server Configuration Exports", () => {
         it("should export all configuration constants", () => {
             expectValidVersion(VERSION);
@@ -615,8 +555,6 @@ describe("Handler Dispatch Tests", () => {
             expect(RATE_LIMIT_REQUESTS).toBeGreaterThan(0);
             expect(RATE_LIMIT_WINDOW).toBeGreaterThan(0);
             expect(typeof CACHE_ENABLED).toBe("boolean");
-            expect(typeof V2_COMPATIBILITY_MODE).toBe("boolean");
-            expect(typeof SUPPRESS_DEPRECATIONS).toBe("boolean");
         });
     });
 });

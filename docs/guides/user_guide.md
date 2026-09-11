@@ -23,19 +23,21 @@ back to.
 ### Docker (recommended)
 
 ```bash
-docker pull ghcr.io/doublegate/cyberchef-mcp_v3:latest
-docker tag  ghcr.io/doublegate/cyberchef-mcp_v3:latest cyberchef-mcp
+docker pull ghcr.io/doublegate/cyberchef-mcp_v4:latest
+docker tag  ghcr.io/doublegate/cyberchef-mcp_v4:latest cyberchef-mcp
 ```
 
 Docker Hub carries the same image as `parobek/cyberchef-mcp`. The GHCR package is
-**major-versioned**: `_v3` for 3.x, `_v2` for 2.x, `_v1` for the frozen 1.9.x line.
+**major-versioned**: `_v4` for 4.x, `_v3` for 3.x, `_v2` for 2.x, `_v1` for the frozen 1.9.x line.
 
-Offline, from a release tarball:
+Offline, from a release tarball. The asset is `docker save` of the **Docker Hub** image, so that
+is what `docker load` puts in your local daemon -- retagging a `ghcr.io/...` reference here would
+name something you do not have:
 
 ```bash
-wget https://github.com/doublegate/CyberChef-MCP/releases/download/v3.0.0/cyberchef-mcp-v3.0.0-docker-image.tar.gz
-docker load < cyberchef-mcp-v3.0.0-docker-image.tar.gz
-docker tag ghcr.io/doublegate/cyberchef-mcp_v3:3.0.0 cyberchef-mcp
+wget https://github.com/doublegate/CyberChef-MCP/releases/download/v4.0.0/cyberchef-mcp-v4.0.0-docker-image.tar.gz
+docker load < cyberchef-mcp-v4.0.0-docker-image.tar.gz
+docker tag parobek/cyberchef-mcp:latest cyberchef-mcp
 ```
 
 From source:
@@ -53,7 +55,8 @@ npm run mcp
 ```
 
 Both generated files are gitignored, so a fresh clone cannot start without that second command.
-Node **>=24 <27** is required; the published image runs Node 26.
+Node **>=26 <27** is required since v4.0.0, and the published image runs Node 26 -- the declared
+floor and the shipped runtime are now the same version rather than two majors apart.
 
 ### Verify
 
@@ -144,13 +147,14 @@ it computes that in pure JavaScript, so every operation works on a stock Node wi
 degrade well before that many definitions.
 
 So the default is an **index**, not a catalogue. Measured on the serialised `tools/list` payload at
-v2.4.0, not estimated:
+**v4.0.0**, not estimated — re-measured every release that moves a tool, with
+`npm run measure:surfaces`:
 
 | `CYBERCHEF_TOOL_SURFACE` | Tools in `tools/list` | Payload |
 |---|---|---|
-| **`index`** *(default)* | 43 | **45,963 bytes** |
-| `curated` | 121 | 109,209 bytes |
-| `all` | 546 | 426,367 bytes |
+| **`index`** *(default)* | 41 | **44,968 bytes** |
+| `curated` | 119 | 108,214 bytes |
+| `all` | 544 | 425,372 bytes |
 
 Bytes, measured on the serialised `tools/list` payload with `npm run measure:surfaces`, not
 estimated. Earlier versions of this table gave token figures; this repository has never contained a
@@ -159,7 +163,7 @@ tokenizer and every one of those was bytes divided by four.
 The index doubled at v3.3.0, from 28 tools and 20,297 bytes. Twelve registry tools were added, and
 a registry tool has no navigation path — `cyberchef_bake` runs recipes of *operations* — so one
 that is not listed cannot be called at all. The ratio between the three modes is what matters, and
-the index plus one operation schema is still 8.9x cheaper than `all`.
+the index plus one operation schema is still 9.1x cheaper than `all`.
 
 **Nothing becomes unreachable.** `cyberchef_bake` runs any of the 504 operations by name, and three
 navigation tools let a client find the name and its arguments:
@@ -189,7 +193,7 @@ Unlike an operation, none of them is reachable through `cyberchef_bake`: they ar
 `OperationConfig`, because each performs an analysis rather than a transformation. Hiding one
 behind a surface setting would make it unreachable rather than merely inconvenient, and listing
 must never be stricter than dispatch. That is why the index doubled in v3.3.0: the twelve new
-tools account for roughly 20 KB of the 45,963-byte payload, and there is no honest way to avoid
+tools account for roughly 20 KB of the 44,968-byte payload, and there is no honest way to avoid
 paying it.
 
 Fine-grained control:
@@ -197,7 +201,6 @@ Fine-grained control:
 ```bash
 CYBERCHEF_TOOL_ALLOWLIST="To Base64,From Base64,SHA2,Gunzip"   # exactly these, overrides the mode
 CYBERCHEF_TOOL_SURFACE=all                                      # everything, the pre-v2.1.0 behaviour
-CYBERCHEF_EXPOSE_ALL_OPS=true                                   # historical alias for the above
 ```
 
 > **Upgrading from v2.0.0?** The default changed. A client that hard-codes a tool name outside the
@@ -362,7 +365,6 @@ Browser-based clients additionally need `CYBERCHEF_ALLOWED_ORIGINS`.
 |---|---|---|
 | `CYBERCHEF_TOOL_SURFACE` | `index` | `index`, `curated` or `all`. |
 | `CYBERCHEF_TOOL_ALLOWLIST` | *(unset)* | Comma-separated operation names; overrides the mode. |
-| `CYBERCHEF_EXPOSE_ALL_OPS` | *(unset)* | `true` = `all`, `false` = `curated`. Historical alias. |
 | `CYBERCHEF_MAX_TOOL_DESCRIPTION` | `240` | Characters of description carried per tool. |
 
 ### Limits and execution
