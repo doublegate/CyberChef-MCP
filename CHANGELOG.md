@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   third-party MCP directory that **starts a server and introspects it** rather than reading its
   README, and this file is how it recognises ownership. Written against the schema it references
   (`https://glama.ai/mcp/schemas/server.json`, draft-07), which defines exactly one property --
-  `maintainers`, required, an array of unique strings -- so the file is deliberately four lines and
+  `maintainers`, required, an array of unique strings -- so the file is deliberately minimal and
   carries nothing the schema does not define. Validated with `ajv` against the fetched schema, and
   the validator was proven able to fail: it rejects a missing `maintainers`, a non-array, a
   non-string username, and duplicates. Note that the listing was **already** claimed via GitHub

@@ -17,7 +17,7 @@ By running this server, you enable AI assistants (like Claude, Cursor AI, and ot
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D26%20%3C27-brightgreen)](https://nodejs.org/)
 [![Security Scan](https://github.com/doublegate/CyberChef-MCP/actions/workflows/security-scan.yml/badge.svg)](https://github.com/doublegate/CyberChef-MCP/actions/workflows/security-scan.yml)
 [![codecov](https://codecov.io/gh/doublegate/CyberChef-MCP/branch/master/graph/badge.svg)](https://codecov.io/gh/doublegate/CyberChef-MCP)
-[![CyberChef MCP Server MCP server – quality and maintenance score on Glama](https://glama.ai/mcp/servers/doublegate/CyberChef-MCP/badges/score.svg)](https://glama.ai/mcp/servers/doublegate/CyberChef-MCP)
+[![CyberChef MCP Server – quality and maintenance score on Glama](https://glama.ai/mcp/servers/doublegate/CyberChef-MCP/badges/score.svg)](https://glama.ai/mcp/servers/doublegate/CyberChef-MCP)
 
 ## Project Context
 
@@ -850,7 +850,7 @@ For contributions to the core CyberChef operations, please credit the original [
     copied out of a service is a number that rots.
 *   **Issue Tracker**: [GitHub Issues](https://github.com/doublegate/CyberChef-MCP/issues)
 
-[![CyberChef MCP Server MCP server – quality and maintenance score on Glama](https://glama.ai/mcp/servers/doublegate/CyberChef-MCP/badges/card.svg)](https://glama.ai/mcp/servers/doublegate/CyberChef-MCP)
+[![CyberChef MCP Server – quality and maintenance score on Glama](https://glama.ai/mcp/servers/doublegate/CyberChef-MCP/badges/card.svg)](https://glama.ai/mcp/servers/doublegate/CyberChef-MCP)
 
 ## Support
 
