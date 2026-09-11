@@ -94,7 +94,10 @@ image size       re-measured; 453 MB today
 
 ## What this phase must not do
 
-- **Start before Phase 1 lands.** The measurement says the surface runs out at 59 registry tools.
+- **Start before [v4.1.0](../charters/v4.1.0.md) lands.** The measurement says the surface runs out
+  at 59 registry tools. The gate is **v4.1.0 specifically, not all of Phase 1** — Phase 1 is
+  v4.1.0 *and* v4.2.0, and v4.2.0 is a dispatch consolidation that no charter here depends on.
+  Writing "Phase 1" over-gated this phase by one release.
 - **Count an extension as a tool.** PQC verification extends two existing tools.
 - **Build lattice work as though it were cheap.** An LLL exists on npm; an *industrial* reduction
   does not, and that is the constraint. See the charter.
