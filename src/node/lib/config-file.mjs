@@ -148,7 +148,6 @@ const SETTINGS = Object.freeze({
     },
     tools: {
         allowlist: "CYBERCHEF_TOOL_ALLOWLIST",
-        exposeAllOps: "CYBERCHEF_EXPOSE_ALL_OPS",
         surface: "CYBERCHEF_TOOL_SURFACE"
     },
     security: {

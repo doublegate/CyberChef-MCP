@@ -283,7 +283,7 @@ the server behaves exactly as it always has.
 ```
 
 A malformed file, an unknown section or an unknown setting stops the server with a message naming
-the mistake, rather than starting on defaults nobody chose. All 62 settings, their sections and
+the mistake, rather than starting on defaults nobody chose. All 61 settings, their sections and
 their environment-variable equivalents are in the
 **[configuration guide](docs/guides/configuration.md)**.
 
@@ -778,7 +778,7 @@ All workflows use the latest CodeQL Action v4 for security scanning and SARIF up
 # Run all tests (requires Node.js >=26 <27; 241 Node-API + 2,289 operation tests)
 npm test
 
-# Run MCP validation test suite (1,246 tests across 46 files, with Vitest)
+# Run MCP validation test suite (1,707 tests across 74 files, with Vitest)
 npm run test:mcp
 
 # Run MCP tests with coverage report
@@ -799,9 +799,9 @@ npm run lint
 
 **Test Coverage:**
 The MCP server maintains comprehensive test coverage:
-- **1,246 MCP tests** across 46 suites, plus 241 Node-API tests, 2,289 operation tests and 9 runnable examples executed by CI
+- **1,707 MCP tests** across 74 suites, plus 241 Node-API tests, 2,289 operation tests and 9 runnable examples executed by CI
 - **Coverage thresholds** (`vitest.config.mjs`): 96% lines, 95% statements, 88% branches, 96% functions, with `src/node/lib/**` held separately at 99 lines / 99 statements / 94 branches / 100 functions
-- **Current coverage**: 96.50% lines, 95.67% statements, 96.43% functions, 89.16% branches
+- **Current coverage**: 96.07% lines, 95.09% statements, 96.54% functions, 89.42% branches (thresholds 96/89/96/95, lines/branches/functions/statements)
 - Note: individual suite names are not listed here because the list went stale three times;
   `ls tests/mcp/*.test.mjs` is authoritative.
 

@@ -167,9 +167,12 @@ describe("resolving a configuration", () => {
         // they all land in one flat environment.
         const names = Object.values(SETTINGS).flatMap(g => Object.values(g));
         expect(new Set(names).size).toBe(names.length);
-        // 62 since v4.0.0: the `compatibility` section (V2_COMPATIBILITY_MODE and
-        // CYBERCHEF_SUPPRESS_DEPRECATIONS) went with the deprecation system it configured.
-        expect(names.length).toBeGreaterThanOrEqual(62);
+        // 61 since v4.0.0, down from 64: the `compatibility` section (V2_COMPATIBILITY_MODE and
+        // CYBERCHEF_SUPPRESS_DEPRECATIONS) went with the deprecation system it configured, and
+        // `tools.exposeAllOps` went with the inert CYBERCHEF_EXPOSE_ALL_OPS alias -- leaving the
+        // mapping would have let a config file set a variable that nothing reads, which is worse
+        // than removing it, because the file fails closed and says so. Reviewer-found.
+        expect(names.length).toBeGreaterThanOrEqual(61);
         expect(names).toContain("CYBERCHEF_OFFLINE");
         expect(names).toContain("CYBERCHEF_TOOL_ALLOWLIST");
         expect(names).toContain("CYBERCHEF_TOOL_SURFACE");

@@ -184,40 +184,102 @@ describe("check-v4-triggers", () => {
         expect(r.status).toBe(0);
     });
 
-    it("T-13 fires when a migration tool is advertised again", () => {
-        // The gate must be able to fail, and a zero that cannot become a one is not a measurement.
-        // Verified against the real defect -- the tool declaration v4.0.0 removed, put back -- on
-        // an isolated COPY of the tree. The real files are never touched: vitest runs test files
-        // in parallel and `tool-surface-figures` boots a server from `src/node/mcp-server.mjs`,
-        // so planting there raced it and produced a tool count one too high. Found by doing it.
+    /**
+     * An isolated copy of the tree, so T-13 can be driven against a planted defect.
+     *
+     * The real files are never written to: vitest runs test files in PARALLEL and
+     * `tool-surface-figures` boots a real server from `src/node/mcp-server.mjs`, so planting there
+     * raced it and produced a tool count one too high -- passing alone, passing under coverage, and
+     * failing the full suite in a file this one never touched.
+     *
+     * @param {(dir: string) => void} plant - Mutates the copy.
+     * @returns {{status: number, stdout: string, stderr: string}} What the script produced.
+     */
+    function runT13With(plant) {
         const dir = mkdtempSync(join(tmpdir(), "cyberchef-t13-"));
         try {
             mkdirSync(join(dir, "scripts"), { recursive: true });
             mkdirSync(join(dir, "src/node/lib"), { recursive: true });
             copyFileSync(SCRIPT, join(dir, "scripts/check-v4-triggers.mjs"));
-            for (const rel of ["src/node/lib/config-file.mjs", "src/node/lib/tool-surface.mjs"]) {
-                copyFileSync(join(ROOT, rel), join(dir, rel));
-            }
-
-            const original = readFileSync(join(ROOT, "src/node/mcp-server.mjs"), "utf8");
-            const anchor = `    {\n        name: "cyberchef_worker_stats",`;
-            expect(original, "the anchor this test plants against has moved").toContain(anchor);
-            const planted = original.replace(anchor, [
-                `    {`,
-                `        name: "cyberchef_migration_preview",`,
-                `        description: "Analyze recipes for v2.0.0 compatibility. Deprecated migration helper.",`,
-                `        inputSchema: toInputSchema(z.object({}))`,
-                `    },`,
-                anchor
-            ].join("\n"));
-            writeFileSync(join(dir, "src/node/mcp-server.mjs"), planted);
-
-            const r = runWith({ scriptUrl: pathToFileURL(join(dir, "scripts/check-v4-triggers.mjs")).href });
-            expect(r.stdout).toMatch(/FIRED\s+T-13/);
-            expect(r.status).toBe(1);
+            const inputs = [
+                "package.json",
+                "src/node/mcp-server.mjs",
+                "src/node/lib/config-file.mjs",
+                "src/node/lib/tool-surface.mjs"
+            ];
+            for (const rel of inputs) copyFileSync(join(ROOT, rel), join(dir, rel));
+            plant(dir);
+            return runWith({ scriptUrl: pathToFileURL(join(dir, "scripts/check-v4-triggers.mjs")).href });
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }
+    }
+
+    /**
+     * @param {string} dir - Copy root.
+     * @param {string} rel - File within it.
+     * @param {(text: string) => string} edit - The mutation.
+     * @returns {void}
+     */
+    function patch(dir, rel, edit) {
+        const path = join(dir, rel);
+        const before = readFileSync(path, "utf8");
+        const after = edit(before);
+        expect(after, `the anchor this test plants against has moved in ${rel}`).not.toBe(before);
+        writeFileSync(path, after);
+    }
+
+    // Four surfaces, because T-13's first version was blind to two of them and BOTH reviewers
+    // found it: it keyed on tool NAMES, so a renamed tool advertising a migration evaded it, and
+    // it never read `package.json`, so re-publishing the removed `cyberchef-migrate` bin -- public
+    // surface this very release deleted -- reported "none". A zero that cannot become a one for
+    // the case you care about is not a measurement.
+    it("T-13 fires when a retired tool name is declared again", () => {
+        const r = runT13With(dir => patch(dir, "src/node/mcp-server.mjs", t =>
+            t.replace(`        name: "cyberchef_worker_stats",`, `        name: "cyberchef_deprecation_stats",`)));
+        expect(r.stdout).toMatch(/FIRED\s+T-13/);
+        expect(r.stdout).toContain("cyberchef_deprecation_stats is declared again");
+        expect(r.status).toBe(1);
+    });
+
+    it("T-13 fires on a RENAMED tool that advertises a migration", () => {
+        // The rename case. A description is what reaches the model; the identifier is not.
+        const r = runT13With(dir => patch(dir, "src/node/mcp-server.mjs", t =>
+            t.replace(`        name: "cyberchef_worker_stats",\n        description: "Get worker`,
+                `        name: "cyberchef_recipe_converter",\n        description: "Migrate v1 recipes to v2. Get worker`)));
+        expect(r.stdout).toMatch(/FIRED\s+T-13/);
+        expect(r.stdout).toContain("advertises a migration");
+        expect(r.status).toBe(1);
+    });
+
+    it("T-13 fires when a retired bin is published again", () => {
+        const r = runT13With(dir => patch(dir, "package.json", t => {
+            const pkg = JSON.parse(t);
+            pkg.bin["cyberchef-migrate"] = "src/node/cli/migrate.mjs";
+            return `${JSON.stringify(pkg, null, 2)}\n`;
+        }));
+        expect(r.stdout).toMatch(/FIRED\s+T-13/);
+        expect(r.stdout).toContain("cyberchef-migrate is published again");
+        expect(r.status).toBe(1);
+    });
+
+    it("T-13 fires when a retired setting is mapped again", () => {
+        const r = runT13With(dir => patch(dir, "src/node/lib/config-file.mjs", t =>
+            t.replace("        allowlist:", `        exposeAllOps: "CYBERCHEF_EXPOSE_ALL_OPS",\n        allowlist:`)));
+        expect(r.stdout).toMatch(/FIRED\s+T-13/);
+        expect(r.stdout).toContain("exposeAllOps is mapped again");
+        expect(r.status).toBe(1);
+    });
+
+    it("T-13 does NOT fire on legitimate legacy-format support", () => {
+        // `legacy` was evidence in the first version, which would have flagged the several places
+        // this server deliberately accepts an older FORMAT. Supporting a legacy input is not
+        // advertising a migration away from one. Reviewer-found.
+        const r = runT13With(dir => patch(dir, "src/node/mcp-server.mjs", t =>
+            t.replace(`        description: "Get worker`,
+                `        description: "Accepts the legacy positional argument form. Get worker`)));
+        expect(r.stdout).not.toContain("FIRED");
+        expect(r.status).toBe(0);
     });
 
     it("exits 2 when the schema listing comes back empty", () => {

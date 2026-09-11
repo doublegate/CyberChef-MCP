@@ -162,7 +162,6 @@ Config file: /app/cyberchef.config.json (2 settings applied, 1 overridden by env
 | Setting | Environment variable |
 |---|---|
 | `tools.allowlist` | `CYBERCHEF_TOOL_ALLOWLIST` |
-| `tools.exposeAllOps` | `CYBERCHEF_EXPOSE_ALL_OPS` |
 | `tools.surface` | `CYBERCHEF_TOOL_SURFACE` |
 
 ### `security`
@@ -180,7 +179,7 @@ Config file: /app/cyberchef.config.json (2 settings applied, 1 overridden by env
 | `observability.metricsEnabled` | `CYBERCHEF_METRICS_ENABLED` |
 | `observability.telemetryEnabled` | `CYBERCHEF_TELEMETRY_ENABLED` |
 
-62 settings in 14 sections.
+61 settings in 14 sections.
 
 The `compatibility` section -- `suppressDeprecations` and `v2CompatibilityMode` -- was **removed in
 v4.0.0** along with the deprecation system it configured.

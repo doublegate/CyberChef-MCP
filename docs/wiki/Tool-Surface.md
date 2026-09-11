@@ -22,12 +22,14 @@ bytes of the `tools/list` payload, rather than estimated:
 | `curated` | 119 | 106 KB | 108,214 |
 | `all` | 544 | 415 KB | 425,372 |
 
-The 43 in the default index are 23 meta-tools, `cyberchef_magic`, and the nineteen
-[analysis tools](Analysis-Tools) — and that arithmetic is the point: 23 + 1 + 19 = 43, matching the
+The 41 in the default index are 21 meta-tools, `cyberchef_magic`, and the nineteen
+[analysis tools](Analysis-Tools) — and that arithmetic is the point: 21 + 1 + 19 = 41, matching the
 table above. The index grew from 28 to 40 in v3.3.0 because twelve new registry tools have no
 navigation path of their own — a registry tool that is not listed cannot be called at all — then to
 41 with `cyberchef_ecdsa_recover` in v3.4.0, 42 with `cyberchef_cert_chain` in v3.8.0 and 43 with
-`cyberchef_pqc_identify` in v3.11.0.
+`cyberchef_pqc_identify` in v3.11.0. **v4.0.0 took it back to 41** by removing two meta-tools that
+navigated to nothing: `cyberchef_migration_preview` and `cyberchef_deprecation_stats`, which
+existed to help callers reach v2.0.0.
 
 ## Nothing becomes unreachable
 

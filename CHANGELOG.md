@@ -29,7 +29,7 @@ The first major since v3.0.0, cut on an **internal** trigger the plan did not ha
   serving every tool. Now inert, pinned by a test in both directions. Use
   `CYBERCHEF_TOOL_SURFACE=all`.
 - **The `compatibility` configuration section** (`suppressDeprecations`, `v2CompatibilityMode`) —
-  64 settings in 15 sections becomes **62 in 14**. Configuration fails closed on unknown sections,
+  64 settings in 15 sections becomes **61 in 14**, with `tools.exposeAllOps` removed alongside the inert alias it set. Configuration fails closed on unknown sections,
   so a config file still carrying it will refuse to start with a message naming it.
 
 ### Changed

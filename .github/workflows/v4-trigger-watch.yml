@@ -1,5 +1,6 @@
 ####################################################################################################
-# v4.0.0 trigger watch
+# Next-major trigger watch (file and job names are historical: this was written for v4.0.0,
+# which shipped on 2026-09-11. The question it answers -- is a major due? -- did not ship with it.)
 #
 # `docs/planning/v4/v4.0.0-plan.md` concludes that v4.0.0 must not be cut, because none of its
 # triggers has fired. That conclusion expires the moment one does, and the thing standing between
@@ -10,7 +11,7 @@
 # It REPORTS. It does not decide, and it does not open a pull request. A fired trigger means "run
 # the RE-MEASURE ritual", which needs judgement this cannot supply.
 ####################################################################################################
-name: v4 Trigger Watch
+name: Next-Major Trigger Watch
 
 on:
   schedule:
@@ -56,7 +57,7 @@ jobs:
           set -e
           echo "code=$code" >> "$GITHUB_OUTPUT"
           {
-            echo "### v4.0.0 trigger watch"
+            echo "### Next-major trigger watch"
             echo ""
             echo '```text'
             cat /tmp/triggers.txt
@@ -74,11 +75,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TITLE="v4.0.0 trigger fired — run the RE-MEASURE ritual"
+          TITLE="Next-major trigger fired — run the RE-MEASURE ritual"
           BODY="$(printf '%s\n\n```text\n%s\n```\n\n%s\n' \
-            'At least one v4.0.0 trigger fired. This is not an instruction to cut a major version.' \
+            'At least one next-major trigger fired. This is not an instruction to cut a major version.' \
             "$(cat /tmp/triggers.txt)" \
-            'Next step: `docs/planning/v3/RE-MEASURE.md`. Read what actually changed, write F-01 stating what the plan got wrong, and re-scope from the measurement. The kill criterion in `docs/planning/v4/v4.0.0-plan.md` still applies: a major exists because the protocol forced one.')"
+            'Next step: `docs/planning/v3/RE-MEASURE.md`. Read what actually changed, write F-01 stating what the plan got wrong, and re-scope from the measurement. Triggers A-D still mean a major exists because the protocol forced one; T-13 means one is due because this project has surface to retire. v4.0.0 was cut on T-13 -- see `docs/releases/v4.0.0.md`.')"
 
           # Reuse the open issue rather than filing a new one every month.
           EXISTING="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
@@ -89,7 +90,7 @@ jobs:
             echo "commented on #$EXISTING"
           else
             gh label create "v4-trigger" --repo "$GITHUB_REPOSITORY" \
-              --description "A v4.0.0 planning trigger fired" --color "5319e7" 2>/dev/null || true
+              --description "A next-major planning trigger fired" --color "5319e7" 2>/dev/null || true
             gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" \
               --label "v4-trigger,needs-review" --body "$BODY"
           fi

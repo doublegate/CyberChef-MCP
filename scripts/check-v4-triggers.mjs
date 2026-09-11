@@ -279,41 +279,72 @@ async function run() {
  * verified by planting a marker and watching it fire, not by trusting the zero.
  */
 function checkAccumulatedRemovals() {
-    const sources = [
-        "src/node/mcp-server.mjs",
-        "src/node/lib/config-file.mjs",
-        "src/node/lib/tool-surface.mjs"
-    ];
-    // Markers that mean "still shipped, still described as on its way out". Deliberately narrow:
-    // a comment explaining why something WAS removed is history and must not fire, which is why
-    // these match declarations and descriptions rather than prose.
-    const markers = [
-        /description:\s*"[^"]*\b(deprecat|legacy|migration|v2\.0\.0 compatibility)/i,
-        /name:\s*"cyberchef_[a-z_]*(deprecat|migration)[a-z_]*"/i,
-        /^\s*(suppressDeprecations|v2CompatibilityMode)\s*:/m
-    ];
+    // Structured, so the rule is a CONTRACT rather than a regex someone has to reverse-engineer.
+    // Both reviewers found the first version brittle in the same two ways: it keyed on tool NAMES,
+    // so `cyberchef_recipe_converter` described as "Migrate v1 recipes to v2" evaded it entirely;
+    // and it treated bare `legacy` as evidence, which would have flagged legitimate
+    // legacy-FORMAT support. It also never read `package.json`, so re-adding the
+    // `cyberchef-migrate` bin -- public surface, removed in this very release -- reported "none".
+    const RETIRED = {
+        /** Tool names v4.0.0 removed. Re-adding one is the trigger whatever else changes. */
+        tools: ["cyberchef_migration_preview", "cyberchef_deprecation_stats"],
+        /** Published binaries v4.0.0 removed, checked against `package.json` `bin`. */
+        bins: ["cyberchef-migrate"],
+        /** Configuration keys v4.0.0 removed, checked against the settings table. */
+        settings: ["suppressDeprecations", "v2CompatibilityMode", "exposeAllOps"]
+    };
+
+    // Wording that means a tool exists to move callers OFF something. Name-independent on purpose,
+    // so a rename does not evade it. `legacy` is deliberately absent: supporting a legacy format is
+    // not the same as advertising a migration, and this project does support several.
+    const MIGRATION_WORDING = /\b(migrat(e|es|ing|ion)|deprecat(ed|ion)|v2\.0\.0 compatibility)\b/i;
 
     const hits = [];
-    for (const file of sources) {
-        let text;
+
+    /**
+     * @param {string} file - Repository-relative path.
+     * @returns {string} Its contents.
+     */
+    const source = (file) => {
         try {
-            text = readFileSync(resolve(ROOT, file), "utf8");
+            return readFileSync(resolve(ROOT, file), "utf8");
         } catch {
-            // A source file this check names must exist. Missing means the layout moved and the
-            // check has quietly stopped checking -- the failure mode this whole file is about.
+            // A file this check names must exist. Missing means the layout moved and the check has
+            // quietly stopped checking -- the failure mode this whole script is about.
             throw new Error(`T-13 cannot read ${file}; the layout moved and this check is now blind`);
         }
-        for (const marker of markers) {
-            for (const m of text.matchAll(new RegExp(marker.source, marker.flags.includes("g") ? marker.flags : marker.flags + "g"))) {
-                hits.push(`${file}: ${m[0].slice(0, 60).replace(/\s+/g, " ")}`);
-            }
-        }
+    };
+
+    // 1. Retired tool names, anywhere they would be declared.
+    const server = source("src/node/mcp-server.mjs");
+    for (const name of RETIRED.tools) {
+        if (new RegExp(`name:\\s*"${name}"`).test(server)) hits.push(`tool ${name} is declared again`);
+    }
+
+    // 2. Any tool description that advertises a migration, whatever the tool is called. This is
+    //    the half that survives a rename.
+    for (const m of server.matchAll(/name:\s*"(cyberchef_[a-z_]+)",\s*\n\s*description:\s*"([^"]*)"/g)) {
+        if (MIGRATION_WORDING.test(m[2])) hits.push(`tool ${m[1]} advertises a migration: "${m[2].slice(0, 50)}"`);
+    }
+
+    // 3. Retired configuration keys, in the committed settings table.
+    const settings = source("src/node/lib/config-file.mjs");
+    for (const key of RETIRED.settings) {
+        if (new RegExp(`^\\s*${key}\\s*:`, "m").test(settings)) hits.push(`setting ${key} is mapped again`);
+    }
+
+    // 4. Retired binaries. Public surface that lives nowhere near the server.
+    const bins = Object.keys(JSON.parse(source("package.json")).bin ?? {});
+    for (const bin of bins) {
+        if (RETIRED.bins.includes(bin)) hits.push(`bin ${bin} is published again`);
+        else if (MIGRATION_WORDING.test(bin)) hits.push(`bin ${bin} names a migration`);
     }
 
     record("T-13", "deprecated surface still advertised to callers",
         hits.length > 0,
         hits.length === 0 ? "none" : `${hits.length}: ${hits[0]}`);
 }
+
 
 try {
     await run();

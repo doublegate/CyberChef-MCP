@@ -201,7 +201,7 @@ jobs:
       #
       # Measured before restoring, against the published v3.1.0 image:
       #
-      #     trivy image --severity CRITICAL,HIGH ghcr.io/doublegate/cyberchef-mcp_v4:3.1.0
+      #     trivy image --severity CRITICAL,HIGH ghcr.io/doublegate/cyberchef-mcp_v3:3.1.0
       #     -> 0 CRITICAL, 0 HIGH
       #
       # If this starts failing, the finding is real and `docs/security/` has the disposition

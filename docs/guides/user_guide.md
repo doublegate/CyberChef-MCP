@@ -28,14 +28,16 @@ docker tag  ghcr.io/doublegate/cyberchef-mcp_v4:latest cyberchef-mcp
 ```
 
 Docker Hub carries the same image as `parobek/cyberchef-mcp`. The GHCR package is
-**major-versioned**: `_v3` for 3.x, `_v2` for 2.x, `_v1` for the frozen 1.9.x line.
+**major-versioned**: `_v4` for 4.x, `_v3` for 3.x, `_v2` for 2.x, `_v1` for the frozen 1.9.x line.
 
-Offline, from a release tarball:
+Offline, from a release tarball. The asset is `docker save` of the **Docker Hub** image, so that
+is what `docker load` puts in your local daemon -- retagging a `ghcr.io/...` reference here would
+name something you do not have:
 
 ```bash
-wget https://github.com/doublegate/CyberChef-MCP/releases/download/v3.0.0/cyberchef-mcp-v3.0.0-docker-image.tar.gz
-docker load < cyberchef-mcp-v3.0.0-docker-image.tar.gz
-docker tag ghcr.io/doublegate/cyberchef-mcp_v4:3.0.0 cyberchef-mcp
+wget https://github.com/doublegate/CyberChef-MCP/releases/download/v4.0.0/cyberchef-mcp-v4.0.0-docker-image.tar.gz
+docker load < cyberchef-mcp-v4.0.0-docker-image.tar.gz
+docker tag parobek/cyberchef-mcp:latest cyberchef-mcp
 ```
 
 From source:
@@ -144,7 +146,8 @@ it computes that in pure JavaScript, so every operation works on a stock Node wi
 degrade well before that many definitions.
 
 So the default is an **index**, not a catalogue. Measured on the serialised `tools/list` payload at
-v2.4.0, not estimated:
+**v4.0.0**, not estimated — re-measured every release that moves a tool, with
+`npm run measure:surfaces`:
 
 | `CYBERCHEF_TOOL_SURFACE` | Tools in `tools/list` | Payload |
 |---|---|---|
