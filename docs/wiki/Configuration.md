@@ -8,7 +8,6 @@ Every setting is an environment variable. Nothing requires a config file.
 |---|---|---|
 | `CYBERCHEF_TOOL_SURFACE` | `index` | `index`, `curated` or `all` — see **[The Tool Surface](Tool-Surface)** |
 | `CYBERCHEF_TOOL_ALLOWLIST` | *unset* | Comma-separated **operation names** (`To Base64`), overriding the mode |
-| `CYBERCHEF_EXPOSE_ALL_OPS` | `false` | Historical alias for `CYBERCHEF_TOOL_SURFACE=all` |
 | `CYBERCHEF_MAX_TOOL_DESCRIPTION` | — | Truncates long operation descriptions in `tools/list` |
 
 ## Transport

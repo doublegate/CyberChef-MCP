@@ -100,7 +100,10 @@ This generates:
 
 ### Production Docker Image
 - **File:** `Dockerfile.mcp`
-- **Base Image:** `node:22-alpine`
+- **Base Image:** two-stage and digest-pinned Chainguard Node 26 --
+  `cgr.dev/chainguard/node:latest-dev` (builder) and `cgr.dev/chainguard/node:latest` (runtime).
+  NOT `node:22-alpine`, which this file claimed for several releases while the Dockerfile said
+  otherwise; the runtime image is not shell-free (BusyBox and npm are present, apk/wget/curl are not).
 - **Key Steps:**
   1. Install dependencies with `npm ci --ignore-scripts`
   2. Apply SlowBuffer patches to `avsc` and `buffer-equal-constant-time`

@@ -65,7 +65,6 @@ payload.
 CYBERCHEF_TOOL_SURFACE=all                                   # everything
 CYBERCHEF_TOOL_SURFACE=curated                               # ~100 common operations
 CYBERCHEF_TOOL_ALLOWLIST="To Base64,From Base64,SHA2,Gunzip" # exactly these; overrides the mode
-CYBERCHEF_EXPOSE_ALL_OPS=true                                # historical alias for =all
 ```
 
 `CYBERCHEF_TOOL_ALLOWLIST` takes **CyberChef operation names**, not tool names — `To Base64`, not

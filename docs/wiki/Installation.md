@@ -13,9 +13,9 @@ docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v4:latest
 | Tag | Points at |
 |---|---|
 | `latest` | The newest release |
-| `3.0.0` | An exact version — **use this in anything you depend on** |
-| `3.0` | The newest patch of 3.0 |
-| `3` | The newest 3.x |
+| `4.0.0` | An exact version — **use this in anything you depend on** |
+| `4.0` | The newest patch of 4.0 |
+| `4` | The newest 4.x |
 
 The package name carries the major, so the v2.x line stays reachable at
 `ghcr.io/doublegate/cyberchef-mcp_v2` with its own `2.10.0` / `2.10` / `2` / `latest` tags, and

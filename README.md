@@ -14,7 +14,7 @@ By running this server, you enable AI assistants (like Claude, Cursor AI, and ot
 [![MCP Enabled](https://img.shields.io/badge/MCP-Enabled-blue)](https://modelcontextprotocol.io/)
 [![License](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
 [![Docker Version](https://img.shields.io/github/v/release/doublegate/CyberChef-MCP?logo=docker&label=docker)](https://github.com/doublegate/CyberChef-MCP/releases)
-[![Node.js Version](https://img.shields.io/badge/node-%3E%3D24%20%3C27-brightgreen)](https://nodejs.org/)
+[![Node.js Version](https://img.shields.io/badge/node-%3E%3D26%20%3C27-brightgreen)](https://nodejs.org/)
 [![Security Scan](https://github.com/doublegate/CyberChef-MCP/actions/workflows/security-scan.yml/badge.svg)](https://github.com/doublegate/CyberChef-MCP/actions/workflows/security-scan.yml)
 [![codecov](https://codecov.io/gh/doublegate/CyberChef-MCP/branch/master/graph/badge.svg)](https://codecov.io/gh/doublegate/CyberChef-MCP)
 

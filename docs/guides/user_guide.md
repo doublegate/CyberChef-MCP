@@ -55,7 +55,8 @@ npm run mcp
 ```
 
 Both generated files are gitignored, so a fresh clone cannot start without that second command.
-Node **>=24 <27** is required; the published image runs Node 26.
+Node **>=26 <27** is required since v4.0.0, and the published image runs Node 26 -- the declared
+floor and the shipped runtime are now the same version rather than two majors apart.
 
 ### Verify
 
@@ -200,7 +201,6 @@ Fine-grained control:
 ```bash
 CYBERCHEF_TOOL_ALLOWLIST="To Base64,From Base64,SHA2,Gunzip"   # exactly these, overrides the mode
 CYBERCHEF_TOOL_SURFACE=all                                      # everything, the pre-v2.1.0 behaviour
-CYBERCHEF_EXPOSE_ALL_OPS=true                                   # historical alias for the above
 ```
 
 > **Upgrading from v2.0.0?** The default changed. A client that hard-codes a tool name outside the
@@ -365,7 +365,6 @@ Browser-based clients additionally need `CYBERCHEF_ALLOWED_ORIGINS`.
 |---|---|---|
 | `CYBERCHEF_TOOL_SURFACE` | `index` | `index`, `curated` or `all`. |
 | `CYBERCHEF_TOOL_ALLOWLIST` | *(unset)* | Comma-separated operation names; overrides the mode. |
-| `CYBERCHEF_EXPOSE_ALL_OPS` | *(unset)* | `true` = `all`, `false` = `curated`. Historical alias. |
 | `CYBERCHEF_MAX_TOOL_DESCRIPTION` | `240` | Characters of description carried per tool. |
 
 ### Limits and execution

@@ -9,7 +9,7 @@ npm install
 npx grunt configTests    # REQUIRED -- see Installation
 ```
 
-Node **`>=24 <27`**. Package manager is **npm** — not pnpm, not bun.
+Node **`>=26 <27`** since v4.0.0, which raised the floor from 24. Package manager is **npm** — not pnpm, not bun.
 
 ## The gates
 
