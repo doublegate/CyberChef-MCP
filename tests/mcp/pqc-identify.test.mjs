@@ -34,6 +34,43 @@ import tool from "../../src/node/tools/pqc-identify.mjs";
  */
 const run = (args) => tool.run(tool.inputSchema.parse(args));
 
+/**
+ * The raw public key inside a SubjectPublicKeyInfo, in bytes.
+ *
+ * Walks the SPKI to its BIT STRING and returns the key itself, without the DER wrapper and without
+ * the BIT STRING's leading unused-bits octet. Written independently of the tool's own walk on
+ * purpose: a test that measured the key with the code under test would agree with it by
+ * construction, which is the whole objection to the assertion this replaced.
+ *
+ * @param {import("node:crypto").KeyObject} publicKey - The key.
+ * @returns {number} Raw key length in bytes.
+ */
+function rawPublicKeyBytes(publicKey) {
+    const der = publicKey.export({ type: "spki", format: "der" });
+    /**
+     * @param {number} off - Offset of a tag byte.
+     * @returns {{tag: number, start: number, length: number, end: number}} The TLV.
+     */
+    const tlv = (off) => {
+        const tag = der[off];
+        let i = off + 1;
+        let length = der[i++];
+        if (length & 0x80) {
+            const count = length & 0x7f;
+            length = 0;
+            for (let k = 0; k < count; k++) length = length * 256 + der[i++];
+        }
+        return { tag, start: i, length, end: i + length };
+    };
+
+    const outer = tlv(0);
+    const alg = tlv(outer.start);
+    const bits = tlv(alg.end);
+    expect(bits.tag, "SPKI did not end in a BIT STRING").toBe(0x03);
+    // First content octet of a BIT STRING is the count of unused trailing bits, and is not key data.
+    return bits.length - 1;
+}
+
 describe("pqc_identify", () => {
     describe("a DER structure with an OID is definite", () => {
         for (const [alg, expected, standard] of [
@@ -129,10 +166,13 @@ describe("pqc_identify", () => {
                 expect(r.algorithm).toBe(name);
                 expect(r.confidence).toBe("definite");
                 expect(r.oid).toBe(oid);
-                // The raw key size the table records, checked against the key Node just made.
                 expect(r.sizes.public_key).toBe(pub);
-                expect(publicKey.export({ type: "spki", format: "der" }).length)
-                    .toBeGreaterThanOrEqual(pub);
+                // The RAW key, measured out of the SPKI BIT STRING rather than compared against
+                // the whole DER. `toBeGreaterThanOrEqual(der.length)` was the first version and it
+                // could not fail usefully: a value wrong in the same direction in both `BY_OID` and
+                // `ALL` still passes, because the wrapper is larger than the key either way.
+                // Reviewer-found -- the assertion existed but proved nothing. This one does.
+                expect(rawPublicKeyBytes(publicKey), `${name} raw public key`).toBe(pub);
             });
         }
 
@@ -317,6 +357,61 @@ describe("pqc_identify", () => {
             const der = Buffer.concat([Buffer.from([0x30, alg.length]), alg]);
             expect(run({ input: der.toString("hex"), "input_format": "Hex" }).notes.join(" "))
                 .toMatch(/OID 2\.16\./);
+        });
+    });
+
+    describe("the input must be one well-formed structure, and nothing more", () => {
+        // Round three of review. Each of these reached `definite` before the fix, and each is a
+        // different way of being "nearly" a DER key -- which is the only interesting kind of
+        // malformed input, because obviously-broken bytes were already rejected.
+        it("refuses a valid SPKI with arbitrary bytes appended", () => {
+            // The outer TLV parsed fine; nothing required it to consume the whole input. The extra
+            // bytes also inflate `input_bytes`, which is what the length path reasons about.
+            const der = generateKeyPairSync("ml-kem-512").publicKey.export({ type: "spki", format: "der" });
+            const padded = Buffer.concat([der, Buffer.alloc(32, 0x41)]);
+            expect(run({ input: padded.toString("hex"), "input_format": "Hex" }).confidence).not.toBe("definite");
+            // ...while the same bytes without the suffix are still identified.
+            expect(run({ input: der.toString("hex"), "input_format": "Hex" }).algorithm).toBe("ML-KEM-512");
+        });
+
+        it("refuses a non-minimal OID encoding of a known algorithm", () => {
+            // `060a 80 60 8648016503040401` is ML-KEM-512's OID with a leading 0x80 group. DER
+            // requires the shortest encoding; accepting this means two byte sequences for one OID.
+            expect(run({ input: "300e300c060a80608648016503040401", "input_format": "Hex" }).confidence)
+                .not.toBe("definite");
+        });
+
+        it("does not call a NULL sibling key material", () => {
+            // `outer.end > first.end` proved only that SOMETHING followed the AlgorithmIdentifier.
+            const r = run({ input: "300f300b06096086480165030404010500", "input_format": "Hex" });
+            expect(r.algorithm).toBe("ML-KEM-512");       // the OID still names it truthfully
+            expect(r.carries_key_material).toBe(false);   // but there is no key here
+        });
+
+        it("reports real key material for both SPKI and PKCS#8", () => {
+            // The other direction of the same check: the tag test must not reject real keys, and
+            // the two container shapes want DIFFERENT tags (BIT STRING vs OCTET STRING).
+            const { publicKey, privateKey } = generateKeyPairSync("ml-dsa-44");
+            expect(run({ input: publicKey.export({ type: "spki", format: "pem" }) }).carries_key_material).toBe(true);
+            expect(run({ input: privateKey.export({ type: "pkcs8", format: "pem" }) }).carries_key_material).toBe(true);
+        });
+
+        it("refuses a PEM block buried in surrounding text", () => {
+            const pem = generateKeyPairSync("ml-dsa-44").publicKey.export({ type: "spki", format: "pem" });
+            expect(run({ input: `junk\n${pem}\nmore junk` }).confidence).not.toBe("definite");
+            // Surrounding WHITESPACE is still fine -- that is how PEM arrives from a file.
+            expect(run({ input: `\n\n  ${pem}  \n` }).algorithm).toBe("ML-DSA-44");
+        });
+
+        it("does not fall back to byte length once a non-PQC OID has been read", () => {
+            // A DER wrapper whose total length coincides with a known raw key size was reported as
+            // a PQC candidate, while the structure itself named a different algorithm. The length
+            // of a wrapper is not the length of a key.
+            const r = run({ input: "300f300d06092a864886f70d0101010500", "input_format": "Hex" });
+            expect(r.identified).toBe(false);
+            expect(r.candidates).toEqual([]);
+            expect(r.basis).toContain("1.2.840.113549.1.1.1");
+            expect(r.notes.join(" ")).toContain("length of a DER wrapper is not the length of a key");
         });
     });
 

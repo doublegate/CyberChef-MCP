@@ -142,6 +142,11 @@ function decodeOid(body) {
     let value = 0n;
     let pending = false;
     for (const byte of body) {
+        // DER requires the SHORTEST base-128 encoding, so a subidentifier may not START with 0x80
+        // -- that is a leading zero group. Accepting it means two different byte sequences decode
+        // to one OID, and `300e300c060a80608648016503040401` is an overlong ML-KEM-512 that was
+        // identified as `definite`. One encoding, one OID. Reviewer-found.
+        if (!pending && byte === 0x80) return null;
         value = (value << 7n) | BigInt(byte & 0x7f);
         pending = true;
         if (!(byte & 0x80)) {
@@ -177,13 +182,20 @@ function algorithmOid(der) {
     const outer = readTlv(der, 0);
     if (!outer || outer.tag !== 0x30) return null;
 
+    // The input must be EXACTLY one DER structure. Without this, appending arbitrary bytes to a
+    // valid SPKI still identified as `definite` -- and those extra bytes also change
+    // `input_bytes`, which is what the length path reasons about. Reviewer-found.
+    if (outer.end !== der.length) return null;
+
     // Every nested read is bounded by its PARENT's declared end, not by the buffer. Without this,
     // an AlgorithmIdentifier declared empty and followed by a real OID as a sibling returns a
     // `definite` identification for an OID it does not contain.
     let cursor = outer.valueStart;
     let first = readTlv(der, cursor, outer.end);
     if (!first) return null;
+    let isPkcs8 = false;
     if (first.tag === 0x02) {                       // PKCS#8 version INTEGER
+        isPkcs8 = true;
         cursor = first.end;
         first = readTlv(der, cursor, outer.end);
         if (!first) return null;
@@ -195,12 +207,21 @@ function algorithmOid(der) {
     const dotted = decodeOid(der.subarray(oid.valueStart, oid.end));
     if (!dotted) return null;
 
-    // Whether anything FOLLOWS the AlgorithmIdentifier inside the outer SEQUENCE. A real
-    // SubjectPublicKeyInfo has a BIT STRING and a PKCS#8 PrivateKeyInfo an OCTET STRING; a bare
-    // AlgorithmIdentifier has neither and is not a key at all. The OID still names the algorithm
-    // truthfully, so this is reported rather than rejected -- but a caller reading `definite`
-    // beside a 15-byte input should be told which of the two it has. Reviewer-found.
-    return { oid: dotted, hasPayload: outer.end > first.end };
+    // Whether real key material FOLLOWS the AlgorithmIdentifier. A SubjectPublicKeyInfo carries a
+    // BIT STRING and a PKCS#8 PrivateKeyInfo an OCTET STRING; a bare AlgorithmIdentifier has
+    // neither and is not a key at all. The OID still names the algorithm truthfully, so this is
+    // reported rather than rejected -- but a caller reading `definite` beside a 15-byte input
+    // should be told which of the two it has.
+    //
+    // The TAG is checked, not merely the presence of a sibling. `outer.end > first.end` alone was
+    // satisfied by a NULL sitting where the key should be, so an AlgorithmIdentifier plus `05 00`
+    // reported `carries_key_material: true`. Reviewer-found, on the fix for the previous round.
+    const payload = readTlv(der, first.end, outer.end);
+    const wanted = isPkcs8 ? 0x04 : 0x03;           // OCTET STRING for PKCS#8, BIT STRING for SPKI
+    return {
+        oid: dotted,
+        hasPayload: Boolean(payload && payload.tag === wanted && payload.length > 0)
+    };
 }
 
 /**
@@ -211,10 +232,14 @@ function algorithmOid(der) {
  * @returns {{bytes: Buffer, decodedAs: string}} The bytes and how they were read.
  */
 function decodeInput(input, format) {
-    // The label is captured and back-referenced, so `BEGIN PUBLIC KEY ... END CERTIFICATE` is not
-    // a PEM block. It matched before, and mismatched labels are exactly the shape of a
-    // copy-paste that spliced two different objects together.
-    const pem = input.match(/-----BEGIN ([A-Z0-9 ]+)-----([\s\S]*?)-----END \1-----/);
+    // Anchored, and the label is captured and back-referenced.
+    //
+    // The back-reference means `BEGIN PUBLIC KEY ... END CERTIFICATE` is not a PEM block --
+    // mismatched labels are exactly the shape of a copy-paste that spliced two objects together.
+    // The anchors mean the WHOLE input must be that block: unanchored, `junk + PEM + junk` was
+    // accepted and the surrounding bytes silently discarded, so text that is not a key at all
+    // could reach a `definite` identification. Both reviewer-found, one round apart.
+    const pem = input.match(/^\s*-----BEGIN ([A-Z0-9 ]+)-----([\s\S]*?)-----END \1-----\s*$/);
     if ((format === "Auto" || format === "PEM") && pem) {
         return { bytes: decodeStrict(pem[2], "base64", "PEM"), decodedAs: "PEM" };
     }
@@ -340,8 +365,26 @@ export default {
                 notes: structureNotes
             };
         }
+        // An OID that was read and is NOT post-quantum settles the question, so the length path is
+        // not consulted. Falling through to it measured the WRAPPER -- a DER structure whose total
+        // encoded length happened to equal a known raw key size was reported as a PQC candidate,
+        // with the structure itself saying it was something else. Length is the fallback for when
+        // there is nothing better; an explicit algorithm identifier is better. Reviewer-found.
         if (oid) {
-            notes.push(`Found algorithm OID ${oid}, which is not a NIST PQC algorithm this tool knows.`);
+            return {
+                identified: false,
+                confidence: "none",
+                basis: `algorithm OID ${oid} is not a NIST PQC algorithm`,
+                oid,
+                "input_bytes": bytes.length,
+                "decoded_as": decodedAs,
+                candidates: [],
+                notes: [
+                    `Found algorithm OID ${oid}, which is not a NIST PQC algorithm this tool knows.`,
+                    "Byte length was NOT consulted: the structure names its own algorithm, and the " +
+                    "length of a DER wrapper is not the length of a key."
+                ]
+            };
         }
 
         const candidates = candidatesByLength(bytes.length);
