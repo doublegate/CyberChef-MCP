@@ -87,6 +87,7 @@ updates:
       - dependency-name: "jq-web"
         versions: [">=0.6.0"]
 
+
   # ------------------------------------------------------- github-actions
   # The 0.28.0 -> v0.36.0 trivy-action breakage that took Security Scan down for months
   # is exactly what this ecosystem catches.
@@ -107,6 +108,23 @@ updates:
       actions-minor-patch:
         applies-to: version-updates
         update-types: ["minor", "patch"]
+    ignore:
+      # docker/setup-qemu-action v4 HANGS the multi-arch release build. Measured across three runs
+      # of the same commit content:
+      #
+      #   v3  build  378s  success  (v3.8.0)
+      #   v4  build 1979s  HUNG     (v3.9.0, twice, nothing pushed to any registry)
+      #   v3  build  399s  success  (v3.9.0)
+      #
+      # The v4 STEP reports success in 8 seconds -- installing binfmt handlers works; whether the
+      # resulting emulation works is not something it measures. That false green is why this took
+      # two wasted 33-minute runs to find.
+      #
+      # Taken from Dependabot #127 during v3.9.0 and reverted the same release. Drop this ignore
+      # when a v4 patch release claims to fix multi-platform builds, and verify by watching the
+      # build DURATION rather than the setup step's conclusion.
+      - dependency-name: "docker/setup-qemu-action"
+        versions: [">=4"]
 
   # -------------------------------------------------------------- docker
   # Tracks the Chainguard base images in Dockerfile.mcp.

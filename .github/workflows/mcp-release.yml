@@ -59,14 +59,28 @@ jobs:
       # Revisit if the build slows materially: the matrix is the right answer at 30 minutes, and
       # the deciding number is in this comment so a future reader can re-measure rather than guess.
       - name: Set up QEMU for multi-platform builds
-        # PINNED BACK TO v3 as a bisect, not as a diagnosis. v3.9.0 bumped this v3 -> v4 (Dependabot
-        # #127) and the multi-arch build then hung twice for 33 minutes having previously taken 378
-        # seconds. Three other hypotheses were tested and eliminated: the QEMU step itself succeeds
-        # in 8s (4s on v3, comparable); the v3.9.0 Dockerfile builds clean locally for amd64; and
-        # both pinned Chainguard digests are proper OCI indexes carrying linux/amd64 AND linux/arm64.
-        # That leaves this as the one changed input to the arm64 path that has not been ruled out.
-        # If the build succeeds on v3, that is the answer and this pin stays with the evidence.
-        # If it hangs anyway, the cause is elsewhere and this comment should be deleted, not kept.
+        # PINNED TO v3 DELIBERATELY. v4 hangs this multi-arch build. Measured, not suspected:
+        #
+        #   setup-qemu-action@v3   build  378s   success   (v3.8.0)
+        #   setup-qemu-action@v4   build 1979s   HUNG      (v3.9.0, twice, no image pushed)
+        #   setup-qemu-action@v3   build  399s   success   (v3.9.0, same commit content)
+        #
+        # Same Dockerfile, same lockfile, same runner pool; the only difference between hanging
+        # indefinitely and finishing in 6.5 minutes is this action's major version.
+        #
+        # THE TRAP, worth stating because it cost two wasted runs: the v4 STEP ITSELF SUCCEEDS, in
+        # 8 seconds. Installing binfmt handlers works; whether the resulting emulation works is not
+        # something the step measures. A green setup step and a working emulator are different
+        # claims, and the first was read as evidence of the second.
+        #
+        # Three other hypotheses were tested and eliminated first: the v3.9.0 Dockerfile builds
+        # clean locally for amd64 (all ten stages, exit 0), and both pinned Chainguard digests are
+        # proper OCI indexes carrying linux/amd64 AND linux/arm64.
+        #
+        # The cost of staying on v3 is a deprecation warning -- "Node.js 20 is deprecated ... forced
+        # to run on Node.js 24" -- which is noise, against a release pipeline that does not work.
+        # Re-evaluate when docker/setup-qemu-action ships a v4 patch that fixes it; `.github/
+        # dependabot.yml` ignores >=4 with this reasoning so it cannot return silently on a Sunday.
         uses: docker/setup-qemu-action@v3
         with:
           platforms: arm64
