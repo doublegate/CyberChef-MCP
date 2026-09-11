@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.11.0] - 2026-09-11
+
+### Added
+
+- **`cyberchef_pqc_identify`** — the nineteenth registry tool. Names the NIST post-quantum
+  parameter set behind a key, signature or ciphertext: ML-KEM (FIPS 203), ML-DSA (FIPS 204) and
+  SLH-DSA (FIPS 205), all eighteen sets. **Zero of the 504 operations touch any of them**, measured
+  against `OperationConfig.json` rather than assumed.
+  Given DER — PEM, hex or base64, SPKI or PKCS#8 — it reads the algorithm OID, answers `definite`,
+  and reports the OID so the answer can be checked rather than trusted. Given raw bytes it has only
+  a length, so it lists **every** candidate and declines to choose: 1568 bytes is both an
+  ML-KEM-1024 encapsulation key and an ML-KEM-1024 ciphertext; a 32-byte SLH-DSA public key is
+  indistinguishable from a SHA-256 digest or an Ed25519 key; and `SHA2-128s` and `SHAKE-128s`
+  signatures are both 7856 bytes, so the hash family is not recoverable from a signature at all. A
+  non-match is reported as a non-match, not as absence.
+  It identifies rather than implements — Node's `crypto` generates all eighteen parameter sets from
+  Node 24, so every test fixture is generated at test time and the OID and size table was extracted
+  from Node-produced DER rather than transcribed from the standards.
+- **`tests/mcp/pqc-identify.test.mjs`** — 28 tests, no hand-written fixtures. Covers the OID path,
+  the byte-length path, both documented ambiguities, the parser's rejection paths (a truncated TLV,
+  a PKCS#8 version INTEGER with nothing after it, an `AlgorithmIdentifier` whose first element is
+  not an OID, an OBJECT IDENTIFIER with an empty body) and every explicit `input_format`.
+
+### Fixed
+
+- **`pqc_identify` raised a bare `Error` on malformed PEM** where every other registry tool raises
+  `createInputError`, so the same class of bad input reached a client untyped — without the
+  `INVALID_INPUT` code or the offending field. Found by writing the tests that closed a coverage
+  gap, not by the coverage number itself.
+
+### Changed
+
+- **Tool surfaces re-measured**, as a release adding a tool requires: `index` 42 → **43 tools /
+  45,647 bytes**, `curated` 120 → **121 / 108,893**, `all` 545 → **546 / 426,051**. Index plus one
+  operation schema is **47,425 bytes, 9.0x cheaper than `all`**. The new tool costs 1,154 bytes on
+  the index; a registry tool has no navigation path, so one that is not listed cannot be called at
+  all, which is why it is in every surface.
+- **Coverage**: 96.09% lines / 89.41% branches / 96.64% functions / **95.16% statements**. The thin
+  margin v3.10.0 documented was hit on the first release after it — statements fell to 94.99%
+  against a threshold of 95 — and was fixed the way that note said to fix it, by covering the code
+  rather than moving the bar.
+
 ## [3.10.0] - 2026-09-11
 
 ### Fixed
