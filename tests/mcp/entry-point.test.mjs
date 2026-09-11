@@ -22,7 +22,7 @@
  * @license GPL-3.0-or-later
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll, afterEach } from "vitest";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve, join } from "node:path";
@@ -105,12 +105,22 @@ describe("the server module's entry point", () => {
             let out = "";
             p.stdout.on("data", d => { out += d; });
             p.stderr.on("data", d => { out += d; });
-            await new Promise(r => setTimeout(r, 12000));
+            // POLL for the marker; do not sleep a fixed interval and hope. vitest.config.mjs
+            // records that booting a server over 504 operations takes 9.5-10s on this machine for
+            // the heavier files, and the first version of this test waited a flat 12 seconds --
+            // a two-second margin against a ten-second boot, under a suite that runs files in
+            // parallel. It flaked on the first full run, which is exactly the fixed-budget mistake
+            // this project keeps finding elsewhere, committed here in a test written to prove
+            // something else. Exits as soon as the marker appears, so it is also faster.
+            const deadline = Date.now() + 60000;
+            while (Date.now() < deadline && !out.includes("Running on stdio transport")) {
+                await new Promise(r => setTimeout(r, 250));
+            }
             p.kill("SIGKILL");
             console.log(out.includes("Running on stdio transport") ? "SERVER_STARTED" : "NO_START:" + out.slice(0, 400));
         `);
         expect(r.stdout + r.stderr).toContain("SERVER_STARTED");
-    }, 120000);
+    }, 90000);
 
     it("DOES start through an npm-style bin symlink", () => {
         // `package.json` maps the `cyberchef-mcp` bin at this file, and npm installs bins as
@@ -131,12 +141,22 @@ describe("the server module's entry point", () => {
             let out = "";
             p.stdout.on("data", d => { out += d; });
             p.stderr.on("data", d => { out += d; });
-            await new Promise(r => setTimeout(r, 12000));
+            // POLL for the marker; do not sleep a fixed interval and hope. vitest.config.mjs
+            // records that booting a server over 504 operations takes 9.5-10s on this machine for
+            // the heavier files, and the first version of this test waited a flat 12 seconds --
+            // a two-second margin against a ten-second boot, under a suite that runs files in
+            // parallel. It flaked on the first full run, which is exactly the fixed-budget mistake
+            // this project keeps finding elsewhere, committed here in a test written to prove
+            // something else. Exits as soon as the marker appears, so it is also faster.
+            const deadline = Date.now() + 60000;
+            while (Date.now() < deadline && !out.includes("Running on stdio transport")) {
+                await new Promise(r => setTimeout(r, 250));
+            }
             p.kill("SIGKILL");
             console.log(out.includes("Running on stdio transport") ? "SERVER_STARTED" : "NO_START:" + out.slice(0, 400));
         `);
         expect(r.stdout + r.stderr).toContain("SERVER_STARTED");
-    }, 120000);
+    }, 90000);
 
     it("keeps the Docker CMD pointing at a path the guard recognises", () => {
         // `CMD ["src/node/mcp-server.mjs"]` against the Chainguard base's `node` entrypoint, so
@@ -144,5 +164,61 @@ describe("the server module's entry point", () => {
         // than resolved paths would leave the published image starting nothing.
         const dockerfile = readFileSync(join(ROOT, "Dockerfile.mcp"), "utf8");
         expect(dockerfile).toMatch(/CMD\s*\[\s*"src\/node\/mcp-server\.mjs"\s*\]/);
+    });
+});
+
+describe("isEntryPoint", () => {
+    // The guard's LOGIC, in-process and deterministic, by moving `process.argv[1]` rather than
+    // spawning. The child-process tests above prove the end-to-end behaviour; these prove the
+    // decision, including the branches a spawn cannot reach cheaply.
+    let isEntryPoint;
+    const original = process.argv[1];
+
+    beforeAll(async () => {
+        ({ isEntryPoint } = await import("../../src/node/mcp-server.mjs"));
+    });
+
+    afterEach(() => {
+        process.argv[1] = original;
+    });
+
+    it("is true when argv[1] is this module", () => {
+        process.argv[1] = SERVER;
+        expect(isEntryPoint()).toBe(true);
+    });
+
+    it("is true through a symlink, which is how npm installs the bin", () => {
+        // The case that would break `npx cyberchef-mcp` if the guard compared strings. npm installs
+        // bins as symlinks, so argv[1] is the link and `import.meta.filename` is the target.
+        const dir = mkdtempSync(join(tmpdir(), "cyberchef-guard-"));
+        const link = join(dir, "cyberchef-mcp");
+        symlinkSync(SERVER, link);
+        process.argv[1] = link;
+        expect(isEntryPoint()).toBe(true);
+    });
+
+    it("is true for a relative path, which is the Docker CMD shape", () => {
+        // `CMD ["src/node/mcp-server.mjs"]` against the base image's `node` entrypoint: argv[1]
+        // arrives relative to WORKDIR, so the guard has to resolve before comparing.
+        process.argv[1] = "src/node/mcp-server.mjs";
+        expect(isEntryPoint()).toBe(true);
+    });
+
+    it("is false when another file is the entry point", () => {
+        process.argv[1] = fileURLToPath(import.meta.url);
+        expect(isEntryPoint()).toBe(false);
+    });
+
+    it("is false when there is no argv[1] at all", () => {
+        // `node --input-type=module -e '...'` and some embedders.
+        delete process.argv[1];
+        expect(isEntryPoint()).toBe(false);
+    });
+
+    it("is false, not throwing, when argv[1] does not exist", () => {
+        // `realpathSync` throws ENOENT. Failing closed is deliberate: the cost is not auto-starting,
+        // and every real entry path resolves.
+        process.argv[1] = join(tmpdir(), "cyberchef-does-not-exist-" + Date.now());
+        expect(isEntryPoint()).toBe(false);
     });
 });

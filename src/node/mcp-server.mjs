@@ -2043,6 +2043,15 @@ function isEntryPoint() {
     }
 }
 
+/* v8 ignore start -- the process entry point. `tests/mcp/entry-point.test.mjs` exercises both
+   branches of this (started via `node <file>`, via an npm-style bin symlink, and NOT started on a
+   bare import) but it does so in CHILD PROCESSES, which is the only way to observe a module's
+   import-time behaviour once this worker has already imported it. v8 coverage instruments the
+   vitest worker only, so those child runs are invisible to it.
+
+   Worth stating plainly: before the guard existed, `runServer()` ran on EVERY test import as a side
+   effect of the defect, and all of this counted as covered. About 0.6% of this project's line
+   coverage was the bug executing itself. Removing the defect removed the inflation. */
 if (isEntryPoint()) {
     runServer().catch((error) => {
         const logger = getLogger();
@@ -2057,9 +2066,11 @@ if (isEntryPoint()) {
         process.exit(1);
     });
 }
+/* v8 ignore stop */
 
 // Export for testing
 export {
+    isEntryPoint,
     LRUCache,
     MemoryMonitor,
     TelemetryCollector,
