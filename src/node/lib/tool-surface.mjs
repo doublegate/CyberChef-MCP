@@ -186,9 +186,18 @@ export function isExposed(opName) {
 export function removedAliasWarning() {
     const legacy = process.env.CYBERCHEF_EXPOSE_ALL_OPS;
     if (legacy === undefined) return null;
-    return `CYBERCHEF_EXPOSE_ALL_OPS=${legacy} is set and is IGNORED: it was removed in v4.0.0. ` +
-        `The tool surface is "${surfaceMode()}" -- set CYBERCHEF_TOOL_SURFACE=all|curated|index ` +
-        "to choose one explicitly.";
+    // The VALUE is caller-controlled, and it is going into a log line. Bounded and stripped of
+    // control characters -- including the newlines and escapes that let an attacker-supplied
+    // string forge a second log record -- because "it is only an environment variable" is the
+    // assumption behind every log-injection finding. Reviewer-found.
+    //
+    // Only the shape matters to the reader anyway: the useful facts are that the variable is set
+    // and which surface is actually in force, not the 4 KB somebody put in it.
+    const shown = String(legacy).replace(/[^\x20-\x7e]/g, "?").slice(0, 40);
+    const elided = String(legacy).length > 40 ? "... (truncated)" : "";
+    return `CYBERCHEF_EXPOSE_ALL_OPS=${shown}${elided} is set and is IGNORED: it was removed in ` +
+        `v4.0.0. The tool surface is "${surfaceMode()}" -- set ` +
+        "CYBERCHEF_TOOL_SURFACE=all|curated|index to choose one explicitly.";
 }
 
 /**

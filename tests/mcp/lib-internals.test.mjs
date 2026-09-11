@@ -217,6 +217,27 @@ describe("tool-surface: which operations become tools", () => {
         expect(surfaceMode()).toBe("index");
     });
 
+    it("cannot be used to forge a second log record, or to flood one", () => {
+        // The value is caller-controlled and goes into a log line. Newlines would let it close the
+        // record and open another; 4 KB of anything would bury the run. Reviewer-found -- the
+        // warning was right, interpolating the raw value into it was not.
+        process.env.CYBERCHEF_EXPOSE_ALL_OPS = "true\n{\"level\":\"info\",\"msg\":\"FORGED\"}";
+        const forged = removedAliasWarning();
+        // The property that matters is that it cannot ESCAPE the record. Control characters are
+        // the vector; the remaining text is inert data inside one log line, and asserting the
+        // payload's words are absent would be testing the truncation length, not the safety.
+        expect(forged).not.toMatch(/[\u0000-\u001f\u007f]/);
+        expect(forged).toContain("?");   // the newline, replaced rather than dropped
+
+        process.env.CYBERCHEF_EXPOSE_ALL_OPS = "x".repeat(4000);
+        const long = removedAliasWarning();
+        expect(long.length).toBeLessThan(300);
+        expect(long).toContain("truncated");
+        // The facts that matter survive either way: it is set, and which surface is in force.
+        expect(long).toContain("IGNORED");
+        expect(long).toContain('"index"');
+    });
+
     it("says nothing when the removed variable is absent", () => {
         // A warning that fires for everyone is noise, and noise is how a real warning gets muted.
         delete process.env.CYBERCHEF_EXPOSE_ALL_OPS;
