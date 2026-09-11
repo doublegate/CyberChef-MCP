@@ -1,12 +1,12 @@
 # The Tool Surface
 
-**Why you see 41 tools and not 544.** This is the most common question about the server, and the
+**Why you see 23 tools and not 545.** This is the most common question about the server, and the
 answer is a deliberate design decision rather than a limitation.
 
 ## The problem
 
 `tools/list` is sent to the model on **every** request. Exposing all 504 operations plus the
-meta-tools costs roughly **425,372 bytes** before the user has typed anything — and model
+meta-tools costs roughly **426,377 bytes** before the user has typed anything — and model
 tool-selection quality is known to degrade well before that many definitions are in play.
 
 So the default is an **index**, not a catalogue.
@@ -18,9 +18,9 @@ bytes of the `tools/list` payload, rather than estimated:
 
 | `CYBERCHEF_TOOL_SURFACE` | Tools | Payload | Exact bytes |
 |---|---|---|---|
-| **`index`** *(default)* | 41 | 44 KB | **44,968** |
-| `curated` | 119 | 106 KB | 108,214 |
-| `all` | 544 | 415 KB | 425,372 |
+| **`index`** *(default)* | 23 | 15 KB | **15,291** |
+| `curated` | 120 | 107 KB | 109,219 |
+| `all` | 545 | 416 KB | 426,377 |
 
 The 41 in the default index are 21 meta-tools, `cyberchef_magic`, and the nineteen
 [analysis tools](Analysis-Tools) — and that arithmetic is the point: 21 + 1 + 19 = 41, matching the

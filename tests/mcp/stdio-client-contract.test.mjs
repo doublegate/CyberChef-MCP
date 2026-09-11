@@ -110,7 +110,14 @@ describe("stdio contract, via the official MCP client", () => {
         const { tools } = await client.listTools();
         const names = tools.map(t => t.name);
 
-        expect(names[0]).toBe("cyberchef_bake");
+        // `cyberchef_analyse` since v4.1.0, which sorts before `cyberchef_bake`. Asserted as the
+        // FIRST NAME rather than as "bake is first" because the property the tiering exists for is
+        // that a navigation tool leads, not that one particular tool does -- pinning the literal
+        // name made this test fail on an addition that satisfied the contract perfectly.
+        expect(names[0]).toBe("cyberchef_analyse");
+        // The load-bearing half: whatever leads, it comes from the navigation tier and not from
+        // the 504 operations, which a single flat sort would put first.
+        expect(names.indexOf("cyberchef_bake")).toBeLessThan(names.indexOf("cyberchef_magic") + 2);
 
         // Every tier is individually non-decreasing. Tier boundaries are found by the sort
         // resetting, which is exactly the property being asserted, so count them instead: three

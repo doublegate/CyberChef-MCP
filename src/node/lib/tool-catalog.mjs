@@ -9,9 +9,9 @@
  * numbers now come from `npm run measure:surfaces`, which drives a real client and counts the
  * exact bytes of the result, rather than from a comment:
  *
- *     all       544 tools   425,372 bytes   415 KB
- *     curated   119 tools   108,214 bytes   106 KB
- *     index      41 tools    44,968 bytes    44 KB
+ *     all       545 tools   426,377 bytes   416 KB
+ *     curated   120 tools   109,219 bytes   107 KB
+ *     index      23 tools    15,291 bytes    15 KB
  *
  * Both presets pay up front for schemas the session may never use. `curated` is cheaper only
  * because it guesses which operations matter, and it is wrong for anyone whose work is the rest.
@@ -28,7 +28,7 @@
  * Make `tools/list` an INDEX rather than a catalogue. The model is handed a handful of navigation
  * tools plus the executor, and walks down to detail only where it needs it:
  *
- *     tools/list                      ~24 tools, ~10 KB   <- always loaded
+ *     tools/list                      23 tools, 15 KB   <- always loaded
  *       cyberchef_categories          16 categories + counts + examples   (~2 KB)
  *       cyberchef_list_operations     names + one-liners for one category (~8 KB for 50)
  *       cyberchef_describe_operation  the FULL schema for the operations actually chosen
@@ -48,16 +48,30 @@
  * one schema instead of 504.
  *
  * The trade is honest and worth stating: reaching an operation costs an extra round trip the first
- * time. Measured, that trade is the index plus one operation schema -- 46,746 bytes against
- * 425,372, or **9.1x cheaper** than `all`. (This line read "42,415 bytes ... 9.5x" until v3.8.0,
+ * time. Measured, that trade is the index plus one operation schema -- 17,069 bytes against
+ * 426,377, or **25.0x cheaper** than `all`. (This line read "42,415 bytes ... 9.5x" until v3.8.0,
  * which is a figure SMALLER than the index alone and therefore impossible on its face -- the byte
  * column above was re-measured and this sentence was not. It was caught in review, not by a gate:
  * `check:versions` covers operation counts and does not cover tool-surface counts.) That
- * multiplier fell from 18.2x in v3.2.0, and the
- * reason is worth recording rather than quietly restating: twelve registry tools were added in
- * v3.3.0 and a registry tool has no navigation path, so one that is not listed cannot be called at
- * all. They are all in the index, and the index is twice the size it was. For a client that wants
- * everything in one shot, `CYBERCHEF_TOOL_SURFACE=all` is still there.
+ * multiplier was 18.2x in v3.2.0, fell to 9.1x by v3.11.0, and is now 25.0x -- higher than it has
+ * ever been. The round trip is worth recording rather than quietly restating, because the fall and
+ * the recovery have the same cause. Twelve registry tools were added in v3.3.0, and a registry
+ * tool then had no navigation path: `describe_operation` refused it and pointed at `tools/list`,
+ * so the listing was its ONLY schema path and an unlisted tool could not be called at all. They
+ * were therefore on every surface, and by v3.11.0 nineteen of them were 30,683 of the index's
+ * 44,968 bytes -- 68% of the surface whose whole purpose is being small.
+ *
+ * v4.1.0 removed the dependency rather than the tools. `describe_operation` now serves their
+ * schemas, `categories` lists them, and `cyberchef_analyse` dispatches to them by name, so they
+ * are reachable without being listed. The index dropped to 23 tools and 15,291 bytes, and the
+ * growth curve is flat: a twentieth or a hundredth registry tool leaves it unchanged.
+ *
+ * The tool COUNT matters as much as the bytes, and is the half this design did not originally
+ * argue. Anthropic documents that tool-selection accuracy "degrades once you exceed 30-50
+ * available tools"; at 41 the index was inside that band, so the surface was not merely expensive
+ * but measurably worse at being chosen from. At 23 it is below it. For a client that wants
+ * everything in one shot, `CYBERCHEF_TOOL_SURFACE=all` is still there and still lists every
+ * registry tool outright.
  *
  * @author DoubleGate
  * @license GPL-3.0-or-later
@@ -102,9 +116,12 @@ function summarise(text, max) {
  * The samples matter. A bare list of names and counts makes the model guess what "Data format"
  * covers; three example operations make the choice obvious, and they cost a few dozen bytes.
  *
+ * @param {Array<Object>} [analysisTools] - Registry tools, as `{name, exposedName, title}`. They
+ *   are NOT operations and are listed separately for that reason; before v4.1.0 they appeared in
+ *   no category at all, so a caller walking the hierarchy down could not reach them.
  * @returns {Object} The index.
  */
-export function categoryIndex() {
+export function categoryIndex(analysisTools = []) {
     const categories = Categories
         .filter(c => !HIDDEN_CATEGORIES.has(c.name) && c.ops.length > 0)
         .map(c => ({
@@ -113,13 +130,33 @@ export function categoryIndex() {
             examples: c.ops.slice(0, 3)
         }));
 
-    return {
+    const index = {
         categories,
         totalOperations: Object.keys(OperationConfig).length,
         usage: "Call cyberchef_list_operations with a category to see its operations, " +
             "cyberchef_describe_operation for full argument schemas, or cyberchef_search to " +
             "search by keyword. Any operation can then be run with cyberchef_bake."
     };
+
+    // A SEPARATE key, deliberately not a sixteenth entry in `categories`.
+    //
+    // Every member of `categories` is a CyberChef operation category whose contents `bake` can
+    // run and `list_operations` can enumerate. An analysis tool is neither: it has no
+    // OperationConfig entry, cannot appear in a recipe, and `list_operations` would throw on its
+    // name. Folding it in would have made the two navigation tools below it lie about what they
+    // accept, which is the shape of bug this whole index exists to avoid.
+    if (analysisTools.length) {
+        index.analysisTools = {
+            count: analysisTools.length,
+            description: "Analyses an operation cannot express -- a loop with a decision inside " +
+                "it, a statistic computed across several inputs, or a primitive CyberChef lacks.",
+            tools: analysisTools.map(t => ({ tool: t.name, title: t.title })),
+            usage: "These are NOT operations and cannot be used in a cyberchef_bake recipe. Get " +
+                "a schema with cyberchef_describe_operation, then run it with cyberchef_analyse."
+        };
+    }
+
+    return index;
 }
 
 /**
@@ -240,11 +277,12 @@ export function summariseSearch(query, results, registryTools) {
  *
  * @param {string|string[]} operations - Operation name(s).
  * @param {Function} argNameFor - Maps a CyberChef argument name to its tool-schema property name.
- * @param {Set<string>} [registryNames] - Exposed names of the registry tools, so a caller who asks
- *   about one is told what it is rather than that it does not exist.
+ * @param {Function} [registryLookup] - `(exposedName) => descriptor|undefined` for the registry.
+ *   A LOOKUP rather than a name set, because this now answers with the tool's schema instead
+ *   of redirecting to `tools/list` -- which is what allows registry tools to be unlisted.
  * @returns {Object} The detail.
  */
-export function describeOperations(operations, argNameFor, registryNames) {
+export function describeOperations(operations, argNameFor, registryLookup) {
     const names = Array.isArray(operations) ? operations : [operations];
 
     const described = names.map(raw => {
@@ -260,12 +298,35 @@ export function describeOperations(operations, argNameFor, registryNames) {
             // `tools/list` with its complete schema. A caller who saw the name there and asked
             // about it here deserves to be told where to look, not that it does not exist.
             const exposed = name.startsWith("cyberchef_") ? name : `cyberchef_${name}`;
-            if (registryNames?.has(exposed)) {
+            const registryTool = registryLookup?.(exposed);
+            if (registryTool) {
+                // SERVES the schema rather than redirecting to `tools/list`.
+                //
+                // Until v4.1.0 this returned an error whose hint was "its full schema is already
+                // in `tools/list`; call it directly". That hint was true, and it was the reason
+                // every registry tool HAD to be listed: the only schema path went through the
+                // listing, so a tool absent from the listing had no schema path at all. Nineteen
+                // tools were therefore 68% of the default surface to keep one redirect honest.
+                //
+                // Answering here inverts that. The schema is available whether or not the tool is
+                // listed, which is what lets the index drop them -- and it is strictly more useful
+                // even for a caller on `curated` or `all`, because it returns one tool's schema
+                // instead of requiring a re-read of the whole list.
                 return {
-                    operation: name,
-                    error: `\`${exposed}\` is a registry tool, not an operation, so it has no ` +
-                        "OperationConfig entry and cannot be used inside a recipe.",
-                    hint: `Its full schema is already in \`tools/list\`; call \`${exposed}\` directly.`
+                    operation: exposed,
+                    kind: "analysis_tool",
+                    description: registryTool.description,
+                    inputSchema: registryTool.inputSchema,
+                    annotations: registryTool.annotations,
+                    // Both routes are given because both work and they are not interchangeable: a
+                    // caller on `curated`/`all` can invoke the tool by name, one on `index` cannot
+                    // and must go through the dispatcher. Naming only the direct call would be
+                    // advice that fails on the default surface.
+                    usage: `Run it with cyberchef_analyse({tool: "${registryTool.name}", ` +
+                        "arguments: {...}}), or call `" + exposed + "` directly when it is listed " +
+                        "(CYBERCHEF_TOOL_SURFACE=curated|all).",
+                    note: "An analysis tool, not a CyberChef operation: it has no OperationConfig " +
+                        "entry and cannot appear inside a `cyberchef_bake` recipe."
                 };
             }
             return {
