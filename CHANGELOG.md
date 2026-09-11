@@ -29,6 +29,16 @@ Registry tools get a navigation path, and leave the default surface. The index f
   `curated` and `all` still list every one (so the gate cannot be satisfied by deleting them), and
   that the index stays under 30 tools.
 
+- **`glama.json`** at the repository root, declaring `doublegate` as maintainer. Glama is a
+  third-party MCP directory that starts a server and introspects it rather than reading its README.
+  Written against the schema it references, which defines exactly one property (`maintainers`), so
+  the file is deliberately minimal. **The listing was already claimed via GitHub auto-association,
+  and a change here does not sync until the claim flow is run again** — both are easy to assume
+  otherwise.
+- **Glama score and card badges** in `README.md`, plus **npm Package** and **Glama Listing**
+  entries under Repository Information. The live scores are not transcribed into the prose; the
+  badges render them, and a figure copied out of a service is a figure that rots.
+
 ### Changed
 
 - **Registry tools are no longer listed on the `index` surface.** They remain listed on `curated`
@@ -57,19 +67,6 @@ Registry tools get a navigation path, and leave the default surface. The index f
   the gap did not move by one byte. Recorded as **F-02**. What survived is the finding that was
   always the real one: the 68% share, and a 41-tool index sitting inside the 30-50 band where tool
   selection accuracy is measured to degrade.
-
-
-### Added
-
-- **`glama.json`** at the repository root, declaring `doublegate` as maintainer. Glama is a
-  third-party MCP directory that starts a server and introspects it rather than reading its README.
-  Written against the schema it references, which defines exactly one property (`maintainers`), so
-  the file is deliberately minimal. **The listing was already claimed via GitHub auto-association,
-  and a change here does not sync until the claim flow is run again** — both are easy to assume
-  otherwise.
-- **Glama score and card badges** in `README.md`, plus **npm Package** and **Glama Listing**
-  entries under Repository Information. The live scores are not transcribed into the prose; the
-  badges render them, and a figure copied out of a service is a figure that rots.
 
 ## [4.0.0] - 2026-09-11
 

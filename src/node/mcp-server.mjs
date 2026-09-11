@@ -1555,12 +1555,23 @@ const handleCallToolInner = async (request, extra, ownerServer = server) => {
                     // the argument straight in threw `content.reduce is not a function` and turned
                     // a working analysis into a failed tool call. The input here is a plain string.
                     logRequestComplete(requestId, {
+                        // The tool the CALLER invoked, which for a dispatched call is
+                        // `cyberchef_analyse`. Kept as `tool` so metric and log cardinality stays
+                        // keyed on the dispatch surface rather than doubling it.
                         tool: name,
+                        // ...and the tool that actually RAN, when they differ. Without this an
+                        // operator reading logs after v4.1.0 sees every analysis as
+                        // `cyberchef_analyse` and cannot tell which one ran -- observability that
+                        // existed for free while these tools were called directly, and that the
+                        // dispatcher would otherwise have quietly removed. `registryLabel` is a
+                        // registry name resolved before dispatch, never caller-controlled text,
+                        // so it cannot be used to inflate the label space.
+                        ...(registryLabel === name ? {} : { analysisTool: registryLabel }),
                         // The whole argument object, not `args.input`. Half the registry tools have
                         // no field called `input` -- `rsa_attack` takes `modulus`, `cyclic_pattern`
                         // takes `fragment` -- so keying on that name logged 0 for them, and a
                         // telemetry figure that is silently zero is worse than an absent one.
-                        inputSize: Buffer.byteLength(JSON.stringify(args ?? {}), "utf8"),
+                        inputSize: Buffer.byteLength(JSON.stringify(registryArgs ?? {}), "utf8"),
                         outputSize: Buffer.byteLength(output, "utf8"),
                         duration: Date.now() - startTime, cached: false, streamed: false
                     });
