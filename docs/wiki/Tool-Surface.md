@@ -1,12 +1,12 @@
 # The Tool Surface
 
-**Why you see 42 tools and not 545.** This is the most common question about the server, and the
+**Why you see 43 tools and not 546.** This is the most common question about the server, and the
 answer is a deliberate design decision rather than a limitation.
 
 ## The problem
 
 `tools/list` is sent to the model on **every** request. Exposing all 504 operations plus the
-meta-tools costs roughly **424,897 bytes** before the user has typed anything — and model
+meta-tools costs roughly **426,051 bytes** before the user has typed anything — and model
 tool-selection quality is known to degrade well before that many definitions are in play.
 
 So the default is an **index**, not a catalogue.
@@ -18,15 +18,16 @@ bytes of the `tools/list` payload, rather than estimated:
 
 | `CYBERCHEF_TOOL_SURFACE` | Tools | Payload | Exact bytes |
 |---|---|---|---|
-| **`index`** *(default)* | 42 | 43 KB | **44,493** |
-| `curated` | 120 | 105 KB | 107,739 |
-| `all` | 545 | 415 KB | 424,897 |
+| **`index`** *(default)* | 43 | 45 KB | **45,647** |
+| `curated` | 121 | 106 KB | 108,893 |
+| `all` | 546 | 416 KB | 426,051 |
 
-The 42 in the default index are 23 meta-tools, `cyberchef_magic`, and the eighteen
-[analysis tools](Analysis-Tools) — and that arithmetic is the point: 23 + 1 + 18 = 42, matching the
+The 43 in the default index are 23 meta-tools, `cyberchef_magic`, and the nineteen
+[analysis tools](Analysis-Tools) — and that arithmetic is the point: 23 + 1 + 19 = 43, matching the
 table above. The index grew from 28 to 40 in v3.3.0 because twelve new registry tools have no
 navigation path of their own — a registry tool that is not listed cannot be called at all — then to
-41 with `cyberchef_ecdsa_recover` in v3.4.0 and 42 with `cyberchef_cert_chain` in v3.8.0.
+41 with `cyberchef_ecdsa_recover` in v3.4.0, 42 with `cyberchef_cert_chain` in v3.8.0 and 43 with
+`cyberchef_pqc_identify` in v3.11.0.
 
 ## Nothing becomes unreachable
 
@@ -51,9 +52,9 @@ trade — and when it is not, one environment variable changes it.
 **`cyberchef_magic`**, because it is what you reach for *before* you know what you are looking at.
 Making it three calls deep would invert the cost.
 
-**The eighteen analysis tools**, because unlike an operation, none of them is reachable through
+**The nineteen analysis tools**, because unlike an operation, none of them is reachable through
 `cyberchef_bake` — they are not in `OperationConfig`. Hiding them behind a surface setting would
-make them unreachable rather than merely inconvenient. They form part of the 44,493-byte index
+make them unreachable rather than merely inconvenient. They form part of the 45,647-byte index
 payload.
 
 ## Shaping it yourself

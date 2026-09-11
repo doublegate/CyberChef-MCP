@@ -78,7 +78,7 @@ const INVENTORY_EXEMPT = new Map([
         "THIRD-PARTY-NOTICES.md",
         "An attribution table keyed by BORROWED WORK, not an inventory of tools. It names the " +
         "twelve tools that owe something to a third party; the rest owe nothing and correctly do " +
-        "not appear. Requiring all eighteen here would demand a false attribution."
+        "not appear. Requiring all nineteen here would demand a false attribution."
     ]
 ]);
 

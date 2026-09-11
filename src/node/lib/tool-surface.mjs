@@ -196,8 +196,8 @@ export function describeSurface(exposed, total) {
     // BYTES, not tokens. This line read "~86k tokens per tools/list" from the release that
     // introduced the index until v3.8.0, and was wrong in both dimensions: no tokenizer has
     // ever been in this repository, so the figure was bytes/4 wearing a token label -- and
-    // the payload has since grown to 424,897 bytes (~106k under that same convention), so
+    // the payload has since grown to 426,051 bytes (~107k under that same convention), so
     // even the disguised number had drifted by a fifth. Re-measure with
     // `npm run measure:surfaces` rather than editing this by eye.
-    return `tool surface: all (${exposed}/${total} operations; ~415 KB per tools/list)`;
+    return `tool surface: all (${exposed}/${total} operations; ~416 KB per tools/list)`;
 }

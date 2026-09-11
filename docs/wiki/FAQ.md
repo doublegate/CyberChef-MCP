@@ -1,16 +1,16 @@
 # FAQ
 
-## Why do I only see 42 tools when you say there are 504 operations?
+## Why do I only see 43 tools when you say there are 504 operations?
 
-Because `tools/list` goes to the model on **every** request, and sending all 545 costs about
-424,897 bytes before anyone types anything. The default is an index: 42 tools, 44,493 bytes.
+Because `tools/list` goes to the model on **every** request, and sending all 546 costs about
+426,051 bytes before anyone types anything. The default is an index: 43 tools, 45,647 bytes.
 
 **Nothing becomes unreachable.** `cyberchef_bake` runs any of the 504 by name, and
 `cyberchef_categories` → `cyberchef_list_operations` → `cyberchef_describe_operation` walks down to
-any of them. Set `CYBERCHEF_TOOL_SURFACE=curated` (120) or `=all` (545) if you would rather
+any of them. Set `CYBERCHEF_TOOL_SURFACE=curated` (121) or `=all` (546) if you would rather
 pre-load. Full detail: **[The Tool Surface](Tool-Surface)**.
 
-## What are the eighteen tools that are not operations?
+## What are the nineteen tools that are not operations?
 
 `cyberchef_xor_key_length`, `cyberchef_cyclic_pattern`, `cyberchef_hash_identify` and
 `cyberchef_rsa_attack`, added in v2.4.0; twelve more added in v3.3.0:
@@ -20,7 +20,10 @@ pre-load. Full detail: **[The Tool Surface](Tool-Surface)**.
 `cyberchef_substitution_break`, `cyberchef_timestamp_identify` and `cyberchef_vigenere_break`;
 then `cyberchef_ecdsa_recover` in v3.4.0 (private-key recovery from a reused ECDSA nonce) and
 `cyberchef_cert_chain` in v3.8.0 (orders an X.509 bundle and verifies every link
-cryptographically). An
+cryptographically); and `cyberchef_pqc_identify` in v3.11.0 (names the NIST post-quantum parameter
+set behind a key, signature or ciphertext, from the OID where there is DER to read and from byte
+length where there is not — reporting every candidate, rather than one, when the length is
+ambiguous). An
 operation is a pure `run(input, args)` over one input, which cannot express an *analysis* — and
 `cyberchef_bake` cannot either, because a recipe is a pipeline, not a loop. They are in every tool
 surface because none is reachable through `bake`. See **[Analysis Tools](Analysis-Tools)**.
