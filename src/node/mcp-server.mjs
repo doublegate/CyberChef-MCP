@@ -456,9 +456,16 @@ const META_TOOLS = [
             tool: z.string().describe(
                 "Analysis tool name, without the `cyberchef_` prefix, e.g. \"hash_identify\", " +
                 "\"xor_key_length\", \"pqc_identify\". Either form is accepted."),
-            // `.passthrough()` rather than a closed object: the real schema belongs to the tool
-            // being dispatched to, and it is validated against that schema below. Declaring a
-            // closed shape here would reject every argument any tool actually takes.
+            // `.passthrough()` rather than a closed object, and this is deliberate rather than
+            // lax. The real schema belongs to the tool being dispatched to; declaring a closed
+            // shape here would reject every argument any tool actually takes.
+            //
+            // VALIDATION IS NOT SKIPPED, IT IS DEFERRED. `handleCallTool` runs
+            // `registryTool.inputSchema.safeParse(registryArgs)` against the SELECTED tool's own
+            // Zod schema before the handler sees anything, and reports a violation naming that
+            // tool. So an argument object reaching a tool has passed exactly the same validation
+            // a direct call would have applied -- which is the property that lets the dispatcher
+            // claim it behaves identically.
             arguments: z.object({}).passthrough().optional().describe(
                 "Arguments for the tool, matching the schema cyberchef_describe_operation returns " +
                 "for it.")

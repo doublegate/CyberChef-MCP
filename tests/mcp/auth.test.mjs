@@ -922,6 +922,17 @@ describe("per-tool authorisation at dispatch, against the real server", () => {
      */
     const sessionCleanupFailures = [];
 
+    // An `afterAll`, NOT a standalone `it`. As a test it would have created an order dependency on
+    // the tests that populate the array -- and worse, `vitest -t <name>` would filter it out
+    // exactly when someone is narrowing to debug a session problem. A hook runs regardless of
+    // which tests were selected. Reviewer-found.
+    afterAll(() => {
+        expect(sessionCleanupFailures.join("\n"),
+            "HTTP sessions were opened and not closed. The leak this guards was invisible until " +
+            "an unrelated assertion failed with -32001 Session not found."
+        ).toBe("");
+    });
+
     /** Open a session with the given token and call one tool. @returns {Promise<Object>} */
     const callTool = async (token, name, args) => {
         const base = `http://127.0.0.1:${port}/mcp`;
@@ -1161,12 +1172,6 @@ describe("per-tool authorisation at dispatch, against the real server", () => {
         }
         expect(disagreed.join("\n")).toBe("");
     }, 240000);
-
-    it("closed every HTTP session it opened", () => {
-        // The counterpart to the DELETE above. Without this the cleanup could silently stop
-        // working and the only symptom would be a confusing `-32001` in some later test.
-        expect(sessionCleanupFailures.join("\n")).toBe("");
-    });
 
     it("does not let an unknown tool name escape the scope check", async () => {
         // An unresolvable name falls back to the dispatcher's own annotations rather than
