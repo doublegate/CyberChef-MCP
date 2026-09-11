@@ -12,9 +12,41 @@ against a table of structures and reporting which ones fit.
 `cyberchef_bake` does not close the gap either, because a recipe is a **linear pipeline, not a
 loop**. There is no way to write "try every key length from 1 to 32 and rank them" as a recipe.
 
-Each of these replaces a separate command-line tool, and each is exposed at **every**
-[tool surface](Tool-Surface) — including the default index — because none is reachable through
-`cyberchef_bake`.
+Each of these replaces a separate command-line tool, and none is reachable through
+`cyberchef_bake` — a recipe cannot express a loop.
+
+## How to call one
+
+**Changed in v4.1.0.** They are no longer listed on the default `index` surface. Reach them with
+**`cyberchef_analyse`**:
+
+```json
+{"name": "cyberchef_analyse",
+ "arguments": {"tool": "hash_identify", "arguments": {"input": "5d41402abc4b2a76b9719d911017c592"}}}
+```
+
+The name works with or without the `cyberchef_` prefix, and a dispatched call runs the same code as
+a direct one, so results are byte-identical.
+
+To find and inspect them:
+
+| Step | Call |
+|---|---|
+| List them | `cyberchef_categories` → the `analysisTools` key |
+| Get one's schema | `cyberchef_describe_operation({operations: "hash_identify"})` |
+| Search by keyword | `cyberchef_search` → the `analysis_tools` array |
+| Run it | `cyberchef_analyse({tool: "...", arguments: {...}})` |
+
+On [`CYBERCHEF_TOOL_SURFACE`](Tool-Surface)`=curated` or `=all` they are **still listed outright**
+and callable directly by name, as before.
+
+**Why they moved.** Nineteen of them were **30,683 of the index's 44,968 bytes — 68%** of the
+surface whose entire purpose is being small. They were listed because `describe_operation` refused
+them and pointed at `tools/list`, so the listing was their only schema path and an unlisted tool
+could not be called at all. v4.1.0 removed that dependency rather than the tools.
+
+Each heading below gives the **direct** name; substitute it into `cyberchef_analyse` on the default
+surface.
 
 ---
 

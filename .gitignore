@@ -56,6 +56,8 @@ WARP.md
 # Coverage and test artifacts
 coverage/
 test-results/
+# Vitest's JSON reporter output, written by `--reporter=json --outputFile`.
+.vitest/
 .nyc_output/
 
 # Benchmark and conformance RUN output. The committed artefacts these are compared against --
@@ -140,4 +142,3 @@ arm64-machine.txt
 #   travis.log         This project has never used Travis; CI is GitHub Actions.
 #   tests/browser/*    The web app and its browser tests were removed in v1.7.1, and
 #                      upstream-sync.yml fails the run if a sync tries to reintroduce them.
-.vitest/

@@ -6,6 +6,13 @@ neither waits on anything external. This is the phase that unblocks the tool pro
 
 > **Rewritten 2026-09-11.** The previous Phase 1 was the entry-point guard, which shipped as
 > v3.10.0; it is archived at `../archive/v4.1.0-entry-point.md`.
+>
+> **v4.1.0 SHIPPED 2026-09-11.** Sprints 1.1-1.4 are done; 1.5 is v4.2.0 and remains open. Sprint
+> 1.1 did not go as written: the ceiling it was to pin **does not exist**, and building the gate is
+> what proved that (F-02). The index cannot cost more than `curated` by adding registry tools at any
+> number, because they are listed on every surface and all three grow together. The gate was rebuilt
+> on properties that can move -- the index lists no registry tool, `curated`/`all` list every one,
+> and the index stays under 30 tools.
 
 ---
 
@@ -13,42 +20,42 @@ neither waits on anything external. This is the phase that unblocks the tool pro
 
 The arithmetic is in the charter, but a sprint starts by re-measuring rather than trusting it.
 
-- [ ] Re-run `npm run measure:surfaces` and re-derive the split: navigation/meta bytes vs registry
+- [x] Re-run `npm run measure:surfaces` and re-derive the split: navigation/meta bytes vs registry
       bytes. It was **14,305 / 30,663** on 2026-09-11. If it has moved, the charter's projections
       move with it.
-- [ ] Pin the ceiling as a **test**, not a note: assert that the index stays below `curated`. It is
+- [x] Pin the ceiling as a **test**, not a note: assert that the index stays below `curated`. It is
       the claim `tool-catalog.mjs`'s header rests on, and today nothing checks it — the surface gate
       compares documents against the server, never the two presets against each other.
       Verify it fails by adding stub registry tools until it does.
-- [ ] Confirm the four navigation paths behave as measured — `search` finds, `describe_operation`
+- [x] Confirm the four navigation paths behave as measured — `search` finds, `describe_operation`
       refuses, `bake` refuses, `categories` omits. Six documents claim something stronger; the
       wording fix rides with this sprint.
 
 ## Sprint 1.2 — Give registry tools a schema path
 
-- [ ] `cyberchef_describe_operation` serves a registry tool's schema instead of erroring.
+- [x] `cyberchef_describe_operation` serves a registry tool's schema instead of erroring.
       `buildRegistry` and `ToolRegistry` are already imported at `mcp-server.mjs:56`; the Zod schema
       is already there; `toInputSchema` already converts it.
-- [ ] `cyberchef_categories` lists the analysis tools as a category, so the walk down reaches them.
-- [ ] Test through a **real client**, not by calling handlers — the v2.1.0 rule. Three releases
+- [x] `cyberchef_categories` lists the analysis tools as a category, so the walk down reaches them.
+- [x] Test through a **real client**, not by calling handlers — the v2.1.0 rule. Three releases
       shipped 524 tools with empty `inputSchema` while a green suite watched.
 
 ## Sprint 1.3 — Give them an invocation path
 
-- [ ] `cyberchef_analyse(tool, args)` dispatches to any registry tool.
-- [ ] Argument fidelity is the whole point: a call through the dispatcher must validate and behave
+- [x] `cyberchef_analyse(tool, args)` dispatches to any registry tool.
+- [x] Argument fidelity is the whole point: a call through the dispatcher must validate and behave
       **identically** to the direct call. Assert it for every registry tool, discovered from the
       registry rather than listed — `stdio-client-contract.test.mjs` already has the fixture table
       and the discovery that keeps it honest.
-- [ ] Errors keep their shape: `INVALID_INPUT` with the field, not a generic dispatcher error.
+- [x] Errors keep their shape: `INVALID_INPUT` with the field, not a generic dispatcher error.
 
 ## Sprint 1.4 — Take them off the index, and only now
 
-- [ ] Registry tools leave `index`. **This is the irreversible step** — do not start it until 1.2
+- [x] Registry tools leave `index`. **This is the irreversible step** — do not start it until 1.2
       and 1.3 are green, because between them and this the tools are neither listed nor reachable.
-- [ ] Re-measure all three surfaces. Update the canonical table and every live document in the same
+- [x] Re-measure all three surfaces. Update the canonical table and every live document in the same
       change; `tool-surface-figures.test.mjs` gates it against the running server.
-- [ ] Measure the dispatcher's own schema cost. `~15,905 bytes` **assumes** one dispatcher sized like
+- [x] Measure the dispatcher's own schema cost. `~15,905 bytes` **assumes** one dispatcher sized like
       an average registry tool. Assuming is what this project keeps writing findings logs about.
 
 ## Sprint 1.5 — One place to add a tool (v4.2.0)

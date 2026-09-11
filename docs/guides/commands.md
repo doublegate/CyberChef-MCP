@@ -202,11 +202,33 @@ Get current resource quota information including concurrent operations, data siz
 Tools that are not CyberChef operations. An operation is a pure `run(input, args)` over one input,
 which cannot express an *analysis* — scoring dozens of candidate key lengths, or composing several
 operations and comparing the results. `cyberchef_bake` does not help, because a recipe is a linear
-pipeline, not a loop. Four were added in v2.4.0; twelve more joined in v3.3.0, for a total of
-sixteen.
+pipeline, not a loop. Four were added in v2.4.0, twelve in v3.3.0, one each in v3.4.0, v3.8.0 and
+v3.11.0 — **nineteen** in total.
 
-These are always exposed, at every tool surface, because they are few and each replaces a separate
-command-line tool.
+### How to call one — changed in v4.1.0
+
+They are **no longer listed on the default `index` surface**, and are reached through
+**`cyberchef_analyse`** instead:
+
+```json
+{"name": "cyberchef_analyse",
+ "arguments": {"tool": "hash_identify", "arguments": {"input": "5d41402abc4b2a76b9719d911017c592"}}}
+```
+
+The `tool` name is accepted with or without the `cyberchef_` prefix. A dispatched call runs the
+same code a direct call runs, so the result is byte-identical.
+
+On `CYBERCHEF_TOOL_SURFACE=curated` or `=all` they are still listed outright and can be called
+directly by name, exactly as before. Nothing became unreachable — only the default listing changed.
+
+**Why:** nineteen of them were **30,683 of the index's 44,968 bytes, 68%** of the surface whose
+whole purpose is being small. They had to be listed because `cyberchef_describe_operation` refused
+them and pointed at `tools/list`, making the listing their only schema path. v4.1.0 removed that
+dependency: `describe_operation` now serves their schemas and `cyberchef_categories` lists them
+under `analysisTools`, so they are discoverable and describable without being pre-loaded.
+
+Each entry below gives the direct name; substitute it into `cyberchef_analyse` on the default
+surface.
 
 ### cyberchef_xor_key_length
 

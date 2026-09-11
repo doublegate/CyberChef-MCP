@@ -55,8 +55,8 @@ Grouped by what blocks what, not by number:
 
 | | Charters | Depends on |
 |---|---|---|
-| **Unblock** | `v4.1.0` surface navigation · `v4.2.0` dispatch consolidation | nothing — measured, local, ready |
-| **Build** | `v4.3.0`–`v4.5.0` the tool programme, in slices | v4.1.0 landing first |
+| **Unblock** | ~~`v4.1.0` surface navigation~~ **SHIPPED 2026-09-11** · `v4.2.0` dispatch consolidation | nothing — measured, local, ready |
+| **Build** | `v4.3.0`–`v4.5.0` the tool programme, in slices | **unblocked** — v4.1.0 landed |
 | **Watch** | `v4.6.0`–`v4.9.0` spec-dependent, and the v5 question | triggers that have **not** fired |
 
 The Watch group is deliberately the back half. Its triggers were re-measured on 2026-09-11 and none
