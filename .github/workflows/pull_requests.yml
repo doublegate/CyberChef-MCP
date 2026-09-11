@@ -9,12 +9,13 @@ jobs:
   core-test:
     runs-on: ubuntu-latest
 
-    # 24 is the declared floor in `engines`; 26 is what the published image runs. Testing
-    # only one of them leaves the other a claim rather than a fact -- see core-ci.yml.
+    # 26 is the declared floor in `engines` AND what the published image runs, since v4.0.0
+    # raised the floor from 24. One runtime, and it is the one that ships -- see core-ci.yml for
+    # why the matrix stays a matrix.
     strategy:
       fail-fast: false
       matrix:
-        node-version: ['24', '26']
+        node-version: ['26']
 
     name: core-test (node ${{ matrix.node-version }})
     steps:
@@ -102,12 +103,13 @@ jobs:
   mcp-test:
     runs-on: ubuntu-latest
 
-    # 24 is the declared floor in `engines`; 26 is what the published image runs. Testing
-    # only one of them leaves the other a claim rather than a fact -- see core-ci.yml.
+    # 26 is the declared floor in `engines` AND what the published image runs, since v4.0.0
+    # raised the floor from 24. One runtime, and it is the one that ships -- see core-ci.yml for
+    # why the matrix stays a matrix.
     strategy:
       fail-fast: false
       matrix:
-        node-version: ['24', '26']
+        node-version: ['26']
 
     name: mcp-test (node ${{ matrix.node-version }})
     steps:

@@ -41,7 +41,7 @@ This repository hosts the **Model Context Protocol (MCP) Server** adaptation of 
 - **Core Operations:** `src/core/operations/` - Individual CyberChef operation implementations
 
 ### Technology Stack
-- **Runtime:** Node.js **>=24 <27** (matches `package.json` `engines`, and upstream
+- **Runtime:** Node.js **>=26 <27** (matches `package.json` `engines`; raised from 24 in v4.0.0, and upstream
   v11.4.0's floor). Chainguard distroless, Wolfi-based, in Docker - NOT Alpine.
 - **Protocol:** Model Context Protocol (MCP) via `@modelcontextprotocol/server` +
   `@modelcontextprotocol/node` (SDK v2). Serves protocol revision **2026-07-28** and the
@@ -52,7 +52,7 @@ This repository hosts the **Model Context Protocol (MCP) Server** adaptation of 
 
 ## Critical Development Requirements
 
-### Node.js >=24 Compatibility
+### Node.js >=26 Compatibility
 - **ALWAYS** use `import ... with {type: "json"}` for JSON imports
 - **NEVER** use `assert {type: "json"}` syntax (deprecated)
 - **SlowBuffer Patches:** Dependencies `avsc` and `buffer-equal-constant-time` require patches in `Dockerfile.mcp` for Node >=24 compatibility

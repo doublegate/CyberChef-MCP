@@ -23,8 +23,8 @@ back to.
 ### Docker (recommended)
 
 ```bash
-docker pull ghcr.io/doublegate/cyberchef-mcp_v3:latest
-docker tag  ghcr.io/doublegate/cyberchef-mcp_v3:latest cyberchef-mcp
+docker pull ghcr.io/doublegate/cyberchef-mcp_v4:latest
+docker tag  ghcr.io/doublegate/cyberchef-mcp_v4:latest cyberchef-mcp
 ```
 
 Docker Hub carries the same image as `parobek/cyberchef-mcp`. The GHCR package is
@@ -35,7 +35,7 @@ Offline, from a release tarball:
 ```bash
 wget https://github.com/doublegate/CyberChef-MCP/releases/download/v3.0.0/cyberchef-mcp-v3.0.0-docker-image.tar.gz
 docker load < cyberchef-mcp-v3.0.0-docker-image.tar.gz
-docker tag ghcr.io/doublegate/cyberchef-mcp_v3:3.0.0 cyberchef-mcp
+docker tag ghcr.io/doublegate/cyberchef-mcp_v4:3.0.0 cyberchef-mcp
 ```
 
 From source:
@@ -148,9 +148,9 @@ v2.4.0, not estimated:
 
 | `CYBERCHEF_TOOL_SURFACE` | Tools in `tools/list` | Payload |
 |---|---|---|
-| **`index`** *(default)* | 43 | **45,963 bytes** |
-| `curated` | 121 | 109,209 bytes |
-| `all` | 546 | 426,367 bytes |
+| **`index`** *(default)* | 41 | **44,968 bytes** |
+| `curated` | 119 | 108,214 bytes |
+| `all` | 544 | 425,372 bytes |
 
 Bytes, measured on the serialised `tools/list` payload with `npm run measure:surfaces`, not
 estimated. Earlier versions of this table gave token figures; this repository has never contained a
@@ -159,7 +159,7 @@ tokenizer and every one of those was bytes divided by four.
 The index doubled at v3.3.0, from 28 tools and 20,297 bytes. Twelve registry tools were added, and
 a registry tool has no navigation path — `cyberchef_bake` runs recipes of *operations* — so one
 that is not listed cannot be called at all. The ratio between the three modes is what matters, and
-the index plus one operation schema is still 8.9x cheaper than `all`.
+the index plus one operation schema is still 9.1x cheaper than `all`.
 
 **Nothing becomes unreachable.** `cyberchef_bake` runs any of the 504 operations by name, and three
 navigation tools let a client find the name and its arguments:
@@ -189,7 +189,7 @@ Unlike an operation, none of them is reachable through `cyberchef_bake`: they ar
 `OperationConfig`, because each performs an analysis rather than a transformation. Hiding one
 behind a surface setting would make it unreachable rather than merely inconvenient, and listing
 must never be stricter than dispatch. That is why the index doubled in v3.3.0: the twelve new
-tools account for roughly 20 KB of the 45,963-byte payload, and there is no honest way to avoid
+tools account for roughly 20 KB of the 44,968-byte payload, and there is no honest way to avoid
 paying it.
 
 Fine-grained control:

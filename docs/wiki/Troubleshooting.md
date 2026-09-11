@@ -10,7 +10,7 @@ server with no stdin has nothing to read, so it exits at once. The client sees a
 during startup.
 
 ```bash
-docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v3:latest
+docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v4:latest
 ```
 
 ## `ERR_MODULE_NOT_FOUND` for `./index.mjs` or `OperationConfig`
@@ -25,14 +25,14 @@ npx grunt configTests
 committed — they are build output, and committing them would mean a stale copy shipping whenever
 the operation set changed.
 
-## I only see 43 tools, not 500
+## I only see 41 tools, not 500
 
-**Working as intended.** `tools/list` is an *index* by default: 43 tools and 45,963 bytes,
-rather than 546 tools and 426,367 bytes. Nothing is unreachable — `cyberchef_bake` runs any of the 504
+**Working as intended.** `tools/list` is an *index* by default: 41 tools and 44,968 bytes,
+rather than 544 tools and 425,372 bytes. Nothing is unreachable — `cyberchef_bake` runs any of the 504
 operations by name, and `cyberchef_categories` → `cyberchef_list_operations` →
 `cyberchef_describe_operation` walks down to any of them with its full argument schema.
 
-Pre-load more if you want to: `CYBERCHEF_TOOL_SURFACE=curated` (121 tools) or `=all` (all 546).
+Pre-load more if you want to: `CYBERCHEF_TOOL_SURFACE=curated` (119 tools) or `=all` (all 544).
 Full detail: **[The Tool Surface](Tool-Surface)**.
 Be careful with `all` on a local model — published measurement puts tool-selection quality falling
 off past roughly 50 tool definitions.

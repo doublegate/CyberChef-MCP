@@ -133,7 +133,7 @@ spec:
 # Docker: no network at all. stdio only -- there is no port to reach.
 docker run -i --rm --network none \
   -e CYBERCHEF_OFFLINE=true \
-  ghcr.io/doublegate/cyberchef-mcp_v3:3.0.0
+  ghcr.io/doublegate/cyberchef-mcp_v4:3.0.0
 ```
 
 Use the switch *and* the namespace control. The switch gives a clear error to the caller; the
@@ -156,8 +156,8 @@ feeding, and shipping both architectures would double a 200 MB asset for no one'
 pull from the registry on a connected machine and `docker save` it yourself:
 
 ```bash
-docker pull --platform linux/arm64 ghcr.io/doublegate/cyberchef-mcp_v3:3.0.0
-docker save ghcr.io/doublegate/cyberchef-mcp_v3:3.0.0 | gzip > cyberchef-mcp-arm64.tar.gz
+docker pull --platform linux/arm64 ghcr.io/doublegate/cyberchef-mcp_v4:3.0.0
+docker save ghcr.io/doublegate/cyberchef-mcp_v4:3.0.0 | gzip > cyberchef-mcp-arm64.tar.gz
 ```
 
 npm works offline the same way, once the version is on the registry — the tarball and the npm
@@ -176,14 +176,14 @@ the same artefact.
 
 ```bash
 # Which architectures the tag carries
-docker buildx imagetools inspect ghcr.io/doublegate/cyberchef-mcp_v3:3.0.0
+docker buildx imagetools inspect ghcr.io/doublegate/cyberchef-mcp_v4:3.0.0
 
 # That the running image is the architecture you expect
-docker image inspect ghcr.io/doublegate/cyberchef-mcp_v3:3.0.0 --format '{{.Architecture}}'
+docker image inspect ghcr.io/doublegate/cyberchef-mcp_v4:3.0.0 --format '{{.Architecture}}'
 
 # That it serves -- a LIVENESS probe, not a conformance check
 echo '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' \
-  | docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v3:3.0.0
+  | docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v4:3.0.0
 ```
 
 That one-liner works because protocol revision 2026-07-28 removed `initialize` -- the server is
@@ -197,7 +197,7 @@ For the check that actually proves usability, drive it with a client that enforc
 
 ```bash
 npx @modelcontextprotocol/inspector \
-  docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v3:3.0.0
+  docker run -i --rm ghcr.io/doublegate/cyberchef-mcp_v4:3.0.0
 ```
 
 `tests/mcp/stdio-client-contract.test.mjs` is the automated form of the same thing.

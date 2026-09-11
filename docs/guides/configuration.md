@@ -180,14 +180,10 @@ Config file: /app/cyberchef.config.json (2 settings applied, 1 overridden by env
 | `observability.metricsEnabled` | `CYBERCHEF_METRICS_ENABLED` |
 | `observability.telemetryEnabled` | `CYBERCHEF_TELEMETRY_ENABLED` |
 
-### `compatibility`
+62 settings in 14 sections.
 
-| Setting | Environment variable |
-|---|---|
-| `compatibility.suppressDeprecations` | `CYBERCHEF_SUPPRESS_DEPRECATIONS` |
-| `compatibility.v2CompatibilityMode` | `V2_COMPATIBILITY_MODE` |
-
-64 settings in 15 sections.
+The `compatibility` section -- `suppressDeprecations` and `v2CompatibilityMode` -- was **removed in
+v4.0.0** along with the deprecation system it configured.
 
 This table is generated from `src/node/lib/config-file.mjs` and asserted against it by
 `tests/mcp/config-file.test.mjs`, so a setting cannot be added without appearing here.

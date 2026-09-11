@@ -158,7 +158,7 @@ try {
  * Three things this has to get right, and a plain `<ns>/cyberchef-mcp` gets all three wrong -- it
  * fired on an npm badge, the npm package page and a Unix socket path on the first run:
  *
- *   - **GHCR is excluded** by `(?![\w-])`. That package is `cyberchef-mcp_v3`, and an underscore
+ *   - **GHCR is excluded** by `(?![\w-])`. That package is `cyberchef-mcp_v4`, and an underscore
  *     is a word character, so the name never completes.
  *   - **A deeper URL path segment is not a namespace.** The lookbehind rejects a match whose
  *     namespace is itself preceded by `/`, which is what `.../npm/v/cyberchef-mcp`,

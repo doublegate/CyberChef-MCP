@@ -41,7 +41,7 @@ This repository hosts the **Model Context Protocol (MCP) Server** adaptation of 
 - **Core Operations:** `src/core/operations/` - Individual CyberChef operation implementations
 
 ### Technology Stack
-- **Runtime:** Node.js **>=24 <27** (matches `package.json` `engines`, and upstream v11.4.0's floor).
+- **Runtime:** Node.js **>=26 <27** (matches `package.json` `engines`; the floor was raised from 24 in v4.0.0).
   Chainguard distroless, Wolfi-based, in Docker - NOT Alpine.
 - **Protocol:** Model Context Protocol (MCP) via `@modelcontextprotocol/server` +
   `@modelcontextprotocol/node` (SDK v2). Serves protocol revision **2026-07-28** and the
@@ -52,7 +52,7 @@ This repository hosts the **Model Context Protocol (MCP) Server** adaptation of 
 
 ## Critical Development Requirements
 
-### Node.js Compatibility (>=24 <27)
+### Node.js Compatibility (>=26 <27)
 - **ALWAYS** use `import ... with {type: "json"}` for JSON imports
 - **NEVER** use `assert {type: "json"}` syntax (deprecated)
 - **SlowBuffer Patches:** Dependencies `avsc` and `buffer-equal-constant-time` require patches in `Dockerfile.mcp` for modern Node compatibility
@@ -170,12 +170,12 @@ npm run mcp  # Runs server on stdin/stdout
 
 ### Import Assertion Errors
 - Cause: Using deprecated `assert {type: "json"}` syntax
-- Fix: Use `with {type: "json"}` instead (required on Node >=24)
+- Fix: Use `with {type: "json"}` instead (required on Node >=24, and the floor is now 26)
 
 ## Contributing Guidelines
 
 When reviewing or suggesting code changes:
-1. Ensure Node.js >=24 compatibility (use `with` not `assert` for JSON imports)
+1. Ensure Node.js >=26 compatibility (use `with` not `assert` for JSON imports)
 2. Follow existing code style conventions (4 space indentation, camelCase)
 3. Run `npx grunt configTests` after operation changes
 4. Test with `npm run test` and `npm run lint`

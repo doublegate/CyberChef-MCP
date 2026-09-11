@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.0] - 2026-09-11
+
+The first major since v3.0.0, cut on an **internal** trigger the plan did not have. See
+`docs/releases/v4.0.0.md`.
+
+### Removed
+
+- **`cyberchef_migration_preview` and `cyberchef_deprecation_stats`** — two tools advertised on
+  every surface to help callers migrate to **v2.0.0**, nine minors ago. The only deprecation
+  warning a normal `cyberchef_bake` call still produced was `DEP007`, a **withdrawn** code whose own
+  text read *"No action required."* Of eight DEP codes, three were withdrawn in v2.0.0 and the rest
+  described work that had shipped or been decided against — DEP005/DEP006 announced the removal of
+  positional recipe arguments, which are supported and tested. Cost: **995 bytes of every
+  `tools/list`**, plus 522 lines of source and 580 of tests.
+- **`cyberchef-migrate`** (a published `bin`) — it converts v1-format recipes to v2, and both
+  formats work identically, verified through a real client. It converted a working format into
+  another working format.
+- **`CYBERCHEF_EXPOSE_ALL_OPS`** — a documented historical alias since v2.1.0 that **silently
+  outranked** `CYBERCHEF_TOOL_SURFACE` in both directions, so a value set once and forgotten kept
+  serving every tool. Now inert, pinned by a test in both directions. Use
+  `CYBERCHEF_TOOL_SURFACE=all`.
+- **The `compatibility` configuration section** (`suppressDeprecations`, `v2CompatibilityMode`) —
+  64 settings in 15 sections becomes **62 in 14**. Configuration fails closed on unknown sections,
+  so a config file still carrying it will refuse to start with a message naming it.
+
+### Changed
+
+- **Node floor raised to `>=26 <27`.** CI has tested both ends since v2.8.1 and the image has
+  shipped Node 26 throughout.
+- **The GHCR image is renamed to `cyberchef-mcp_v4`.** v3.x stays at `_v3` and is not superseded in
+  place; Docker Hub remains the single un-suffixed `parobek/cyberchef-mcp`.
+- **Surfaces**: index `43 / 45,963` → **`41 / 44,968`**, curated `121 / 109,209` → **`119 /
+  108,214`**, all `546 / 426,367` → **`544 / 425,372`**. The round-trip multiplier **improved for
+  the first time since v3.2.0**, 8.9x → **9.1x** cheaper than `all`.
+
+### Added
+
+- **T-13, the internal trigger** in `scripts/check-v4-triggers.mjs`: a major is due when surface
+  still advertised to callers describes a migration that has completed, been withdrawn, or been
+  decided against. The only offline check there — the question is about this repository, not the
+  ecosystem. It reads none today, verified by planting the removed tool declaration and watching it
+  fire and exit 1.
+
 ## [3.11.0] - 2026-09-11
 
 ### Added

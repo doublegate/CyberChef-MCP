@@ -55,7 +55,7 @@ jobs:
         run: |
           set -o pipefail
           out=$(helm template t deploy/helm/cyberchef-mcp --set image.digest=sha256:deadbeef)
-          echo "$out" | grep -q 'image: "ghcr.io/doublegate/cyberchef-mcp_v3@sha256:deadbeef"' || {
+          echo "$out" | grep -q 'image: "ghcr.io/doublegate/cyberchef-mcp_v4@sha256:deadbeef"' || {
             echo "::error::image.digest did not win over image.tag"
             echo "$out" | grep -n 'image:' || true
             exit 1
@@ -63,7 +63,7 @@ jobs:
           # And the default must still render the TAG when no digest is set -- a template that
           # always renders a digest would pass the check above and be wrong.
           helm template t deploy/helm/cyberchef-mcp \
-            | grep -q 'image: "ghcr.io/doublegate/cyberchef-mcp_v3:' || {
+            | grep -q 'image: "ghcr.io/doublegate/cyberchef-mcp_v4:' || {
             echo "::error::default values no longer render the tag"; exit 1; }
 
       - name: helm template — optional subsystems on
