@@ -59,9 +59,39 @@ const PINNED = {
  * @returns {Promise<string>} The body.
  */
 async function fetchText(url) {
-    const response = await fetch(url, { signal: AbortSignal.timeout(30000) });
+    const response = await fetch(url, { signal: AbortSignal.timeout(30000), headers: authFor(url) });
     if (!response.ok) throw new Error(`HTTP ${response.status} from ${url}`);
     return response.text();
+}
+
+/**
+ * Headers for one request -- a GitHub token ONLY when talking to the GitHub API.
+ *
+ * Unauthenticated api.github.com allows 60 requests per hour PER IP, and Actions runners share
+ * addresses, so the schema-listing fetch would intermittently 403 on a busy pool. Since a non-ok
+ * response now throws by design (F-04), that would exit 2 and fail the monthly workflow -- loud
+ * rather than silent, which is the right direction, but still a failure caused by the check rather
+ * than by the thing it checks. Reviewer-suggested.
+ *
+ * SCOPED TO THE HOST DELIBERATELY. The token is attached only to api.github.com; the other
+ * endpoints here are modelcontextprotocol.io and the npm registry, and sending a credential to a
+ * host that does not need it is how credentials end up somewhere they were never meant to be. The
+ * check is on the parsed hostname, not a substring, because `api.github.com.example.net` contains
+ * the string.
+ *
+ * @param {string} url - The request URL.
+ * @returns {Object} Headers to send.
+ */
+function authFor(url) {
+    const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+    if (!token) return {};
+    let host;
+    try {
+        host = new URL(url).hostname;
+    } catch {
+        return {};
+    }
+    return host === "api.github.com" ? { authorization: `Bearer ${token}` } : {};
 }
 
 /**
@@ -204,7 +234,7 @@ async function run() {
         // "did not fire" is the exact silent-green this script exists to avoid. A reviewer caught
         // that the first version treated every non-ok response as absent.
         const url = `https://static.modelcontextprotocol.io/schemas/${date}/server.schema.json`;
-        const r = await fetch(url, { method: "HEAD", signal: AbortSignal.timeout(15000) });
+        const r = await fetch(url, { method: "HEAD", signal: AbortSignal.timeout(15000), headers: authFor(url) });
         if (r.ok) {
             newestSchema = date;
         } else if (r.status !== 404) {

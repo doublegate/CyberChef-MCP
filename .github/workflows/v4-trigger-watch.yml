@@ -43,6 +43,12 @@ jobs:
       # this job cannot be broken by an install, and cannot be the reason a trigger goes unnoticed.
       - name: Run the trigger watch
         id: watch
+        env:
+          # The script reads the registry's schema directory from api.github.com, where
+          # unauthenticated requests are limited to 60/hour PER IP and Actions runners share
+          # addresses. Without this the listing fetch 403s on a busy pool and the run exits 2.
+          # The script attaches this only to api.github.com; see `authFor`.
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set +e
           node scripts/check-v4-triggers.mjs | tee /tmp/triggers.txt
