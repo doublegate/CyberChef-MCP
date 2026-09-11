@@ -24,6 +24,15 @@ Once per release, as part of the RE-MEASURE pass. Not on a calendar — calendar
 | T-10 | `server.json` schema moved | a dated schema later than 2025-12-11 resolves | 2026-09-10: 2025-12-11 newest |
 | T-11 | A published, versioned MCP eval benchmark exists that this project could **consume** rather than build | search npm and the SDK org; it must carry its own stability characterisation | 2026-09-10: not checked this pass — **do it next** |
 | T-12 | A model API offers reproducible sampling with a stated guarantee | provider documentation | 2026-09-10: none known |
+| **T-13** | **Accumulated removals** — surface still advertised to callers that describes a migration completed, withdrawn, or decided against | `npm run check:v4-triggers` (offline; reads `src/node/`) | 2026-09-11: **fired, and v4.0.0 was cut on it**; now none |
+
+**T-13 is the one that was missing from the whole DESIGN, not just from this file.** T-1 to T-12
+are every one of them external events: a specification revision, an SEP going final, a package
+version moving. So a major could only ever be forced by somebody else — and while the project
+waited, deprecated surface accumulated with no mechanism able to remove it, because removal is
+breaking and breaking requires a major. v4.0.0 was cut on T-13 in September 2026, retiring the
+v2.0.0 migration tooling that had been advertised on every surface for nine minors. A major is not
+only a response to someone else's break; it is also how a project retires its own past.
 
 **T-11 and T-12 were missing from the first version of this file**, which is worth recording rather
 than quietly fixing. `../v3/task-level-scoring.md` is the one item this project declined **with

@@ -2,10 +2,15 @@
 /**
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
- * The v4.0.0 trigger watch, executed rather than remembered.
+ * The next-major trigger watch, executed rather than remembered.
  *
- * WHY THIS EXISTS. `docs/planning/v4/v4.0.0-plan.md` concludes that v4.0.0 must not be cut, because
- * none of its triggers has fired. That conclusion has an expiry date nobody can see: the thing
+ * THE NAME IS HISTORICAL. It was written to watch v4.0.0's triggers; v4.0.0 shipped, and the
+ * question it answers -- "is a major due yet?" -- did not go with it. The filename and the
+ * `check:v4-triggers` script name are kept so the workflow, the to-do and three documents do not
+ * have to move for a rename; every message below talks about "the next major".
+ *
+ * WHY THIS EXISTS. `docs/planning/v4/v4.0.0-plan.md` concluded that v4.0.0 must not be cut, because
+ * none of its triggers had fired. That conclusion has an expiry date nobody can see: the thing
  * blocking v4.0.0 is not effort, it is NOTICING. `to-dos/00-PHASE-0-TRIGGER-WATCH.md` lists twelve
  * checks and says to run them once per release, by hand -- and two of the twelve (T-11, T-12) were
  * missing from that file until the day after it was written, which is the failure mode exactly.
@@ -21,6 +26,12 @@
  * @author DoubleGate
  * @license GPL-3.0-or-later
  */
+
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 /**
  * Documentation URLs, in their MARKDOWN form.
@@ -243,6 +254,65 @@ async function run() {
     }
     record("T-10", `a server.json schema newer than ${CURRENT_SCHEMA}`,
         newestSchema !== CURRENT_SCHEMA, `newest resolving schema: ${newestSchema}`);
+
+    // The internal trigger. Last, and offline: it asks about this repository rather than the
+    // ecosystem, and it must run even if every network check above has already answered.
+    checkAccumulatedRemovals();
+}
+
+/**
+ * T-13 -- accumulated removals. The INTERNAL trigger, and the reason v4.0.0 exists.
+ *
+ * WHY THIS IS HERE. Every other trigger in this file is an external specification event, so under
+ * the original plan a major could only ever be forced by someone else. Three consequences, all of
+ * which happened: v4.0.0 waited on something that might never arrive, deprecated surface piled up
+ * with no mechanism able to remove it, and the version number stopped carrying information. By
+ * v3.11.0 the only deprecation warning a normal `cyberchef_bake` call produced was DEP007 -- a
+ * WITHDRAWN code whose own text read "No action required" -- and the two migration tools it
+ * belonged to cost 995 bytes of EVERY `tools/list`. See `docs/internal/v4.0.0-findings-log.md`, F-01.
+ *
+ * WHAT IT MEASURES. Surface that is still advertised to callers while describing a migration that
+ * is finished, withdrawn, or decided against. Offline and file-based, unlike its neighbours: the
+ * question is about this repository, not about the ecosystem.
+ *
+ * IT MUST BE ABLE TO FAIL, and it reads zero today only because v4.0.0 removed what it counts --
+ * verified by planting a marker and watching it fire, not by trusting the zero.
+ */
+function checkAccumulatedRemovals() {
+    const sources = [
+        "src/node/mcp-server.mjs",
+        "src/node/lib/config-file.mjs",
+        "src/node/lib/tool-surface.mjs"
+    ];
+    // Markers that mean "still shipped, still described as on its way out". Deliberately narrow:
+    // a comment explaining why something WAS removed is history and must not fire, which is why
+    // these match declarations and descriptions rather than prose.
+    const markers = [
+        /description:\s*"[^"]*\b(deprecat|legacy|migration|v2\.0\.0 compatibility)/i,
+        /name:\s*"cyberchef_[a-z_]*(deprecat|migration)[a-z_]*"/i,
+        /^\s*(suppressDeprecations|v2CompatibilityMode)\s*:/m
+    ];
+
+    const hits = [];
+    for (const file of sources) {
+        let text;
+        try {
+            text = readFileSync(resolve(ROOT, file), "utf8");
+        } catch {
+            // A source file this check names must exist. Missing means the layout moved and the
+            // check has quietly stopped checking -- the failure mode this whole file is about.
+            throw new Error(`T-13 cannot read ${file}; the layout moved and this check is now blind`);
+        }
+        for (const marker of markers) {
+            for (const m of text.matchAll(new RegExp(marker.source, marker.flags.includes("g") ? marker.flags : marker.flags + "g"))) {
+                hits.push(`${file}: ${m[0].slice(0, 60).replace(/\s+/g, " ")}`);
+            }
+        }
+    }
+
+    record("T-13", "deprecated surface still advertised to callers",
+        hits.length > 0,
+        hits.length === 0 ? "none" : `${hits.length}: ${hits[0]}`);
 }
 
 try {
@@ -265,7 +335,7 @@ for (const r of results) {
 }
 
 if (fired.length === 0) {
-    process.stdout.write("\nNothing fired. v4.0.0 stays unscheduled; ship the next minor.\n" +
+    process.stdout.write("\nNothing fired. No major is due; ship the next minor.\n" +
         "Checks not covered here are in docs/planning/v4/to-dos/00-PHASE-0-TRIGGER-WATCH.md --\n" +
         "T-3 to T-7 track individual SEPs and T-11/T-12 need judgement, so they stay manual.\n");
     process.exit(0);
