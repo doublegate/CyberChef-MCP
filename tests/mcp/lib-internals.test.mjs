@@ -643,6 +643,12 @@ describe("tool-catalog: degenerate inputs", () => {
             const entry = res.operations[0];
             expect(entry.error, asked).toBeUndefined();
             expect(entry.kind, asked).toBe("analysis_tool");
+            // ECHOES the requested spelling, so a caller can correlate the response with its
+            // request by this field whichever form it used. Both usable names are returned
+            // separately, because the two routes want different ones.
+            expect(entry.operation, asked).toBe(asked);
+            expect(entry.tool, asked).toBe("vigenere_break");
+            expect(entry.exposedName, asked).toBe("cyberchef_vigenere_break");
             expect(entry.inputSchema, asked).toEqual(descriptor.inputSchema);
             // Both routes, because both work and they are not interchangeable: a caller on the
             // default `index` surface can ONLY reach it through the dispatcher.

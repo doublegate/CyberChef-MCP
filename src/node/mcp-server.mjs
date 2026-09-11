@@ -872,8 +872,12 @@ const handleListTools = async () => {
     // and `curated`/`all` still list them outright for callers who want schemas up front.
     // `index-growth.test.mjs` asserts both directions, because a gate that only checked the
     // removal could be satisfied by deleting the tools.
+    // Empty on `index`; the full registry on `curated` and `all`. Named rather than inlined as a
+    // ternary in the `for` header, where the condition that decides the whole behaviour of this
+    // block was the easiest part of it to miss.
+    const listedRegistryTools = surfaceMode() === "index" ? [] : toolRegistry.list();
     const registryTools = [];
-    for (const tool of surfaceMode() === "index" ? [] : toolRegistry.list()) {
+    for (const tool of listedRegistryTools) {
         registryTools.push({
             name: ToolRegistry.exposedName(tool.name),
             description: tool.description,

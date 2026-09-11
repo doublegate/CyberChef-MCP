@@ -318,7 +318,17 @@ export function describeOperations(operations, argNameFor, registryLookup) {
                 // even for a caller on `curated` or `all`, because it returns one tool's schema
                 // instead of requiring a re-read of the whole list.
                 return {
-                    operation: exposed,
+                    // ECHO WHAT WAS ASKED, not the normalised form. A caller that requested
+                    // `pqc_identify` and got back `cyberchef_pqc_identify` cannot match the
+                    // response to its request by this field -- and the error shape this replaced
+                    // did preserve it, so normalising here would have been a silent regression in
+                    // correlation for the one call whose whole job is answering "what is this?".
+                    // Reviewer-found.
+                    operation: name,
+                    // Both usable forms, explicitly, since the two routes want different ones:
+                    // `cyberchef_analyse` takes the bare name, a direct call takes the exposed one.
+                    tool: registryTool.name,
+                    exposedName: exposed,
                     kind: "analysis_tool",
                     description: registryTool.description,
                     inputSchema: registryTool.inputSchema,
