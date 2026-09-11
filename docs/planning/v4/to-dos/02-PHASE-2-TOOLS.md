@@ -19,6 +19,15 @@ Charters: [`v4.3.0`](../charters/v4.3.0.md) (statistics across inputs),
 - [ ] Re-run the three-gap bar against each candidate **in writing**, before code. The bar is: a
       loop with a decision inside it; a statistic computed across inputs; a primitive upstream
       lacks. Anything expressible as `run(input, args)` over one input is an upstream operation.
+- [ ] **Any borrowed or ported algorithm is recorded in `THIRD-PARTY-NOTICES.md` in the same
+      change** — the mechanism already exists and is gated by `registry-tool-docs.test.mjs`. The
+      entry names the work, its copyright holder, its SPDX identifier and its source URL, matching
+      the table format already in that file. Ported code additionally carries, **at the port site**,
+      an `SPDX-License-Identifier` and a provenance comment naming the source project, the file and
+      the **commit** it came from: "derived from the published method" and "copied from this
+      function" are different acts with different obligations, and six months later nothing in the
+      tree distinguishes them unless the port said so at the time. Choosing a permissively licensed
+      reference (Sprint 2.2) settles *whether* a port is allowed; this settles what the port owes.
 
 ## Sprint 2.1 — Verify what is already there, because three candidates died that way
 
@@ -78,6 +87,7 @@ In confidence order, each shipping with its refusals tested as carefully as its 
 index            unchanged by every tool added -- the Phase 1 claim, re-proven each time
 every tool       three-gap bar argued in writing before code
 every tool       refusals tested as carefully as answers
+borrowed code    recorded in THIRD-PARTY-NOTICES.md, SPDX + provenance at the port site
 magic            has a published accuracy figure and a gate that can fail
 image size       re-measured; 453 MB today
 ```
