@@ -30,6 +30,7 @@
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { spawn } from "node:child_process";
+import { generateKeyPairSync } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
@@ -40,6 +41,18 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const SERVER = resolve(HERE, "../../src/node/mcp-server.mjs");
 const CERT_LEAF = readFileSync(resolve(HERE, "fixtures/cert-leaf.pem"), "utf8");
 const CERT_INTER = readFileSync(resolve(HERE, "fixtures/cert-inter.pem"), "utf8");
+
+/**
+ * A real ML-DSA-44 public key, produced by `node:crypto` here rather than committed as a fixture.
+ *
+ * The table below says payloads are written out rather than generated, and this does not
+ * contradict it: that rule is about a payload derived from the tool's own SCHEMA, which satisfies
+ * the schema by construction and therefore tests nothing. This is the opposite -- a real artefact
+ * from an independent implementation of FIPS 204, which is what the DER path has to parse in the
+ * field. A 1,312-byte key inlined as base64 would be the same bytes, frozen, and unreadable.
+ */
+const ML_DSA_44_PUBLIC = generateKeyPairSync("ml-dsa-44")
+    .publicKey.export({ type: "spki", format: "pem" });
 
 // Booting the real server loads a 500-tool schema build, so this is generous on purpose: a
 // timeout here should mean "broken", not "busy CI runner".
@@ -211,6 +224,11 @@ describe("stdio contract, via the official MCP client", () => {
         "cyberchef_hash_statistics": [{ input: "a:5f4dcc3b5aa765d61d8327deb882cf99\nb:5f4dcc3b5aa765d61d8327deb882cf99" }, r => expect(r.entries).toBe(2)],
         "cyberchef_jwt_weakness": [{ token: "eyJhbGciOiJub25lIn0.eyJzdWIiOiJhIn0." }, r => expect(r.findings.length).toBeGreaterThan(0)],
         "cyberchef_plaintext_check": [{ input: "The quick brown fox jumps over the lazy dog." }, r => expect(r.verdict).toBe("plaintext")],
+        // The OID path, which is the one that can answer `definite`. The byte-length path is
+        // covered in pqc-identify.test.mjs; what a real client adds here is that a 1,312-byte
+        // PEM survives the schema and the transport intact.
+        "cyberchef_pqc_identify": [{ input: ML_DSA_44_PUBLIC },
+                                   r => expect(r).toMatchObject({ algorithm: "ML-DSA-44", confidence: "definite", standard: "FIPS 204" })],
         "cyberchef_rsa_attack": [{ modulus: "32416190071", "public_exponent": "65537" }, r => expect(r.attempted.length).toBeGreaterThan(0)],
         "cyberchef_rsa_multi_key": [{ keys: [{ modulus: "32416190071" }, { modulus: "1000003" }] }, r => expect(r.keys_examined).toBe(2)],
         "cyberchef_substitution_break": [{ input: "GUR DHVPX OEBJA SBK WHZCF BIRE GUR YNML QBT NAQ GURA EHAF NJNL SEBZ GUR SNEZ", restarts: 5, seed: 1 }, r => expect(r.mapping.plain_alphabet).toHaveLength(26)],
