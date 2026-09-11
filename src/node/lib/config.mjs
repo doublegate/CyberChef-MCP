@@ -54,5 +54,3 @@ export const CACHE_ENABLED = process.env.CYBERCHEF_CACHE_ENABLED !== "false"; //
 // jsonwebtoken behind it. tenancy.mjs re-exports it, so there is still one definition and one
 // obvious place to import it from.
 export const DEFAULT_TENANT = "default";
-export const V2_COMPATIBILITY_MODE = process.env.V2_COMPATIBILITY_MODE === "true"; // Disabled by default
-export const SUPPRESS_DEPRECATIONS = process.env.CYBERCHEF_SUPPRESS_DEPRECATIONS === "true"; // Disabled by default

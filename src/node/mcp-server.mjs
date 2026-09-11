@@ -263,23 +263,6 @@ import {
 // New v1.6.0 imports
 import { recipeManager } from "./recipe-manager.mjs";
 
-// v1.8.0 imports - Deprecation Warning System
-import {
-    emitDeprecation,
-    emitToolNamingDeprecation,
-    emitMetaToolDeprecation,
-    emitRecipeFormatDeprecation,
-    getDeprecationStats,
-    resetDeprecations,
-    analyzeRecipeCompatibility,
-    transformRecipeToV2,
-    getToolName,
-    stripToolPrefix,
-    isV2CompatibilityMode,
-    areSuppressed,
-    DEPRECATION_CODES
-} from "./deprecation.mjs";
-
 // Extracted subsystems. These were inline classes and helpers in this file until the
 // v2.0.0 decomposition. Behaviour is unchanged, and they are re-exported unchanged at
 // the bottom of this file so the existing test surface keeps working untouched.
@@ -287,7 +270,7 @@ import {
     VERSION, MAX_INPUT_SIZE, OPERATION_TIMEOUT, STREAMING_THRESHOLD, ENABLE_STREAMING,
     ENABLE_WORKERS, CACHE_MAX_SIZE, CACHE_MAX_ITEMS, BATCH_MAX_SIZE, BATCH_ENABLED,
     TELEMETRY_ENABLED, RATE_LIMIT_ENABLED, RATE_LIMIT_REQUESTS, RATE_LIMIT_WINDOW,
-    CACHE_ENABLED, V2_COMPATIBILITY_MODE, SUPPRESS_DEPRECATIONS
+    CACHE_ENABLED
 } from "./lib/config.mjs";
 import { LRUCache } from "./lib/cache.mjs";
 import { MemoryMonitor } from "./lib/memory.mjs";
@@ -622,20 +605,6 @@ const META_TOOLS = [
     {
         name: "cyberchef_quota_info",
         description: "Get current resource quota information including concurrent operations and data sizes.",
-        inputSchema: toInputSchema(z.object({}))
-    },
-    // v1.8.0 tools - Breaking Changes Preparation
-    {
-        name: "cyberchef_migration_preview",
-        description: "Analyze recipes and configurations for v2.0.0 compatibility. Returns compatibility issues and optionally transforms recipes to v2.0.0 format.",
-        inputSchema: toInputSchema(z.object({
-            recipe: z.any().describe("Recipe object or array to analyze"),
-            mode: z.enum(["analyze", "transform"]).default("analyze").describe("analyze: check compatibility, transform: convert to v2.0.0 format")
-        }))
-    },
-    {
-        name: "cyberchef_deprecation_stats",
-        description: "Get statistics on deprecated API usage in current session. Shows which deprecation warnings have been triggered and v2.0.0 preparation status.",
         inputSchema: toInputSchema(z.object({}))
     },
     // v1.9.0 tools - Worker Thread Pool
@@ -1037,14 +1006,6 @@ const handleCallToolInner = async (request, extra, ownerServer = server) => {
 
         // Handle meta-tools
         if (name === "cyberchef_bake") {
-            // Emit deprecation warnings for v2.0.0 (meta-tool rename)
-            emitMetaToolDeprecation(name);
-
-            // Check recipe format and emit warning if using legacy format
-            if (args.recipe) {
-                emitRecipeFormatDeprecation(args.recipe);
-            }
-
             // Validate input size
             validateInputSize(args.input);
 
@@ -1064,9 +1025,6 @@ const handleCallToolInner = async (request, extra, ownerServer = server) => {
         }
 
         if (name === "cyberchef_search") {
-            // Emit deprecation warning for v2.0.0 (meta-tool rename)
-            emitMetaToolDeprecation(name);
-
             // CHANGED IN v3.2.0: summarised by default, full entries behind `detailed`.
             //
             // This returned raw `help()` output -- the whole `OperationConfig` entry per match,
@@ -1354,42 +1312,6 @@ const handleCallToolInner = async (request, extra, ownerServer = server) => {
                 rateLimit: rateLimitStats
             };
             const output = JSON.stringify(combined, null, 2);
-            logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
-
-            return {
-                content: [{ type: "text", text: output }]
-            };
-        }
-
-        // Handle v1.8.0 tools
-        if (name === "cyberchef_migration_preview") {
-            const mode = args.mode || "analyze";
-            let result;
-
-            if (mode === "analyze") {
-                result = analyzeRecipeCompatibility(args.recipe);
-            } else if (mode === "transform") {
-                const analysis = analyzeRecipeCompatibility(args.recipe);
-                const transformed = transformRecipeToV2(args.recipe);
-                result = {
-                    ...analysis,
-                    transformed
-                };
-            } else {
-                throw createInputError(`Invalid mode: ${mode}. Must be "analyze" or "transform"`, { mode });
-            }
-
-            const output = JSON.stringify(result, null, 2);
-            logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
-
-            return {
-                content: [{ type: "text", text: output }]
-            };
-        }
-
-        if (name === "cyberchef_deprecation_stats") {
-            const stats = getDeprecationStats();
-            const output = JSON.stringify(stats, null, 2);
             logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
 
             return {
@@ -1970,8 +1892,6 @@ async function runServer() {
         cacheEnabled: CACHE_ENABLED,
         maxConcurrentOps: quotaTracker.maxConcurrentOps,
         // v1.8.0 configuration
-        v2CompatibilityMode: V2_COMPATIBILITY_MODE,
-        suppressDeprecations: SUPPRESS_DEPRECATIONS
     });
 
     // Also output to stderr for compatibility (can be disabled with LOG_LEVEL=error)
@@ -1991,8 +1911,6 @@ async function runServer() {
     logger.info(`Max concurrent ops: ${quotaTracker.maxConcurrentOps}`);
     logger.info(`Log level: ${process.env.LOG_LEVEL || "info"}`);
     // v1.8.0 configuration
-    logger.info(`V2 compatibility mode: ${V2_COMPATIBILITY_MODE ? "enabled" : "disabled"}`);
-    logger.info(`Deprecation warnings: ${SUPPRESS_DEPRECATIONS ? "suppressed" : "enabled"}`);
     // Which settings came from a file, and which the environment overrode. Reported because the
     // defect this replaced was a configuration file being applied to nothing with no way to tell:
     // "it loaded" has to be visible, and so does "your file said X and the environment said Y".
@@ -2105,23 +2023,6 @@ export {
     rateLimiter,
     quotaTracker,
     batchProcessor,
-    // v1.8.0 exports
-    V2_COMPATIBILITY_MODE,
-    SUPPRESS_DEPRECATIONS,
-    // Re-export deprecation functions for testing
-    emitDeprecation,
-    emitToolNamingDeprecation,
-    emitMetaToolDeprecation,
-    emitRecipeFormatDeprecation,
-    getDeprecationStats,
-    resetDeprecations,
-    analyzeRecipeCompatibility,
-    transformRecipeToV2,
-    getToolName,
-    stripToolPrefix,
-    isV2CompatibilityMode,
-    areSuppressed,
-    DEPRECATION_CODES,
     // v1.9.0 exports - re-export worker pool functions
     initWorkerPool,
     shouldUseWorker,

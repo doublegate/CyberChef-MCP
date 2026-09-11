@@ -126,12 +126,12 @@ const CURATED_SET = new Set(CURATED_OPERATIONS);
  *   server from starting, and the startup log states which surface is actually in force.
  */
 export function surfaceMode() {
-    // CYBERCHEF_EXPOSE_ALL_OPS is honoured in both directions, because the v2.0.0 planning
-    // documents named it as the way to get every operation and someone may already have set it.
-    const legacy = process.env.CYBERCHEF_EXPOSE_ALL_OPS;
-    if (legacy === "true") return "all";
-    if (legacy === "false") return "curated";
-
+    // CYBERCHEF_EXPOSE_ALL_OPS was honoured here in both directions from v2.1.0 to v3.11.0,
+    // because the v2.0.0 planning documents named it as the way to expose every operation. It is
+    // REMOVED in v4.0.0: it was documented as a historical alias for three years, it is the kind
+    // of setting that is set once and forgotten, and a silent alias for the single most expensive
+    // configuration change this server has is worth being explicit about. Use
+    // CYBERCHEF_TOOL_SURFACE=all.
     const mode = process.env.CYBERCHEF_TOOL_SURFACE;
     return ["all", "curated", "index"].includes(mode) ? mode : "index";
 }
@@ -196,7 +196,7 @@ export function describeSurface(exposed, total) {
     // BYTES, not tokens. This line read "~86k tokens per tools/list" from the release that
     // introduced the index until v3.8.0, and was wrong in both dimensions: no tokenizer has
     // ever been in this repository, so the figure was bytes/4 wearing a token label -- and
-    // the payload has since grown to 426,367 bytes (~107k under that same convention), so
+    // the payload has since grown to 425,372 bytes (~107k under that same convention), so
     // even the disguised number had drifted by a fifth. Re-measure with
     // `npm run measure:surfaces` rather than editing this by eye.
     return `tool surface: all (${exposed}/${total} operations; ~416 KB per tools/list)`;

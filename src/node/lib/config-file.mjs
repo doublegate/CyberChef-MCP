@@ -159,10 +159,6 @@ const SETTINGS = Object.freeze({
     observability: {
         metricsEnabled: "CYBERCHEF_METRICS_ENABLED",
         telemetryEnabled: "CYBERCHEF_TELEMETRY_ENABLED"
-    },
-    compatibility: {
-        suppressDeprecations: "CYBERCHEF_SUPPRESS_DEPRECATIONS",
-        v2CompatibilityMode: "V2_COMPATIBILITY_MODE"
     }
 });
 

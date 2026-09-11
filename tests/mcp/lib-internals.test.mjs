@@ -184,18 +184,26 @@ describe("tool-surface: which operations become tools", () => {
         }
     });
 
-    it("honours the legacy CYBERCHEF_EXPOSE_ALL_OPS in both directions", () => {
+    it("IGNORES the removed CYBERCHEF_EXPOSE_ALL_OPS, in both directions", () => {
+        // REMOVED IN v4.0.0, and this is the tripwire rather than an absence of tests.
+        // From v2.1.0 to v3.11.0 this variable silently outranked CYBERCHEF_TOOL_SURFACE, so
+        // setting it to "true" three years ago and forgetting still served all 546 tools. A
+        // silent alias for the single most expensive configuration change this server has is
+        // worth being explicit about; `CYBERCHEF_TOOL_SURFACE=all` says the same thing out loud.
+        //
+        // It must be INERT, not merely unsupported: an alias that half-works is worse than one
+        // that is gone, so both directions are pinned.
         process.env.CYBERCHEF_EXPOSE_ALL_OPS = "true";
-        expect(surfaceMode()).toBe("all");
+        expect(surfaceMode()).toBe("index");
 
         process.env.CYBERCHEF_EXPOSE_ALL_OPS = "false";
-        expect(surfaceMode()).toBe("curated");
+        expect(surfaceMode()).toBe("index");
     });
 
-    it("lets the legacy variable win over the new one, since it is the more explicit ask", () => {
+    it("lets CYBERCHEF_TOOL_SURFACE decide, with the removed variable set alongside it", () => {
         process.env.CYBERCHEF_EXPOSE_ALL_OPS = "true";
-        process.env.CYBERCHEF_TOOL_SURFACE = "index";
-        expect(surfaceMode()).toBe("all");
+        process.env.CYBERCHEF_TOOL_SURFACE = "curated";
+        expect(surfaceMode()).toBe("curated");
     });
 
     it("exposes Magic in every surface, including index", () => {

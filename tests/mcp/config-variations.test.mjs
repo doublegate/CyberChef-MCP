@@ -27,8 +27,6 @@ import {
     RATE_LIMIT_REQUESTS,
     RATE_LIMIT_WINDOW,
     CACHE_ENABLED,
-    V2_COMPATIBILITY_MODE,
-    SUPPRESS_DEPRECATIONS,
     LRUCache,
     TelemetryCollector,
     RateLimiter,
@@ -76,13 +74,6 @@ describe("Configuration Variations", () => {
             expect(RATE_LIMIT_ENABLED).toBe(false);
         });
 
-        it("should have V2 compatibility mode disabled by default", () => {
-            expect(V2_COMPATIBILITY_MODE).toBe(false);
-        });
-
-        it("should have deprecation warnings enabled by default", () => {
-            expect(SUPPRESS_DEPRECATIONS).toBe(false);
-        });
     });
 
     describe("Cache Configuration", () => {

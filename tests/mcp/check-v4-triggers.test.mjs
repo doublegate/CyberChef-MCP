@@ -20,6 +20,8 @@
 
 import { describe, it, expect } from "vitest";
 import { spawnSync } from "node:child_process";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, resolve, join } from "node:path";
 
@@ -73,8 +75,14 @@ function runWith(overrides = {}) {
             throw new Error("unexpected fetch in test: " + u);
         };
     `;
+    // `scriptUrl` lets a test drive a COPY of the script over a copy of the tree. T-13 reads
+    // `src/node/` relative to the script, and mutating the real files to make it fire would race
+    // every other test file: vitest runs files in PARALLEL, and `tool-surface-figures` spawns a
+    // real server from `src/node/mcp-server.mjs`. The first version of that test did exactly this
+    // and made the surface gate fail intermittently with a tool count one too high.
+    const scriptUrl = overrides.scriptUrl ?? SCRIPT_URL;
     const r = spawnSync(process.execPath,
-        ["--input-type=module", "-e", `${preload}\nawait import(${JSON.stringify(SCRIPT_URL)});`],
+        ["--input-type=module", "-e", `${preload}\nawait import(${JSON.stringify(scriptUrl)});`],
         { cwd: ROOT, encoding: "utf8", timeout: 60000 });
     return { status: r.status ?? 1, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
 }
@@ -165,6 +173,51 @@ describe("check-v4-triggers", () => {
         const r = runWith({ changelog: "<html id=\"__next_error__\"></html>" });
         expect(r.stderr).toContain("could not complete");
         expect(r.status).toBe(2);
+    });
+
+    it("reports T-13 as clear, and reads it from the real tree rather than a fixture", () => {
+        // T-13 is the INTERNAL trigger added in v4.0.0, and the only one here that is offline:
+        // it asks whether this repository still advertises deprecated surface. There is no stub
+        // for it because there is nothing to stub -- it reads `src/node/`.
+        const r = runWith();
+        expect(r.stdout).toMatch(/T-13\s+deprecated surface still advertised to callers\s+none/);
+        expect(r.status).toBe(0);
+    });
+
+    it("T-13 fires when a migration tool is advertised again", () => {
+        // The gate must be able to fail, and a zero that cannot become a one is not a measurement.
+        // Verified against the real defect -- the tool declaration v4.0.0 removed, put back -- on
+        // an isolated COPY of the tree. The real files are never touched: vitest runs test files
+        // in parallel and `tool-surface-figures` boots a server from `src/node/mcp-server.mjs`,
+        // so planting there raced it and produced a tool count one too high. Found by doing it.
+        const dir = mkdtempSync(join(tmpdir(), "cyberchef-t13-"));
+        try {
+            mkdirSync(join(dir, "scripts"), { recursive: true });
+            mkdirSync(join(dir, "src/node/lib"), { recursive: true });
+            copyFileSync(SCRIPT, join(dir, "scripts/check-v4-triggers.mjs"));
+            for (const rel of ["src/node/lib/config-file.mjs", "src/node/lib/tool-surface.mjs"]) {
+                copyFileSync(join(ROOT, rel), join(dir, rel));
+            }
+
+            const original = readFileSync(join(ROOT, "src/node/mcp-server.mjs"), "utf8");
+            const anchor = `    {\n        name: "cyberchef_worker_stats",`;
+            expect(original, "the anchor this test plants against has moved").toContain(anchor);
+            const planted = original.replace(anchor, [
+                `    {`,
+                `        name: "cyberchef_migration_preview",`,
+                `        description: "Analyze recipes for v2.0.0 compatibility. Deprecated migration helper.",`,
+                `        inputSchema: toInputSchema(z.object({}))`,
+                `    },`,
+                anchor
+            ].join("\n"));
+            writeFileSync(join(dir, "src/node/mcp-server.mjs"), planted);
+
+            const r = runWith({ scriptUrl: pathToFileURL(join(dir, "scripts/check-v4-triggers.mjs")).href });
+            expect(r.stdout).toMatch(/FIRED\s+T-13/);
+            expect(r.status).toBe(1);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
     });
 
     it("exits 2 when the schema listing comes back empty", () => {
