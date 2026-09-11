@@ -76,6 +76,16 @@ per release, because "nothing moved" is true of the *protocol* and false of the 
   the official registry; a second metadata surface would need a reason, and the reason should be
   written down before it is adopted rather than after.
 
+## Standing items that are not triggers
+
+- **`punkpeye/awesome-mcp-servers` PR #14200** (submitted 2026-09-11). Check whether it merged. If
+  the list turns out to be effectively unmaintained, say so in the plan and stop spending on it —
+  the 44-to-19 star gap would then be a historical artefact rather than something a PR fixes.
+- **The registry publish approval gate.** `mcp-registry-publish` needs a manual approval and has
+  stranded a publish **three times** — v3.9.0, v3.10.0 and v3.11.0, the last for 2.5 hours, which
+  left v3.11.0 unlisted until someone noticed. Either drop the environment protection or name the
+  approval explicitly in the release checklist. It is not a trigger; it is a recurring foot-gun.
+
 ## The UPSTREAM watch, which is a different question
 
 T-1 to T-13 watch the protocol and this project. Upstream CyberChef moves on its own schedule and
