@@ -157,9 +157,15 @@ jobs:
 
           # The sibling run for THIS tag. Empty is not fatal: it may simply not have registered yet,
           # and the npm poll below is still the authority on whether the artefact exists.
+          # By COMMIT, not by branch. A reviewer argued `--branch` returns nothing for a tag push
+          # because `head_branch` is null there -- which is FALSE in this repository, checked
+          # against the v3.9.0 runs, where `head_branch` is `v3.9.0` and the branch filter finds
+          # both. The switch is made anyway because the reasoning was wrong but the suggestion is
+          # better: a SHA cannot be ambiguous between a tag and a branch of the same name, and it
+          # pins to the commit this job is actually publishing rather than to a ref that could move.
           sibling_state() {
             gh run list --repo "$GITHUB_REPOSITORY" --workflow mcp-release.yml \
-              --branch "$GITHUB_REF_NAME" --limit 1 \
+              --commit "$GITHUB_SHA" --limit 1 \
               --json status,conclusion --jq '.[0] | "\(.status)/\(.conclusion // "-")"' 2>/dev/null || echo ""
           }
 

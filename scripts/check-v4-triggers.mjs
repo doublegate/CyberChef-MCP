@@ -89,6 +89,46 @@ function record(id, what, fired, detail) {
     results.push({ id, what, fired, detail });
 }
 
+/**
+ * Is `candidate` strictly newer than `pinned` under semantic-version ordering?
+ *
+ * `!==` is not the same question, and a reviewer was right to say so: it fires on a ROLLBACK too,
+ * so a yanked `2.0.0` republished as `1.9.0` would read as "the SDK moved past 2.0.0" and send
+ * someone to run the RE-MEASURE ritual over a regression. Prerelease tags are compared as strings
+ * after the numeric core, which is enough for `0.2.0-alpha.11` versus `0.2.0-alpha.9` -- the only
+ * prerelease line this project tracks -- and is deliberately not a full SemVer implementation.
+ *
+ * @param {string} candidate - The version seen now.
+ * @param {string} pinned - The version this release was built against.
+ * @returns {boolean} True when candidate is strictly newer.
+ */
+function isNewer(candidate, pinned) {
+    const parse = v => {
+        const m = /^(\d+)\.(\d+)\.(\d+)(?:-(.+))?$/.exec(v.trim());
+        if (!m) throw new Error(`cannot parse version ${JSON.stringify(v)}`);
+        return { core: [Number(m[1]), Number(m[2]), Number(m[3])], pre: m[4] ?? null };
+    };
+    const a = parse(candidate), b = parse(pinned);
+    for (let i = 0; i < 3; i++) {
+        if (a.core[i] !== b.core[i]) return a.core[i] > b.core[i];
+    }
+    // Same core: a release outranks a prerelease; two prereleases compare numerically per segment.
+    if (a.pre === null && b.pre === null) return false;
+    if (a.pre === null) return true;
+    if (b.pre === null) return false;
+    const as = a.pre.split("."), bs = b.pre.split(".");
+    for (let i = 0; i < Math.max(as.length, bs.length); i++) {
+        const x = as[i], y = bs[i];
+        if (x === y) continue;
+        if (x === undefined) return false;
+        if (y === undefined) return true;
+        const nx = Number(x), ny = Number(y);
+        if (Number.isInteger(nx) && Number.isInteger(ny)) return nx > ny;
+        return x > y;
+    }
+    return false;
+}
+
 /** @returns {Promise<void>} Runs every check, recording rather than throwing. */
 async function run() {
     // T-1 / T-2 -- the specification itself. The single most important pair: everything else is a
@@ -126,23 +166,50 @@ async function run() {
         const tags = await distTags(name);
         const newest = name.endsWith("conformance") ? (tags.alpha ?? tags.latest) : tags.latest;
         record(name.endsWith("conformance") ? "T-9" : "T-8", `${name} moved past ${pinned}`,
-            newest !== pinned, `${name}: ${newest}`);
+            isNewer(newest, pinned), `${name}: ${newest}`);
     }
 
     // T-10 -- the registry's server.json schema. Probe forward a year; a dated schema that resolves
     // and is newer than ours is the trigger.
+    // DISCOVER the dates; do not guess them. The first version advanced `setUTCMonth` from
+    // 2025-12-11, which preserves the day of month -- so it probed the 11th of each month and
+    // nothing else. This repository already records schemas dated the **9th** and the **29th**
+    // (2025-09-29 in `check-server-json.test.mjs`), so a release on any other day would never have
+    // been queried and T-10 could stay falsely clear indefinitely. Reviewer-found, twice.
+    //
+    // The registry keeps its validators in-tree, one JSON file per dated schema, so the directory
+    // listing IS the release list.
     let newestSchema = CURRENT_SCHEMA;
-    const probes = [];
-    const base = new Date(`${CURRENT_SCHEMA}T00:00:00Z`);
-    for (let month = 1; month <= 14; month++) {
-        const d = new Date(base);
-        d.setUTCMonth(d.getUTCMonth() + month);
-        probes.push(d.toISOString().slice(0, 10));
+    const index = await fetchText(
+        "https://api.github.com/repos/modelcontextprotocol/registry/contents/internal/validators/schemas");
+    let entries;
+    try {
+        entries = JSON.parse(index);
+    } catch {
+        throw new Error("could not parse the registry's schema directory listing");
     }
-    for (const date of probes) {
-        const r = await fetch(`https://static.modelcontextprotocol.io/schemas/${date}/server.schema.json`,
-            { method: "HEAD", signal: AbortSignal.timeout(15000) });
-        if (r.ok && date > newestSchema) newestSchema = date;
+    if (!Array.isArray(entries) || entries.length === 0) {
+        throw new Error("the registry's schema directory came back empty, which cannot be right");
+    }
+    const dates = entries
+        .map(e => /^(\d{4}-\d{2}-\d{2})\.json$/.exec(e.name ?? "")?.[1])
+        .filter(Boolean);
+    if (dates.length === 0) {
+        throw new Error("found no dated schemas in the registry listing; the layout changed");
+    }
+    for (const date of dates) {
+        if (date <= newestSchema) continue;
+        // Confirm it is actually published, not merely committed. Only a 404 means ABSENT: every
+        // other unsuccessful status (429, 5xx, a network blip) is UNKNOWN, and reporting unknown as
+        // "did not fire" is the exact silent-green this script exists to avoid. A reviewer caught
+        // that the first version treated every non-ok response as absent.
+        const url = `https://static.modelcontextprotocol.io/schemas/${date}/server.schema.json`;
+        const r = await fetch(url, { method: "HEAD", signal: AbortSignal.timeout(15000) });
+        if (r.ok) {
+            newestSchema = date;
+        } else if (r.status !== 404) {
+            throw new Error(`HEAD ${url} returned ${r.status}; cannot tell whether that schema exists`);
+        }
     }
     record("T-10", `a server.json schema newer than ${CURRENT_SCHEMA}`,
         newestSchema !== CURRENT_SCHEMA, `newest resolving schema: ${newestSchema}`);
@@ -158,7 +225,10 @@ try {
 }
 
 const fired = results.filter(r => r.fired);
-const width = Math.max(...results.map(r => r.what.length));
+// `|| 0` guards the empty case: `Math.max()` of nothing is -Infinity and `padEnd` then
+// throws a RangeError, turning a reporting bug into a crash. `results` is always populated
+// today; this costs nothing and removes the sharp edge. Reviewer-suggested.
+const width = Math.max(...results.map(r => r.what.length), 0) || 0;
 process.stdout.write("\nv4.0.0 trigger watch\n\n");
 for (const r of results) {
     process.stdout.write(`  ${r.fired ? "FIRED " : "  --  "} ${r.id.padEnd(5)} ${r.what.padEnd(width)}  ${r.detail}\n`);

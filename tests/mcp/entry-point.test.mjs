@@ -22,15 +22,50 @@
  * @license GPL-3.0-or-later
  */
 
-import { describe, it, expect, beforeAll, afterEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, afterEach } from "vitest";
 import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, resolve, join } from "node:path";
 import { mkdtempSync, symlinkSync, readFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const SERVER = join(ROOT, "src/node/mcp-server.mjs");
+
+/**
+ * `SERVER` as a `file://` URL, for dynamic import.
+ *
+ * `await import("C:\\path\\to\\file.mjs")` throws `ERR_UNSUPPORTED_ESM_URL_SCHEME` on Windows --
+ * a bare absolute path is not a valid specifier there, and the drive letter reads as a scheme.
+ * Reviewer-found. This repository has no Windows runner today, which is exactly why it would have
+ * gone unnoticed. `spawn` takes the plain path; only `import` needs the URL.
+ */
+const SERVER_URL = pathToFileURL(SERVER).href;
+
+/**
+ * Temp directories this file creates, removed in `afterAll`.
+ *
+ * Reviewer-found, and the finding lands hard: this file exists to prove a temp-directory leak was
+ * fixed, and it leaked two directories of its own on every run. The "40 -> 40, leak-free"
+ * measurement in the v3.10.0 notes was taken with a prefix filter -- `cyberchef-{mcp-handlers,
+ * mcp-pr,quota,ratelimit}` -- that did not include `cyberchef-bin-` or `cyberchef-guard-`. The
+ * verification was built, accidentally, so that it could not see this leak. 33 directories had
+ * accumulated by the time two reviewers pointed at it independently.
+ */
+const tempDirs = [];
+
+/**
+ * Make a temp directory that will be cleaned up.
+ *
+ * @param {string} prefix - Name prefix.
+ * @returns {string} The directory path.
+ */
+function tempDir(prefix) {
+    const dir = mkdtempSync(join(tmpdir(), prefix));
+    tempDirs.push(dir);
+    return dir;
+}
 
 /**
  * Run a short script in a fresh Node process and return everything it wrote.
@@ -65,7 +100,7 @@ const STARTED = /CyberChef MCP Server v[\d.]+ started|Running on stdio transport
 describe("the server module's entry point", () => {
     it("does not start a server when merely imported", () => {
         const r = runScript(`
-            await import(${JSON.stringify(SERVER)});
+            await import(${JSON.stringify(SERVER_URL)});
             console.log("IMPORT_COMPLETED");
         `);
         const all = r.stdout + r.stderr;
@@ -78,7 +113,7 @@ describe("the server module's entry point", () => {
 
     it("still exports what callers import it for", () => {
         const r = runScript(`
-            const m = await import(${JSON.stringify(SERVER)});
+            const m = await import(${JSON.stringify(SERVER_URL)});
             console.log("EXPORTS:" + Object.keys(m).length);
             console.log("HAS:" + ["createMcpServer", "RateLimiter", "BatchProcessor"]
                 .filter(k => m[k] !== undefined).join(","));
@@ -112,8 +147,14 @@ describe("the server module's entry point", () => {
             // parallel. It flaked on the first full run, which is exactly the fixed-budget mistake
             // this project keeps finding elsewhere, committed here in a test written to prove
             // something else. Exits as soon as the marker appears, so it is also faster.
+            // NOTE: no backticks in this comment -- it lives inside a template literal, and a
+            // backtick here closes it. p.exitCode === null means still running. Without it, a
+            // child that dies instantly
+            // is polled for the full 60 seconds before the assertion fails -- a slow, uninformative
+            // failure where a fast one is available. Reviewer-found.
             const deadline = Date.now() + 60000;
-            while (Date.now() < deadline && !out.includes("Running on stdio transport")) {
+            while (Date.now() < deadline && p.exitCode === null &&
+                   !out.includes("Running on stdio transport")) {
                 await new Promise(r => setTimeout(r, 250));
             }
             p.kill("SIGKILL");
@@ -128,7 +169,7 @@ describe("the server module's entry point", () => {
         // without resolving symlinks therefore fails for every `npx cyberchef-mcp` user while
         // passing every test above. Realpath resolution is what makes it correct, and this is the
         // test that proves it.
-        const bin = mkdtempSync(join(tmpdir(), "cyberchef-bin-"));
+        const bin = tempDir("cyberchef-bin-");
         const link = join(bin, "cyberchef-mcp");
         symlinkSync(SERVER, link);
 
@@ -148,8 +189,14 @@ describe("the server module's entry point", () => {
             // parallel. It flaked on the first full run, which is exactly the fixed-budget mistake
             // this project keeps finding elsewhere, committed here in a test written to prove
             // something else. Exits as soon as the marker appears, so it is also faster.
+            // NOTE: no backticks in this comment -- it lives inside a template literal, and a
+            // backtick here closes it. p.exitCode === null means still running. Without it, a
+            // child that dies instantly
+            // is polled for the full 60 seconds before the assertion fails -- a slow, uninformative
+            // failure where a fast one is available. Reviewer-found.
             const deadline = Date.now() + 60000;
-            while (Date.now() < deadline && !out.includes("Running on stdio transport")) {
+            while (Date.now() < deadline && p.exitCode === null &&
+                   !out.includes("Running on stdio transport")) {
                 await new Promise(r => setTimeout(r, 250));
             }
             p.kill("SIGKILL");
@@ -190,7 +237,7 @@ describe("isEntryPoint", () => {
     it("is true through a symlink, which is how npm installs the bin", () => {
         // The case that would break `npx cyberchef-mcp` if the guard compared strings. npm installs
         // bins as symlinks, so argv[1] is the link and `import.meta.filename` is the target.
-        const dir = mkdtempSync(join(tmpdir(), "cyberchef-guard-"));
+        const dir = tempDir("cyberchef-guard-");
         const link = join(dir, "cyberchef-mcp");
         symlinkSync(SERVER, link);
         process.argv[1] = link;
@@ -221,4 +268,10 @@ describe("isEntryPoint", () => {
         process.argv[1] = join(tmpdir(), "cyberchef-does-not-exist-" + Date.now());
         expect(isEntryPoint()).toBe(false);
     });
+});
+
+afterAll(async () => {
+    // After the child processes are dead -- each test kills its own before returning, so nothing
+    // here is holding these paths.
+    for (const dir of tempDirs) await rm(dir, { recursive: true, force: true });
 });
