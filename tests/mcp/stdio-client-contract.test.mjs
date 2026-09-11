@@ -93,6 +93,152 @@ describe("stdio contract, via the official MCP client", () => {
         expect(tools.length).toBeGreaterThan(500);
     });
 
+    // ---- v4.1.0: the dispatcher, through the official client ----------------------------------
+    //
+    // These exist because the feature shipped without them. The auth suite calls
+    // `cyberchef_analyse` only with EMPTY arguments, to inspect authorisation and schema errors,
+    // and the contract tests below call registry tools directly. So the release's central promise
+    // -- that all nineteen run identically through the dispatcher, under both spellings -- was
+    // verified by hand and never by the suite. Reviewer-found.
+
+    it("runs every registry tool through cyberchef_analyse, identically to a direct call", async () => {
+        const { buildRegistry, ToolRegistry } = await import("../../src/node/tools/index.mjs");
+        // DISCOVERED from the registry, with a fixture per tool. A hand-written list would have to
+        // be edited by the change that adds a twentieth tool, which is the change most likely to
+        // get its dispatch wrong.
+        // Keys QUOTED: registry tool names are snake_case by contract -- the registry throws on a
+        // `cyberchef_` prefix and `ToolRegistry.exposedName` adds it -- so these are data, not
+        // identifiers, and the camelcase lint rule is right to object to the bare form.
+        const FIXTURES = {
+            "hash_identify": { input: "5d41402abc4b2a76b9719d911017c592" },
+            "cyclic_pattern": { mode: "generate", length: 32 },
+            // 512 bytes: the default window is 256 and the tool refuses input smaller than its
+            // window, on the ground that the `Entropy` operation already measures a whole buffer.
+            "entropy_scan": { input: "abcdefghijklmnop".repeat(32) },
+            "timestamp_identify": { value: "1700000000" },
+            "plaintext_check": { input: "the quick brown fox jumps over the lazy dog" }
+        };
+
+        // EVERY registered tool is covered, not just the ones with a fixture.
+        //
+        // Filtering to `FIXTURES` would have meant a twentieth tool arriving with no dispatcher
+        // parity coverage and this test still passing -- the exact "gate that lists its targets
+        // instead of discovering them" failure this repository keeps writing findings about.
+        //
+        // A success fixture is not cheap for all nineteen (some need certificates, corpora or
+        // tuned inputs), so coverage is split by what is affordable rather than by what is
+        // convenient: tools WITH a fixture are checked for byte-identical SUCCESS, and every
+        // other registered tool is checked for byte-identical REFUSAL under empty arguments.
+        // Both directions prove the same property -- the dispatcher returns exactly what the
+        // direct call returns -- and every tool is in one bucket or the other by construction.
+        const allTools = buildRegistry().list();
+        const tools = allTools.filter(t => FIXTURES[t.name]);
+        expect(tools.length, "no fixtures matched any registered tool").toBeGreaterThan(0);
+
+        const unfixtured = allTools.filter(t => !FIXTURES[t.name]);
+
+        const text = r => r.content?.[0]?.text ?? "";
+        // Error payloads carry a `Timestamp:` line, so two calls a few milliseconds apart differ
+        // by the clock alone. Normalising it is not a weakening of the comparison: the property
+        // under test is that the dispatcher returns the same ANSWER as the direct call, and the
+        // wall clock is the one field guaranteed to differ between any two calls. Found by this
+        // test reporting `cert_chain` as a mismatch on a 4 ms gap.
+        const stable = r => text(r).replace(/Timestamp: \S+/g, "Timestamp: <normalised>");
+        const wrong = [];
+        for (const tool of tools) {
+            const exposed = ToolRegistry.exposedName(tool.name);
+            const args = FIXTURES[tool.name];
+
+            const direct = await client.callTool({ name: exposed, arguments: args });
+            const bare = await client.callTool({
+                name: "cyberchef_analyse", arguments: { tool: tool.name, arguments: args } });
+            const prefixed = await client.callTool({
+                name: "cyberchef_analyse", arguments: { tool: exposed, arguments: args } });
+
+            if (direct.isError) {
+                // Report WHY. A fixture that stops matching a tool's schema is a likely failure
+                // here, and "the direct call failed" without the reason turns a one-line fix into
+                // a guessing loop.
+                wrong.push(`${exposed}: the DIRECT call failed, so the fixture is wrong -- ` +
+                    `${(direct.content?.[0]?.text ?? "").slice(0, 200)}`);
+                continue;
+            }
+
+            // BYTE equality, not shape equality. "Behaves identically" is the charter's word, and
+            // the only way the dispatcher can be trusted to mean it is if the payload matches.
+            if (stable(bare) !== stable(direct)) {
+                wrong.push(`${exposed}: bare name through the dispatcher differs from the direct call`);
+            }
+            if (stable(prefixed) !== stable(direct)) {
+                wrong.push(`${exposed}: cyberchef_-prefixed name differs from the direct call`);
+            }
+        }
+
+        // The refusal half, for every tool without a success fixture.
+        for (const tool of unfixtured) {
+            const exposed = ToolRegistry.exposedName(tool.name);
+            const direct = await client.callTool({ name: exposed, arguments: {} });
+            const via = await client.callTool({
+                name: "cyberchef_analyse", arguments: { tool: tool.name, arguments: {} } });
+
+            if (!direct.isError) {
+                // Not a failure of the dispatcher -- it means this tool accepts empty arguments,
+                // so a refusal cannot be the thing compared. Say so, and ask for a fixture.
+                wrong.push(`${exposed}: accepts empty arguments, so add a FIXTURES entry for it ` +
+                    "and it will be covered by the success comparison above");
+                continue;
+            }
+            if (stable(via) !== stable(direct)) {
+                wrong.push(`${exposed}: the dispatcher's refusal differs from the direct call's` +
+                    `\n  direct: ${text(direct).slice(0, 180)}` +
+                    `\n  via   : ${text(via).slice(0, 180)}`);
+            }
+        }
+
+        expect(wrong.join("\n")).toBe("");
+    }, 180000);
+
+    it("refuses an unknown analysis tool, naming the field and what is available", async () => {
+        const res = await client.callTool({
+            name: "cyberchef_analyse", arguments: { tool: "no_such_tool", arguments: {} } });
+        expect(res.isError).toBe(true);
+        const text = res.content?.[0]?.text ?? "";
+        expect(text).toMatch(/Unknown analysis tool/);
+        // The available set, so a caller can correct the call without a second round trip.
+        expect(text).toMatch(/hash_identify/);
+    }, 120000);
+
+    it("reports a schema violation against the SELECTED tool, not the dispatcher", async () => {
+        const res = await client.callTool({
+            name: "cyberchef_analyse", arguments: { tool: "hash_identify", arguments: {} } });
+        expect(res.isError).toBe(true);
+        const text = res.content?.[0]?.text ?? "";
+        // Naming `cyberchef_analyse` here would hand the caller a schema complaint about a tool
+        // whose schema was not the one violated.
+        expect(text).toMatch(/cyberchef_hash_identify/);
+        expect(text).not.toMatch(/Invalid arguments for cyberchef_analyse/);
+    }, 120000);
+
+    it("lists the analysis tools through cyberchef_categories", async () => {
+        // The `analysisTools` member is the only way a caller walking the hierarchy finds these
+        // tools now that they are off the index. Without this assertion the member could vanish
+        // and every category test would stay green, because they only inspect `categories`.
+        const { buildRegistry } = await import("../../src/node/tools/index.mjs");
+        const registered = buildRegistry().list().map(t => t.name).sort();
+
+        const res = await client.callTool({ name: "cyberchef_categories", arguments: {} });
+        const body = JSON.parse(res.content[0].text);
+
+        expect(body.analysisTools, "cyberchef_categories no longer advertises the analysis tools")
+            .toBeTruthy();
+        expect(body.analysisTools.count).toBe(registered.length);
+        expect(body.analysisTools.tools.map(t => t.tool).sort()).toEqual(registered);
+        // The usage string is the navigation instruction; if it stops naming both steps, a caller
+        // is left with a list and no route.
+        expect(body.analysisTools.usage).toMatch(/cyberchef_describe_operation/);
+        expect(body.analysisTools.usage).toMatch(/cyberchef_analyse/);
+    }, 120000);
+
     it("returns tools in the same order every time", async () => {
         // The 2026-07-28 spec asks for deterministic order so a client can cache the list and so
         // an unchanged prefix keeps hitting an LLM's prompt cache. Byte equality of the whole
@@ -110,7 +256,41 @@ describe("stdio contract, via the official MCP client", () => {
         const { tools } = await client.listTools();
         const names = tools.map(t => t.name);
 
-        expect(names[0]).toBe("cyberchef_bake");
+        // THE TIER BOUNDARY, not alphabetical neighbours.
+        //
+        // The first version of this assertion pinned `names[0]` to a literal and then checked
+        // `bake` against `magic` -- which a flat alphabetical sort satisfies too, since both sort
+        // before `magic`. It asserted nothing about tiering while its own comment claimed it did.
+        //
+        // The property that actually distinguishes tiered from flat: a LATE-sorting meta-tool must
+        // still precede an EARLY-sorting operation. Under a flat sort `cyberchef_a1z26_cipher_*`
+        // leads the whole list and `cyberchef_worker_stats` trails it.
+        const { buildRegistry, ToolRegistry } = await import("../../src/node/tools/index.mjs");
+        const registry = new Set(buildRegistry().list().map(t => ToolRegistry.exposedName(t.name)));
+        const { default: OperationConfig } =
+            await import("../../src/core/config/OperationConfig.json", { with: { type: "json" } });
+        const { sanitizeToolName } = await import("../../src/node/lib/tool-schema.mjs");
+        const operationNames = new Set(
+            Object.keys(OperationConfig).map(sanitizeToolName).filter(Boolean));
+
+        const isOperation = n => operationNames.has(n);
+        const isMeta = n => !registry.has(n) && !isOperation(n);
+
+        const lastMeta = names.reduce((acc, n, i) => isMeta(n) ? i : acc, -1);
+        const firstOperation = names.findIndex(isOperation);
+
+        expect(lastMeta, "no meta-tools found -- the tier detection itself broke").toBeGreaterThan(-1);
+        expect(firstOperation, "no operation tools found on the `all` surface").toBeGreaterThan(-1);
+        expect(lastMeta,
+            `Tiering is gone: the last meta-tool (${names[lastMeta]}) is at ${lastMeta} but an ` +
+            `operation (${names[firstOperation]}) appears at ${firstOperation}. A single flat ` +
+            "sort would bury the navigation tools among 504 alphabetically-earlier operations, " +
+            "which is the opposite of what the index surface is for."
+        ).toBeLessThan(firstOperation);
+
+        // And the first tool is a navigation tool -- whichever one sorts first. Asserted by tier
+        // membership rather than by name, so adding a meta-tool that sorts earlier still passes.
+        expect(isMeta(names[0]), `first tool ${names[0]} is not a meta-tool`).toBe(true);
 
         // Every tier is individually non-decreasing. Tier boundaries are found by the sort
         // resetting, which is exactly the property being asserted, so count them instead: three

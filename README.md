@@ -4,7 +4,7 @@ This project provides a **Model Context Protocol (MCP)** server interface for **
 
 By running this server, you enable AI assistants (like Claude, Cursor AI, and others) to natively utilize CyberChef's extensive library of **504 data manipulation operations**—including encryption, encoding, compression, and forensic analysis—as executable tools.
 
-**Latest Release:** v4.0.0 | [Release Notes](docs/releases/v4.0.0.md) | [Tutorial](docs/guides/tutorial.md) | [Examples](examples/) | [Breaking Changes](docs/v2.0.0-breaking-changes.md) | [Security Policy](SECURITY.md)
+**Latest Release:** v4.1.0 | [Release Notes](docs/releases/v4.1.0.md) | [Tutorial](docs/guides/tutorial.md) | [Examples](examples/) | [Breaking Changes](docs/v2.0.0-breaking-changes.md) | [Security Policy](SECURITY.md)
 
 **Upstream base:** GCHQ CyberChef **v11.4.0** | **Licence:** GPL-3.0-or-later (from v2.0.0; v1.9.x and earlier remain Apache-2.0)
 
@@ -56,7 +56,7 @@ The server exposes CyberChef operations as MCP tools:
 *   **Starts in ~185 ms** (v2.6.0): it used to take ~1.3 seconds, of which ~1.15 s was importing all 504 operation implementations before answering anything — paid on every launch, on stdio, which is how every editor starts the server. The 504-operation *barrel* is now loaded only by the three tools that need it (`cyberchef_search`, batch search, and saved-recipe execution). `tools/list` is built from metadata, and an ordinary operation call loads just the one operation it runs — verified: `cyberchef_bake` completes without the barrel being loaded at all. A background warm-up was tried, measured, and removed: module loading blocks the event loop, so it just moved the cost in front of the first request.
 *   **Deployable as a service** (v2.6.0): a [Helm chart and Compose file](deploy/) with liveness/readiness/startup probes and a drain that loses no requests during a rolling update. Liveness deliberately stays healthy while draining — a liveness failure there gets the pod killed mid-drain. The chart *refuses* to render configurations the server would reject at startup, so they fail at `helm template` rather than as a crashloop.
 *   **Bounded calls to the authorization server** (v2.6.0): JWKS discovery had no timeout (Node's `fetch` has none by default) and cached failures not at all, so an issuer outage turned every request into two outbound ones that could hang until the OS gave up. Now a 5 s deadline and a circuit breaker: 20 verifications against a down issuer went from 40 outbound attempts to 10.
-*   **Nineteen analysis tools that are not operations** (v2.4.0, expanded through v3.11.0): the original four are `cyberchef_xor_key_length` (repeating-key XOR length by index of coincidence), `cyberchef_cyclic_pattern` (De Bruijn patterns and overflow offsets, byte-compatible with pwntools' `cyclic`), `cyberchef_hash_identify` (hash format with the hashcat mode and John format name) and `cyberchef_rsa_attack` (Fermat, shared factors, Wiener and unpadded small-`e`). Twelve more arrived in v3.3.0 (classical ciphers, crib dragging, entropy scanning, hash cracking and statistics, JWT weaknesses, plaintext scoring, multi-key RSA, substitution and Vigenère breaking, timestamp identification, corpus diffing), then `cyberchef_ecdsa_recover` in v3.4.0 (private-key recovery from a reused ECDSA nonce) and `cyberchef_cert_chain` in v3.8.0 (orders an X.509 bundle, verifies every link cryptographically, and reports the chain's validity window as the intersection of its members', both ends). `cyberchef_pqc_identify` arrived in v3.11.0: it names the NIST post-quantum parameter set behind a key, signature or ciphertext — ML-KEM (FIPS 203), ML-DSA (FIPS 204) or SLH-DSA (FIPS 205) — from the OID when there is DER to read, and from byte length when there is not, in which case it reports every candidate and says so rather than picking one. See [Analysis Tools](docs/wiki/Analysis-Tools.md). An operation is a pure `run(input, args)` over one input and cannot express an analysis; `cyberchef_bake` cannot either, because a recipe is a pipeline, not a loop. Exposed at every tool surface. There is deliberately **no plugin loader** — `node:vm` is not a security boundary, and that was measured rather than assumed ([ADR 0002](docs/adr/0002-tool-registry-is-not-a-plugin-loader.md)).
+*   **Nineteen analysis tools that are not operations** (v2.4.0, expanded through v3.11.0): the original four are `cyberchef_xor_key_length` (repeating-key XOR length by index of coincidence), `cyberchef_cyclic_pattern` (De Bruijn patterns and overflow offsets, byte-compatible with pwntools' `cyclic`), `cyberchef_hash_identify` (hash format with the hashcat mode and John format name) and `cyberchef_rsa_attack` (Fermat, shared factors, Wiener and unpadded small-`e`). Twelve more arrived in v3.3.0 (classical ciphers, crib dragging, entropy scanning, hash cracking and statistics, JWT weaknesses, plaintext scoring, multi-key RSA, substitution and Vigenère breaking, timestamp identification, corpus diffing), then `cyberchef_ecdsa_recover` in v3.4.0 (private-key recovery from a reused ECDSA nonce) and `cyberchef_cert_chain` in v3.8.0 (orders an X.509 bundle, verifies every link cryptographically, and reports the chain's validity window as the intersection of its members', both ends). `cyberchef_pqc_identify` arrived in v3.11.0: it names the NIST post-quantum parameter set behind a key, signature or ciphertext — ML-KEM (FIPS 203), ML-DSA (FIPS 204) or SLH-DSA (FIPS 205) — from the OID when there is DER to read, and from byte length when there is not, in which case it reports every candidate and says so rather than picking one. See [Analysis Tools](docs/wiki/Analysis-Tools.md). An operation is a pure `run(input, args)` over one input and cannot express an analysis; `cyberchef_bake` cannot either, because a recipe is a pipeline, not a loop. Since **v4.1.0** they are reached through `cyberchef_analyse({tool, arguments})` on the default `index` surface, and remain listed outright on `curated` and `all` — nineteen of them had been 68% of the index, listed only because `cyberchef_describe_operation` refused them and pointed at `tools/list`, which made the listing their sole schema path. There is deliberately **no plugin loader** — `node:vm` is not a security boundary, and that was measured rather than assumed ([ADR 0002](docs/adr/0002-tool-registry-is-not-a-plugin-loader.md)).
 *   **Protocol revision 2026-07-28** (v2.3.0): served on both stdio and HTTP alongside the 2025 era, from one set of handlers. Existing clients are unaffected — a v1-SDK client still negotiates 2025-11-25 against the same registrations. On HTTP the two eras are routed per request by the SDK's own classifier, so 2025 traffic keeps the sessionful wiring while modern traffic is served per request.
 *   **Three transports** (v2.3.0): stdio, Streamable HTTP, and a **socket binding** over a Unix domain socket or loopback TCP (`CYBERCHEF_TRANSPORT=socket`), one pinned server instance per connection. It carries no authentication, so a non-loopback bind is refused unless explicitly allowed and the Unix socket is created `0600`. There is deliberately no WebSocket transport — MCP does not define one.
 *   **Every image operation works** (v2.3.0): 17 of them returned Node's shared buffer pool instead of the image — unreadable output, and the surplus was whatever the process had recently allocated. `Add Text To Image` had never worked in this fork at all, since v1.7.1. Both are fixed as fork patches.
@@ -64,7 +64,7 @@ The server exposes CyberChef operations as MCP tools:
 *   **Tool annotations on every tool** (v2.2.0): `readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint` and a readable `title`, so a client can skip the approval prompt for a pure operation. The exceptions were measured, not guessed — only `HTTP request` and `DNS over HTTPS` reach the network, and non-idempotence was determined by running each candidate twice and comparing.
 *   **Prompts and resources** (v2.2.0): five workflow prompts (`analyse-unknown-data`, `extract-iocs`, `deobfuscate-script`, `identify-hash`, `decode-chain`) for when you do not yet know which of 504 operations you need, and saved recipes exposed as readable resources at `recipe://<id>`.
 *   **`cyberchef_bake`**: The "Omni-tool". Executes a full CyberChef recipe (a chain of operations) on an input. Ideal for complex, multi-step transformations (e.g., "Decode Base64, then Gunzip, then prettify JSON").
-*   **All 504 operations, without paying for 504 schemas** (v2.1.0): `tools/list` is an **index** by default — 41 tools and 44,968 bytes, rather than 544 tools and 425,372 bytes. The index grew in v3.3.0 because twelve new registry tools have no navigation path of their own — a registry tool that is not listed cannot be called at all. Every operation stays reachable: `cyberchef_categories` -> `cyberchef_list_operations` -> `cyberchef_describe_operation` walks down to any of them, `cyberchef_search` finds one by keyword, and `cyberchef_bake` runs any of them by name. `CYBERCHEF_TOOL_SURFACE=curated` (119 tools, 108,214 bytes) or `=all` (all 544, 425,372 bytes) if you would rather pre-load. See the [User Guide](docs/guides/user_guide.md#the-tool-surface--how-many-tools-you-see-and-why).
+*   **All 504 operations, without paying for 504 schemas** (v2.1.0): `tools/list` is an **index** by default — 23 tools and 15,620 bytes, rather than 545 tools and 426,706 bytes. Every operation stays reachable: `cyberchef_categories` -> `cyberchef_list_operations` -> `cyberchef_describe_operation` walks down to any of them, `cyberchef_search` finds one by keyword, and `cyberchef_bake` runs any of them by name. The **19 analysis tools** are reachable the same way, through `cyberchef_describe_operation` and `cyberchef_analyse` — they were listed on every surface until v4.1.0, where nineteen of them were 68% of the index, because `describe_operation` used to refuse them and point at `tools/list`, making the listing their only schema path. `CYBERCHEF_TOOL_SURFACE=curated` (120 tools, 109,548 bytes) or `=all` (all 545, 426,706 bytes) if you would rather pre-load; both still list every analysis tool outright. See the [User Guide](docs/guides/user_guide.md#the-tool-surface--how-many-tools-you-see-and-why).
     *   `cyberchef_to_base64` / `cyberchef_from_base64`
     *   `cyberchef_aes_decrypt`
     *   `cyberchef_sha2`
@@ -158,13 +158,13 @@ For environments without direct GHCR access, download the pre-built Docker image
 1.  **Download the tarball** (**141 MB** compressed; measured against the published v3.1.0 asset, not estimated):
     ```bash
     # Download from GitHub Releases
-    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v4.0.0/cyberchef-mcp-v4.0.0-docker-image.tar.gz
+    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v4.1.0/cyberchef-mcp-v4.1.0-docker-image.tar.gz
     ```
 
 2.  **Load the image into Docker:**
 
     ```bash
-    docker load < cyberchef-mcp-v4.0.0-docker-image.tar.gz
+    docker load < cyberchef-mcp-v4.1.0-docker-image.tar.gz
     ```
 
 3.  **Tag for easier usage:**
@@ -328,9 +328,10 @@ CYBERCHEF_CACHE_ENABLED=true             # Enable/disable caching
 # Resource Quotas (v1.7.0+)
 CYBERCHEF_MAX_CONCURRENT_OPS=10          # Maximum concurrent operations
 
-# Deprecation & Migration (v1.8.0+)
-V2_COMPATIBILITY_MODE=false              # Enable v2.0.0 behavior preview (elevates warnings to errors)
-CYBERCHEF_SUPPRESS_DEPRECATIONS=false    # Suppress deprecation warnings
+# (Removed in v4.0.0) V2_COMPATIBILITY_MODE and CYBERCHEF_SUPPRESS_DEPRECATIONS went with the
+# deprecation system they configured. Do not set them: the `compatibility` section is now an
+# unknown section, and `cyberchef.config.json` fails CLOSED on one -- the server refuses to start
+# with "unknown section \"compatibility\"". The env vars are simply ignored.
 
 # Transport (v1.9.0+; per-session HTTP since v2.0.0)
 CYBERCHEF_TRANSPORT=stdio                # Transport type: stdio or http
@@ -600,7 +601,10 @@ For detailed information, see:
 
 ## Project Roadmap
 
-CyberChef MCP Server has a comprehensive development roadmap spanning **19 releases** across **6 phases** through August 2027.
+The original roadmap scoped **19 releases across 6 phases through August 2027**. It was overtaken:
+all six phases are complete and the project is at **v4.1.0**. The table below is kept because it
+records what each phase was *for*; [`docs/planning/ROADMAP.md`](docs/planning/ROADMAP.md) is the
+live source and has a row per shipped release.
 
 | Phase | Releases | Timeline | Focus | Status |
 |-------|----------|----------|-------|--------|
@@ -609,12 +613,14 @@ CyberChef MCP Server has a comprehensive development roadmap spanning **19 relea
 | **Phase 3: Maturity** | v1.8.0 - v2.0.0 | Q3 2026 | API stabilization, upstream catch-up, relicensing, v2.0.0 | **v2.0.0 Released** |
 | **Phase 4: Expansion** | v2.2.0 - v2.4.0 | Q4 2026 | Multi-modal (**v2.2.0 shipped**), protocol currency and transports (**v2.3.0 shipped**), the tool registry and its first four tools (**v2.4.0 shipped**) | Complete |
 | **Phase 5: Enterprise** | v2.5.0 - v2.7.0 | Q1 2027 | OAuth 2.1, RBAC, audit logging and multi-tenancy (**v2.5.0 shipped**), horizontal scaling and deployment (**v2.6.0 shipped**), metrics, tracing and dashboards (**v2.7.0 shipped**) | Complete |
-| **Phase 6: Evolution** | v2.8.0 - v3.0.0 | Q2-Q3 2027 | Edge deployment, AI-native features, v3.0.0 | Planned |
+| **Phase 6: Evolution** | v2.8.0 - v3.0.0 | Q2-Q3 2027 | Edge deployment, AI-native features, v3.0.0 | **Completed** — and early: v3.0.0 shipped 2026-09 rather than Q3 2027 |
+| **Beyond the plan** | v3.1.0 - v4.1.0 | 2026-09 | Conformance against the official suite, magic re-ranking, the arm64 benchmark, PQC identification, retiring the v2 migration surface (v4.0.0), and the tool-surface work in v4.1.0 | **Shipped**, none of it in the original six phases |
 
 **External project integration — what it actually produced.** The planning tree
 ([External Project Integration](docs/planning/ext-proj-int/), 30 documents) scoped 80-120 new tools
 from 8 security projects. Measuring each against the 504 operations already present cut that hard:
-**four tools shipped in v2.4.0**, drawn on xortool, pwntools, RsaCtfTool, hashcat and John. Four of
+**four tools shipped in v2.4.0**, drawn on xortool, pwntools, RsaCtfTool, hashcat and John — and
+**nineteen now exist**, twelve added in v3.3.0 and one each in v3.4.0, v3.8.0 and v3.11.0. Four of
 the eight projects contributed nothing, because the capability was already here — `Magic` covers
 what Ciphey, Ares and katana's core do, and cryptii's encodings have 26 equivalents among the
 operations. The `cyberchef-recipes` preset corpus remains unbuilt. See
@@ -722,6 +728,14 @@ Detailed documentation is organized in the [`docs/`](docs/) directory:
 ### Local Setup
 If you want to modify the server code without Docker:
 
+0.  **Use the pinned Node version.** `.nvmrc` pins **26** (matching `engines: >=26 <27` and every
+    CI workflow), so `nvm use` / `fnm use` selects it. Worth doing rather than assuming: through
+    v4.0.0 this file said `24` while the floor was already 26, so version managers quietly
+    selected a Node below the floor for an entire release.
+    ```bash
+    nvm use    # or: fnm use
+    node --version   # expect v26.x
+    ```
 1.  **Install Dependencies:**
     ```bash
     npm install
@@ -779,7 +793,7 @@ All workflows use the latest CodeQL Action v4 for security scanning and SARIF up
 # Run all tests (requires Node.js >=26 <27; 241 Node-API + 2,289 operation tests)
 npm test
 
-# Run MCP validation test suite (1,713 tests across 74 files, with Vitest)
+# Run MCP validation test suite (1,720 tests across 77 files, with Vitest)
 npm run test:mcp
 
 # Run MCP tests with coverage report
@@ -800,9 +814,9 @@ npm run lint
 
 **Test Coverage:**
 The MCP server maintains comprehensive test coverage:
-- **1,713 MCP tests** across 74 suites, plus 241 Node-API tests, 2,289 operation tests and 9 runnable examples executed by CI
+- **1,720 MCP tests** across 77 suites, plus 241 Node-API tests, 2,289 operation tests and 9 runnable examples executed by CI
 - **Coverage thresholds** (`vitest.config.mjs`): 96% lines, 95% statements, 89% branches, 96% functions, with `src/node/lib/**` held separately at 99 lines / 99 statements / 94 branches / 100 functions
-- **Current coverage**: 96.08% lines, 95.1% statements, 96.54% functions, 89.43% branches (thresholds 96/89/96/95, lines/branches/functions/statements)
+- **Current coverage**: 96.14% lines, 95.15% statements, 96.57% functions, 89.31% branches (thresholds 96/89/96/95, lines/branches/functions/statements)
 - Note: individual suite names are not listed here because the list went stale three times;
   `ls tests/mcp/*.test.mjs` is authoritative.
 

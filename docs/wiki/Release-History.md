@@ -3,7 +3,39 @@
 Full notes for every version live in
 [`docs/releases/`](https://github.com/doublegate/CyberChef-MCP/tree/master/docs/releases) and on the
 [releases page](https://github.com/doublegate/CyberChef-MCP/releases). This is the shape of the
-2.x and 3.x lines, and what each release was actually *about*.
+2.x, 3.x and 4.x lines, and what each release was actually *about*.
+
+> **This page is not complete, and saying so is better than implying otherwise.** It jumps from
+> v3.8.0 to v4.1.0: **v3.9.0, v3.10.0, v3.11.0 and v4.0.0 have no entry here.** Their full notes are
+> in [`docs/releases/`](https://github.com/doublegate/CyberChef-MCP/tree/master/docs/releases), and
+> [`docs/planning/ROADMAP.md`](https://github.com/doublegate/CyberChef-MCP/blob/master/docs/planning/ROADMAP.md)
+> carries a one-row summary of every one of them.
+
+## v4.1.0 — registry tools get a navigation path
+
+The default tool surface fell from **41 tools / 44,968 bytes to 23 / 15,620** — 66% — with nothing
+made unreachable.
+
+Nineteen analysis tools were **68% of the index**, and not by oversight:
+`cyberchef_describe_operation` refused them and pointed at `tools/list`, so the listing was their
+only schema path and a tool absent from it could not be called at all. v4.1.0 removed that
+dependency rather than the tools — `describe_operation` now serves their schemas,
+`cyberchef_categories` lists them under `analysisTools`, and **`cyberchef_analyse`** dispatches to
+them by name. They are still listed outright on `curated` and `all`.
+
+Two things are worth knowing about how it was built. The dispatcher **shares one body** with the
+direct call rather than being a parallel copy, which is what makes "behaves identically" a checkable
+property; and it is **authorised by the tool it selects**, not by its own annotations, because
+authorising a dispatcher as itself would check a wrapper while the work ran against the caller's
+choice — a scope bypass that would have shipped in the same release that stopped listing the tools
+behind it.
+
+The charter's headline claim — that the index would cost more than `curated` at 59 registry tools —
+turned out to be **arithmetically impossible**, and building the gate for it is what proved that.
+Registry tools are listed on every surface, so forty synthetic ones grew `index`, `curated` and
+`all` by the same 76,440 bytes and the gap between them did not move. What survived needed no
+comparison at all: the 68% share, and a 41-tool index sitting inside the 30–50 band where tool
+selection accuracy is measured to degrade.
 
 ## v3.8.0 — two blockers that were not blockers
 

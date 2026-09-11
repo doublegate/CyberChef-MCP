@@ -619,22 +619,45 @@ describe("tool-catalog: degenerate inputs", () => {
         expect(res.operations[0].error).toMatch(/cyberchef_search/);
     });
 
-    it("tells a caller a registry tool is a registry tool, not that it does not exist", async () => {
+    it("SERVES a registry tool's schema rather than redirecting to tools/list", async () => {
         const { describeOperations } = await import("../../src/node/lib/tool-catalog.mjs");
-        const registry = new Set(["cyberchef_vigenere_break"]);
+        // A LOOKUP, not a name set. Changed in v4.1.0, and the signature change is the point:
+        // answering requires the schema, and having the schema here is what let the index stop
+        // listing these tools at all.
+        const descriptor = {
+            name: "vigenere_break",
+            title: "Vigenere break",
+            description: "Recovers a Vigenere key.",
+            inputSchema: { type: "object", properties: { input: { type: "string" } } },
+            annotations: { readOnlyHint: true }
+        };
+        const lookup = exposed => exposed === "cyberchef_vigenere_break" ? descriptor : undefined;
 
-        // The old answer -- "No such operation. Use cyberchef_search to find the exact name." --
-        // pointed away from the fix twice: search reads OperationConfig and would not find it
-        // either, and the tool is already in tools/list with its complete schema. A caller who
-        // saw the name there and asked about it here deserves to be told where to look.
+        // Until v4.1.0 this answered "is a registry tool ... its full schema is already in
+        // `tools/list`". That hint was true, and it was precisely WHY every registry tool had to
+        // be listed: the listing was the only schema path, so an unlisted tool had none. Nineteen
+        // tools were 68% of the default surface to keep one redirect honest. Answering here
+        // inverted that dependency.
         for (const asked of ["vigenere_break", "cyberchef_vigenere_break"]) {
-            const res = describeOperations([asked], (n) => n, registry);
-            expect(res.operations[0].error, asked).toMatch(/is a registry tool, not an operation/);
-            expect(res.operations[0].hint, asked).toMatch(/already in `tools\/list`/);
+            const res = describeOperations([asked], (n) => n, lookup);
+            const entry = res.operations[0];
+            expect(entry.error, asked).toBeUndefined();
+            expect(entry.kind, asked).toBe("analysis_tool");
+            // ECHOES the requested spelling, so a caller can correlate the response with its
+            // request by this field whichever form it used. Both usable names are returned
+            // separately, because the two routes want different ones.
+            expect(entry.operation, asked).toBe(asked);
+            expect(entry.tool, asked).toBe("vigenere_break");
+            expect(entry.exposedName, asked).toBe("cyberchef_vigenere_break");
+            expect(entry.inputSchema, asked).toEqual(descriptor.inputSchema);
+            // Both routes, because both work and they are not interchangeable: a caller on the
+            // default `index` surface can ONLY reach it through the dispatcher.
+            expect(entry.usage, asked).toMatch(/cyberchef_analyse/);
+            expect(entry.note, asked).toMatch(/cannot appear inside a `cyberchef_bake` recipe/);
         }
 
         // A genuinely unknown name still gets the original answer, which is correct for it.
-        const unknown = describeOperations(["Definitely Not An Operation"], (n) => n, registry);
+        const unknown = describeOperations(["Definitely Not An Operation"], (n) => n, lookup);
         expect(unknown.operations[0].error).toMatch(/No such operation/);
         expect(unknown.operations[0].hint).toBeUndefined();
     });

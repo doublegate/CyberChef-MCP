@@ -30,7 +30,7 @@ import { toContentBlocks } from "./lib/content-blocks.mjs";
 import { annotationsForOperation, annotationsForMetaTool } from "./lib/tool-annotations.mjs";
 import { currentAuth, insufficientScopeChallenge, loadAuthConfig } from "./lib/auth.mjs";
 import {
-    authorise, visibleTools, requiredScopesForRecipe, RECIPE_SCOPED_TOOLS
+    authorise, visibleTools, requiredScopesForRecipe, requiredScopes, RECIPE_SCOPED_TOOLS
 } from "./lib/rbac.mjs";
 import { serverCacheHints } from "./lib/cache-hints.mjs";
 
@@ -48,7 +48,7 @@ import { listResources, readResource, listResourceTemplates } from "./lib/resour
 import { bakeOnCore, toCoreRecipe } from "./lib/core-recipe.mjs";
 import { assertOfflineAllowed } from "./lib/offline.mjs";
 import { runMagic, renderMagicReport } from "./lib/magic.mjs";
-import { isExposed, describeSurface, removedAliasWarning } from "./lib/tool-surface.mjs";
+import { isExposed, describeSurface, removedAliasWarning, surfaceMode } from "./lib/tool-surface.mjs";
 import {
     categoryIndex, listOperations, describeOperations, summariseSearch
 } from "./lib/tool-catalog.mjs";
@@ -412,7 +412,18 @@ const META_TOOLS = [
                 examples: z.array(z.string())
             })),
             totalOperations: z.number(),
-            usage: z.string()
+            usage: z.string(),
+            // OPTIONAL, and present only when registry tools are registered. Added with the field
+            // itself in v4.1.0: a handler that returns a member its declared `outputSchema` does
+            // not describe is undiscoverable to a schema-driven client and unvalidatable by one,
+            // which for the tool that is now the ONLY route to the analysis tools would hide the
+            // navigation path this release exists to provide.
+            analysisTools: z.object({
+                count: z.number(),
+                description: z.string(),
+                tools: z.array(z.object({ tool: z.string(), title: z.string() })),
+                usage: z.string()
+            }).optional()
         }))
     },
     {
@@ -432,6 +443,39 @@ const META_TOOLS = [
             category: z.string().describe(
                 "Category name, e.g. \"Encryption / Encoding\", \"Hashing\", \"Extractors\"")
         }))
+    },
+    {
+        name: "cyberchef_analyse",
+        description: "Run one of this server's analysis tools -- analyses a CyberChef operation " +
+            "cannot express, such as recovering an XOR key length, breaking a classical cipher, " +
+            "identifying a hash, validating an X.509 chain or identifying a post-quantum key. " +
+            "List them with cyberchef_categories, get a schema with cyberchef_describe_operation, " +
+            "then run it here. These are NOT operations and cannot be used in a cyberchef_bake " +
+            "recipe.",
+        inputSchema: toInputSchema(z.object({
+            tool: z.string().describe(
+                "Analysis tool name, without the `cyberchef_` prefix, e.g. \"hash_identify\", " +
+                "\"xor_key_length\", \"pqc_identify\". Either form is accepted."),
+            // `.passthrough()` rather than a closed object, and this is deliberate rather than
+            // lax. The real schema belongs to the tool being dispatched to; declaring a closed
+            // shape here would reject every argument any tool actually takes.
+            //
+            // VALIDATION IS NOT SKIPPED, IT IS DEFERRED. `handleCallTool` runs
+            // `registryTool.inputSchema.safeParse(registryArgs)` against the SELECTED tool's own
+            // Zod schema before the handler sees anything, and reports a violation naming that
+            // tool. So an argument object reaching a tool has passed exactly the same validation
+            // a direct call would have applied -- which is the property that lets the dispatcher
+            // claim it behaves identically.
+            arguments: z.object({}).passthrough().optional().describe(
+                "Arguments for the tool, matching the schema cyberchef_describe_operation returns " +
+                "for it.")
+        }))
+        // NO `outputSchema`, deliberately, and for the reason the meta-tools next to this one
+        // give: it is declared only where THIS SERVER defines the shape. What `analyse` returns is
+        // whatever the dispatched registry tool returns -- nineteen different shapes today and
+        // more later -- so any schema here would be a claim rather than a contract. An empty
+        // passthrough object would be the emptiest possible claim while still making the SDK
+        // validate against it.
     },
     {
         name: "cyberchef_describe_operation",
@@ -666,14 +710,57 @@ const toolRegistry = buildRegistry({
 });
 
 /**
- * Every registry tool's exposed name.
+ * Exposed name -> everything `cyberchef_describe_operation` needs to answer about a registry tool.
  *
- * Held so `cyberchef_describe_operation` can tell a caller that a name it recognises from
- * `tools/list` is a registry tool rather than answering "no such operation" and pointing them at a
- * search that reads `OperationConfig` and will not find it either.
+ * Built once at startup, the same way `REGISTRY_SEARCH_INDEX` is: the registry is fixed at
+ * construction and `toInputSchema` is a pure conversion, so there is nothing for this to go stale
+ * against. Doing it per call would re-run the Zod-to-JSON-Schema conversion for every describe.
+ *
+ * This is what replaced the redirect. Until v4.1.0 `describe_operation` answered "its full schema
+ * is already in `tools/list`" -- true, and the reason every registry tool HAD to be listed, since
+ * the listing was the only schema path. Serving the schema here is what lets the index drop them.
  */
-const REGISTRY_EXPOSED_NAMES = new Set(
-    toolRegistry.list().map(tool => ToolRegistry.exposedName(tool.name)));
+const REGISTRY_DESCRIBE = new Map(toolRegistry.list().map(tool => [
+    ToolRegistry.exposedName(tool.name),
+    {
+        name: tool.name,
+        title: tool.title,
+        description: tool.description,
+        inputSchema: toInputSchema(tool.inputSchema),
+        annotations: tool.annotations ?? annotationsForMetaTool(
+            ToolRegistry.exposedName(tool.name), tool.title)
+    }
+]));
+
+/**
+ * Accept a registry tool name with or without the `cyberchef_` prefix.
+ *
+ * `cyberchef_describe_operation` answers with the EXPOSED name (`cyberchef_pqc_identify`) while
+ * `cyberchef_categories` lists the bare one (`pqc_identify`), so a caller walking the hierarchy
+ * meets both spellings before reaching the dispatcher. Rejecting either would be a trap laid by
+ * this server's own navigation output.
+ *
+ * @param {*} tool - Whatever the caller passed as `tool`.
+ * @returns {string} The exposed name to look up; `""` when there is nothing usable.
+ */
+function analyseExposedName(tool) {
+    // typeof, not String(). Coercing turns `{}` into "[object Object]" and `["a"]` into "a" --
+    // the first is a lookup that cannot match and reports a confusing name back to the caller,
+    // and the second SILENTLY ACCEPTS an array as if it were the string it happens to contain.
+    // The schema declares `tool: z.string()`, but this runs before that guarantee is worth
+    // relying on, and a coercion that invents a value is worse than a refusal.
+    if (typeof tool !== "string") return "";
+    const raw = tool.trim();
+    if (!raw) return "";
+    return raw.startsWith("cyberchef_") ? raw : ToolRegistry.exposedName(raw);
+}
+
+/** The registry tools in the shape `categoryIndex` lists them in. */
+const REGISTRY_CATEGORY = toolRegistry.list().map(tool => ({
+    name: tool.name,
+    exposedName: ToolRegistry.exposedName(tool.name),
+    title: tool.title
+}));
 
 /**
  * The registry tools in the shape `summariseSearch` needs.
@@ -765,13 +852,32 @@ const handleListTools = async () => {
         tool.annotations = annotationsForMetaTool(tool.name, metaToolTitle(tool.name));
     }
 
-    // Registry tools: analyses that are not CyberChef operations. Always exposed, regardless of
-    // CYBERCHEF_TOOL_SURFACE -- that setting exists to keep 504 operation schemas out of the
-    // default payload, and there are a handful of these. They carry their own annotations,
-    // because what is read-only or open-world about them is a property of the tool rather than of
-    // its name.
+    // Registry tools: analyses that are not CyberChef operations.
+    //
+    // LISTED ON `curated` AND `all`, NOT ON `index`, since v4.1.0.
+    //
+    // They were on every surface until then, and the comment here said `CYBERCHEF_TOOL_SURFACE`
+    // "exists to keep 504 operation schemas out of the default payload, and there are a handful of
+    // these". Nineteen is not a handful: measured, they were 30,683 of the index's 44,968 bytes --
+    // 68% of the surface whose entire purpose is being small -- and the tool programme in
+    // `docs/planning/ext-proj-int/` scopes 80-120 more.
+    //
+    // What kept them listed was not stubbornness but a real dependency: `describe_operation`
+    // refused them and pointed at `tools/list`, so the listing was the ONLY schema path, and a
+    // tool absent from it could not be called at all. v4.1.0 removed that dependency first --
+    // `describe_operation` serves their schemas, `categories` lists them, and `cyberchef_analyse`
+    // dispatches to them by name. Only then was this safe, and the ordering was the whole risk.
+    //
+    // NOT a capability boundary. Every one stays callable on every surface through the dispatcher,
+    // and `curated`/`all` still list them outright for callers who want schemas up front.
+    // `index-growth.test.mjs` asserts both directions, because a gate that only checked the
+    // removal could be satisfied by deleting the tools.
+    // Empty on `index`; the full registry on `curated` and `all`. Named rather than inlined as a
+    // ternary in the `for` header, where the condition that decides the whole behaviour of this
+    // block was the easiest part of it to miss.
+    const listedRegistryTools = surfaceMode() === "index" ? [] : toolRegistry.list();
     const registryTools = [];
-    for (const tool of toolRegistry.list()) {
+    for (const tool of listedRegistryTools) {
         registryTools.push({
             name: ToolRegistry.exposedName(tool.name),
             description: tool.description,
@@ -865,6 +971,22 @@ function recipeScopesFor(name, args) {
     let operationNames = [];
     if (name === "cyberchef_bake") {
         operationNames = toCoreRecipe(args?.recipe).map(step => step.op);
+    } else if (name === "cyberchef_analyse") {
+        // Priced by the SELECTION, not by the dispatcher. `requiredScopes` reads a tool's own
+        // annotations, so authorising `analyse` as itself would run the check against a wrapper
+        // while the work runs against whatever the caller named -- and every registry tool sits
+        // behind it. This is the `bake` precedent applied to a different kind of argument.
+        //
+        // Resolution is a Map lookup against a registry fixed at construction, so the check stays
+        // where it is: FIRST, before any dispatch. That is the distinction from
+        // `cyberchef_recipe_execute`, which carries an id and would need a storage read.
+        //
+        // An UNRESOLVABLE name returns undefined, which falls back to the dispatcher's own
+        // annotations rather than silently authorising. The bad name is then reported by the
+        // dispatcher, which is the right place for it -- scope checking is not where a typo
+        // should be diagnosed, and this is the same division `cyberchef_batch` uses.
+        const selected = toolRegistry.getByExposedName(analyseExposedName(args?.tool));
+        return selected ? requiredScopes(selected.annotations ?? {}) : undefined;
     } else if (name === "cyberchef_batch") {
         // A batch names TOOLS, not operations, so each is resolved through the same map dispatch
         // uses. An unresolvable name contributes nothing here and is rejected later by the
@@ -1156,7 +1278,7 @@ const handleCallToolInner = async (request, extra, ownerServer = server) => {
         // hierarchy exists: it keeps 504 operation schemas off the always-loaded payload while
         // leaving every one of them reachable.
         if (name === "cyberchef_categories") {
-            const result = structuredResult(categoryIndex());
+            const result = structuredResult(categoryIndex(REGISTRY_CATEGORY));
             logRequestComplete(requestId, { outputSize: contentSize(result.content) });
             return result;
         }
@@ -1200,7 +1322,8 @@ const handleCallToolInner = async (request, extra, ownerServer = server) => {
                 return error.toMCPError();
             }
             const output = JSON.stringify(
-                describeOperations(args.operations, toolArgName, REGISTRY_EXPOSED_NAMES), null, 2);
+                describeOperations(args.operations, toolArgName,
+                    exposed => REGISTRY_DESCRIBE.get(exposed)), null, 2);
             logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
             return { content: [{ type: "text", text: output }] };
         }
@@ -1372,14 +1495,55 @@ const handleCallToolInner = async (request, extra, ownerServer = server) => {
                 // collision with an operation name -- so the order cannot change an answer. It is
                 // inside the rate limit and quota block because these tools do real work: this one
                 // scores forty candidate key lengths and then calls the engine.
-                const registryTool = toolRegistry.getByExposedName(name);
+                //
+                // TWO DOORS, ONE PATH. `name` is the tool when a caller invokes it directly
+                // (possible on `curated`/`all`, where registry tools are listed); `cyberchef_analyse`
+                // carries the name in its arguments, which is the only route on the default `index`
+                // surface since v4.1.0 stopped listing them.
+                //
+                // They RESOLVE differently and then execute the same statements. That is the whole
+                // design: the charter's rule is that a call through the dispatcher must validate
+                // and behave identically to a direct call, and the only way to be sure of that is
+                // for there to be one body rather than two that are meant to match.
+                let registryTool = toolRegistry.getByExposedName(name);
+                let registryArgs = args;
+                let registryLabel = name;
+                if (!registryTool && name === "cyberchef_analyse") {
+                    const wanted = analyseExposedName(args?.tool);
+                    registryTool = wanted ? toolRegistry.getByExposedName(wanted) : undefined;
+                    if (!registryTool) {
+                        // Reported HERE rather than at the scope check, which deliberately falls
+                        // back to the dispatcher's own annotations for an unresolvable name. A bad
+                        // tool name is a caller error, not an authorisation decision, and
+                        // diagnosing it during authorisation would make the error depend on
+                        // whether auth happens to be enabled.
+                        const known = [...REGISTRY_DESCRIBE.values()].map(t => t.name);
+                        throw createInputError(
+                            `Unknown analysis tool: ${JSON.stringify(args?.tool ?? null)}. ` +
+                            `This server has ${known.length}: ${known.join(", ")}.`,
+                            {
+                                tool: "cyberchef_analyse",
+                                field: "tool",
+                                received: args?.tool ?? null,
+                                available: known,
+                                hint: "Use cyberchef_categories to list them, or " +
+                                    "cyberchef_describe_operation for one tool's schema."
+                            });
+                    }
+                    registryArgs = args?.arguments ?? {};
+                    // The SELECTED tool's exposed name, so every error and log line below names
+                    // the tool that ran rather than the dispatcher. Reporting `cyberchef_analyse`
+                    // in an argument error would hand the caller a schema complaint about a tool
+                    // whose schema was not the one violated.
+                    registryLabel = ToolRegistry.exposedName(registryTool.name);
+                }
                 if (registryTool) {
-                    const parsed = registryTool.inputSchema.safeParse(args ?? {});
+                    const parsed = registryTool.inputSchema.safeParse(registryArgs ?? {});
                     if (!parsed.success) {
                         throw createInputError(
-                            `Invalid arguments for ${name}: ${parsed.error.issues.map(i =>
+                            `Invalid arguments for ${registryLabel}: ${parsed.error.issues.map(i =>
                                 `${i.path.join(".") || "(root)"} ${i.message}`).join("; ")}`,
-                            { tool: name, issues: parsed.error.issues });
+                            { tool: registryLabel, issues: parsed.error.issues });
                     }
                     // The tool receives capabilities, never the engine itself. Today that is one
                     // function; keeping it a named object is what makes "what can a tool reach"
@@ -1397,7 +1561,7 @@ const handleCallToolInner = async (request, extra, ownerServer = server) => {
                     const result = await executeWithTimeoutAndRetry(
                         () => registryTool.run(parsed.data, { bake: bakeOnCore }),
                         OPERATION_TIMEOUT,
-                        { requestId, maxRetries: 0, context: { tool: name } }
+                        { requestId, maxRetries: 0, context: { tool: registryLabel } }
                     );
                     // Every registry tool returns an object; `JSON.stringify` of a bare string
                     // would wrap it in quotes, so a string branch here would be a silent
@@ -1408,12 +1572,23 @@ const handleCallToolInner = async (request, extra, ownerServer = server) => {
                     // the argument straight in threw `content.reduce is not a function` and turned
                     // a working analysis into a failed tool call. The input here is a plain string.
                     logRequestComplete(requestId, {
+                        // The tool the CALLER invoked, which for a dispatched call is
+                        // `cyberchef_analyse`. Kept as `tool` so metric and log cardinality stays
+                        // keyed on the dispatch surface rather than doubling it.
                         tool: name,
+                        // ...and the tool that actually RAN, when they differ. Without this an
+                        // operator reading logs after v4.1.0 sees every analysis as
+                        // `cyberchef_analyse` and cannot tell which one ran -- observability that
+                        // existed for free while these tools were called directly, and that the
+                        // dispatcher would otherwise have quietly removed. `registryLabel` is a
+                        // registry name resolved before dispatch, never caller-controlled text,
+                        // so it cannot be used to inflate the label space.
+                        ...(registryLabel === name ? {} : { analysisTool: registryLabel }),
                         // The whole argument object, not `args.input`. Half the registry tools have
                         // no field called `input` -- `rsa_attack` takes `modulus`, `cyclic_pattern`
                         // takes `fragment` -- so keying on that name logged 0 for them, and a
                         // telemetry figure that is silently zero is worse than an absent one.
-                        inputSize: Buffer.byteLength(JSON.stringify(args ?? {}), "utf8"),
+                        inputSize: Buffer.byteLength(JSON.stringify(registryArgs ?? {}), "utf8"),
                         outputSize: Buffer.byteLength(output, "utf8"),
                         duration: Date.now() - startTime, cached: false, streamed: false
                     });

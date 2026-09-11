@@ -56,6 +56,8 @@ WARP.md
 # Coverage and test artifacts
 coverage/
 test-results/
+# Vitest's JSON reporter output, written by `--reporter=json --outputFile`.
+.vitest/
 .nyc_output/
 
 # Benchmark and conformance RUN output. The committed artefacts these are compared against --

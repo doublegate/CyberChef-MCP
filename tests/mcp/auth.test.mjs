@@ -915,6 +915,24 @@ describe("per-tool authorisation at dispatch, against the real server", () => {
         issuer, audience: RESOURCE, subject: "u"
     });
 
+    /**
+     * Session closes that did not succeed. Asserted empty after the suite: a cleanup failure is
+     * worth knowing about -- it means sessions are accumulating again -- but it must not fail the
+     * test that happened to be running when it occurred.
+     */
+    const sessionCleanupFailures = [];
+
+    // An `afterAll`, NOT a standalone `it`. As a test it would have created an order dependency on
+    // the tests that populate the array -- and worse, `vitest -t <name>` would filter it out
+    // exactly when someone is narrowing to debug a session problem. A hook runs regardless of
+    // which tests were selected. Reviewer-found.
+    afterAll(() => {
+        expect(sessionCleanupFailures.join("\n"),
+            "HTTP sessions were opened and not closed. The leak this guards was invisible until " +
+            "an unrelated assertion failed with -32001 Session not found."
+        ).toBe("");
+    });
+
     /** Open a session with the given token and call one tool. @returns {Promise<Object>} */
     const callTool = async (token, name, args) => {
         const base = `http://127.0.0.1:${port}/mcp`;
@@ -942,6 +960,34 @@ describe("per-tool authorisation at dispatch, against the real server", () => {
             })
         });
         const text = await res.text();
+        // CLOSE THE SESSION. Each call opens one via `initialize`, and the server caps them at
+        // `CYBERCHEF_MAX_SESSIONS` (default 100) -- its own capacity message says to "close an
+        // idle session with DELETE". Without this the helper leaked one per call, which put a
+        // hard ceiling on how many assertions this file could make before every later call
+        // returned `-32001 Session not found` and looked like an authorisation failure.
+        //
+        // Found by the v4.1.0 dispatcher tests, which are the first here to loop over every
+        // registry tool: they pushed the file past 100 calls and the failure surfaced on an
+        // unrelated assertion several tests later. A leak with a threshold is invisible until
+        // something crosses it.
+        if (sid) {
+            // NOT swallowed. An empty `.catch(() => {})` here would hide the exact failure this
+            // cleanup exists to prevent: the leak it fixes was invisible for the same reason --
+            // nothing reported it until a later, unrelated assertion failed with
+            // `-32001 Session not found`. A teardown that fails silently is how a leak returns.
+            //
+            // Reported rather than thrown, because a cleanup failure must not mask the assertion
+            // under test by turning a meaningful failure into a teardown error.
+            try {
+                const closed = await fetch(base,
+                    { method: "DELETE", headers: { ...headers, "mcp-session-id": sid } });
+                if (!closed.ok && closed.status !== 405) {
+                    sessionCleanupFailures.push(`DELETE ${sid} -> ${closed.status}`);
+                }
+            } catch (err) {
+                sessionCleanupFailures.push(`DELETE ${sid} threw: ${err.message}`);
+            }
+        }
         return { status: res.status, text };
     };
 
@@ -1048,5 +1094,99 @@ describe("per-tool authorisation at dispatch, against the real server", () => {
             { input: "hi", recipe: [{ op: "To Base64" }] });
         expect(out.status).toBe(200);
         expect(out.text).toContain("aGk=");
+    }, 120000);
+
+    // ---- v4.1.0: the dispatcher is priced by its SELECTION ----------------------------------
+    //
+    // `cyberchef_analyse` runs a registry tool named in its arguments. If it were authorised by
+    // its own annotations, the check would run against a wrapper while the work runs against the
+    // caller's choice -- and v4.1.0 is the release that stops listing those tools, so the bypass
+    // would ship in the same change that removes the evidence of it.
+    //
+    // The tools are DISCOVERED from the registry rather than listed here. A hand-written list
+    // would have to be edited by the change that adds a twentieth tool, which is the change most
+    // likely to get its annotations wrong.
+
+    it("authorises cyberchef_analyse by the tool it selects, in both directions", async () => {
+        const { buildRegistry, ToolRegistry } = await import("../../src/node/tools/index.mjs");
+        const { requiredScopes } = await import("../../src/node/lib/rbac.mjs");
+        const tools = buildRegistry().list();
+        expect(tools.length).toBeGreaterThan(0);
+
+        const wrong = [];
+        for (const tool of tools) {
+            const needed = requiredScopes(tool.annotations ?? {});
+            const exposed = ToolRegistry.exposedName(tool.name);
+
+            // ALLOWED: a token carrying exactly what the selected tool requires must get through
+            // the dispatcher. Empty arguments are used deliberately -- almost every tool rejects
+            // them -- because the assertion is about WHICH error comes back. Passing the scope
+            // check and failing schema validation proves authorisation ran and allowed it; the
+            // two are distinguishable because only one mentions scope.
+            const allowed = await callTool(mint(needed.join(" ")), "cyberchef_analyse",
+                { tool: tool.name, arguments: {} });
+            if (/requires scope/.test(allowed.text)) {
+                wrong.push(`${exposed}: refused a token holding ${needed.join(" ")}, which is ` +
+                    "exactly what its annotations require");
+            }
+
+            // DENIED: a token holding no scope at all must be refused, and refused by naming the
+            // scope the SELECTED tool needs -- not the dispatcher's.
+            const denied = await callTool(mint(""), "cyberchef_analyse",
+                { tool: tool.name, arguments: {} });
+            if (!/requires scope/.test(denied.text)) {
+                wrong.push(`${exposed}: a scopeless token was NOT refused through cyberchef_analyse`);
+            } else if (!needed.every(scope => denied.text.includes(scope))) {
+                wrong.push(`${exposed}: refusal did not name ${needed.join(" ")} -- ` +
+                    `got ${denied.text.slice(0, 160)}`);
+            }
+        }
+        expect(wrong.join("\n")).toBe("");
+    }, 240000);
+
+    it("refuses through the dispatcher exactly as it refuses the direct call", async () => {
+        // The inverse framing, and the one that catches a dispatcher that is merely STRICTER.
+        // Registry tools are listed on `curated`/`all`, so both doors exist and must agree: a
+        // token that may call the tool directly may call it through `analyse`, and one that may
+        // not is refused by both. A dispatcher that refuses differently is as much a defect as
+        // one that allows -- it would make the reachable surface depend on which door was used.
+        const { buildRegistry, ToolRegistry } = await import("../../src/node/tools/index.mjs");
+        const { requiredScopes } = await import("../../src/node/lib/rbac.mjs");
+
+        const disagreed = [];
+        for (const tool of buildRegistry().list()) {
+            const exposed = ToolRegistry.exposedName(tool.name);
+            const needed = requiredScopes(tool.annotations ?? {});
+            for (const scope of ["", needed.join(" ")]) {
+                const direct = await callTool(mint(scope), exposed, {});
+                const viaDispatcher = await callTool(mint(scope), "cyberchef_analyse",
+                    { tool: tool.name, arguments: {} });
+                const refusedDirect = /requires scope/.test(direct.text);
+                const refusedVia = /requires scope/.test(viaDispatcher.text);
+                if (refusedDirect !== refusedVia) {
+                    disagreed.push(`${exposed} with scope "${scope || "(none)"}": ` +
+                        `direct ${refusedDirect ? "refused" : "allowed"}, ` +
+                        `dispatcher ${refusedVia ? "refused" : "allowed"}`);
+                }
+            }
+        }
+        expect(disagreed.join("\n")).toBe("");
+    }, 240000);
+
+    it("does not let an unknown tool name escape the scope check", async () => {
+        // An unresolvable name falls back to the dispatcher's own annotations rather than
+        // silently authorising, and the bad name is then reported by the dispatcher. The failure
+        // this guards is the opposite arrangement: resolve-then-authorise, where an unknown name
+        // resolves to nothing, requires nothing, and is allowed through to be diagnosed.
+        const out = await callTool(mint(""), "cyberchef_analyse",
+            { tool: "no_such_tool_at_all", arguments: {} });
+        // `requires scope` ONLY. The alternation this used to allow (`|Unknown analysis tool`) was
+        // unreachable and therefore weakened the test to nothing: authorisation runs BEFORE
+        // dispatch, so a scopeless token never reaches the branch that diagnoses a bad name. A
+        // test that accepts either answer cannot distinguish "refused correctly" from "resolved to
+        // nothing, required nothing, and was allowed through to be diagnosed" -- which is the exact
+        // failure this guards. Reviewer-found.
+        expect(out.text, `status ${out.status}, body: ${out.text}`).toMatch(/requires scope/);
+        expect(out.text).not.toMatch(/Unknown analysis tool/);
     }, 120000);
 });

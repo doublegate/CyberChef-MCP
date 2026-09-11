@@ -132,7 +132,20 @@ export function visibleTools(tools, granted) {
  */
 export const RECIPE_SCOPED_TOOLS = new Set([
     "cyberchef_bake",
-    "cyberchef_batch"
+    "cyberchef_batch",
+    // v4.1.0. `cyberchef_analyse` dispatches to a registry tool named in its arguments, so it is
+    // priced by THAT tool exactly as `bake` is priced by its recipe. Without this the check would
+    // run against the dispatcher while the work runs against the caller's selection: a
+    // `cyberchef:read` token would reach every registry tool behind it, and v4.1.0 is the release
+    // that stops listing those tools -- so the bypass would arrive in the same change that hides
+    // the evidence of it.
+    //
+    // It belongs here and `cyberchef_recipe_execute` does not, for a reason that is about
+    // mechanism rather than taste: `analyse` carries the tool NAME, so resolving it is a registry
+    // lookup against a Map fixed at construction. `recipe_execute` carries an id, and resolving
+    // that is a storage read -- which is what would move the guard, and the note below says why
+    // that is not allowed.
+    "cyberchef_analyse"
 ]);
 
 /**

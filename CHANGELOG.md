@@ -7,7 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.0] - 2026-09-11
+
+Registry tools get a navigation path, and leave the default surface. The index falls from
+41 tools / 44,968 bytes to **23 / 15,620** — 66% smaller — with nothing made unreachable.
+
 ### Added
+
+- **`cyberchef_analyse(tool, arguments)`** — dispatches to any of the 19 analysis tools by name,
+  accepting the bare (`pqc_identify`) and prefixed (`cyberchef_pqc_identify`) spellings, because
+  this server's own navigation output uses both. It resolves the tool and then runs the **same
+  statements** a direct call runs rather than a parallel copy, which is what makes "behaves
+  identically" checkable instead of aspirational; verified byte-identical through a real client.
+- **`cyberchef_describe_operation` now serves a registry tool's schema.** It previously refused and
+  pointed at `tools/list` — a true redirect, and the reason every registry tool had to be listed,
+  since the listing was their only schema path.
+- **`cyberchef_categories` exposes them** under a separate `analysisTools` key, deliberately not as
+  a sixteenth operation category: everything in `categories` can be run by `cyberchef_bake` and
+  enumerated by `cyberchef_list_operations`, and an analysis tool is neither.
+- **`tests/mcp/index-growth.test.mjs`** — gates that the index lists no registry tool, that
+  `curated` and `all` still list every one (so the gate cannot be satisfied by deleting them), and
+  that the index stays under 30 tools.
 
 - **`glama.json`** at the repository root, declaring `doublegate` as maintainer. Glama is a
   third-party MCP directory that starts a server and introspects it rather than reading its README.
@@ -18,6 +38,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Glama score and card badges** in `README.md`, plus **npm Package** and **Glama Listing**
   entries under Repository Information. The live scores are not transcribed into the prose; the
   badges render them, and a figure copied out of a service is a figure that rots.
+
+### Changed
+
+- **Registry tools are no longer listed on the `index` surface.** They remain listed on `curated`
+  and `all`, and reachable on every surface through `cyberchef_analyse`. Nineteen of them were
+  **30,683 of the index's 44,968 bytes — 68%** of the surface whose purpose is being small, and the
+  growth curve is now flat: a twentieth or a hundredth leaves the index unchanged.
+- **`cyberchef_analyse` is authorised by the tool it selects**, joining `cyberchef_bake` and
+  `cyberchef_batch` in `RECIPE_SCOPED_TOOLS`. Authorising it by its own annotations would have run
+  the check against a wrapper while the work ran against the caller's choice — a scope-filtering
+  bypass shipping in the same release that stops listing the tools behind it.
+- **The round-trip multiplier is 24.5x**, up from 9.1x and higher than it has ever been. It was
+  18.2x in v3.2.0 and fell as registry tools accumulated on the index.
+
+### Fixed
+
+- **`tests/mcp/auth.test.mjs` leaked an HTTP session per call** against a cap of 100. Invisible
+  until something crossed it: the new dispatcher tests are the first to loop over every registry
+  tool, and the failure surfaced on an unrelated assertion several tests later as
+  `-32001 Session not found`.
+
+### Notes
+
+- The charter's claim that the index would cost more than `curated` at 59 registry tools was
+  **arithmetically impossible**, and building the gate for it is what disproved it — registry tools
+  are listed on every surface, so forty synthetic ones grew all three by the same 76,440 bytes and
+  the gap did not move by one byte. Recorded as **F-02**. What survived is the finding that was
+  always the real one: the 68% share, and a 41-tool index sitting inside the 30-50 band where tool
+  selection accuracy is measured to degrade.
 
 ## [4.0.0] - 2026-09-11
 

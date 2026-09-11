@@ -6,9 +6,10 @@ dated banner**, never deleted.
 
 | Charter | Dies when | Escalates to |
 |---|---|---|
-| **v4.1.0** surface navigation | The dispatcher cannot carry arguments through schema validation as faithfully as a direct call — *listing must never be stricter than dispatch*, and an unlisted-but-uncallable tool inverts it | Keep the tools listed; the ceiling is then a fact about the design. Re-scope the tool programme instead |
+| **v4.1.0** surface navigation — **SHIPPED 2026-09-11, no criterion fired** | The dispatcher cannot carry arguments through schema validation as faithfully as a direct call — *listing must never be stricter than dispatch*, and an unlisted-but-uncallable tool inverts it | Keep the tools listed; the ceiling is then a fact about the design. Re-scope the tool programme instead |
 | | Measured model behaviour degrades behind one extra hop | Same — the index cost was buying something real |
-| | The byte win does not survive counting the dispatcher's own schema | Re-measure and restate; `~15,905` is a projection, not an observation |
+| | The byte win does not survive counting the dispatcher's own schema | Re-measured: the dispatcher costs **1,080 bytes** (1,409 once its `analysisTools` output schema landed) and the index came to **15,620**, better than the `~15,905` projection |
+| | *(retired)* The index costs more than `curated` at 59 registry tools | **Arithmetically impossible — F-02.** Registry tools are listed on every surface, so forty synthetic ones grew all three by the same 76,440 bytes and the gap moved by zero. Never a criterion that could fire |
 | **v4.2.0** dispatch consolidation | The refactor cannot be proven behaviour-preserving through a real client | Leave the 23 branches. A tidier dispatch that answers differently is a regression with good intentions |
 | | v4.1.0 does not land, so the 24th entry never exists | Back on the carried-forward list, honestly |
 | **v4.3.0** tools, slice 1 | A candidate is expressible as one pure function over one input | Upstream operation, not a registry tool |
