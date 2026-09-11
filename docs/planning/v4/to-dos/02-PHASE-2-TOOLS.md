@@ -53,7 +53,8 @@ In confidence order, each shipping with its refusals tested as carefully as its 
 - [ ] `archive_bomb` — depth, ratio and entry walk **without materialising**. Cite node-tar's
       `maxDecompressionRatio` default of 1000 rather than inventing a constant. Report shape; do not
       claim detection.
-- [ ] `fuzzy_cluster` — N×N over hashes already computed in-tree, plus TLSH which is absent entirely.
+- [ ] `fuzzy_cluster` — all N(N-1)/2 pairs over hashes already computed in-tree, plus TLSH, absent
+      from CyberChef entirely.
 - [ ] `steg_detect` — chi-square / RS / SPA, then corpus ranking. **Weakest evidence in the phase**;
       if the corpus cannot be labelled without encoding assumptions, stop and say so.
 - [ ] Node 26 natives, each with a **before/after number**: `Uint8Array.fromBase64`/`toBase64`/
@@ -83,7 +84,7 @@ image size       re-measured; 453 MB today
 
 ## What this phase must not do
 
-- **Start before Phase 1 lands.** The measurement says the surface runs out at 58 registry tools.
+- **Start before Phase 1 lands.** The measurement says the surface runs out at 59 registry tools.
 - **Count an extension as a tool.** PQC verification extends two existing tools.
 - **Build lattice work as though it were cheap.** There is no LLL on npm; see the charter.
 - **Add an emulator.** Running untrusted shellcode in-process is a posture change, not a feature.
