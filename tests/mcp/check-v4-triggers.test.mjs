@@ -252,6 +252,20 @@ describe("check-v4-triggers", () => {
         expect(r.status).toBe(1);
     });
 
+    it("T-13 fires on migration wording in a LATER concatenated description segment", () => {
+        // This server writes long descriptions as concatenated string literals -- nine of them --
+        // so a check that captured only the first quoted segment read a convenient part of the
+        // text rather than the text. Reviewer-found, and the same shape of miss as keying on the
+        // tool's name: both looked at the wrong thing confidently.
+        const r = runT13With(dir => patch(dir, "src/node/mcp-server.mjs", t =>
+            t.replace(`        description: "Get worker thread pool statistics`,
+                `        description: "Get worker thread pool statistics." +\n` +
+                `            " Use this to migrate v1 recipes to v2 format`)));
+        expect(r.stdout).toMatch(/FIRED\s+T-13/);
+        expect(r.stdout).toContain("advertises a migration");
+        expect(r.status).toBe(1);
+    });
+
     it("T-13 fires when a retired bin is published again", () => {
         const r = runT13With(dir => patch(dir, "package.json", t => {
             const pkg = JSON.parse(t);

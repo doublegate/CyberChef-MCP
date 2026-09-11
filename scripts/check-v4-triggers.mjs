@@ -323,8 +323,18 @@ function checkAccumulatedRemovals() {
 
     // 2. Any tool description that advertises a migration, whatever the tool is called. This is
     //    the half that survives a rename.
-    for (const m of server.matchAll(/name:\s*"(cyberchef_[a-z_]+)",\s*\n\s*description:\s*"([^"]*)"/g)) {
-        if (MIGRATION_WORDING.test(m[2])) hits.push(`tool ${m[1]} advertises a migration: "${m[2].slice(0, 50)}"`);
+    //
+    //    The description is read to the end of the DECLARATION, not to the first closing quote.
+    //    This file writes long descriptions as concatenated string literals -- nine of them -- so
+    //    matching `"([^"]*)"` captured only the first segment, and wording in a later one was
+    //    invisible. Reviewer-found, and it is the same shape of miss as keying on the name: the
+    //    check was reading a convenient part of the text rather than the text. Stopping at
+    //    `inputSchema:` keeps it to the one declaration.
+    for (const m of server.matchAll(/name:\s*"(cyberchef_[a-z_]+)",\s*\n\s*description:([\s\S]*?)(?:\n\s*inputSchema:|\n\s*\})/g)) {
+        const described = m[2];
+        if (MIGRATION_WORDING.test(described)) {
+            hits.push(`tool ${m[1]} advertises a migration: "${described.replace(/\s+/g, " ").trim().slice(0, 60)}"`);
+        }
     }
 
     // 3. Retired configuration keys, in the committed settings table.

@@ -459,10 +459,20 @@ const GHCR_MISMATCH_EXEMPT = new Map([
  */
 function isQuotedDefect(file, text, index) {
     if (!GHCR_MISMATCH_EXEMPT.has(file)) return false;
-    const line = text.slice(text.lastIndexOf("\n", index) + 1, text.indexOf("\n", index));
-    const context = text.slice(Math.max(0, index - 200), index + 200);
-    return /never be pushed|will never exist|cannot exist|does not and cannot|an image that/i.test(line) ||
-        /never be pushed|will never exist|cannot exist|does not and cannot|an image that/i.test(context);
+    // The matched line AND the one after it -- no further. An earlier version accepted a
+    // 200-character window in both directions, which contradicted this function's own contract:
+    // unrelated defect wording a few lines away would have exempted a genuinely broken reference.
+    // Reviewer-found, in the docblock's own words.
+    //
+    // Line-only is too tight, though, and that is a fact about prose rather than a compromise:
+    // these files wrap at 100 characters, so "... `cyberchef-mcp_v3:4.0.0` -- a tag that" ends a
+    // line and "will never be pushed" begins the next. The explanation is in the same SENTENCE,
+    // which is the real contract; one following line is what that costs to express.
+    const from = text.lastIndexOf("\n", index) + 1;
+    let end = text.indexOf("\n", index);
+    if (end !== -1) end = text.indexOf("\n", end + 1);
+    const sentence = text.slice(from, end === -1 ? undefined : end);
+    return /never be pushed|will never exist|cannot exist|does not and cannot|an image that/i.test(sentence);
 }
 
 /**
@@ -493,7 +503,10 @@ function checkGhcrMajors() {
         } catch {
             continue;
         }
-        for (const m of text.matchAll(/cyberchef-mcp_v([0-9]+):([0-9]+)\.[0-9]+\.[0-9]+/g)) {
+        // `mcp-release.yml` publishes MAJOR, MINOR and full-semver tags, so `_v3:4` and
+        // `_v3:4.0` are equally impossible and were equally unchecked. Reviewer-found.
+        // `latest` carries no major and is correctly not matched.
+        for (const m of text.matchAll(/cyberchef-mcp_v([0-9]+):([0-9]+)(?:\.[0-9]+){0,2}(?![\w.-])/g)) {
             seen++;
             const [suffix, tagMajor] = [m[1], m[2]];
             if (suffix === tagMajor) continue;

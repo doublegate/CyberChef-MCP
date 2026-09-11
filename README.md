@@ -778,7 +778,7 @@ All workflows use the latest CodeQL Action v4 for security scanning and SARIF up
 # Run all tests (requires Node.js >=26 <27; 241 Node-API + 2,289 operation tests)
 npm test
 
-# Run MCP validation test suite (1,712 tests across 74 files, with Vitest)
+# Run MCP validation test suite (1,713 tests across 74 files, with Vitest)
 npm run test:mcp
 
 # Run MCP tests with coverage report
@@ -799,8 +799,8 @@ npm run lint
 
 **Test Coverage:**
 The MCP server maintains comprehensive test coverage:
-- **1,712 MCP tests** across 74 suites, plus 241 Node-API tests, 2,289 operation tests and 9 runnable examples executed by CI
-- **Coverage thresholds** (`vitest.config.mjs`): 96% lines, 95% statements, 88% branches, 96% functions, with `src/node/lib/**` held separately at 99 lines / 99 statements / 94 branches / 100 functions
+- **1,713 MCP tests** across 74 suites, plus 241 Node-API tests, 2,289 operation tests and 9 runnable examples executed by CI
+- **Coverage thresholds** (`vitest.config.mjs`): 96% lines, 95% statements, 89% branches, 96% functions, with `src/node/lib/**` held separately at 99 lines / 99 statements / 94 branches / 100 functions
 - **Current coverage**: 96.08% lines, 95.1% statements, 96.54% functions, 89.43% branches (thresholds 96/89/96/95, lines/branches/functions/statements)
 - Note: individual suite names are not listed here because the list went stale three times;
   `ls tests/mcp/*.test.mjs` is authoritative.
