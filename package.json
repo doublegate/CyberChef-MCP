@@ -241,6 +241,7 @@
     "mcp": "node src/node/mcp-server.mjs",
     "prepack": "npx grunt configTests",
     "check:versions": "node scripts/check-version-consistency.mjs",
+    "check:v4-triggers": "node scripts/check-v4-triggers.mjs",
     "check:server-json": "node scripts/check-server-json.mjs",
     "conformance": "node conformance/run.mjs",
     "measure:surfaces": "node benchmarks/tool-surface.mjs",
