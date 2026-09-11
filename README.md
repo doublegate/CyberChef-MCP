@@ -328,9 +328,10 @@ CYBERCHEF_CACHE_ENABLED=true             # Enable/disable caching
 # Resource Quotas (v1.7.0+)
 CYBERCHEF_MAX_CONCURRENT_OPS=10          # Maximum concurrent operations
 
-# Deprecation & Migration (v1.8.0+)
-V2_COMPATIBILITY_MODE=false              # Enable v2.0.0 behavior preview (elevates warnings to errors)
-CYBERCHEF_SUPPRESS_DEPRECATIONS=false    # Suppress deprecation warnings
+# (Removed in v4.0.0) V2_COMPATIBILITY_MODE and CYBERCHEF_SUPPRESS_DEPRECATIONS went with the
+# deprecation system they configured. Do not set them: the `compatibility` section is now an
+# unknown section, and `cyberchef.config.json` fails CLOSED on one -- the server refuses to start
+# with "unknown section \"compatibility\"". The env vars are simply ignored.
 
 # Transport (v1.9.0+; per-session HTTP since v2.0.0)
 CYBERCHEF_TRANSPORT=stdio                # Transport type: stdio or http
@@ -600,7 +601,10 @@ For detailed information, see:
 
 ## Project Roadmap
 
-CyberChef MCP Server has a comprehensive development roadmap spanning **19 releases** across **6 phases** through August 2027.
+The original roadmap scoped **19 releases across 6 phases through August 2027**. It was overtaken:
+all six phases are complete and the project is at **v4.1.0**. The table below is kept because it
+records what each phase was *for*; [`docs/planning/ROADMAP.md`](docs/planning/ROADMAP.md) is the
+live source and has a row per shipped release.
 
 | Phase | Releases | Timeline | Focus | Status |
 |-------|----------|----------|-------|--------|
@@ -609,12 +613,14 @@ CyberChef MCP Server has a comprehensive development roadmap spanning **19 relea
 | **Phase 3: Maturity** | v1.8.0 - v2.0.0 | Q3 2026 | API stabilization, upstream catch-up, relicensing, v2.0.0 | **v2.0.0 Released** |
 | **Phase 4: Expansion** | v2.2.0 - v2.4.0 | Q4 2026 | Multi-modal (**v2.2.0 shipped**), protocol currency and transports (**v2.3.0 shipped**), the tool registry and its first four tools (**v2.4.0 shipped**) | Complete |
 | **Phase 5: Enterprise** | v2.5.0 - v2.7.0 | Q1 2027 | OAuth 2.1, RBAC, audit logging and multi-tenancy (**v2.5.0 shipped**), horizontal scaling and deployment (**v2.6.0 shipped**), metrics, tracing and dashboards (**v2.7.0 shipped**) | Complete |
-| **Phase 6: Evolution** | v2.8.0 - v3.0.0 | Q2-Q3 2027 | Edge deployment, AI-native features, v3.0.0 | Planned |
+| **Phase 6: Evolution** | v2.8.0 - v3.0.0 | Q2-Q3 2027 | Edge deployment, AI-native features, v3.0.0 | **Completed** — and early: v3.0.0 shipped 2026-09 rather than Q3 2027 |
+| **Beyond the plan** | v3.1.0 - v4.1.0 | 2026-09 | Conformance against the official suite, magic re-ranking, the arm64 benchmark, PQC identification, retiring the v2 migration surface (v4.0.0), and the tool-surface work in v4.1.0 | **Shipped**, none of it in the original six phases |
 
 **External project integration — what it actually produced.** The planning tree
 ([External Project Integration](docs/planning/ext-proj-int/), 30 documents) scoped 80-120 new tools
 from 8 security projects. Measuring each against the 504 operations already present cut that hard:
-**four tools shipped in v2.4.0**, drawn on xortool, pwntools, RsaCtfTool, hashcat and John. Four of
+**four tools shipped in v2.4.0**, drawn on xortool, pwntools, RsaCtfTool, hashcat and John — and
+**nineteen now exist**, twelve added in v3.3.0 and one each in v3.4.0, v3.8.0 and v3.11.0. Four of
 the eight projects contributed nothing, because the capability was already here — `Magic` covers
 what Ciphey, Ares and katana's core do, and cryptii's encodings have 26 equivalents among the
 operations. The `cyberchef-recipes` preset corpus remains unbuilt. See
@@ -722,6 +728,14 @@ Detailed documentation is organized in the [`docs/`](docs/) directory:
 ### Local Setup
 If you want to modify the server code without Docker:
 
+0.  **Use the pinned Node version.** `.nvmrc` pins **26** (matching `engines: >=26 <27` and every
+    CI workflow), so `nvm use` / `fnm use` selects it. Worth doing rather than assuming: through
+    v4.0.0 this file said `24` while the floor was already 26, so version managers quietly
+    selected a Node below the floor for an entire release.
+    ```bash
+    nvm use    # or: fnm use
+    node --version   # expect v26.x
+    ```
 1.  **Install Dependencies:**
     ```bash
     npm install
@@ -779,7 +793,7 @@ All workflows use the latest CodeQL Action v4 for security scanning and SARIF up
 # Run all tests (requires Node.js >=26 <27; 241 Node-API + 2,289 operation tests)
 npm test
 
-# Run MCP validation test suite (1,713 tests across 74 files, with Vitest)
+# Run MCP validation test suite (1,720 tests across 77 files, with Vitest)
 npm run test:mcp
 
 # Run MCP tests with coverage report
@@ -800,7 +814,7 @@ npm run lint
 
 **Test Coverage:**
 The MCP server maintains comprehensive test coverage:
-- **1,713 MCP tests** across 74 suites, plus 241 Node-API tests, 2,289 operation tests and 9 runnable examples executed by CI
+- **1,720 MCP tests** across 77 suites, plus 241 Node-API tests, 2,289 operation tests and 9 runnable examples executed by CI
 - **Coverage thresholds** (`vitest.config.mjs`): 96% lines, 95% statements, 89% branches, 96% functions, with `src/node/lib/**` held separately at 99 lines / 99 statements / 94 branches / 100 functions
 - **Current coverage**: 96.08% lines, 95.1% statements, 96.54% functions, 89.43% branches (thresholds 96/89/96/95, lines/branches/functions/statements)
 - Note: individual suite names are not listed here because the list went stale three times;

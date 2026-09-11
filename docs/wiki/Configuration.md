@@ -331,7 +331,7 @@ If you do not use saved recipes, none of this applies — scale freely.
 | Variable | Default | Meaning |
 |---|---|---|
 | `CYBERCHEF_BINARY_OUTPUT` | *latin1* | Set to `base64` for base64 instead of byte-lossless latin1 text |
-| `CYBERCHEF_SUPPRESS_DEPRECATIONS` | `false` | |
+| ~~`CYBERCHEF_SUPPRESS_DEPRECATIONS`~~ | — | **Removed in v4.0.0** with the deprecation system. Ignored as an env var; a **startup error** in `cyberchef.config.json`, which fails closed on the now-unknown `compatibility` section |
 | `LOG_LEVEL` | `info` | `trace`, `debug`, `info`, `warn`, `error`, `fatal` |
 
 **Logs always go to stderr**, never stdout, because stdout is the protocol stream on stdio.

@@ -487,8 +487,8 @@ no client could speak. See `docs/planning/ROADMAP.md`.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `CYBERCHEF_SUPPRESS_DEPRECATIONS` | `false` | Silence deprecation notices. |
-| `V2_COMPATIBILITY_MODE` | `false` | Preview which calls v2 changes, without changing behaviour. |
+| ~~`CYBERCHEF_SUPPRESS_DEPRECATIONS`~~ | — | **Removed in v4.0.0**, with the deprecation system it configured. Ignored as an env var; as a `cyberchef.config.json` key it is a **startup error**, because the file fails closed on an unknown section. |
+| ~~`V2_COMPATIBILITY_MODE`~~ | — | **Removed in v4.0.0.** Same as above. |
 
 ---
 
