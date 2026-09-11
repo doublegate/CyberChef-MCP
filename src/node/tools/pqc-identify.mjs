@@ -71,22 +71,33 @@ const BY_OID = {
  *
  * @param {Buffer} buf - The DER.
  * @param {number} off - Offset of the tag byte.
- * @returns {?{tag: number, length: number, valueStart: number}} The header, or null if malformed.
+ * `limit` is the end of the structure this TLV must fit inside, and it is not optional padding:
+ * bounding only against the whole buffer lets a nested read walk out of its parent. An
+ * AlgorithmIdentifier declared EMPTY, followed by a real OID as its SIBLING, then yields a
+ * `definite` identification from an OID that is not in the AlgorithmIdentifier at all. Both
+ * reviewers found that independently, and it is this tool's own stated failure mode -- a parser
+ * that invents an answer -- arriving by a second route.
+ *
+ * @param {Buffer} buf - The DER.
+ * @param {number} off - Offset of the tag byte.
+ * @param {number} limit - Exclusive end offset this TLV must lie within.
+ * @returns {?{tag: number, length: number, valueStart: number, end: number}} Header, or null.
  */
-function readTlv(buf, off) {
-    if (off + 1 >= buf.length) return null;
+function readTlv(buf, off, limit = buf.length) {
+    const bound = Math.min(limit, buf.length);
+    if (off + 1 >= bound) return null;
     const tag = buf[off];
     let i = off + 1;
     let length = buf[i++];
     if (length & 0x80) {
         const count = length & 0x7f;
         // Indefinite length (0x80) and absurd counts are not valid here.
-        if (count === 0 || count > 4 || i + count > buf.length) return null;
+        if (count === 0 || count > 4 || i + count > bound) return null;
         length = 0;
         for (let k = 0; k < count; k++) length = length * 256 + buf[i++];
     }
-    if (i + length > buf.length) return null;
-    return { tag, length, valueStart: i };
+    if (i + length > bound) return null;
+    return { tag, length, valueStart: i, end: i + length };
 }
 
 /**
@@ -100,20 +111,36 @@ function readTlv(buf, off) {
  */
 function decodeOid(body) {
     if (body.length === 0) return null;
-    const parts = [Math.floor(body[0] / 40), body[0] % 40];
+
+    // Every subidentifier is base-128, INCLUDING the first. Reading `body[0]` directly and
+    // splitting it by 40 assumes the first one is a single byte, which is true for the NIST OIDs
+    // (2.16.840... encodes as 0x60) and false in general: 2.100 needs two bytes, and 2.40 fits in
+    // one but yields "3.0" under that arithmetic. Reviewer-found. The fixtures could not expose it
+    // because they are all PQC OIDs -- but the tool reports the OID it saw for algorithms it does
+    // NOT know, which is exactly where an unusual arc shows up.
+    const values = [];
     let value = 0n;
     let pending = false;
-    for (const byte of body.subarray(1)) {
+    for (const byte of body) {
         value = (value << 7n) | BigInt(byte & 0x7f);
         pending = true;
         if (!(byte & 0x80)) {
-            parts.push(value.toString());
+            values.push(value);
             value = 0n;
             pending = false;
         }
     }
     // A trailing continuation bit means the encoding was truncated.
-    return pending ? null : parts.join(".");
+    if (pending || values.length === 0) return null;
+
+    // X.690 8.19.4: the first subidentifier is 40*X + Y, where X is 0, 1 or 2 -- and for X = 2, Y
+    // is unbounded, so the split is by range rather than by division.
+    const first = values[0];
+    let head;
+    if (first < 40n) head = [0n, first];
+    else if (first < 80n) head = [1n, first - 40n];
+    else head = [2n, first - 80n];
+    return head.concat(values.slice(1)).map(String).join(".");
 }
 
 /**
@@ -130,19 +157,22 @@ function algorithmOid(der) {
     const outer = readTlv(der, 0);
     if (!outer || outer.tag !== 0x30) return null;
 
+    // Every nested read is bounded by its PARENT's declared end, not by the buffer. Without this,
+    // an AlgorithmIdentifier declared empty and followed by a real OID as a sibling returns a
+    // `definite` identification for an OID it does not contain.
     let cursor = outer.valueStart;
-    let first = readTlv(der, cursor);
+    let first = readTlv(der, cursor, outer.end);
     if (!first) return null;
     if (first.tag === 0x02) {                       // PKCS#8 version INTEGER
-        cursor = first.valueStart + first.length;
-        first = readTlv(der, cursor);
+        cursor = first.end;
+        first = readTlv(der, cursor, outer.end);
         if (!first) return null;
     }
     if (first.tag !== 0x30) return null;            // AlgorithmIdentifier
 
-    const oid = readTlv(der, first.valueStart);
+    const oid = readTlv(der, first.valueStart, first.end);
     if (!oid || oid.tag !== 0x06) return null;
-    return decodeOid(der.subarray(oid.valueStart, oid.valueStart + oid.length));
+    return decodeOid(der.subarray(oid.valueStart, oid.end));
 }
 
 /**
@@ -153,27 +183,58 @@ function algorithmOid(der) {
  * @returns {{bytes: Buffer, decodedAs: string}} The bytes and how they were read.
  */
 function decodeInput(input, format) {
-    const pem = input.match(/-----BEGIN [^-]+-----([\s\S]*?)-----END [^-]+-----/);
+    // The label is captured and back-referenced, so `BEGIN PUBLIC KEY ... END CERTIFICATE` is not
+    // a PEM block. It matched before, and mismatched labels are exactly the shape of a
+    // copy-paste that spliced two different objects together.
+    const pem = input.match(/-----BEGIN ([A-Z0-9 ]+)-----([\s\S]*?)-----END \1-----/);
     if ((format === "Auto" || format === "PEM") && pem) {
-        return { bytes: Buffer.from(pem[1].replace(/\s+/g, ""), "base64"), decodedAs: "PEM" };
+        return { bytes: decodeStrict(pem[2], "base64", "PEM"), decodedAs: "PEM" };
     }
     // `createInputError`, not a bare Error: every other registry tool signals bad input this way,
     // and the difference is visible to a caller -- it is what carries the INVALID_INPUT code and
     // the offending field instead of an untyped message.
     if (format === "PEM") {
         throw createInputError(
-            "input_format is PEM but the input has no -----BEGIN----- block.",
+            "input_format is PEM but the input has no -----BEGIN-----/-----END----- block with matching labels.",
             { field: "input", received: input.slice(0, 60) });
     }
 
     const trimmed = input.trim();
     if (format === "Hex" || (format === "Auto" && /^[0-9a-fA-F\s]+$/.test(trimmed) && trimmed.replace(/\s+/g, "").length % 2 === 0)) {
-        return { bytes: Buffer.from(trimmed.replace(/\s+/g, ""), "hex"), decodedAs: "Hex" };
+        return { bytes: decodeStrict(trimmed, "hex", "Hex"), decodedAs: "Hex" };
     }
     if (format === "Base64" || (format === "Auto" && /^[A-Za-z0-9+/=\s]+$/.test(trimmed) && trimmed.length > 32)) {
-        return { bytes: Buffer.from(trimmed.replace(/\s+/g, ""), "base64"), decodedAs: "Base64" };
+        return { bytes: decodeStrict(trimmed, "base64", "Base64"), decodedAs: "Base64" };
     }
     return { bytes: Buffer.from(input, "latin1"), decodedAs: "Raw" };
+}
+
+/**
+ * Decode hex or base64, rejecting what `Buffer.from` would silently drop.
+ *
+ * WHY THIS IS NOT PARANOIA. `Buffer.from` stops at the first thing it cannot parse and returns the
+ * prefix, with no error. So 1,312 valid hex bytes followed by garbage decodes to 1,312 bytes and is
+ * reported as a probable ML-DSA-44 public key, and `"zz"` as declared Hex decodes to zero bytes.
+ * Both reviewers found this independently. A tool whose entire contribution is telling you what
+ * something IS must not identify the part of the input it happened to understand.
+ *
+ * @param {string} text - The encoded text, whitespace permitted.
+ * @param {string} encoding - `hex` or `base64`.
+ * @param {string} label - How to name the format in an error.
+ * @returns {Buffer} The decoded bytes.
+ */
+function decodeStrict(text, encoding, label) {
+    const compact = text.replace(/\s+/g, "");
+    const valid = encoding === "hex" ?
+        /^[0-9a-fA-F]*$/.test(compact) && compact.length % 2 === 0 :
+        /^[A-Za-z0-9+/]*={0,2}$/.test(compact) && compact.length % 4 === 0;
+    if (!valid || compact.length === 0) {
+        throw createInputError(
+            `input is not valid ${label}. It was not decoded, because decoding it partially would ` +
+            "identify whatever prefix happened to parse.",
+            { field: "input", format: label, received: compact.slice(0, 60) });
+    }
+    return Buffer.from(compact, encoding);
 }
 
 /**

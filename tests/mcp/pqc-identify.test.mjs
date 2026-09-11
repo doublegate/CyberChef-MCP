@@ -177,6 +177,80 @@ describe("pqc_identify", () => {
         }
     });
 
+    describe("a nested element must lie inside its parent", () => {
+        // BOTH reviewers found this independently, and it is this tool's stated failure mode
+        // arriving by a second route: a parser that invents an answer. Bounding each read against
+        // the whole buffer rather than against the declared parent is how it got in.
+        it("does not accept an OID that sits OUTSIDE the AlgorithmIdentifier", () => {
+            // outer SEQUENCE(13) { AlgorithmIdentifier SEQUENCE(0) {} , <ML-KEM-512 OID> }
+            // The OID is a SIBLING of the empty AlgorithmIdentifier, not a member of it. Before the
+            // fix this returned confidence "definite" and algorithm "ML-KEM-512".
+            const r = run({ input: "300d30000609608648016503040401", "input_format": "Hex" });
+            expect(r.confidence).not.toBe("definite");
+            expect(r.algorithm).toBeUndefined();
+        });
+
+        it("does not read a PKCS#8 algorithm field past the end of the outer SEQUENCE", () => {
+            // outer SEQUENCE declares 3 bytes: the version INTEGER fills them exactly, so the
+            // AlgorithmIdentifier that follows is outside the structure that claims to contain it.
+            const r = run({ input: "30030201000609608648016503040401", "input_format": "Hex" });
+            expect(r.confidence).not.toBe("definite");
+        });
+    });
+
+    describe("OID arcs are decoded as DER defines them", () => {
+        // Every subidentifier is base-128, INCLUDING the first. Splitting `body[0]` by 40 is right
+        // only while the first subidentifier is a single byte -- true of every NIST PQC OID, which
+        // is why no fixture caught it. The tool reports the OID for algorithms it does NOT know,
+        // so an unusual arc is precisely where this surfaces to a user. Reviewer-found.
+        for (const [want, hex] of [
+            ["2.40", "30053003060178"],                  // 2*40+40 = 120, one byte, formerly "3.0"
+            ["2.100.3", "300730050603813403"]            // 2*40+100 = 180, TWO bytes, formerly "3.9.52.3"
+        ]) {
+            it(`reads ${want} as ${want}`, () => {
+                const r = run({ input: hex, "input_format": "Hex" });
+                expect(r.notes.join(" ")).toContain(`OID ${want}`);
+            });
+        }
+
+        it("still reads the NIST arcs, which is what the fix must not break", () => {
+            const { publicKey } = generateKeyPairSync("ml-kem-512");
+            const r = run({ input: publicKey.export({ type: "spki", format: "pem" }) });
+            expect(r.oid).toBe("2.16.840.1.101.3.4.4.1");
+        });
+    });
+
+    describe("a partially-decodable input is refused, not partially identified", () => {
+        // `Buffer.from` stops at the first thing it cannot parse and returns the prefix with no
+        // error, so malformed input produced a confident identification of whatever happened to
+        // decode. Both reviewers found it. A tool whose whole contribution is saying what something
+        // IS must not answer for the fraction of the input it understood.
+        for (const [label, args] of [
+            ["hex valid for 1,312 bytes then garbage", { input: "ab".repeat(1312) + "ZZ!", "input_format": "Hex" }],
+            ["hex that is not hex at all", { input: "zz", "input_format": "Hex" }],
+            ["hex with an odd digit count", { input: "abc", "input_format": "Hex" }],
+            ["base64 carrying an invalid character", { input: "AAAA!", "input_format": "Base64" }]
+        ]) {
+            it(`refuses ${label}`, () => {
+                let thrown;
+                try {
+                    run(args);
+                } catch (error) {
+                    thrown = error;
+                }
+                expect(thrown, "this decoded silently instead of failing").toBeDefined();
+                expect(thrown.code).toBe("INVALID_INPUT");
+            });
+        }
+
+        it("refuses a PEM block whose BEGIN and END labels disagree", () => {
+            const { publicKey } = generateKeyPairSync("ml-dsa-44");
+            const spliced = publicKey.export({ type: "spki", format: "pem" })
+                .replace("-----END PUBLIC KEY-----", "-----END CERTIFICATE-----");
+            expect(() => run({ input: spliced, "input_format": "PEM" })).toThrow(/BEGIN/);
+        });
+    });
+
     describe("the declared input format is obeyed", () => {
         it("reads a PEM when told to, rather than only when it guesses", () => {
             const { publicKey } = generateKeyPairSync("ml-dsa-44");

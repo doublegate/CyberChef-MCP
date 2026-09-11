@@ -36,6 +36,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `createInputError`, so the same class of bad input reached a client untyped — without the
   `INVALID_INPUT` code or the offending field. Found by writing the tests that closed a coverage
   gap, not by the coverage number itself.
+- **`pqc_identify` reported `definite` for an OID outside the structure declaring it.** Nested DER
+  reads were bounded by the buffer rather than by the parent's declared end, so an
+  `AlgorithmIdentifier` declared empty with a real OID as its *sibling* was identified with full
+  confidence. Every nested read is now bounded by its parent. Found independently by both reviewers.
+- **`pqc_identify` partially identified partially-decodable input.** `Buffer.from` silently returns
+  the prefix it could parse, so 1,312 valid hex bytes followed by garbage were reported as a
+  probable ML-DSA-44 key and `"zz"` as declared hex decoded to nothing. Hex, base64 and PEM are now
+  validated in full before decoding, and a PEM block's `BEGIN` and `END` labels must match.
+- **`pqc_identify` mis-decoded OID arcs whose first subidentifier needs more than one byte.** It is
+  base-128 like every other and X.690 splits it by range, not by division: `2.40` was reported as
+  `3.0` and `2.100.3` as `3.9.52.3`. No fixture could expose it — every NIST PQC OID encodes in one
+  byte — but the tool reports the OID for algorithms it does not know.
+- **The tool-surface gate now checks the round-trip multiplier in `docs/guides/user_guide.md`**, not
+  only in `tool-catalog.mjs`. The guide said 9.9x while the canonical table said 9.2x and the truth
+  was 9.0x, stale across releases: a gate covering one occurrence of a claim reads as covering the
+  claim. Verified by reintroducing the stale figure.
+- **The Helm chart's own `version` no longer moves with the application.** It was bumped to 0.5.9
+  with no template change, against the rule written in `Chart.yaml` itself; reverted to 0.5.8.
 
 ### Changed
 
@@ -44,7 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   operation schema is **47,425 bytes, 9.0x cheaper than `all`**. The new tool costs 1,154 bytes on
   the index; a registry tool has no navigation path, so one that is not listed cannot be called at
   all, which is why it is in every surface.
-- **Coverage**: 96.09% lines / 89.41% branches / 96.64% functions / **95.16% statements**. The thin
+- **Coverage**: 96.1% lines / 89.41% branches / 96.64% functions / **95.14% statements**. The thin
   margin v3.10.0 documented was hit on the first release after it — statements fell to 94.99%
   against a threshold of 95 — and was fixed the way that note said to fix it, by covering the code
   rather than moving the bar.

@@ -172,6 +172,16 @@ describe("documented tool-surface figures", () => {
         expect(num(m[2])).toBe(bySurface.all.bytes);
         // One decimal place, so allow the rounding the prose uses.
         expect(Number(m[3])).toBeCloseTo(bySurface.all.bytes / roundTrip, 1);
+
+        // The SAME multiplier is stated in the user guide, and it was checked nowhere. It read
+        // "9.9x" while this file's own sentence said 9.2x and the true figure was 9.0x -- stale
+        // across at least two releases, because a gate that covers one occurrence of a claim reads
+        // as covering the claim. That is this repository's most-repeated defect, and this is the
+        // fourth time it has been found in a check written to prevent it. Reviewer-found.
+        const guide = read("docs/guides/user_guide.md").match(
+            /index plus one operation schema is still ([\d.]+)x cheaper than `all`/);
+        expect(guide, "the user_guide.md ratio sentence stopped matching").not.toBeNull();
+        expect(Number(guide[1])).toBeCloseTo(bySurface.all.bytes / roundTrip, 1);
     });
 });
 

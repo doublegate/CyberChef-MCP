@@ -159,7 +159,7 @@ tokenizer and every one of those was bytes divided by four.
 The index doubled at v3.3.0, from 28 tools and 20,297 bytes. Twelve registry tools were added, and
 a registry tool has no navigation path — `cyberchef_bake` runs recipes of *operations* — so one
 that is not listed cannot be called at all. The ratio between the three modes is what matters, and
-the index plus one operation schema is still 9.9x cheaper than `all`.
+the index plus one operation schema is still 9.0x cheaper than `all`.
 
 **Nothing becomes unreachable.** `cyberchef_bake` runs any of the 504 operations by name, and three
 navigation tools let a client find the name and its arguments:
