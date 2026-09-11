@@ -60,6 +60,10 @@ jobs:
       # for registry credentials. Nothing long-lived is stored, so nothing long-lived can leak.
       id-token: write
       contents: read
+      # Reading the sibling mcp-release.yml run's status in the npm wait below. Without this the
+      # `gh run list` call fails, the wait degrades silently back to a fixed 25-minute timer, and
+      # the fail-fast path never fires -- which is the whole point of the step.
+      actions: read
 
     steps:
       - name: Checkout the tag
@@ -133,17 +137,70 @@ jobs:
       # 75 x 20s = 25 minutes, inside a 35-minute job. Polling npm is still the honest check: the
       # images are pushed in the same job and earlier than npm, so npm arriving is evidence for
       # both.
+      # WATCHING THE SIBLING, not just the clock (v3.10.0). The budget above is sized from a real
+      # timeline and is still right for the normal case -- but a fixed budget cannot tell "still
+      # building" from "hung", and v3.9.0 made that difference expensive: `mcp-release.yml` hung at
+      # the multi-arch build for 33 minutes, twice, so this job spent its whole 25 minutes polling
+      # for an npm package that was never going to arrive, then failed with a message about
+      # checking the other workflow. Correct, and 25 minutes late.
+      #
+      # So the poll now reads the sibling run's STATE as well as npm. Three outcomes instead of one:
+      # npm arrives (done), the sibling has finished without publishing (fail NOW, naming it), or
+      # the sibling is still running (keep waiting -- that is evidence, not optimism).
       - name: Wait for the npm package this listing points at
         if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           VERSION="$(node -p "require('./package.json').version")"
           NAME="$(node -p "require('./package.json').name")"
+
+          # The sibling run for THIS tag. Empty is not fatal: it may simply not have registered yet,
+          # and the npm poll below is still the authority on whether the artefact exists.
+          # By COMMIT, not by branch. A reviewer argued `--branch` returns nothing for a tag push
+          # because `head_branch` is null there -- which is FALSE in this repository, checked
+          # against the v3.9.0 runs, where `head_branch` is `v3.9.0` and the branch filter finds
+          # both. The switch is made anyway because the reasoning was wrong but the suggestion is
+          # better: a SHA cannot be ambiguous between a tag and a branch of the same name, and it
+          # pins to the commit this job is actually publishing rather than to a ref that could move.
+          sibling_state() {
+            gh run list --repo "$GITHUB_REPOSITORY" --workflow mcp-release.yml \
+              --commit "$GITHUB_SHA" --limit 1 \
+              --json status,conclusion --jq '.[0] // empty | "\(.status)/\(.conclusion // "-")"' 2>/dev/null || echo ""
+          }
+
           for attempt in $(seq 1 75); do
             if npm view "$NAME@$VERSION" version > /dev/null 2>&1; then
               echo "$NAME@$VERSION is on npm after $((attempt * 20))s"
               exit 0
             fi
-            echo "attempt $attempt/75: $NAME@$VERSION not visible yet"
+
+            # Check the sibling every fifth attempt: often enough to fail fast, rarely enough not to
+            # spend the budget on API calls.
+            if [ $((attempt % 5)) -eq 0 ]; then
+              # `.[0] // empty` rather than `.[0]`: on an empty result jq would render "null/-",
+              # which falls through the case safely but logs as though a state had been read.
+              # Empty means "no run found yet", and the log should say that. Reviewer-suggested.
+              state="$(sibling_state)"
+              echo "attempt $attempt/75: not on npm yet; mcp-release.yml is ${state:-unknown}"
+              case "$state" in
+                completed/success)
+                  # It finished and claims success, yet npm has nothing. Give propagation a short
+                  # grace -- npm itself says a publish "may take a few minutes to become available",
+                  # which cost an investigation in v3.9.0 when a successful publish read as a
+                  # silent failure for several minutes.
+                  echo "::notice::mcp-release.yml succeeded; allowing for npm propagation."
+                  ;;
+                completed/*)
+                  echo "::error::mcp-release.yml finished as '${state#completed/}' without publishing"
+                  echo "::error::$NAME@$VERSION. Waiting the remaining budget would not change that."
+                  echo "::error::Fix that workflow, then re-run this one by workflow_dispatch."
+                  exit 1
+                  ;;
+              esac
+            else
+              echo "attempt $attempt/75: $NAME@$VERSION not visible yet"
+            fi
             sleep 20
           done
           echo "::error::$NAME@$VERSION never appeared on npm within 25 minutes. mcp-release.yml"

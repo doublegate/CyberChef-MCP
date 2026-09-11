@@ -23,7 +23,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -51,15 +51,11 @@ afterAll(async () => {
     delete process.env.CYBERCHEF_RATE_LIMIT_ENABLED;
     delete process.env.CYBERCHEF_RATE_LIMIT_REQUESTS;
     delete process.env.CYBERCHEF_RATE_LIMIT_WINDOW;
-    // NOT removed, deliberately. Importing `mcp-server.mjs` above runs `runServer()` --
-    // it is called at module scope with no main-module guard, so a real stdio server starts in
-    // this very process and its recipe manager holds this path for the life of the worker.
-    // Deleting the directory while that server is alive makes its next save fail with ENOENT,
-    // and `runServer().catch` responds with `process.exit(1)`, killing the vitest worker
-    // mid-file. That is not hypothetical: it took down `mcp-test` on both Node versions in CI
-    // for v3.9.0, while passing locally, because the race is timing-dependent and CI is slower.
-    // `tests/mcp/setup/recipe-store-isolation.mjs` already declines to remove its own directory
-    // for the same underlying reason. The directory is a small one under `os.tmpdir()`.
+    // Removed again now that importing `mcp-server.mjs` starts no server. The module-scope
+    // `runServer()` call sits behind a main-module guard as of v3.10.0, so nothing in this
+    // process holds this path once the tests finish. The leak that stood here through v3.9.0
+    // was a workaround for that defect, and said so. See tests/mcp/entry-point.test.mjs.
+    if (storageDir) await rm(storageDir, { recursive: true, force: true });
 });
 
 /**

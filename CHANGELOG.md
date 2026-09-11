@@ -7,22 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Documentation
+## [3.10.0] - 2026-09-11
 
-- **v4 planning added at `docs/planning/v4/`** — one measured plan, nine thin charters, and a
-  phase/sprint tree. Its headline finding is that **v4.0.0 is not scheduled**: the MCP draft
-  specification changelog reads *"Changes since the most recent release will accumulate here"* and
-  is **empty**, so nothing has accumulated since 2026-07-28 and the v4.0.0 charter's own kill
-  criterion — *if the specification does not force a breaking change, do not cut a major* — fires.
-  The ecosystem is not idle, which is a different claim: six SEPs were updated on the day of
-  measurement, and the likeliest forcing function is **SEP-2663 (Tasks)** entering core, because
-  this server holds a *tested* position declining tasks. Every charter carries a measurable trigger
-  and kill criteria, and all nine are **minors**. `v4.1.0` is the only one ready now — the
-  module-scope `runServer()` defect recorded as F-13 during v3.9.0, which an independent reviewer
-  diagnosed identically and unprompted. The v3 charter it replaces keeps a dated superseded banner
-  rather than being deleted.
-- **`.gitignore`**: `benchmark-output.txt` was listed twice. The duplicate is replaced by a pointer
-  to the entry that carries the reasoning — one entry, one place.
+### Fixed
+
+- **Importing `src/node/mcp-server.mjs` no longer starts a server.** `runServer()` was called at
+  module scope with no main-module guard, and `runServer().catch` ends in `process.exit(1)` — so
+  importing the file, which **23 test files** do, started a real stdio server holding a live recipe
+  manager and armed a process exit inside each of them. During v3.9.0 that took down `mcp-test` on
+  both Node versions while passing locally twice, and that release shipped with four temp
+  directories deliberately **leaked** as a workaround. They are reclaimed, verified by counting
+  `/tmp` before and after: 40 → 40, where it was 40 → 42.
+  The guard resolves **realpaths** rather than comparing strings, which is the part that would
+  otherwise have broken production: npm installs the `cyberchef-mcp` bin as a symlink, so for every
+  `npx` user `argv[1]` is the link while `import.meta.filename` is the target, and a naive compare
+  would start nothing and exit silently. It also resolves the Docker `CMD`'s relative path.
+- **`publish-mcp.yml` no longer waits on a clock alone.** It polled npm for 25 minutes for a package
+  `mcp-release.yml` publishes as its *last* step; when that job hung for 33 minutes in v3.9.0, this
+  one spent its whole budget polling for something that was never coming. It now reads the sibling
+  run's state: npm arrives, the sibling finished without publishing (fail now, naming it), or the
+  sibling is still running (keep waiting — evidence, not optimism).
+
+### Added
+
+- **`npm run check:v4-triggers`** — the v4.0.0 trigger watch, executed rather than remembered.
+  Exits 0 nothing fired / 1 fired / 2 could not measure, all three verified by simulation, and it
+  **reports rather than decides**: a fired trigger means run the RE-MEASURE ritual, not cut a major.
+  Dependency-free on purpose, so an install cannot be why a trigger goes unnoticed. A monthly
+  workflow runs it and files one tracking issue.
+- **`tests/mcp/entry-point.test.mjs`** — eleven tests pinning the guard from both directions:
+  import starts nothing, the export surface survives, and the server *does* start via `node <file>`,
+  via an npm-style bin symlink, and with the Dockerfile CMD shape intact.
+
+### Changed
+
+- **Coverage now reads 96.02 / 89.13 / 96.6 / 95.06**, down ~0.6% from v3.9.0 **with nothing
+  deleted**. `runServer()` used to execute on every test import — that was the defect — so its body
+  counted as covered in every run. Roughly 0.6% of this project's line coverage was the bug
+  executing itself, and the thresholds were calibrated partly against that. Recovered honestly by
+  exporting and unit-testing `isEntryPoint` and marking the invocation block `/* v8 ignore */` with
+  its reason, not by moving the bar. The margin is now thin — statements clear by 0.06, lines by
+  0.02 — and when a future change trips it the answer is to cover `mcp-server.mjs`, not the gate.
+- **Every `docs/planning/v4/` charter carries an ordering banner.** The directory is numbered
+  `v4.1.0`–`v4.9.0` for reading order, which quietly assumed a v4.0.0 the plan beside it says not to
+  cut. This release is the worked example: the v4.1.0 charter's content shipped as **v3.10.0**.
 
 ## [3.9.0] - 2026-09-10
 

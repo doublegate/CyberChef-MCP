@@ -1,0 +1,95 @@
+####################################################################################################
+# v4.0.0 trigger watch
+#
+# `docs/planning/v4/v4.0.0-plan.md` concludes that v4.0.0 must not be cut, because none of its
+# triggers has fired. That conclusion expires the moment one does, and the thing standing between
+# this project and noticing is nobody's memory. `to-dos/00-PHASE-0-TRIGGER-WATCH.md` asks for twelve
+# manual checks once per release -- and two of the twelve were missing from that file until the day
+# after it was written, which is the argument for this workflow in one sentence.
+#
+# It REPORTS. It does not decide, and it does not open a pull request. A fired trigger means "run
+# the RE-MEASURE ritual", which needs judgement this cannot supply.
+####################################################################################################
+name: v4 Trigger Watch
+
+on:
+  schedule:
+    # Monthly, the first of the month. The specification does not move weekly, and a watch that
+    # cries wolf gets muted -- which would be worse than not having it.
+    - cron: '0 9 1 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  watch:
+    name: Check the v4.0.0 triggers
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # Opening / updating the tracking issue when something fires.
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '26'
+
+      # No `npm ci`. The script is deliberately dependency-free -- `fetch` and nothing else -- so
+      # this job cannot be broken by an install, and cannot be the reason a trigger goes unnoticed.
+      - name: Run the trigger watch
+        id: watch
+        env:
+          # The script reads the registry's schema directory from api.github.com, where
+          # unauthenticated requests are limited to 60/hour PER IP and Actions runners share
+          # addresses. Without this the listing fetch 403s on a busy pool and the run exits 2.
+          # The script attaches this only to api.github.com; see `authFor`.
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          node scripts/check-v4-triggers.mjs | tee /tmp/triggers.txt
+          code=${PIPESTATUS[0]}
+          set -e
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          {
+            echo "### v4.0.0 trigger watch"
+            echo ""
+            echo '```text'
+            cat /tmp/triggers.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          # 0 nothing fired, 1 something fired, 2 the check could not run. Only 2 fails the job
+          # here: a fired trigger is NEWS, not a breakage, and is reported as an issue below.
+          if [ "$code" = "2" ]; then
+            echo "::error::The trigger watch could not complete. That is UNKNOWN, not 'nothing fired'."
+            exit 1
+          fi
+
+      - name: Open or update the tracking issue
+        if: steps.watch.outputs.code == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TITLE="v4.0.0 trigger fired — run the RE-MEASURE ritual"
+          BODY="$(printf '%s\n\n```text\n%s\n```\n\n%s\n' \
+            'At least one v4.0.0 trigger fired. This is not an instruction to cut a major version.' \
+            "$(cat /tmp/triggers.txt)" \
+            'Next step: `docs/planning/v3/RE-MEASURE.md`. Read what actually changed, write F-01 stating what the plan got wrong, and re-scope from the measurement. The kill criterion in `docs/planning/v4/v4.0.0-plan.md` still applies: a major exists because the protocol forced one.')"
+
+          # Reuse the open issue rather than filing a new one every month.
+          EXISTING="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
+            --label "v4-trigger" --json number --jq '.[0].number // empty')"
+
+          if [ -n "$EXISTING" ]; then
+            gh issue comment "$EXISTING" --repo "$GITHUB_REPOSITORY" --body "$BODY"
+            echo "commented on #$EXISTING"
+          else
+            gh label create "v4-trigger" --repo "$GITHUB_REPOSITORY" \
+              --description "A v4.0.0 planning trigger fired" --color "5319e7" 2>/dev/null || true
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" \
+              --label "v4-trigger,needs-review" --body "$BODY"
+          fi

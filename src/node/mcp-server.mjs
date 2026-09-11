@@ -18,6 +18,8 @@
 // FIRST, and it must stay first. Settings are read at module load into constants, so
 // `cyberchef.config.json` has to reach `process.env` before any module that reads one is
 // evaluated. ES imports run depth-first in source order, which is the entire mechanism.
+import { realpathSync } from "node:fs";
+import { resolve } from "node:path";
 import { configFileResult } from "./lib/bootstrap-config.mjs";
 import { loadNodeApi } from "./lib/node-api.mjs";
 import { Server } from "@modelcontextprotocol/server";
@@ -2006,21 +2008,69 @@ async function runServer() {
     logger.info("=====================================");
 }
 
-runServer().catch((error) => {
-    const logger = getLogger();
-    logger.fatal({
-        error: {
-            name: error.name,
-            message: error.message,
-            stack: error.stack
-        },
-        event: "server_fatal_error"
-    }, "Fatal error running server");
-    process.exit(1);
-});
+/**
+ * Was this module executed, or merely imported?
+ *
+ * WHY THIS GUARD EXISTS. `runServer()` used to be called unconditionally at module scope, so
+ * IMPORTING this file started a real stdio server -- in all 23 test files that import it -- and
+ * armed the `process.exit(1)` below inside each of them. During v3.9.0 that took down `mcp-test`
+ * on both Node versions: four test files repoint `CYBERCHEF_RECIPE_STORAGE` at a temp directory
+ * and delete it in `afterAll`, a save landed after the delete, and the resulting ENOENT reached
+ * this catch and killed the vitest worker mid-file. That release shipped with those four
+ * directories deliberately leaked as a workaround. See F-13 in its findings log.
+ *
+ * REALPATH, not a string compare, and the reason is `package.json`'s `bin`. npm installs
+ * `cyberchef-mcp` as a SYMLINK into `node_modules/.bin/`, so for every `npx cyberchef-mcp` user
+ * `process.argv[1]` is the link while `import.meta.filename` is the target. Comparing them
+ * directly would report "not main" and start nothing -- a container that exits instantly with no
+ * error, which is a worse failure than the one being fixed. `tests/mcp/entry-point.test.mjs`
+ * covers the symlink case for exactly this reason.
+ *
+ * It also resolves the Docker `CMD ["src/node/mcp-server.mjs"]` form, where argv[1] is RELATIVE to
+ * WORKDIR rather than absolute.
+ *
+ * @returns {boolean} True when this file is the process entry point.
+ */
+function isEntryPoint() {
+    const entry = process.argv[1];
+    if (!entry) return false;
+    try {
+        return realpathSync(resolve(entry)) === realpathSync(import.meta.filename);
+    } catch {
+        // A missing or unreadable argv[1] means this cannot be the entry point. Failing closed here
+        // is safe: the cost is not auto-starting, and every real entry path resolves.
+        return false;
+    }
+}
+
+/* v8 ignore start -- the process entry point. `tests/mcp/entry-point.test.mjs` exercises both
+   branches of this (started via `node <file>`, via an npm-style bin symlink, and NOT started on a
+   bare import) but it does so in CHILD PROCESSES, which is the only way to observe a module's
+   import-time behaviour once this worker has already imported it. v8 coverage instruments the
+   vitest worker only, so those child runs are invisible to it.
+
+   Worth stating plainly: before the guard existed, `runServer()` ran on EVERY test import as a side
+   effect of the defect, and all of this counted as covered. About 0.6% of this project's line
+   coverage was the bug executing itself. Removing the defect removed the inflation. */
+if (isEntryPoint()) {
+    runServer().catch((error) => {
+        const logger = getLogger();
+        logger.fatal({
+            error: {
+                name: error.name,
+                message: error.message,
+                stack: error.stack
+            },
+            event: "server_fatal_error"
+        }, "Fatal error running server");
+        process.exit(1);
+    });
+}
+/* v8 ignore stop */
 
 // Export for testing
 export {
+    isEntryPoint,
     LRUCache,
     MemoryMonitor,
     TelemetryCollector,
