@@ -1,6 +1,11 @@
-# Phase 4 — Protocol adoption (v4.5.0 – v4.8.0)
+# Phase 4 — Protocol adoption (v4.7.0 – v4.8.0)
 
-Charters: [`v4.5.0`](../charters/v4.5.0.md), [`v4.6.0`](../charters/v4.6.0.md),
+> **Renumbered and merged 2026-09-11.** Four spec-dependent charters became two: result contracts
+> (v4.7.0) and auth-metadata-plus-audit (v4.8.0). Progressive discovery left this phase entirely —
+> the measurement said this project needs the mechanism regardless of whether the specification
+> standardises one, so it is now [v4.1.0](../charters/v4.1.0.md) and first in the line.
+
+Charters: [`v4.7.0`](../charters/v4.7.0.md), [`v4.8.0`](../charters/v4.8.0.md),
 [`v4.7.0`](../charters/v4.7.0.md), [`v4.8.0`](../charters/v4.8.0.md).
 
 **None of these may start until its trigger fires** — see
