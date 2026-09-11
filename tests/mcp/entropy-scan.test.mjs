@@ -8,8 +8,39 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { randomBytes } from "node:crypto";
+import { createHash } from "node:crypto";
 import tool from "../../src/node/tools/entropy-scan.mjs";
+
+/**
+ * Deterministic high-entropy bytes: a chained SHA-256 keystream.
+ *
+ * WHY NOT `randomBytes`. These tests assert on REGION COUNTS, and an unseeded source makes that a
+ * probabilistic claim. Measured before changing it: over 600 trials, **2.33%** of
+ * `entropicBytes(8192)` inputs produced two regions instead of one -- roughly one run in 43, because
+ * a 256-byte window of genuinely uniform bytes occasionally dips under the 7.0 bits/byte threshold
+ * and splits the run. It failed `mcp-test (node 26)` during v3.10.0 while passing on node 24 and
+ * locally, which is what a 2% flake looks like from the outside: someone else's problem.
+ *
+ * This repository's own testing rules say so directly -- "same seed + same input => byte-identical
+ * output. Inject seeds explicitly." An unseeded generator behind a deterministic assertion is that
+ * rule being broken.
+ *
+ * SHA-256 output chained on itself is uniformly distributed enough to sit far above the threshold
+ * in every window, and identical on every machine and every run.
+ *
+ * @param {number} length - How many bytes.
+ * @param {string} [seed] - Changes the stream; any fixed value is reproducible.
+ * @returns {Buffer} The bytes.
+ */
+function entropicBytes(length, seed = "cyberchef-mcp/entropy-scan") {
+    const out = Buffer.alloc(length);
+    let block = createHash("sha256").update(seed).digest();
+    for (let offset = 0; offset < length; offset += 32) {
+        block.copy(out, offset, 0, Math.min(32, length - offset));
+        block = createHash("sha256").update(block).digest();
+    }
+    return out;
+}
 
 const raw = (buffer) => buffer.toString("latin1");
 const run = (args) => tool.run(tool.inputSchema.parse(args));
@@ -17,7 +48,7 @@ const run = (args) => tool.run(tool.inputSchema.parse(args));
 describe("entropy_scan", () => {
     it("locates a dense region between two sparse ones", async () => {
         const data = Buffer.concat([
-            Buffer.alloc(2048, 0x41), randomBytes(4096), Buffer.alloc(1024, 0x41)
+            Buffer.alloc(2048, 0x41), entropicBytes(4096), Buffer.alloc(1024, 0x41)
         ]);
         const r = await run({ input: raw(data), "input_format": "Raw" });
 
@@ -29,7 +60,7 @@ describe("entropy_scan", () => {
     });
 
     it("merges adjacent windows into one region", async () => {
-        const r = await run({ input: raw(randomBytes(8192)), "input_format": "Raw" });
+        const r = await run({ input: raw(entropicBytes(8192)), "input_format": "Raw" });
         // Thirty-two consecutive hits are one finding, not thirty-two. Reporting them separately
         // buries the only fact that matters.
         expect(r.regions).toHaveLength(1);
@@ -37,7 +68,7 @@ describe("entropy_scan", () => {
     });
 
     it("applies the packed rule as a conjunction of two thresholds", async () => {
-        const r = await run({ input: raw(randomBytes(8192)), "input_format": "Raw" });
+        const r = await run({ input: raw(entropicBytes(8192)), "input_format": "Raw" });
         expect(r.packed_test.rule).toMatch(/mean > 6.677 AND peak > 7.199/);
         expect(r.packed_test.verdict).toBe("Both thresholds cleared.");
     });
@@ -45,14 +76,14 @@ describe("entropy_scan", () => {
     it("counts only blocks that are at least half non-zero", async () => {
         // Alignment padding otherwise drags the mean down, which is the omission that makes the
         // Lyda and Hamrock rule look like it does not work.
-        const data = Buffer.concat([randomBytes(2048), Buffer.alloc(8192, 0)]);
+        const data = Buffer.concat([entropicBytes(2048), Buffer.alloc(8192, 0)]);
         const r = await run({ input: raw(data), "input_format": "Raw" });
         expect(r.packed_test.blocks_counted).toBe(8);      // 2048/256, the zero blocks excluded
     });
 
     it("separates compressed-looking from encrypted-looking on the second axis", async () => {
         const structured = Buffer.from(Array.from({ length: 8192 }, (_, i) => (i * 7) % 200));
-        const uniform = randomBytes(8192);
+        const uniform = entropicBytes(8192);
 
         const a = await run({ input: raw(structured), "input_format": "Raw" });
         const b = await run({ input: raw(uniform), "input_format": "Raw" });
@@ -70,7 +101,7 @@ describe("entropy_scan", () => {
     });
 
     it("says what a positive does not establish either", async () => {
-        const r = await run({ input: raw(randomBytes(4096)), "input_format": "Raw" });
+        const r = await run({ input: raw(entropicBytes(4096)), "input_format": "Raw" });
         // 7.0 is folklore. NDSS 2020 calibrated it as roughly what XOR with a three-byte key
         // produces, and found over 30% of low-entropy malware packed anyway.
         expect(r.assessment).toMatch(/THREE-BYTE KEY/);
@@ -78,7 +109,7 @@ describe("entropy_scan", () => {
     });
 
     it("refuses a window larger than the data instead of measuring it once", async () => {
-        await expect(run({ input: raw(randomBytes(64)), "input_format": "Raw", "window_bytes": 256 }))
+        await expect(run({ input: raw(entropicBytes(64)), "input_format": "Raw", "window_bytes": 256 }))
             .rejects.toThrow(/window larger than the data/);
     });
 
@@ -86,7 +117,7 @@ describe("entropy_scan", () => {
         // With any step smaller than the window, the next window STARTS before the previous one
         // ends. An equality test never merges, so a single 2 KB blob came back as 29 regions --
         // which then compete with each other for the max_regions slots.
-        const data = Buffer.concat([Buffer.alloc(512, 0x41), randomBytes(2048), Buffer.alloc(512, 0x41)]);
+        const data = Buffer.concat([Buffer.alloc(512, 0x41), entropicBytes(2048), Buffer.alloc(512, 0x41)]);
         const r = await run({
             input: raw(data), "input_format": "Raw", "window_bytes": 256, "step_bytes": 64
         });
@@ -103,7 +134,7 @@ describe("entropy_scan", () => {
 
     it("supports overlapping windows", async () => {
         const r = await run({
-            input: raw(randomBytes(1024)), "input_format": "Raw",
+            input: raw(entropicBytes(1024)), "input_format": "Raw",
             "window_bytes": 256, "step_bytes": 64
         });
         expect(r.windows_measured).toBe(13);
@@ -120,7 +151,7 @@ describe("entropy_scan", () => {
     });
 
     it("caps the region list", async () => {
-        const r = await run({ input: raw(randomBytes(8192)), "input_format": "Raw", "max_regions": 1 });
+        const r = await run({ input: raw(entropicBytes(8192)), "input_format": "Raw", "max_regions": 1 });
         expect(r.regions).toHaveLength(1);
     });
 
@@ -130,7 +161,7 @@ describe("entropy_scan", () => {
         // and 29,219 ms, against the 30-second timeout every operation tool is held to -- one
         // legal call holding the event loop for twenty-nine seconds with no way to interrupt it.
         await expect(run({
-            input: raw(randomBytes(1048576)), "input_format": "Raw",
+            input: raw(entropicBytes(1048576)), "input_format": "Raw",
             "window_bytes": 16, "step_bytes": 1
         })).rejects.toThrow(/windows, and the limit is/);
     });
@@ -138,7 +169,7 @@ describe("entropy_scan", () => {
     it("says which step_bytes would fit rather than only that this one does not", async () => {
         try {
             await run({
-                input: raw(randomBytes(1048576)), "input_format": "Raw",
+                input: raw(entropicBytes(1048576)), "input_format": "Raw",
                 "window_bytes": 16, "step_bytes": 1
             });
             throw new Error("should have been refused");
@@ -152,7 +183,7 @@ describe("entropy_scan", () => {
         // Large enough to cross the yield interval, and shaped so the region sort has more than
         // one region to order. Both were uncovered: the yield callback never ran on a small input,
         // and a single region never exercises the comparator that ranks them by peak entropy.
-        const blob = () => randomBytes(4096);
+        const blob = () => entropicBytes(4096);
         const gap = () => Buffer.alloc(4096, 0x41);
         const data = Buffer.concat([blob(), gap(), blob(), gap(), blob()]);
         // Window 256, not 64: a 64-byte window holds at most 64 distinct values, so its entropy

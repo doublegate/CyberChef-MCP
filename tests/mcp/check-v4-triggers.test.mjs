@@ -20,11 +20,21 @@
 
 import { describe, it, expect } from "vitest";
 import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, resolve, join } from "node:path";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const SCRIPT = join(ROOT, "scripts/check-v4-triggers.mjs");
+
+/**
+ * `SCRIPT` as a `file://` URL, for dynamic import.
+ *
+ * The same defect as `entry-point.test.mjs` had, repeated here in the same review round that fixed
+ * it there: `await import("C:\\path\\to\\file.mjs")` throws `ERR_UNSUPPORTED_ESM_URL_SCHEME` on
+ * Windows, where the drive letter parses as a scheme. Fixing a bug in one file and reintroducing it
+ * in its neighbour is worth writing down. Reviewer-found, twice.
+ */
+const SCRIPT_URL = pathToFileURL(SCRIPT).href;
 
 /** The stub responses that mean "nothing has changed" -- the baseline every case varies from. */
 const BASELINE = {
@@ -64,7 +74,7 @@ function runWith(overrides = {}) {
         };
     `;
     const r = spawnSync(process.execPath,
-        ["--input-type=module", "-e", `${preload}\nawait import(${JSON.stringify(SCRIPT)});`],
+        ["--input-type=module", "-e", `${preload}\nawait import(${JSON.stringify(SCRIPT_URL)});`],
         { cwd: ROOT, encoding: "utf8", timeout: 60000 });
     return { status: r.status ?? 1, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
 }
