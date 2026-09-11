@@ -119,10 +119,31 @@ describe("stdio contract, via the official MCP client", () => {
             "plaintext_check": { input: "the quick brown fox jumps over the lazy dog" }
         };
 
-        const tools = buildRegistry().list().filter(t => FIXTURES[t.name]);
+        // EVERY registered tool is covered, not just the ones with a fixture.
+        //
+        // Filtering to `FIXTURES` would have meant a twentieth tool arriving with no dispatcher
+        // parity coverage and this test still passing -- the exact "gate that lists its targets
+        // instead of discovering them" failure this repository keeps writing findings about.
+        //
+        // A success fixture is not cheap for all nineteen (some need certificates, corpora or
+        // tuned inputs), so coverage is split by what is affordable rather than by what is
+        // convenient: tools WITH a fixture are checked for byte-identical SUCCESS, and every
+        // other registered tool is checked for byte-identical REFUSAL under empty arguments.
+        // Both directions prove the same property -- the dispatcher returns exactly what the
+        // direct call returns -- and every tool is in one bucket or the other by construction.
+        const allTools = buildRegistry().list();
+        const tools = allTools.filter(t => FIXTURES[t.name]);
         expect(tools.length, "no fixtures matched any registered tool").toBeGreaterThan(0);
 
+        const unfixtured = allTools.filter(t => !FIXTURES[t.name]);
+
         const text = r => r.content?.[0]?.text ?? "";
+        // Error payloads carry a `Timestamp:` line, so two calls a few milliseconds apart differ
+        // by the clock alone. Normalising it is not a weakening of the comparison: the property
+        // under test is that the dispatcher returns the same ANSWER as the direct call, and the
+        // wall clock is the one field guaranteed to differ between any two calls. Found by this
+        // test reporting `cert_chain` as a mismatch on a 4 ms gap.
+        const stable = r => text(r).replace(/Timestamp: \S+/g, "Timestamp: <normalised>");
         const wrong = [];
         for (const tool of tools) {
             const exposed = ToolRegistry.exposedName(tool.name);
@@ -145,15 +166,37 @@ describe("stdio contract, via the official MCP client", () => {
 
             // BYTE equality, not shape equality. "Behaves identically" is the charter's word, and
             // the only way the dispatcher can be trusted to mean it is if the payload matches.
-            if (text(bare) !== text(direct)) {
+            if (stable(bare) !== stable(direct)) {
                 wrong.push(`${exposed}: bare name through the dispatcher differs from the direct call`);
             }
-            if (text(prefixed) !== text(direct)) {
+            if (stable(prefixed) !== stable(direct)) {
                 wrong.push(`${exposed}: cyberchef_-prefixed name differs from the direct call`);
             }
         }
+
+        // The refusal half, for every tool without a success fixture.
+        for (const tool of unfixtured) {
+            const exposed = ToolRegistry.exposedName(tool.name);
+            const direct = await client.callTool({ name: exposed, arguments: {} });
+            const via = await client.callTool({
+                name: "cyberchef_analyse", arguments: { tool: tool.name, arguments: {} } });
+
+            if (!direct.isError) {
+                // Not a failure of the dispatcher -- it means this tool accepts empty arguments,
+                // so a refusal cannot be the thing compared. Say so, and ask for a fixture.
+                wrong.push(`${exposed}: accepts empty arguments, so add a FIXTURES entry for it ` +
+                    "and it will be covered by the success comparison above");
+                continue;
+            }
+            if (stable(via) !== stable(direct)) {
+                wrong.push(`${exposed}: the dispatcher's refusal differs from the direct call's` +
+                    `\n  direct: ${text(direct).slice(0, 180)}` +
+                    `\n  via   : ${text(via).slice(0, 180)}`);
+            }
+        }
+
         expect(wrong.join("\n")).toBe("");
-    }, 120000);
+    }, 180000);
 
     it("refuses an unknown analysis tool, naming the field and what is available", async () => {
         const res = await client.callTool({

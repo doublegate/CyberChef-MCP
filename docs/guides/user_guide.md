@@ -35,8 +35,8 @@ is what `docker load` puts in your local daemon -- retagging a `ghcr.io/...` ref
 name something you do not have:
 
 ```bash
-wget https://github.com/doublegate/CyberChef-MCP/releases/download/v4.0.0/cyberchef-mcp-v4.0.0-docker-image.tar.gz
-docker load < cyberchef-mcp-v4.0.0-docker-image.tar.gz
+wget https://github.com/doublegate/CyberChef-MCP/releases/download/v4.1.0/cyberchef-mcp-v4.1.0-docker-image.tar.gz
+docker load < cyberchef-mcp-v4.1.0-docker-image.tar.gz
 docker tag parobek/cyberchef-mcp:latest cyberchef-mcp
 ```
 
