@@ -122,6 +122,7 @@ describe("stdio contract, via the official MCP client", () => {
         const tools = buildRegistry().list().filter(t => FIXTURES[t.name]);
         expect(tools.length, "no fixtures matched any registered tool").toBeGreaterThan(0);
 
+        const text = r => r.content?.[0]?.text ?? "";
         const wrong = [];
         for (const tool of tools) {
             const exposed = ToolRegistry.exposedName(tool.name);
@@ -142,7 +143,6 @@ describe("stdio contract, via the official MCP client", () => {
                 continue;
             }
 
-            const text = r => r.content?.[0]?.text ?? "";
             // BYTE equality, not shape equality. "Behaves identically" is the charter's word, and
             // the only way the dispatcher can be trusted to mean it is if the payload matches.
             if (text(bare) !== text(direct)) {

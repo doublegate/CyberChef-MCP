@@ -737,7 +737,13 @@ const REGISTRY_DESCRIBE = new Map(toolRegistry.list().map(tool => [
  * @returns {string} The exposed name to look up; `""` when there is nothing usable.
  */
 function analyseExposedName(tool) {
-    const raw = String(tool ?? "").trim();
+    // typeof, not String(). Coercing turns `{}` into "[object Object]" and `["a"]` into "a" --
+    // the first is a lookup that cannot match and reports a confusing name back to the caller,
+    // and the second SILENTLY ACCEPTS an array as if it were the string it happens to contain.
+    // The schema declares `tool: z.string()`, but this runs before that guarantee is worth
+    // relying on, and a coercion that invents a value is worse than a refusal.
+    if (typeof tool !== "string") return "";
+    const raw = tool.trim();
     if (!raw) return "";
     return raw.startsWith("cyberchef_") ? raw : ToolRegistry.exposedName(raw);
 }

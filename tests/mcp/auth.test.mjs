@@ -915,6 +915,13 @@ describe("per-tool authorisation at dispatch, against the real server", () => {
         issuer, audience: RESOURCE, subject: "u"
     });
 
+    /**
+     * Session closes that did not succeed. Asserted empty after the suite: a cleanup failure is
+     * worth knowing about -- it means sessions are accumulating again -- but it must not fail the
+     * test that happened to be running when it occurred.
+     */
+    const sessionCleanupFailures = [];
+
     /** Open a session with the given token and call one tool. @returns {Promise<Object>} */
     const callTool = async (token, name, args) => {
         const base = `http://127.0.0.1:${port}/mcp`;
@@ -953,8 +960,22 @@ describe("per-tool authorisation at dispatch, against the real server", () => {
         // unrelated assertion several tests later. A leak with a threshold is invisible until
         // something crosses it.
         if (sid) {
-            await fetch(base, { method: "DELETE", headers: { ...headers, "mcp-session-id": sid } })
-                .catch(() => {});
+            // NOT swallowed. An empty `.catch(() => {})` here would hide the exact failure this
+            // cleanup exists to prevent: the leak it fixes was invisible for the same reason --
+            // nothing reported it until a later, unrelated assertion failed with
+            // `-32001 Session not found`. A teardown that fails silently is how a leak returns.
+            //
+            // Reported rather than thrown, because a cleanup failure must not mask the assertion
+            // under test by turning a meaningful failure into a teardown error.
+            try {
+                const closed = await fetch(base,
+                    { method: "DELETE", headers: { ...headers, "mcp-session-id": sid } });
+                if (!closed.ok && closed.status !== 405) {
+                    sessionCleanupFailures.push(`DELETE ${sid} -> ${closed.status}`);
+                }
+            } catch (err) {
+                sessionCleanupFailures.push(`DELETE ${sid} threw: ${err.message}`);
+            }
         }
         return { status: res.status, text };
     };
@@ -1140,6 +1161,12 @@ describe("per-tool authorisation at dispatch, against the real server", () => {
         }
         expect(disagreed.join("\n")).toBe("");
     }, 240000);
+
+    it("closed every HTTP session it opened", () => {
+        // The counterpart to the DELETE above. Without this the cleanup could silently stop
+        // working and the only symptom would be a confusing `-32001` in some later test.
+        expect(sessionCleanupFailures.join("\n")).toBe("");
+    });
 
     it("does not let an unknown tool name escape the scope check", async () => {
         // An unresolvable name falls back to the dispatcher's own annotations rather than
