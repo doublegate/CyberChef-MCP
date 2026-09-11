@@ -48,7 +48,7 @@ import { listResources, readResource, listResourceTemplates } from "./lib/resour
 import { bakeOnCore, toCoreRecipe } from "./lib/core-recipe.mjs";
 import { assertOfflineAllowed } from "./lib/offline.mjs";
 import { runMagic, renderMagicReport } from "./lib/magic.mjs";
-import { isExposed, describeSurface } from "./lib/tool-surface.mjs";
+import { isExposed, describeSurface, removedAliasWarning } from "./lib/tool-surface.mjs";
 import {
     categoryIndex, listOperations, describeOperations, summariseSearch
 } from "./lib/tool-catalog.mjs";
@@ -1923,6 +1923,10 @@ async function runServer() {
     }
     const allOps = Object.keys(OperationConfig);
     logger.info(describeSurface(allOps.filter(isExposed).length, allOps.length));
+    // A removed setting that is still set is worth a WARNING, not silence: the operator's
+    // deployment just changed behaviour and nothing else would tell them why.
+    const removedAlias = removedAliasWarning();
+    if (removedAlias) logger.warn(removedAlias);
     logger.info("=====================================");
 }
 

@@ -473,8 +473,12 @@ function isQuotedDefect(file, text, index) {
 function checkGhcrMajors() {
     let files;
     try {
-        files = execFileSync("git", ["ls-files", "*.md", "*.yml", "*.yaml", "*.json", "*.mjs"],
-            { cwd: ROOT, encoding: "utf8" }).split("\n").filter(Boolean);
+        // EVERY tracked file, not a list of extensions. A fixed list is the defect this whole
+        // rule exists to catch, one level up: a GHCR reference added to a Dockerfile, a shell
+        // script or a Helm template would be skipped silently. Unreadable files (binaries) are
+        // skipped individually below, which costs nothing and cannot go blind.
+        files = execFileSync("git", ["ls-files"], { cwd: ROOT, encoding: "utf8" })
+            .split("\n").filter(Boolean);
     } catch (error) {
         problems.push(`GHCR reference scan: could not list tracked files -- ${error.message}`);
         return;

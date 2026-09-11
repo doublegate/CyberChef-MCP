@@ -170,6 +170,28 @@ export function isExposed(opName) {
 }
 
 /**
+ * A warning for anyone still setting the variable v4.0.0 removed, or `null`.
+ *
+ * WHY THIS EXISTS. `CYBERCHEF_EXPOSE_ALL_OPS=true` used to mean "expose all 544 tools" and now
+ * means nothing, so a deployment that set it once and forgot drops from 544 tools to 41 with no
+ * explanation anywhere. That is the most visible behaviour change in this release, and silence is
+ * the worst way to deliver it: the caller sees a tool count collapse and has no thread to pull.
+ * Reviewer-found -- the removal was right, announcing it was missing.
+ *
+ * It REPORTS rather than restores. Honouring the variable again would undo the removal, and
+ * guessing what the operator meant is exactly what the silent alias did wrong.
+ *
+ * @returns {?string} The warning, or null when the variable is not set.
+ */
+export function removedAliasWarning() {
+    const legacy = process.env.CYBERCHEF_EXPOSE_ALL_OPS;
+    if (legacy === undefined) return null;
+    return `CYBERCHEF_EXPOSE_ALL_OPS=${legacy} is set and is IGNORED: it was removed in v4.0.0. ` +
+        `The tool surface is "${surfaceMode()}" -- set CYBERCHEF_TOOL_SURFACE=all|curated|index ` +
+        "to choose one explicitly.";
+}
+
+/**
  * A one-line summary of the active surface, for the startup log.
  *
  * Logged rather than left implicit because "why can the model not see this tool" is otherwise a

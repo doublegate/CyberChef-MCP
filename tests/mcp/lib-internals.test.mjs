@@ -19,7 +19,7 @@ import { join } from "node:path";
 import { dishToText } from "../../src/node/lib/dish-output.mjs";
 import { RateLimiter } from "../../src/node/lib/rate-limit.mjs";
 import {
-    surfaceMode, configuredAllowlist, isExposed, describeSurface
+    surfaceMode, configuredAllowlist, isExposed, describeSurface, removedAliasWarning
 } from "../../src/node/lib/tool-surface.mjs";
 import { toCoreRecipe } from "../../src/node/lib/core-recipe.mjs";
 import { validateInputSize, toolArgName, assertKnownArgs } from "../../src/node/lib/tool-schema.mjs";
@@ -198,6 +198,29 @@ describe("tool-surface: which operations become tools", () => {
 
         process.env.CYBERCHEF_EXPOSE_ALL_OPS = "false";
         expect(surfaceMode()).toBe("index");
+    });
+
+    it("WARNS that the removed variable is being ignored, rather than failing silently", () => {
+        // The removal is right; delivering it silently was not. A deployment that set
+        // CYBERCHEF_EXPOSE_ALL_OPS=true once and forgot drops from 544 tools to 41 with no
+        // explanation, and the operator has no thread to pull. Reviewer-found (Antigravity).
+        //
+        // It REPORTS rather than restores: honouring the variable again would undo the removal.
+        process.env.CYBERCHEF_EXPOSE_ALL_OPS = "true";
+        const warning = removedAliasWarning();
+        expect(warning).toContain("CYBERCHEF_EXPOSE_ALL_OPS");
+        expect(warning).toContain("IGNORED");
+        expect(warning).toContain("CYBERCHEF_TOOL_SURFACE");
+        // ...and it names the surface actually in force, which is the fact the operator needs.
+        expect(warning).toContain('"index"');
+        // The variable is still inert.
+        expect(surfaceMode()).toBe("index");
+    });
+
+    it("says nothing when the removed variable is absent", () => {
+        // A warning that fires for everyone is noise, and noise is how a real warning gets muted.
+        delete process.env.CYBERCHEF_EXPOSE_ALL_OPS;
+        expect(removedAliasWarning()).toBeNull();
     });
 
     it("lets CYBERCHEF_TOOL_SURFACE decide, with the removed variable set alongside it", () => {
