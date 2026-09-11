@@ -10,21 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **`glama.json`** at the repository root, declaring `doublegate` as maintainer. Glama is a
-  third-party MCP directory that **starts a server and introspects it** rather than reading its
-  README, and this file is how it recognises ownership. Written against the schema it references
-  (`https://glama.ai/mcp/schemas/server.json`, draft-07), which defines exactly one property --
-  `maintainers`, required, an array of unique strings -- so the file is deliberately minimal and
-  carries nothing the schema does not define. Validated with `ajv` against the fetched schema, and
-  the validator was proven able to fail: it rejects a missing `maintainers`, a non-array, a
-  non-string username, and duplicates. Note that the listing was **already** claimed via GitHub
-  auto-association, which works for personal-account repositories and not organization-hosted ones;
-  this file makes the declaration explicit in-repo rather than dependent on that automation, and
-  per Glama's documentation a re-run of the claim flow is needed for a change here to sync.
+  third-party MCP directory that starts a server and introspects it rather than reading its README.
+  Written against the schema it references, which defines exactly one property (`maintainers`), so
+  the file is deliberately minimal. **The listing was already claimed via GitHub auto-association,
+  and a change here does not sync until the claim flow is run again** -- both are easy to assume
+  otherwise.
 - **Glama score and card badges** in `README.md`, plus **npm Package** and **Glama Listing**
-  entries in the Repository Information section. The live scores are deliberately **not**
-  transcribed into the prose -- the badges render them, and a figure copied out of a service is a
-  figure that rots, which is the failure mode `check:versions` exists to catch elsewhere in this
-  tree.
+  entries under Repository Information. The live scores are not transcribed into the prose; the
+  badges render them, and a figure copied out of a service is a figure that rots.
 
 ## [4.0.0] - 2026-09-11
 
