@@ -148,9 +148,9 @@ v2.4.0, not estimated:
 
 | `CYBERCHEF_TOOL_SURFACE` | Tools in `tools/list` | Payload |
 |---|---|---|
-| **`index`** *(default)* | 42 | **44,493 bytes** |
-| `curated` | 120 | 107,739 bytes |
-| `all` | 545 | 424,897 bytes |
+| **`index`** *(default)* | 43 | **45,963 bytes** |
+| `curated` | 121 | 109,209 bytes |
+| `all` | 546 | 426,367 bytes |
 
 Bytes, measured on the serialised `tools/list` payload with `npm run measure:surfaces`, not
 estimated. Earlier versions of this table gave token figures; this repository has never contained a
@@ -159,7 +159,7 @@ tokenizer and every one of those was bytes divided by four.
 The index doubled at v3.3.0, from 28 tools and 20,297 bytes. Twelve registry tools were added, and
 a registry tool has no navigation path — `cyberchef_bake` runs recipes of *operations* — so one
 that is not listed cannot be called at all. The ratio between the three modes is what matters, and
-the index plus one operation schema is still 9.9x cheaper than `all`.
+the index plus one operation schema is still 8.9x cheaper than `all`.
 
 **Nothing becomes unreachable.** `cyberchef_bake` runs any of the 504 operations by name, and three
 navigation tools let a client find the name and its arguments:
@@ -176,20 +176,20 @@ cyberchef_categories            16 categories, with counts and examples   (~2 KB
 **`Magic` is exposed in every surface**, including `index`. It is what you reach for *before* you
 know what you are looking at, so making it three calls deep would invert the cost.
 
-**The eighteen analysis tools are in every surface too.** Four since v2.4.0 —
+**The nineteen analysis tools are in every surface too.** Four since v2.4.0 —
 `cyberchef_xor_key_length`, `cyberchef_cyclic_pattern`, `cyberchef_hash_identify`,
 `cyberchef_rsa_attack` — twelve added in v3.3.0: `cyberchef_classical_cipher`,
 `cyberchef_corpus_diff`, `cyberchef_crib_drag`, `cyberchef_entropy_scan`, `cyberchef_hash_crack`,
 `cyberchef_hash_statistics`, `cyberchef_jwt_weakness`, `cyberchef_plaintext_check`,
 `cyberchef_rsa_multi_key`, `cyberchef_substitution_break`, `cyberchef_timestamp_identify` and
-`cyberchef_vigenere_break` — then `cyberchef_ecdsa_recover` in v3.4.0 and `cyberchef_cert_chain`
-in v3.8.0.
+`cyberchef_vigenere_break` — then `cyberchef_ecdsa_recover` in v3.4.0, `cyberchef_cert_chain`
+in v3.8.0 and `cyberchef_pqc_identify` in v3.11.0.
 
 Unlike an operation, none of them is reachable through `cyberchef_bake`: they are not in
 `OperationConfig`, because each performs an analysis rather than a transformation. Hiding one
 behind a surface setting would make it unreachable rather than merely inconvenient, and listing
 must never be stricter than dispatch. That is why the index doubled in v3.3.0: the twelve new
-tools account for roughly 20 KB of the 44,493-byte payload, and there is no honest way to avoid
+tools account for roughly 20 KB of the 45,963-byte payload, and there is no honest way to avoid
 paying it.
 
 Fine-grained control:

@@ -26,6 +26,7 @@ import hashIdentify from "./hash-identify.mjs";
 import hashStatistics from "./hash-statistics.mjs";
 import jwtWeakness from "./jwt-weakness.mjs";
 import plaintextCheck from "./plaintext-check.mjs";
+import pqcIdentify from "./pqc-identify.mjs";
 import rsaAttack from "./rsa-attack.mjs";
 import rsaMultiKey from "./rsa-multi-key.mjs";
 import substitutionBreak from "./substitution-break.mjs";
@@ -34,7 +35,7 @@ import vigenereBreak from "./vigenere-break.mjs";
 import xorKeyLength from "./xor-key-length.mjs";
 
 /** Tools, in the order they should appear in `tools/list`. */
-const TOOLS = [certChain, classicalCipher, corpusDiff, cribDrag, cyclicPattern, ecdsaRecover, entropyScan, hashCrack, hashIdentify, hashStatistics, jwtWeakness, plaintextCheck, rsaAttack, rsaMultiKey, substitutionBreak, timestampIdentify, vigenereBreak, xorKeyLength];
+const TOOLS = [certChain, classicalCipher, corpusDiff, cribDrag, cyclicPattern, ecdsaRecover, entropyScan, hashCrack, hashIdentify, hashStatistics, jwtWeakness, plaintextCheck, pqcIdentify, rsaAttack, rsaMultiKey, substitutionBreak, timestampIdentify, vigenereBreak, xorKeyLength];
 
 /**
  * Build the registry.

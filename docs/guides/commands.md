@@ -339,10 +339,10 @@ output, so expect PKCS#1 or OAEP padding ahead of the message.
 
 ## Analysis Tools Added in v3.3.0 and after
 
-Twelve more registry tools in v3.3.0, one in v3.4.0 (`ecdsa_recover`) and one in v3.8.0
-(`cert_chain`) — each for the same reason as the first four: each closes a gap an operation
-cannot express, whether that is a loop with a decision inside it, a statistic computed across
-several inputs, or a cipher upstream simply does not have.
+Twelve more registry tools in v3.3.0, one in v3.4.0 (`ecdsa_recover`), one in v3.8.0
+(`cert_chain`) and one in v3.11.0 (`pqc_identify`) — each for the same reason as the first four:
+each closes a gap an operation cannot express, whether that is a loop with a decision inside it, a
+statistic computed across several inputs, or a primitive upstream simply does not have.
 
 ### cyberchef_classical_cipher
 
@@ -404,6 +404,20 @@ separately.
 ### cyberchef_plaintext_check
 
 Answers whether a candidate is plaintext yet, as a verdict together with its supporting evidence.
+
+### cyberchef_pqc_identify
+
+*Added in v3.11.0.* Names the NIST post-quantum parameter set behind a key, signature or
+ciphertext — ML-KEM (FIPS 203), ML-DSA (FIPS 204), SLH-DSA (FIPS 205), all eighteen sets. `src/core`
+has no post-quantum anything; the family arrived after the operation set was written.
+
+Given DER — PEM, hex or base64, SPKI or PKCS#8 — it reads the algorithm OID and answers
+`definite`, reporting the OID it read so the answer can be checked. Given raw bytes it has only a
+length, so it lists **every** candidate and declines to choose: 1568 bytes is both an ML-KEM-1024
+encapsulation key and an ML-KEM-1024 ciphertext; a 32-byte SLH-DSA public key is indistinguishable
+from a SHA-256 digest or an Ed25519 key; and `SHA2-128s` and `SHAKE-128s` signatures are both 7856
+bytes, so the hash family is not recoverable from a signature at all. A non-match is reported as a
+non-match rather than as absence.
 
 ### cyberchef_rsa_multi_key
 

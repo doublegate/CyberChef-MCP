@@ -1,7 +1,7 @@
 # Analysis Tools
 
-Eighteen tools that are **not** CyberChef operations: four added in v2.4.0, twelve more in
-v3.3.0, one in v3.4.0 and one in v3.8.0.
+Nineteen tools that are **not** CyberChef operations: four added in v2.4.0, twelve more in
+v3.3.0, one in v3.4.0, one in v3.8.0 and one in v3.11.0.
 
 ## Why they exist
 
@@ -248,6 +248,37 @@ subject *and* a matching `subjectKeyIdentifier` could capture the link while the
 unconsidered in the same bundle, making a good chain report as broken. Selection now requires a
 verifying signature, keeping a metadata-only match only as a fallback so a substitution is reported
 rather than silently dropped.
+
+---
+
+### `cyberchef_pqc_identify`
+
+Names the NIST post-quantum parameter set behind a key, signature or ciphertext: ML-KEM
+(FIPS 203), ML-DSA (FIPS 204) or SLH-DSA (FIPS 205), all eighteen sets. `src/core` has no
+post-quantum anything, so there is no operation to relate this to — the whole family arrived after
+the operation set was written.
+
+Two paths, and the distinction between them is the tool's entire point. Given DER — PEM, hex or
+base64, SPKI or PKCS#8 — it walks the structure, reads the algorithm OID and answers
+**`definite`**, reporting the OID so the answer can be checked rather than trusted. Given raw
+bytes it has only a length, and a length is evidence, not an identification.
+
+So on the byte-length path it reports **every** candidate and refuses to choose:
+
+- **1568 bytes is both an ML-KEM-1024 encapsulation key and an ML-KEM-1024 ciphertext.** A tool
+  that answered one would be right half the time and confident always.
+- **A 32-byte SLH-DSA public key is indistinguishable from a SHA-256 digest or an Ed25519 key**,
+  and 48 and 64 collide the same way. The note says so.
+- **The hash family is not recoverable from a raw signature.** `SHA2-128s` and `SHAKE-128s`
+  signatures are both 7856 bytes, and that holds for every SLH-DSA size.
+
+A non-match is reported as a non-match, not as absence: 999 bytes matching nothing does not mean
+the input is not post-quantum.
+
+The OID and size table was extracted from DER that Node 24 generated, not transcribed from the
+standards by eye, and the tests regenerate every fixture at run time from `node:crypto` for the
+same reason — a hand-assembled blob would test the parser against its author's understanding of
+the format rather than against an implementation that has to interoperate.
 
 ---
 

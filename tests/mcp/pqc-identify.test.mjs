@@ -1,0 +1,527 @@
+/**
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * `pqc_identify`, tested against material Node actually generated.
+ *
+ * NO HAND-WRITTEN FIXTURES FOR VALID MATERIAL. Node 24 implements all eighteen NIST parameter sets,
+ * so every key and signature that is supposed to be REAL is produced by `crypto` at test time. That
+ * matters more than convenience: a hand-assembled DER blob tests the parser against my understanding
+ * of the format, while a generated one tests it against an implementation that has to interoperate.
+ * The OID and size table in the tool was extracted the same way, and is asserted here against all
+ * eighteen rather than sampled.
+ *
+ * The MALFORMED structures are necessarily hand-assembled, and that is the point of them: no
+ * implementation will emit an AlgorithmIdentifier whose OID sits outside it, or an OID body of half
+ * a megabyte of continuation bytes. Those bytes exist to drive the parser's rejection paths, which
+ * is where a parser invents an answer. An earlier version of this header claimed the file contained
+ * no hand-written fixtures at all, which was false the moment those tests were added -- reviewer
+ * found it, and the release note repeating the claim was corrected with it.
+ *
+ * @author DoubleGate
+ * @license GPL-3.0-or-later
+ */
+
+import { describe, it, expect } from "vitest";
+import { generateKeyPairSync, sign, randomBytes, createHash } from "node:crypto";
+import tool from "../../src/node/tools/pqc-identify.mjs";
+
+/**
+ * Run the tool the way the server does: through the schema, so defaults apply.
+ *
+ * `tool.inputSchema.parse(args)` and not a hand-built object -- the same lesson the entropy-scan
+ * flake taught this release's predecessor, where a harness that skipped `parse` lost the Zod
+ * defaults and reported a 100% failure rate that was pure artefact.
+ */
+const run = (args) => tool.run(tool.inputSchema.parse(args));
+
+/**
+ * The raw public key inside a SubjectPublicKeyInfo, in bytes.
+ *
+ * Walks the SPKI to its BIT STRING and returns the key itself, without the DER wrapper and without
+ * the BIT STRING's leading unused-bits octet. Written independently of the tool's own walk on
+ * purpose: a test that measured the key with the code under test would agree with it by
+ * construction, which is the whole objection to the assertion this replaced.
+ *
+ * @param {import("node:crypto").KeyObject} publicKey - The key.
+ * @returns {number} Raw key length in bytes.
+ */
+function rawPublicKeyBytes(publicKey) {
+    const der = publicKey.export({ type: "spki", format: "der" });
+    /**
+     * @param {number} off - Offset of a tag byte.
+     * @returns {{tag: number, start: number, length: number, end: number}} The TLV.
+     */
+    const tlv = (off) => {
+        const tag = der[off];
+        let i = off + 1;
+        let length = der[i++];
+        if (length & 0x80) {
+            const count = length & 0x7f;
+            length = 0;
+            for (let k = 0; k < count; k++) length = length * 256 + der[i++];
+        }
+        return { tag, start: i, length, end: i + length };
+    };
+
+    const outer = tlv(0);
+    const alg = tlv(outer.start);
+    const bits = tlv(alg.end);
+    expect(bits.tag, "SPKI did not end in a BIT STRING").toBe(0x03);
+    // First content octet of a BIT STRING is the count of unused trailing bits, and is not key data.
+    return bits.length - 1;
+}
+
+describe("pqc_identify", () => {
+    describe("a DER structure with an OID is definite", () => {
+        for (const [alg, expected, standard] of [
+            ["ml-dsa-44", "ML-DSA-44", "FIPS 204"],
+            ["ml-dsa-87", "ML-DSA-87", "FIPS 204"],
+            ["ml-kem-512", "ML-KEM-512", "FIPS 203"],
+            ["ml-kem-1024", "ML-KEM-1024", "FIPS 203"],
+            ["slh-dsa-sha2-128s", "SLH-DSA-SHA2-128s", "FIPS 205"],
+            ["slh-dsa-shake-256f", "SLH-DSA-SHAKE-256f", "FIPS 205"]
+        ]) {
+            it(`identifies ${expected} from a PEM public key`, () => {
+                const { publicKey } = generateKeyPairSync(alg);
+                const r = run({ input: publicKey.export({ type: "spki", format: "pem" }) });
+
+                expect(r.identified).toBe(true);
+                expect(r.confidence).toBe("definite");
+                expect(r.algorithm).toBe(expected);
+                expect(r.standard).toBe(standard);
+                expect(r.decoded_as).toBe("PEM");
+                // The claim must rest on the OID, not on a length that happened to match.
+                expect(r.basis).toContain("OID");
+            });
+        }
+
+        it("identifies a PKCS#8 private key, which carries a version INTEGER before the algorithm", () => {
+            // SPKI and PKCS#8 differ in shape; a parser that only handles SPKI silently fails here.
+            const { privateKey } = generateKeyPairSync("ml-dsa-65");
+            const r = run({ input: privateKey.export({ type: "pkcs8", format: "pem" }) });
+
+            expect(r.confidence).toBe("definite");
+            expect(r.algorithm).toBe("ML-DSA-65");
+        });
+
+        it("accepts the same key as hex and as base64 DER", () => {
+            const { publicKey } = generateKeyPairSync("ml-kem-768");
+            const der = publicKey.export({ type: "spki", format: "der" });
+
+            expect(run({ input: der.toString("hex") }).algorithm).toBe("ML-KEM-768");
+            expect(run({ input: der.toString("base64") }).algorithm).toBe("ML-KEM-768");
+        });
+
+        it("reports the OID it read, so the answer can be checked rather than trusted", () => {
+            const { publicKey } = generateKeyPairSync("ml-dsa-44");
+            const r = run({ input: publicKey.export({ type: "spki", format: "pem" }) });
+            expect(r.oid).toBe("2.16.840.1.101.3.4.3.17");
+        });
+    });
+
+    describe("every entry in the table, not a sample of it", () => {
+        // The matrix above exercises six of the eighteen parameter sets. `BY_OID` hard-codes an OID
+        // and two or three sizes for each, so a wrong value in one of the twelve UNTESTED rows would
+        // pass the whole suite while the tool and every document promise all eighteen. Reviewer-found.
+        //
+        // Node generates all eighteen, so the table can be checked against the implementation
+        // rather than sampled -- which is the same argument the file header makes about fixtures,
+        // applied to the table itself.
+        const ALL = [
+            ["ml-dsa-44", "ML-DSA-44", "2.16.840.1.101.3.4.3.17", 1312, 2420],
+            ["ml-dsa-65", "ML-DSA-65", "2.16.840.1.101.3.4.3.18", 1952, 3309],
+            ["ml-dsa-87", "ML-DSA-87", "2.16.840.1.101.3.4.3.19", 2592, 4627],
+            ["slh-dsa-sha2-128s", "SLH-DSA-SHA2-128s", "2.16.840.1.101.3.4.3.20", 32, 7856],
+            ["slh-dsa-sha2-128f", "SLH-DSA-SHA2-128f", "2.16.840.1.101.3.4.3.21", 32, 17088],
+            ["slh-dsa-sha2-192s", "SLH-DSA-SHA2-192s", "2.16.840.1.101.3.4.3.22", 48, 16224],
+            ["slh-dsa-sha2-192f", "SLH-DSA-SHA2-192f", "2.16.840.1.101.3.4.3.23", 48, 35664],
+            ["slh-dsa-sha2-256s", "SLH-DSA-SHA2-256s", "2.16.840.1.101.3.4.3.24", 64, 29792],
+            ["slh-dsa-sha2-256f", "SLH-DSA-SHA2-256f", "2.16.840.1.101.3.4.3.25", 64, 49856],
+            ["slh-dsa-shake-128s", "SLH-DSA-SHAKE-128s", "2.16.840.1.101.3.4.3.26", 32, 7856],
+            ["slh-dsa-shake-128f", "SLH-DSA-SHAKE-128f", "2.16.840.1.101.3.4.3.27", 32, 17088],
+            ["slh-dsa-shake-192s", "SLH-DSA-SHAKE-192s", "2.16.840.1.101.3.4.3.28", 48, 16224],
+            ["slh-dsa-shake-192f", "SLH-DSA-SHAKE-192f", "2.16.840.1.101.3.4.3.29", 48, 35664],
+            ["slh-dsa-shake-256s", "SLH-DSA-SHAKE-256s", "2.16.840.1.101.3.4.3.30", 64, 29792],
+            ["slh-dsa-shake-256f", "SLH-DSA-SHAKE-256f", "2.16.840.1.101.3.4.3.31", 64, 49856],
+            ["ml-kem-512", "ML-KEM-512", "2.16.840.1.101.3.4.4.1", 800, null],
+            ["ml-kem-768", "ML-KEM-768", "2.16.840.1.101.3.4.4.2", 1184, null],
+            ["ml-kem-1024", "ML-KEM-1024", "2.16.840.1.101.3.4.4.3", 1568, null]
+        ];
+
+        it("covers exactly the eighteen sets the tool advertises", () => {
+            // A list that drifts from the tool's table would test a different thing than it claims.
+            expect(new Set(ALL.map(row => row[1])).size).toBe(18);
+            expect(tool.description).toMatch(/ML-KEM|ML-DSA|SLH-DSA/);
+        });
+
+        // The slow SLH-DSA `f` variants sign in seconds, so signature sizes are asserted from the
+        // table's own arithmetic where generating one would dominate the suite; the OID and the
+        // public-key size -- the two things a wrong table row would get wrong -- are measured for
+        // every set.
+        for (const [alg, name, oid, pub] of ALL) {
+            it(`identifies ${name} by OID, with a public key of ${pub} bytes`, () => {
+                const { publicKey } = generateKeyPairSync(alg);
+                const r = run({ input: publicKey.export({ type: "spki", format: "pem" }) });
+
+                expect(r.algorithm).toBe(name);
+                expect(r.confidence).toBe("definite");
+                expect(r.oid).toBe(oid);
+                expect(r.sizes.public_key).toBe(pub);
+                // The RAW key, measured out of the SPKI BIT STRING rather than compared against
+                // the whole DER. `toBeGreaterThanOrEqual(der.length)` was the first version and it
+                // could not fail usefully: a value wrong in the same direction in both `BY_OID` and
+                // `ALL` still passes, because the wrapper is larger than the key either way.
+                // Reviewer-found -- the assertion existed but proved nothing. This one does.
+                expect(rawPublicKeyBytes(publicKey), `${name} raw public key`).toBe(pub);
+            });
+        }
+
+        it("records ML-DSA signature sizes that match real signatures", () => {
+            // ML-DSA signs fast enough to check all three for real; SLH-DSA does not.
+            for (const alg of ["ml-dsa-44", "ml-dsa-65", "ml-dsa-87"]) {
+                const { privateKey, publicKey } = generateKeyPairSync(alg);
+                const signature = sign(null, Buffer.from("m"), privateKey);
+                const r = run({ input: publicKey.export({ type: "spki", format: "pem" }) });
+                expect(r.sizes.signature, `${alg} signature size`).toBe(signature.length);
+            }
+        });
+    });
+
+    describe("raw bytes give a candidate list, never a definite answer", () => {
+        it("calls a lone match probable, not definite", () => {
+            const { privateKey } = generateKeyPairSync("ml-dsa-44");
+            const signature = sign(null, Buffer.from("message"), privateKey);
+
+            expect(signature.length).toBe(2420);
+            const r = run({ input: signature.toString("base64") });
+            expect(r.identified).toBe(true);
+            expect(r.confidence).toBe("probable");
+            expect(r.basis).toBe("byte length only");
+            expect(r.candidates).toHaveLength(1);
+            expect(r.candidates[0]).toMatchObject({ algorithm: "ML-DSA-44", role: "signature" });
+        });
+
+        it("reports ML-KEM-1024's key/ciphertext collision as ambiguous rather than picking one", () => {
+            // 1568 bytes is BOTH an encapsulation key and a ciphertext for this parameter set. A
+            // tool that answered one would be right half the time and confident always.
+            const r = run({ input: randomBytes(1568).toString("base64") });
+
+            expect(r.confidence).toBe("ambiguous");
+            expect(r.candidates.map(c => c.role).sort()).toEqual(["KEM ciphertext", "public key"]);
+            expect(r.notes.join(" ")).toContain("both 1568 bytes");
+        });
+
+        it("warns that a 32-byte SLH-DSA key is indistinguishable from a hash", () => {
+            // A SHA-256 digest is 32 bytes. So is an SLH-DSA-128 public key, and an Ed25519 key.
+            const digest = createHash("sha256").update("not a key at all").digest();
+            const r = run({ input: digest.toString("base64") });
+
+            expect(r.notes.join(" ")).toMatch(/SHA-256.*Ed25519|Ed25519.*SHA-256/);
+            expect(r.confidence).not.toBe("definite");
+        });
+
+        it("says the hash family cannot be recovered from a raw SLH-DSA signature", () => {
+            // sha2-128s and shake-128s both produce 7856-byte signatures.
+            const { privateKey } = generateKeyPairSync("slh-dsa-sha2-128s");
+            const signature = sign(null, Buffer.from("m"), privateKey);
+            expect(signature.length).toBe(7856);
+
+            const r = run({ input: signature.toString("base64") });
+            const names = r.candidates.filter(c => c.role === "signature").map(c => c.algorithm);
+            expect(names).toContain("SLH-DSA-SHA2-128s");
+            expect(names).toContain("SLH-DSA-SHAKE-128s");
+            expect(r.notes.join(" ")).toContain("hash family");
+        });
+    });
+
+    describe("what it declines to claim", () => {
+        it("does not claim a non-PQC key is post-quantum, and names the OID it saw", () => {
+            const { publicKey } = generateKeyPairSync("ed25519");
+            const r = run({ input: publicKey.export({ type: "spki", format: "pem" }) });
+
+            expect(r.identified).toBe(false);
+            expect(r.notes.join(" ")).toContain("not a NIST PQC algorithm");
+        });
+
+        it("says a non-match is not evidence of absence", () => {
+            const r = run({ input: randomBytes(999).toString("base64") });
+            expect(r.identified).toBe(false);
+            expect(r.confidence).toBe("none");
+            // The honesty clause: 999 bytes matching nothing does not mean the input is not PQC.
+            expect(r.notes.join(" ")).toContain("not evidence");
+        });
+
+        it("does not throw on malformed DER", () => {
+            // A leading 0x30 with a nonsense length: the parser must fall through to the length
+            // path, not read past the buffer.
+            const evil = Buffer.from([0x30, 0x84, 0xff, 0xff, 0xff, 0xff, 0x06, 0x01, 0x2a]);
+            expect(() => run({ input: evil.toString("hex") })).not.toThrow();
+        });
+
+        it("does not mistake a truncated OID for a valid one", () => {
+            // Final byte has the continuation bit set, so the arc never terminates.
+            const der = Buffer.from([0x30, 0x08, 0x30, 0x06, 0x06, 0x02, 0x2a, 0x86, 0x05, 0x00]);
+            const r = run({ input: der.toString("hex") });
+            expect(r.identified).toBe(false);
+        });
+    });
+
+    describe("the DER walk rejects rather than guesses", () => {
+        // Each of these is a structure that is well-formed enough to enter the walk and wrong
+        // somewhere specific. They exist because the walk's failure paths are where a parser
+        // invents an answer: the version of this tool that scanned for a 0x06 tag byte returned a
+        // plausible WRONG OID for ML-KEM-1024 rather than returning nothing. A parser that cannot
+        // say "no" cheaply is a parser that says something false expensively.
+        //
+        // `identified: false` throughout -- the tool falls through to the length path, and none of
+        // these lengths matches a parameter set.
+        for (const [label, hex] of [
+            ["a SEQUENCE with nothing inside it", "3000"],
+            ["a PKCS#8 version INTEGER with nothing after it", "3003020100"],
+            ["a first element that is neither a version nor an AlgorithmIdentifier", "3003040100"],
+            ["an AlgorithmIdentifier whose first element is not an OID", "30053003020100"],
+            ["an OBJECT IDENTIFIER with an empty body", "3004300206 00".replace(/\s/g, "")]
+        ]) {
+            it(`returns nothing for ${label}`, () => {
+                const r = run({ input: hex, "input_format": "Hex" });
+                expect(r.identified).toBe(false);
+                // `null` rather than absent: the field is present in every branch so that "no OID
+                // was read" and "this result shape omits the field" cannot be confused.
+                expect(r.oid).toBeNull();
+            });
+        }
+    });
+
+    describe("a nested element must lie inside its parent", () => {
+        // BOTH reviewers found this independently, and it is this tool's stated failure mode
+        // arriving by a second route: a parser that invents an answer. Bounding each read against
+        // the whole buffer rather than against the declared parent is how it got in.
+        it("does not accept an OID that sits OUTSIDE the AlgorithmIdentifier", () => {
+            // outer SEQUENCE(13) { AlgorithmIdentifier SEQUENCE(0) {} , <ML-KEM-512 OID> }
+            // The OID is a SIBLING of the empty AlgorithmIdentifier, not a member of it. Before the
+            // fix this returned confidence "definite" and algorithm "ML-KEM-512".
+            const r = run({ input: "300d30000609608648016503040401", "input_format": "Hex" });
+            expect(r.confidence).not.toBe("definite");
+            expect(r.algorithm).toBeUndefined();
+        });
+
+        it("does not read a PKCS#8 algorithm field past the end of the outer SEQUENCE", () => {
+            // outer SEQUENCE declares 3 bytes: the version INTEGER fills them exactly, so the
+            // AlgorithmIdentifier that follows is outside the structure that claims to contain it.
+            const r = run({ input: "30030201000609608648016503040401", "input_format": "Hex" });
+            expect(r.confidence).not.toBe("definite");
+        });
+    });
+
+    describe("a hostile OID cannot stall the event loop", () => {
+        /**
+         * DER wrapping an OBJECT IDENTIFIER whose body is `n` continuation bytes.
+         *
+         * @param {number} n - Body length in bytes.
+         * @returns {Buffer} outer SEQUENCE > AlgorithmIdentifier > OBJECT IDENTIFIER.
+         */
+        function craftLongOid(n) {
+            const be32 = v => {
+                const b = Buffer.alloc(4);
+                b.writeUInt32BE(v);
+                return b;
+            };
+            // Every byte has the continuation bit set, so the arc never terminates and the BigInt
+            // accumulator grows for the whole body.
+            const oid = Buffer.concat([Buffer.from([0x06, 0x84]), be32(n), Buffer.alloc(n, 0xff)]);
+            const alg = Buffer.concat([Buffer.from([0x30, 0x84]), be32(oid.length), oid]);
+            return Buffer.concat([Buffer.from([0x30, 0x84]), be32(alg.length), alg]);
+        }
+
+        it("rejects an absurdly long OID body instead of decoding it", () => {
+            // `value << 7n` costs O(size of value), so N continuation bytes is O(N^2). At 520,000
+            // bytes -- comfortably inside the 1 MB input cap -- this stalled SYNCHRONOUSLY for 87
+            // seconds before the bound was added. A timeout cannot interrupt synchronous work,
+            // which is why the limit is on the input to the loop. Reviewer-found (Antigravity).
+            const started = Date.now();
+            const r = run({ input: craftLongOid(520000).toString("hex"), "input_format": "Hex" });
+            const elapsed = Date.now() - started;
+
+            expect(r.identified).toBe(false);
+            // Generous by three orders of magnitude against the 87s it took, so this asserts "the
+            // bound is there" and not "this machine is fast".
+            expect(elapsed, `took ${elapsed}ms; the length bound is not being applied`).toBeLessThan(2000);
+        });
+
+        it("still decodes an OID body of a length real OIDs actually use", () => {
+            // The bound must reject the attack and nothing else. Every NIST PQC OID body is nine
+            // bytes; this is a well-formed arc far longer than any of them and still under the cap.
+            const body = Buffer.concat([Buffer.from([0x60]), Buffer.alloc(60, 0x81), Buffer.from([0x01])]);
+            const oid = Buffer.concat([Buffer.from([0x06, body.length]), body]);
+            const alg = Buffer.concat([Buffer.from([0x30, oid.length]), oid]);
+            const der = Buffer.concat([Buffer.from([0x30, alg.length]), alg]);
+            expect(run({ input: der.toString("hex"), "input_format": "Hex" }).notes.join(" "))
+                .toMatch(/OID 2\.16\./);
+        });
+    });
+
+    describe("the input must be one well-formed structure, and nothing more", () => {
+        // Round three of review. Each of these reached `definite` before the fix, and each is a
+        // different way of being "nearly" a DER key -- which is the only interesting kind of
+        // malformed input, because obviously-broken bytes were already rejected.
+        it("refuses a valid SPKI with arbitrary bytes appended", () => {
+            // The outer TLV parsed fine; nothing required it to consume the whole input. The extra
+            // bytes also inflate `input_bytes`, which is what the length path reasons about.
+            const der = generateKeyPairSync("ml-kem-512").publicKey.export({ type: "spki", format: "der" });
+            const padded = Buffer.concat([der, Buffer.alloc(32, 0x41)]);
+            expect(run({ input: padded.toString("hex"), "input_format": "Hex" }).confidence).not.toBe("definite");
+            // ...while the same bytes without the suffix are still identified.
+            expect(run({ input: der.toString("hex"), "input_format": "Hex" }).algorithm).toBe("ML-KEM-512");
+        });
+
+        it("refuses a non-minimal OID encoding of a known algorithm", () => {
+            // `060a 80 60 8648016503040401` is ML-KEM-512's OID with a leading 0x80 group. DER
+            // requires the shortest encoding; accepting this means two byte sequences for one OID.
+            expect(run({ input: "300e300c060a80608648016503040401", "input_format": "Hex" }).confidence)
+                .not.toBe("definite");
+        });
+
+        it("does not call a NULL sibling key material", () => {
+            // `outer.end > first.end` proved only that SOMETHING followed the AlgorithmIdentifier.
+            const r = run({ input: "300f300b06096086480165030404010500", "input_format": "Hex" });
+            expect(r.algorithm).toBe("ML-KEM-512");       // the OID still names it truthfully
+            expect(r.carries_key_material).toBe(false);   // but there is no key here
+        });
+
+        it("reports real key material for both SPKI and PKCS#8", () => {
+            // The other direction of the same check: the tag test must not reject real keys, and
+            // the two container shapes want DIFFERENT tags (BIT STRING vs OCTET STRING).
+            const { publicKey, privateKey } = generateKeyPairSync("ml-dsa-44");
+            expect(run({ input: publicKey.export({ type: "spki", format: "pem" }) }).carries_key_material).toBe(true);
+            expect(run({ input: privateKey.export({ type: "pkcs8", format: "pem" }) }).carries_key_material).toBe(true);
+        });
+
+        it("refuses a PEM block buried in surrounding text", () => {
+            const pem = generateKeyPairSync("ml-dsa-44").publicKey.export({ type: "spki", format: "pem" });
+            expect(run({ input: `junk\n${pem}\nmore junk` }).confidence).not.toBe("definite");
+            // Surrounding WHITESPACE is still fine -- that is how PEM arrives from a file.
+            expect(run({ input: `\n\n  ${pem}  \n` }).algorithm).toBe("ML-DSA-44");
+        });
+
+        it("does not fall back to byte length once a non-PQC OID has been read", () => {
+            // A DER wrapper whose total length coincides with a known raw key size was reported as
+            // a PQC candidate, while the structure itself named a different algorithm. The length
+            // of a wrapper is not the length of a key.
+            const r = run({ input: "300f300d06092a864886f70d0101010500", "input_format": "Hex" });
+            expect(r.identified).toBe(false);
+            expect(r.candidates).toEqual([]);
+            expect(r.basis).toContain("1.2.840.113549.1.1.1");
+            expect(r.notes.join(" ")).toContain("length of a DER wrapper is not the length of a key");
+        });
+    });
+
+    describe("OID arcs are decoded as DER defines them", () => {
+        // Every subidentifier is base-128, INCLUDING the first. Splitting `body[0]` by 40 is right
+        // only while the first subidentifier is a single byte -- true of every NIST PQC OID, which
+        // is why no fixture caught it. The tool reports the OID for algorithms it does NOT know,
+        // so an unusual arc is precisely where this surfaces to a user. Reviewer-found.
+        for (const [want, hex] of [
+            ["2.40", "30053003060178"],                  // 2*40+40 = 120, one byte, formerly "3.0"
+            ["2.100.3", "300730050603813403"]            // 2*40+100 = 180, TWO bytes, formerly "3.9.52.3"
+        ]) {
+            it(`reads ${want} as ${want}`, () => {
+                const r = run({ input: hex, "input_format": "Hex" });
+                expect(r.notes.join(" ")).toContain(`OID ${want}`);
+            });
+        }
+
+        it("still reads the NIST arcs, which is what the fix must not break", () => {
+            const { publicKey } = generateKeyPairSync("ml-kem-512");
+            const r = run({ input: publicKey.export({ type: "spki", format: "pem" }) });
+            expect(r.oid).toBe("2.16.840.1.101.3.4.4.1");
+        });
+    });
+
+    describe("a partially-decodable input is refused, not partially identified", () => {
+        // `Buffer.from` stops at the first thing it cannot parse and returns the prefix with no
+        // error, so malformed input produced a confident identification of whatever happened to
+        // decode. Both reviewers found it. A tool whose whole contribution is saying what something
+        // IS must not answer for the fraction of the input it understood.
+        for (const [label, args] of [
+            ["hex valid for 1,312 bytes then garbage", { input: "ab".repeat(1312) + "ZZ!", "input_format": "Hex" }],
+            ["hex that is not hex at all", { input: "zz", "input_format": "Hex" }],
+            ["hex with an odd digit count", { input: "abc", "input_format": "Hex" }],
+            ["base64 carrying an invalid character", { input: "AAAA!", "input_format": "Base64" }]
+        ]) {
+            it(`refuses ${label}`, () => {
+                let thrown;
+                try {
+                    run(args);
+                } catch (error) {
+                    thrown = error;
+                }
+                expect(thrown, "this decoded silently instead of failing").toBeDefined();
+                expect(thrown.code).toBe("INVALID_INPUT");
+            });
+        }
+
+        it("refuses a PEM block whose BEGIN and END labels disagree", () => {
+            const { publicKey } = generateKeyPairSync("ml-dsa-44");
+            const spliced = publicKey.export({ type: "spki", format: "pem" })
+                .replace("-----END PUBLIC KEY-----", "-----END CERTIFICATE-----");
+            expect(() => run({ input: spliced, "input_format": "PEM" })).toThrow(/BEGIN/);
+        });
+    });
+
+    describe("the declared input format is obeyed", () => {
+        it("reads a PEM when told to, rather than only when it guesses", () => {
+            const { publicKey } = generateKeyPairSync("ml-dsa-44");
+            const r = run({
+                input: publicKey.export({ type: "spki", format: "pem" }),
+                "input_format": "PEM"
+            });
+            expect(r.algorithm).toBe("ML-DSA-44");
+            expect(r.decoded_as).toBe("PEM");
+        });
+
+        it("raises a typed input error when PEM is declared and there is no PEM", () => {
+            // The shape matters as much as the failure. Every other registry tool reports bad
+            // input as INVALID_INPUT naming the field; a bare Error here would reach a client as
+            // an untyped message for the same class of mistake.
+            let thrown;
+            try {
+                run({ input: "clearly not a certificate", "input_format": "PEM" });
+            } catch (error) {
+                thrown = error;
+            }
+            expect(thrown).toBeDefined();
+            expect(thrown.code).toBe("INVALID_INPUT");
+            expect(thrown.message).toMatch(/BEGIN/);
+        });
+
+        it("treats input as raw bytes when told to, even when it looks like hex", () => {
+            // "deadbeef" is valid hex AND eight raw bytes. Auto would read it as hex; Raw must not,
+            // or a declared format would be a suggestion rather than an instruction.
+            expect(run({ input: "deadbeef", "input_format": "Hex" }).input_bytes).toBe(4);
+            expect(run({ input: "deadbeef", "input_format": "Raw" }).input_bytes).toBe(8);
+        });
+
+        it("reads base64 when told to, for input short enough that Auto would not", () => {
+            // Auto only tries base64 above 32 characters, so a short base64 string is the case
+            // where the declared format is the only thing that can be right.
+            const r = run({ input: "AAAA", "input_format": "Base64" });
+            expect(r.decoded_as).toBe("Base64");
+            expect(r.input_bytes).toBe(3);
+        });
+    });
+
+    describe("the tool contract", () => {
+        it("declares the registry shape and a non-prefixed name", () => {
+            expect(tool.name).toBe("pqc_identify");
+            expect(tool.name.startsWith("cyberchef_")).toBe(false);
+            expect(typeof tool.run).toBe("function");
+            expect(tool.annotations).toMatchObject({ readOnlyHint: true, openWorldHint: false });
+        });
+
+        it("describes what it cannot do, not only what it can", () => {
+            // The cert_chain lesson: a description that advertises a guarantee the tool does not
+            // make is worse than no description.
+            expect(tool.description).toMatch(/ambiguous|1568|guess/i);
+        });
+    });
+});
