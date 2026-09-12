@@ -36,6 +36,30 @@ at 400 cases. Writing the lesson down did not prevent the repeat; running the wi
 > rather than to the scratch directory, so it was not recoverable. Its table survives in the F-21
 > entry and in a comment beside `DIVISOR_MARGIN`. Losing it is the reason this directory exists.
 
+### Post-quantum identification (v3.11.0), and re-extraction for v4.4.0
+
+Salvaged from a session scratchpad in v4.1.0, because they are the instruments behind a claim
+`AGENTS.md` makes and no committed file could reproduce: the `pqc_identify` OID and size table
+"came out of DER that Node 24 generated, not out of a specification read by eye".
+
+| | |
+|---|---|
+| `pqc-oids.mjs` | Generates the ML-KEM / ML-DSA OID, SPKI and raw-public-key size table from keys Node itself produces. This is how `src/node/tools/pqc-identify.mjs`'s `BY_OID` table was built |
+| `pqc-slh-params.mjs` | The same for the twelve SLH-DSA parameter sets, adding signature sizes |
+| `data/pqc-ml-dsa-65-selfsigned.pem` | The self-signed **ML-DSA-65** certificate behind [`v4.3.0`](../../planning/v4/charters/v4.3.0.md)'s claim that `cert_chain` can validate PQC chains today with no new code path. Re-verified on salvage: `asymmetricKeyType: 'ml-dsa-65'`, `verify(publicKey) === true`. **Expired 2026-09-12** -- it was generated with a one-day lifetime, so it proves parsing and signature verification, not validity-window behaviour. Its private key was deliberately **not** committed |
+
+**Run `pqc-oids.mjs` before extending that table.** [`v4.4.0`](../../planning/v4/charters/v4.4.0.md)
+records that ML-KEM/ML-DSA pkcs8 export defaults to **seed-only on Node 26**, so the same key
+exports differently than it did on the Node 24 that produced the shipped table. The table needs
+re-extracting rather than trusting, and this is the script that does it.
+
+### Miscellaneous probes
+
+| | |
+|---|---|
+| `dump-tool-list.mjs` | Dumps a server's `tools/list` through a real client, taking the server command as argv. Useful for comparing two builds' surfaces without editing anything |
+| `entropy-split-rate.mjs` | How often `entropy_scan` splits uniform random input into more than one region, over 400 trials. Written while investigating a suspected flake; measured **0.75%**. It **parses through `tool.inputSchema` before calling `run`**, as every harness here must -- `run` trusts that `handleCallTool` already applied the Zod defaults, and the salvaged version skipped that step and reported a meaningless `100.00%` |
+
 ### The RSA tool
 
 | | |
