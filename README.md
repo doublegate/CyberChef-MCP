@@ -836,7 +836,7 @@ npm run lint
 The MCP server maintains comprehensive test coverage:
 - **1,728 MCP tests** across 75 suites, plus 241 Node-API tests, 2,289 operation tests and 9 runnable examples executed by CI
 - **Coverage thresholds** (`vitest.config.mjs`): 96% lines, 95% statements, 89% branches, 96% functions, with `src/node/lib/**` held separately at 99 lines / 99 statements / 94 branches / 100 functions
-- **Current coverage**: 96.46% lines, 95.53% statements, 96.84% functions, 89.93% branches (thresholds 96/89/96/95, lines/branches/functions/statements)
+- **Current coverage**: 96.44% lines, 95.50% statements, 96.84% functions, 89.88% branches (thresholds 96/89/96/95, lines/branches/functions/statements)
 - Note: individual suite names are not listed here because the list went stale three times;
   `ls tests/mcp/*.test.mjs` is authoritative.
 

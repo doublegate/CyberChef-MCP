@@ -126,7 +126,7 @@ describe("every advertised tool is callable", () => {
                     } catch (err) {
                         // A thrown protocol error is also "reached, then rejected" unless it says
                         // the tool is unknown.
-                        res = { isError: true, content: [{ type: "text", text: String(err.message) }] };
+                        res = { isError: true, content: [{ type: "text", text: err?.message ?? String(err) }] };
                     }
                     const text = res.content?.[0]?.text ?? "";
                     if (isUndispatched(text, tool.name)) {
@@ -168,8 +168,8 @@ describe("every callable meta-tool is advertised", () => {
             // narrower pattern misses. It happened to be caught anyway through a second
             // comparison in the scope-check block, which is luck rather than coverage -- verified
             // by deleting its declaration and watching the test fail for the right reason.
-            ...[...src.matchAll(/name === "(cyberchef_[a-z_]+)"/g)].map(m => m[1]),
-            ...[...src.matchAll(/^\s{8}name: "(cyberchef_[a-z_]+)"/gm)].map(m => m[1])
+            ...[...src.matchAll(/name === "(cyberchef_[a-z0-9_]+)"/g)].map(m => m[1]),
+            ...[...src.matchAll(/^\s{8}name: "(cyberchef_[a-z0-9_]+)"/gm)].map(m => m[1])
         ]);
 
         // A pattern that matches NOTHING must fail rather than pass vacuously -- the failure mode
@@ -207,7 +207,7 @@ describe("every callable meta-tool is advertised", () => {
                     const res = await client.callTool({ name, arguments: {} });
                     text = res.content?.[0]?.text ?? "";
                 } catch (err) {
-                    text = String(err.message);
+                    text = err?.message ?? String(err);
                 }
                 if (!isUndispatched(text, name)) {
                     invisible.push(`${name} dispatches but is absent from tools/list`);
@@ -242,7 +242,7 @@ describe("every callable meta-tool is advertised", () => {
 
         const { readFileSync } = await import("node:fs");
         const src = readFileSync(new URL("../../src/node/mcp-server.mjs", import.meta.url), "utf8");
-        const declared = [...src.matchAll(/^\s{8}name: "(cyberchef_[a-z_]+)"/gm)].map(m => m[1]);
+        const declared = [...src.matchAll(/^\s{8}name: "(cyberchef_[a-z0-9_]+)"/gm)].map(m => m[1]);
 
         const collisions = declared.filter(n => registryNames.has(n));
         expect(collisions,

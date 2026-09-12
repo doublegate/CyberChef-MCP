@@ -84,8 +84,8 @@ The arithmetic is in the charter, but a sprint starts by re-measuring rather tha
       through a real client, byte-identical answers).
 - [x] Record `mcp-server.mjs` coverage before and after — **82.2% of 394 statements** today. A
       consolidation that does not move it has probably moved complexity rather than removed it.
-      Measured **85.40% of 418 → 85.75% of 393** statements and **68.04% → 70.56%** branches: 25
-      fewer statements and 10 fewer branches to cover, with the covered count essentially flat.
+      Measured **85.40% of 418 → 85.56% of 395** statements and **68.04% → 70.39%** branches: 23
+      fewer statements and 8 fewer branches to cover, with the covered count essentially flat.
       (The 82.2%/394 figure above was v4.0.0's; it had already moved before this sprint started.)
 
 ---

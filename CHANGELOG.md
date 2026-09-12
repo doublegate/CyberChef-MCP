@@ -53,7 +53,7 @@ pretty-printed snapshots of the tools array, not the canonical wire figures, whi
 15,620 / 109,548 / 426,706), `handleListTools`
 including its `visibleTools()` auth filter is unchanged line for line, and 27 meta-tool calls
 through a real client return byte-identical answers. Coverage of `mcp-server.mjs` moved 85.40% →
-85.75% statements and 68.04% → 70.56% branches on **25 fewer statements and 10 fewer branches**.
+85.56% statements and 68.04% → 70.39% branches on **23 fewer statements and 8 fewer branches**.
 
 ## [4.1.0] - 2026-09-11
 

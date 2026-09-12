@@ -1207,6 +1207,19 @@ const handleCallToolInner = async (request, extra, ownerServer = server) => {
         if (tableTool) {
             const value = await tableTool.run(args ?? {});
             const output = JSON.stringify(value, null, 2);
+            // `JSON.stringify(undefined)` is `undefined`, not a string, and the very next line
+            // would throw a bare TypeError from `Buffer.byteLength` -- a crash naming neither the
+            // tool nor the cause. No handler returns undefined today (all eight were called and
+            // checked), so this is unreachable rather than defensive clutter, and it must STAY
+            // unreachable: the tempting `value ?? {}` would serve `{}` to the caller and turn a
+            // handler bug into a silent empty answer, which is the "stub an unimplemented path as
+            // if it worked" failure this project rejects by rule.
+            if (typeof output !== "string") {
+                throw createInputError(
+                    `Tool '${name}' returned no serialisable value`,
+                    { tool: name, returned: typeof value }
+                );
+            }
             logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
             return { content: [{ type: "text", text: output }] };
         }

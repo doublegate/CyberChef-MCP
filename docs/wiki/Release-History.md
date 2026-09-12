@@ -35,8 +35,8 @@ the reason is written where the next person will try to remove them.
 Behaviour preservation was proven rather than asserted: `tools/list` is byte-identical before and
 after on all three surfaces, order included; `handleListTools` and its `visibleTools()` auth filter
 are unchanged line for line; and 27 meta-tool calls through a real client return byte-identical
-answers. Coverage of `mcp-server.mjs` moved 85.40% → 85.75% statements and 68.04% → 70.56% branches,
-on 25 fewer statements and 10 fewer branches to cover.
+answers. Coverage of `mcp-server.mjs` moved 85.40% → 85.56% statements and 68.04% → 70.39% branches,
+on 23 fewer statements and 8 fewer branches to cover.
 
 ## v4.1.0 — registry tools get a navigation path
 
