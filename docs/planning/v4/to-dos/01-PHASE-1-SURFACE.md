@@ -13,6 +13,15 @@ neither waits on anything external. This is the phase that unblocks the tool pro
 > number, because they are listed on every surface and all three grow together. The gate was rebuilt
 > on properties that can move -- the index lists no registry tool, `curated`/`all` list every one,
 > and the index stays under 30 tools.
+>
+> **v4.2.0 SHIPPED 2026-09-12.** Sprint 1.5 is done, and it did not go as written either. The gate
+> it was to build **already existed** — `tests/mcp/meta-tool-parity.test.mjs`, written in v3.7.0,
+> asserting both directions — so the charter's "the dispatch table has never had its version" was
+> false and the release opened by duplicating a check. That gate is syntactic, and the refactor this
+> sprint asks for breaks it, so it is superseded and removed rather than patched. The "uniform" ten
+> recipe branches were **eight**: `recipe_execute` guards input size and returns a string, and
+> `recipe_export` was double-encoded by the table. Both keep their branches. See F-02 in
+> `../../../internal/v4.2.0-findings-log.md`. **Phase 1 is now complete.**
 
 ---
 
@@ -60,14 +69,24 @@ The arithmetic is in the charter, but a sprint starts by re-measuring rather tha
 
 ## Sprint 1.5 — One place to add a tool (v4.2.0)
 
-- [ ] One table: name, schema, handler. `META_TOOLS` (line 371) and the 23-branch dispatch chain
-      derive from it rather than mirroring each other.
-- [ ] The gate, verified in **both** directions: a declared tool with no handler, and a handler with
-      no declaration. Both are silent today.
-- [ ] Behaviour preserved, proven through a real client before and after. A tidier dispatch that
-      answers differently is a regression with good intentions.
-- [ ] Record `mcp-server.mjs` coverage before and after — **82.2% of 394 statements** today. A
+- [x] One table: name, schema, handler. `META_TOOLS` (line 371) and the 23-branch dispatch chain
+      derive from it rather than mirroring each other. **Eight of ten**, not all — see the banner.
+- [x] The gate, verified in **both** directions: a declared tool with no handler, and a handler with
+      no declaration. Both are silent today. The second direction was **circular** on the first
+      attempt and only injecting the defect found it; `tests/mcp/dispatch-table.test.mjs` carries
+      the rebuilt version and the reason.
+- [x] Behaviour preserved, proven through a real client before and after. A tidier dispatch that
+      answers differently is a regression with good intentions — and it was, twice, on the first
+      attempt. Proven by two instruments kept in `docs/internal/measurements/`:
+      `list-contract-snapshot.mjs` (the whole `tools/list` response, all three surfaces,
+      byte-identical: 21,185 / 145,016 / 583,253 capture bytes, which are pretty-printed tools
+      arrays rather than the canonical wire figures of 15,620 / 109,548 / 426,706) and `meta-tool-answers.mjs` (27 calls
+      through a real client, byte-identical answers).
+- [x] Record `mcp-server.mjs` coverage before and after — **82.2% of 394 statements** today. A
       consolidation that does not move it has probably moved complexity rather than removed it.
+      Measured **85.40% of 418 → 85.56% of 395** statements and **68.04% → 70.39%** branches: 23
+      fewer statements and 8 fewer branches to cover, with the covered count essentially flat.
+      (The 82.2%/394 figure above was v4.0.0's; it had already moved before this sprint started.)
 
 ---
 
