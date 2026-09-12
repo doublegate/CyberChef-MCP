@@ -501,6 +501,7 @@ const META_TOOLS = [
     // Recipe management tools (v1.6.0)
     {
         name: "cyberchef_recipe_create",
+        run: args => recipeManager.createRecipe(args),
         description: "Create a new recipe with multiple operations.",
         inputSchema: toInputSchema(z.object({
             name: z.string().describe("Recipe name"),
@@ -521,6 +522,7 @@ const META_TOOLS = [
     },
     {
         name: "cyberchef_recipe_get",
+        run: args => recipeManager.getRecipe(args.id),
         description: "Get a recipe by ID.",
         inputSchema: toInputSchema(z.object({
             id: z.string().uuid().describe("Recipe UUID")
@@ -528,6 +530,7 @@ const META_TOOLS = [
     },
     {
         name: "cyberchef_recipe_list",
+        run: args => recipeManager.listRecipes(args),
         description: "List all recipes with optional filtering.",
         inputSchema: toInputSchema(z.object({
             tag: z.string().optional().describe("Filter by tag"),
@@ -539,6 +542,7 @@ const META_TOOLS = [
     },
     {
         name: "cyberchef_recipe_update",
+        run: ({ id, ...updates }) => recipeManager.updateRecipe(id, updates),
         description: "Update an existing recipe.",
         inputSchema: toInputSchema(z.object({
             id: z.string().uuid().describe("Recipe UUID"),
@@ -559,6 +563,10 @@ const META_TOOLS = [
     },
     {
         name: "cyberchef_recipe_delete",
+        run: async args => {
+            await recipeManager.deleteRecipe(args.id);
+            return { success: true, id: args.id };
+        },
         description: "Delete a recipe by ID.",
         inputSchema: toInputSchema(z.object({
             id: z.string().uuid().describe("Recipe UUID")
@@ -582,6 +590,7 @@ const META_TOOLS = [
     },
     {
         name: "cyberchef_recipe_import",
+        run: args => recipeManager.importRecipe(args.data, args.format),
         description: "Import a recipe from various formats.",
         inputSchema: toInputSchema(z.object({
             data: z.string().describe("Recipe data to import"),
@@ -590,6 +599,7 @@ const META_TOOLS = [
     },
     {
         name: "cyberchef_recipe_validate",
+        run: args => recipeManager.validateRecipe(args.recipe),
         description: "Validate a recipe without saving it.",
         inputSchema: toInputSchema(z.object({
             recipe: z.object({
@@ -604,6 +614,7 @@ const META_TOOLS = [
     },
     {
         name: "cyberchef_recipe_test",
+        run: args => recipeManager.testRecipe(args.recipe, args.testInputs),
         description: "Test a recipe with sample inputs.",
         inputSchema: toInputSchema(z.object({
             recipe: z.object({
@@ -1173,54 +1184,54 @@ const handleCallToolInner = async (request, extra, ownerServer = server) => {
         }
 
         // Handle recipe management tools (v1.6.0)
-        if (name === "cyberchef_recipe_create") {
-            const recipe = await recipeManager.createRecipe(args);
-            const output = JSON.stringify(recipe, null, 2);
+        // ONE PLACE TO ADD A TOOL.
+        //
+        // A meta-tool that declares a `run` in `META_TOOLS` is dispatched from that declaration --
+        // name, description, schema and handler in a single entry. This replaced ten branches
+        // that differed only in which `recipeManager` method they called and how they read their
+        // arguments; everything after that call was identical ten times over.
+        //
+        // The defect it removes is the charter's: adding a tool meant editing two places that had
+        // to agree, and nothing checked that they did. For a tool with a `run`, there is now one
+        // place. `dispatch-table.test.mjs` enforces the invariant for ALL of them, including the
+        // ones still in the chain below -- it is behavioural, so it does not care which mechanism
+        // dispatched a tool, only that everything advertised is callable and everything callable
+        // is advertised.
+        //
+        // Deliberately NOT every meta-tool. `bake`, `batch`, `search`, `describe_operation`,
+        // `worker_stats` and `telemetry_export` have bodies that differ for real reasons -- rate
+        // limiting, quota, recipe-derived scope, their own error shapes. Forcing them into a
+        // uniform table would mean a table of exceptions, which is the same two-sources problem
+        // wearing a different hat.
+        const tableTool = META_TOOLS.find(t => t.name === name && typeof t.run === "function");
+        if (tableTool) {
+            const value = await tableTool.run(args ?? {});
+            const output = JSON.stringify(value, null, 2);
             logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
-
-            return {
-                content: [{ type: "text", text: output }]
-            };
+            return { content: [{ type: "text", text: output }] };
         }
 
-        if (name === "cyberchef_recipe_get") {
-            const recipe = await recipeManager.getRecipe(args.id);
-            const output = JSON.stringify(recipe, null, 2);
-            logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
+        // NOT in the table, and the reason is the whole point of this release.
+        //
+        // It looks like the other nine recipe tools and is not: it guards input size first, and it
+        // returns the recipe's OWN string result when there is one rather than a JSON envelope.
+        // Folding it in silently dropped `validateInputSize` and changed the output from
+        // `SGVsbG8=` to `{"recipeId":...}` -- caught by `in-process-handlers` and by an executable
+        // example, not by the consolidation itself.
+        //
+        // "A tidier dispatch that answers differently is a regression with good intentions" is the
+        // charter's own phrase for this, and it happened on the first attempt.
+        // NOT in the table either. `exportRecipe` already returns a STRING -- the serialised
+        // recipe in the requested format -- so the table's `JSON.stringify` wrapped it a second
+        // time and callers got `"{\n \"id\": ...}"` instead of the document. It round-trips
+        // through `recipe_import`, so the double encoding broke that pair rather than only
+        // cosmetics.
+        if (name === "cyberchef_recipe_export") {
+            const exported = await recipeManager.exportRecipe(args.id, args.format);
+            logRequestComplete(requestId, { outputSize: Buffer.byteLength(exported, "utf8") });
 
             return {
-                content: [{ type: "text", text: output }]
-            };
-        }
-
-        if (name === "cyberchef_recipe_list") {
-            const recipes = await recipeManager.listRecipes(args);
-            const output = JSON.stringify(recipes, null, 2);
-            logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
-
-            return {
-                content: [{ type: "text", text: output }]
-            };
-        }
-
-        if (name === "cyberchef_recipe_update") {
-            const { id, ...updates } = args;
-            const recipe = await recipeManager.updateRecipe(id, updates);
-            const output = JSON.stringify(recipe, null, 2);
-            logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
-
-            return {
-                content: [{ type: "text", text: output }]
-            };
-        }
-
-        if (name === "cyberchef_recipe_delete") {
-            await recipeManager.deleteRecipe(args.id);
-            const output = JSON.stringify({ success: true, id: args.id }, null, 2);
-            logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
-
-            return {
-                content: [{ type: "text", text: output }]
+                content: [{ type: "text", text: exported }]
             };
         }
 
@@ -1235,44 +1246,6 @@ const handleCallToolInner = async (request, extra, ownerServer = server) => {
             };
         }
 
-        if (name === "cyberchef_recipe_export") {
-            const exported = await recipeManager.exportRecipe(args.id, args.format);
-            logRequestComplete(requestId, { outputSize: Buffer.byteLength(exported, "utf8") });
-
-            return {
-                content: [{ type: "text", text: exported }]
-            };
-        }
-
-        if (name === "cyberchef_recipe_import") {
-            const recipe = await recipeManager.importRecipe(args.data, args.format);
-            const output = JSON.stringify(recipe, null, 2);
-            logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
-
-            return {
-                content: [{ type: "text", text: output }]
-            };
-        }
-
-        if (name === "cyberchef_recipe_validate") {
-            const result = await recipeManager.validateRecipe(args.recipe);
-            const output = JSON.stringify(result, null, 2);
-            logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
-
-            return {
-                content: [{ type: "text", text: output }]
-            };
-        }
-
-        if (name === "cyberchef_recipe_test") {
-            const result = await recipeManager.testRecipe(args.recipe, args.testInputs);
-            const output = JSON.stringify(result, null, 2);
-            logRequestComplete(requestId, { outputSize: Buffer.byteLength(output, "utf8") });
-
-            return {
-                content: [{ type: "text", text: output }]
-            };
-        }
 
         // Navigation tools -- the "index" tool surface. See lib/tool-catalog.mjs for why this
         // hierarchy exists: it keeps 504 operation schemas off the always-loaded payload while

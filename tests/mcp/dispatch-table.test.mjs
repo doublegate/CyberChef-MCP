@@ -204,6 +204,33 @@ describe("every callable meta-tool is advertised", () => {
         }
     }, 180000);
 
+    it("does not let a meta-tool shadow a registry tool", async () => {
+        // CARRIED FORWARD from `meta-tool-parity.test.mjs`, which this file supersedes. It is the
+        // one assertion that file made which behaviour cannot reach: `ToolRegistry.register`
+        // already throws when a REGISTRY tool would shadow a meta-tool, so a collision never gets
+        // as far as being callable. This asserts the other direction -- a meta-tool added with a
+        // name the registry already uses -- which nothing catches, because `META_TOOLS` is a
+        // literal and literals do not run a constructor.
+        //
+        // Derived from the registry rather than from the import list: a name is what
+        // `ToolRegistry.exposedName` produces, not what a filename happens to look like.
+        const { buildRegistry, ToolRegistry } = await import("../../src/node/tools/index.mjs");
+        const registryNames = new Set(
+            buildRegistry().list().map(t => ToolRegistry.exposedName(t.name)));
+        expect(registryNames.size, "the registry is empty; this check has stopped checking")
+            .toBeGreaterThan(15);
+
+        const { readFileSync } = await import("node:fs");
+        const src = readFileSync(new URL("../../src/node/mcp-server.mjs", import.meta.url), "utf8");
+        const declared = [...src.matchAll(/^\s{8}name: "(cyberchef_[a-z_]+)"/gm)].map(m => m[1]);
+
+        const collisions = declared.filter(n => registryNames.has(n));
+        expect(collisions,
+            `a meta-tool and a registry tool share a name: ${collisions.join(", ")}. ` +
+            "Registration throws on the registry side; this is the side that does not."
+        ).toEqual([]);
+    }, 120000);
+
     it("keeps cyberchef_magic on every surface, which neither list covers", async () => {
         // The THIRD case, and the one a two-way check cannot see. `cyberchef_magic` is an entry in
         // OperationConfig dispatched through the operation path, pinned into every surface because
