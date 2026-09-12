@@ -58,7 +58,7 @@ re-extracting rather than trusting, and this is the script that does it.
 | | |
 |---|---|
 | `dump-tool-list.mjs` | Dumps a server's `tools/list` through a real client, taking the server command as argv. Useful for comparing two builds' surfaces without editing anything |
-| `entropy-split-rate.mjs` | Measures how often `entropy_scan` splits uniform random input into more than one region, over 400 trials. Written while investigating a suspected flake |
+| `entropy-split-rate.mjs` | How often `entropy_scan` splits uniform random input into more than one region, over 400 trials. Written while investigating a suspected flake; measured **0.75%**. It **parses through `tool.inputSchema` before calling `run`**, as every harness here must -- `run` trusts that `handleCallTool` already applied the Zod defaults, and the salvaged version skipped that step and reported a meaningless `100.00%` |
 
 ### The RSA tool
 

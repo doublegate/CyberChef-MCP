@@ -5,6 +5,42 @@ here was one restart away from being lost.
 
 ---
 
+## 2026-09-11 — v4.1.0: PQC instruments and two probes
+
+**Source:** `/tmp/claude-1000/-home-parobek-Code-OSS-Public-Projects-CyberChef/9ec29099-.../scratchpad`
+
+Curated by hand, **4 of 145** scratch files and **1 of 2** PEMs. The `tmp-salvage` script was run
+only as a dry run: it proposed claiming all four session directories **wholesale (34.1 MB)** as
+opaque units, because their parent path contains "cyberchef" -- the "large dirs claimed as units"
+anti-pattern its own documentation warns about.
+
+| Rescued to | What it is | Why it survived the cut |
+|---|---|---|
+| `docs/internal/measurements/pqc-oids.mjs` | Generates the ML-KEM / ML-DSA OID, SPKI and raw-public-key size table from keys Node itself produces | `AGENTS.md` states the `pqc_identify` table "came out of DER that Node 24 generated, not out of a specification read by eye" -- and **no committed file could reproduce it**. v4.4.0 needs it again: pkcs8 export defaults to seed-only on Node 26 |
+| `docs/internal/measurements/pqc-slh-params.mjs` | The same for the twelve SLH-DSA parameter sets, plus signature sizes | Same instrument, different family |
+| `docs/internal/measurements/data/pqc-ml-dsa-65-selfsigned.pem` | Self-signed **ML-DSA-65** certificate, `CN=pqc-test` | The evidence behind v4.3.0's claim that `cert_chain` validates PQC chains today with no new code path. Re-verified on salvage: `asymmetricKeyType: ml-dsa-65`, `verify(publicKey) === true` |
+| `docs/internal/measurements/dump-tool-list.mjs` | Dumps a server's `tools/list` through a real client, server command from argv | Small, generic, reusable across builds |
+| `docs/internal/measurements/entropy-split-rate.mjs` | Measures how often `entropy_scan` splits uniform random input | Reusable statistical probe -- **and it arrived broken**, see below |
+
+**Not rescued, deliberately:** the matching ML-DSA **private key**. Preserved outside the
+repository at `~/.local/share/cyberchef-mcp-salvage/` with a note. This repository commits zero
+private keys -- every PEM in `tests/mcp/fixtures/` is a certificate -- and it is public, scanned by
+Socket Security, Trivy and CodeQL. OpenSSL regenerates the pair in seconds.
+
+**A salvaged script is not a verified script.** `entropy-split-rate.mjs` called `tool.run()` with a
+raw object, skipping the Zod defaults that `handleCallTool` applies in production. `window` and
+`step` were `undefined`, the scan loop produced zero windows, and **every** trial counted as a
+split -- it reported exactly `100.00%`, and that figure was recorded without question. Measured
+both ways over 40 trials: unparsed 40/40, parsed 1/40. Fixed, and the real rate over 400 trials is
+**0.75%**. Reviewer-found, and the lesson is that a rescued file inherits none of the review its
+destination directory implies.
+
+**Deleted after salvage:** three dead session scratch trees (20 MB of coverage dumps, build logs,
+`.preedit` snapshots whose successors are committed, PR bodies that live on GitHub, and a 1.6 MB
+copy of another repository's README) plus 22 stale `npx` install caches.
+
+---
+
 ## 2026-09-01 — v2.4.0 measurement harnesses
 
 **Source:** `/tmp/claude-1000/-home-parobek-Code-OSS-Public-Projects-CyberChef/9ec29099-.../scratchpad`

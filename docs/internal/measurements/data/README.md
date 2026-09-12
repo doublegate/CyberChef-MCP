@@ -5,6 +5,7 @@ anywhere else.
 
 | File | What it is | Why it is here |
 |---|---|---|
+| `pqc-ml-dsa-65-selfsigned.pem` | Self-signed **ML-DSA-65** certificate, `CN=pqc-test`, generated with OpenSSL 3.6.4 | The evidence behind [`v4.3.0`](../../../planning/v4/charters/v4.3.0.md)'s claim that `cert_chain` can validate PQC chains today with no new code path. Salvaged from a `/tmp` scratchpad in v4.1.0 and re-verified on the way in: `asymmetricKeyType: 'ml-dsa-65'`, `verify(publicKey) === true`. **Expired 2026-09-12** -- a one-day lifetime, so it proves parsing and signature verification, NOT validity-window behaviour. Its private key is deliberately not in this repository; see `docs/SALVAGE_MANIFEST.md` |
 | `v3.4.0-capture-1139.json` | The 2026-09-04T11:39:38Z runner capture, 30 tasks | One of three captures in the v3.4.0 cross-instance variance study. Its GitHub Actions artifact **expired 2026-09-11**, and it had never been committed to `master` -- it existed only on the stale `chore/benchmark-baseline` branch (`862c2f00`). 29 of its 30 per-task medians appear in no document. |
 
 ## Provenance: the file's own metadata is KNOWN-STALE, and is kept that way deliberately
