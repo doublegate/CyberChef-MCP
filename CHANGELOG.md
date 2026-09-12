@@ -48,7 +48,9 @@ central premises were both wrong, which is the more useful half of it.
 ### Notes
 
 No behaviour changes. Verified rather than asserted: `tools/list` is **byte-identical** before and
-after on all three surfaces (21,185 / 145,016 / 583,253 bytes, order included), `handleListTools`
+after on all three surfaces (capture bytes 21,185 / 145,016 / 583,253, order included -- these are
+pretty-printed snapshots of the tools array, not the canonical wire figures, which are unchanged at
+15,620 / 109,548 / 426,706), `handleListTools`
 including its `visibleTools()` auth filter is unchanged line for line, and 27 meta-tool calls
 through a real client return byte-identical answers. Coverage of `mcp-server.mjs` moved 85.40% →
 85.75% statements and 68.04% → 70.56% branches on **25 fewer statements and 10 fewer branches**.

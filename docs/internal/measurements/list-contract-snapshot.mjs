@@ -42,18 +42,31 @@ process.env.CYBERCHEF_RECIPE_STORAGE = join(storeDir, "recipes.json");
 process.env.CYBERCHEF_TOOL_SURFACE = surface;
 process.env.CYBERCHEF_LOG_LEVEL = "silent";
 
+// Declared here, assigned inside the try: `import()` and either connect can reject, and the two
+// closes belong in `finally` rather than after the call that can throw -- a `listTools()` failure
+// would otherwise leave both connections open.
+let server;
+let client;
+
 try {
     const { createMcpServer } = await import(modulePath);
-    const server = createMcpServer();
+    server = createMcpServer();
     const [ct, st] = InMemoryTransport.createLinkedPair();
-    const client = new Client({ name: "list-contract", version: "0" }, { capabilities: {} });
+    client = new Client({ name: "list-contract", version: "0" }, { capabilities: {} });
     await Promise.all([server.connect(st), client.connect(ct)]);
     const { tools } = await client.listTools();
     // ORDER PRESERVED deliberately -- the 2026-07-28 deterministic-ordering SHOULD is part of the
     // contract, so sorting here would hide exactly the regression worth catching.
     console.log(JSON.stringify(tools, null, 1));
-    await client.close();
-    await server.close();
+} catch (err) {
+    // Reported and non-zero. Silence here is the failure mode this file's own header warns about:
+    // an empty capture diffs clean against another empty capture.
+    console.error(`list-contract-snapshot failed against ${modulePath} (${surface}): ${err.message}`);
+    process.exitCode = 2;
 } finally {
+    // Guarded, since setup may not have got this far, and each rejection is reported rather than
+    // swallowed. Neither close may prevent the directory removal.
+    await client?.close().catch(e => console.error(`client close failed: ${e.message}`));
+    await server?.close().catch(e => console.error(`server close failed: ${e.message}`));
     rmSync(storeDir, { recursive: true, force: true });
 }

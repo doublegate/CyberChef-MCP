@@ -55,9 +55,16 @@ WARP.md
 # `.claude/settings.local.json` is one machine's granted tool permissions -- a local posture, the
 # same category as `cyberchef.config.json` below, and committing it would impose one person's
 # grants on every checkout. It was untracked and unignored until v4.2.0, which is a latent
-# `git add -A` away from being committed; this workspace is mirrored onto a second machine, so
-# "nobody has done it yet here" was never the same as "it cannot happen".
+# `git add -A` away from being committed.
+#
+# That is not hypothetical, and `.codex/` is why both are listed. A `git add -A` in this very
+# release committed `.codex/config.toml`, a local MCP client config pinning
+# `ghcr.io/doublegate/cyberchef-mcp_v3:3.8.0` -- eight releases stale, and pointing anyone who
+# used the repository's setup at pre-v4 code. Two PR reviewers caught it; nothing in the tree did.
+# The pin is not the defect. A machine-local agent config in a shared repository is the defect,
+# and it has exactly one correct version: absent.
 .claude/
+.codex/
 
 # Comparison copies of the server, for the before/after instruments in
 # `docs/internal/measurements/`. Proving a refactor preserved behaviour means running the OLD

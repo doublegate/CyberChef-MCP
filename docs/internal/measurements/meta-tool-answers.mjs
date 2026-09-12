@@ -55,10 +55,12 @@ function normalise(text) {
         .replace(/\d{4}-\d{2}-\d{2}T[\d:.]+Z/g, "<time>");
 }
 
-const server = (await import(modulePath)).createMcpServer();
-const [ct, st] = InMemoryTransport.createLinkedPair();
-const client = new Client({ name: "meta-tool-answers", version: "0" }, { capabilities: {} });
-await Promise.all([server.connect(st), client.connect(ct)]);
+// Declared out here, ASSIGNED inside the try below. `import()` and either connect can reject, and
+// with the setup outside the try a rejection would skip the cleanup entirely -- leaving the temp
+// directory behind and possibly a live server. The sibling `dump-tool-list.mjs` carries the same
+// note because its first version made the same mistake.
+let server;
+let client;
 
 const out = [];
 /**
@@ -89,6 +91,11 @@ async function call(name, args) {
 }
 
 try {
+    server = (await import(modulePath)).createMcpServer();
+    const [ct, st] = InMemoryTransport.createLinkedPair();
+    client = new Client({ name: "meta-tool-answers", version: "0" }, { capabilities: {} });
+    await Promise.all([server.connect(st), client.connect(ct)]);
+
     // The recipe tools, in an order that gives each one something real to act on.
     const created = await call("cyberchef_recipe_create",
         { name: "probe", description: "answers probe", operations: OPERATIONS });
@@ -96,14 +103,24 @@ try {
     if (!realId) {
         // Fail loudly. Without an id every later call rejects identically on both builds, and the
         // diff reports a clean pass on a probe that measured nothing.
+        // `exitCode`, not `exit()`. `process.exit()` terminates immediately and the `finally`
+        // below never runs, so the failure path would leak the temp directory and the server --
+        // precisely when something has already gone wrong.
         console.error(`recipe_create returned no id, so nothing downstream is real:\n${created.raw}`);
-        process.exit(2);
+        process.exitCode = 2;
+        throw new Error("no recipe id");
     }
 
     await call("cyberchef_recipe_list", {});
     await call("cyberchef_recipe_get", { id: realId });
-    await call("cyberchef_recipe_validate", { operations: OPERATIONS });
-    await call("cyberchef_recipe_test", { id: realId, input: "Hello" });
+    // `validate` and `test` take a whole RECIPE OBJECT, not the fields the sibling tools take --
+    // `{recipe: {name, operations}}`, and `test` additionally needs `testInputs`. Getting this
+    // wrong is invisible in a diff: both builds reject identically, the comparison is clean, and
+    // the SUCCESS path of two table-dispatched handlers is never measured at all. Caught in review
+    // after this file had already been used to certify the consolidation.
+    await call("cyberchef_recipe_validate", { recipe: { name: "probe", operations: OPERATIONS } });
+    await call("cyberchef_recipe_test",
+        { recipe: { name: "probe", operations: OPERATIONS }, testInputs: ["Hello"] });
     await call("cyberchef_recipe_execute", { id: realId, input: "Hello" });
     await call("cyberchef_recipe_export", { id: realId });
     await call("cyberchef_recipe_import", {
@@ -133,8 +150,18 @@ try {
     await call("cyberchef_analyse", { tool: "not_a_tool", arguments: {} });
 
     console.log(JSON.stringify(out.map(({ raw, ...rest }) => rest), null, 1));
+} catch (err) {
+    // Reported, not swallowed. A probe that dies silently is a probe whose empty output gets
+    // compared against another empty output and called a clean diff.
+    if (err?.message !== "no recipe id") {
+        console.error(`meta-tool-answers failed against ${modulePath}: ${err.message}`);
+        process.exitCode = 2;
+    }
 } finally {
-    await client.close().catch(() => {});
-    await server.close().catch(() => {});
+    // Guarded: either handle may be undefined if setup rejected. Each rejection is REPORTED rather
+    // than swallowed -- the close is best-effort, but a reader still needs to know it did not
+    // happen, and neither close is allowed to prevent the directory removal below.
+    await client?.close().catch(e => console.error(`client close failed: ${e.message}`));
+    await server?.close().catch(e => console.error(`server close failed: ${e.message}`));
     rmSync(storeDir, { recursive: true, force: true });
 }

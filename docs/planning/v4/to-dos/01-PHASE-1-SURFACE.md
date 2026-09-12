@@ -79,7 +79,8 @@ The arithmetic is in the charter, but a sprint starts by re-measuring rather tha
       answers differently is a regression with good intentions — and it was, twice, on the first
       attempt. Proven by two instruments kept in `docs/internal/measurements/`:
       `list-contract-snapshot.mjs` (the whole `tools/list` response, all three surfaces,
-      byte-identical: 21,185 / 145,016 / 583,253 bytes) and `meta-tool-answers.mjs` (27 calls
+      byte-identical: 21,185 / 145,016 / 583,253 capture bytes, which are pretty-printed tools
+      arrays rather than the canonical wire figures of 15,620 / 109,548 / 426,706) and `meta-tool-answers.mjs` (27 calls
       through a real client, byte-identical answers).
 - [x] Record `mcp-server.mjs` coverage before and after — **82.2% of 394 statements** today. A
       consolidation that does not move it has probably moved complexity rather than removed it.

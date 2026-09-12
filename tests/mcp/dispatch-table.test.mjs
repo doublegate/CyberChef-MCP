@@ -162,7 +162,13 @@ describe("every callable meta-tool is advertised", () => {
         const { readFileSync } = await import("node:fs");
         const src = readFileSync(new URL("../../src/node/mcp-server.mjs", import.meta.url), "utf8");
         const candidates = new Set([
-            ...[...src.matchAll(/if \(name === "(cyberchef_[a-z_]+)"/g)].map(m => m[1]),
+            // EVERY `name === "cyberchef_…"` comparison, not only those written as a bare
+            // `if (name === …`. Dispatch is not always the first condition: `cyberchef_analyse`
+            // resolves inside `if (!registryTool && name === "cyberchef_analyse")`, which the
+            // narrower pattern misses. It happened to be caught anyway through a second
+            // comparison in the scope-check block, which is luck rather than coverage -- verified
+            // by deleting its declaration and watching the test fail for the right reason.
+            ...[...src.matchAll(/name === "(cyberchef_[a-z_]+)"/g)].map(m => m[1]),
             ...[...src.matchAll(/^\s{8}name: "(cyberchef_[a-z_]+)"/gm)].map(m => m[1])
         ]);
 
@@ -171,6 +177,20 @@ describe("every callable meta-tool is advertised", () => {
         expect(candidates.size,
             "both candidate patterns matched nothing; this test has stopped checking"
         ).toBeGreaterThan(15);
+
+        // WHAT THIS DOES NOT CATCH, stated rather than implied -- the rule `benchmarks/README.md`
+        // and the v3.6.0 gate both follow.
+        //
+        // Candidates come from two syntactic patterns, so a handler reachable ONLY through a form
+        // neither matches -- a `switch`, a lookup table keyed by a computed string, a name built by
+        // concatenation -- would be callable, unlisted, and invisible here. There is no source of
+        // "everything dispatch can run" short of instrumenting the dispatcher itself, and the
+        // reverse direction cannot be settled by asking the server, because an unlisted tool is by
+        // definition not in anything the server enumerates.
+        //
+        // The forward direction above has no such hole: it discovers its targets from `tools/list`
+        // and calls every one. So a tool that is advertised is always checked; a tool that is
+        // hidden is checked only if it is dispatched in a recognisable shape.
 
         const { client, close } = await connected();
         try {
