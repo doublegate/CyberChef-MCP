@@ -4,7 +4,7 @@ This project provides a **Model Context Protocol (MCP)** server interface for **
 
 By running this server, you enable AI assistants (like Claude, Cursor AI, and others) to natively utilize CyberChef's extensive library of **504 data manipulation operations**—including encryption, encoding, compression, and forensic analysis—as executable tools.
 
-**Latest Release:** v4.1.0 | [Release Notes](docs/releases/v4.1.0.md) | [Tutorial](docs/guides/tutorial.md) | [Examples](examples/) | [Breaking Changes](docs/v2.0.0-breaking-changes.md) | [Security Policy](SECURITY.md)
+**Latest Release:** v4.2.0 | [Release Notes](docs/releases/v4.2.0.md) | [Tutorial](docs/guides/tutorial.md) | [Examples](examples/) | [Breaking Changes](docs/v2.0.0-breaking-changes.md) | [Security Policy](SECURITY.md)
 
 **Upstream base:** GCHQ CyberChef **v11.4.0** | **Licence:** GPL-3.0-or-later (from v2.0.0; v1.9.x and earlier remain Apache-2.0)
 
@@ -158,13 +158,13 @@ For environments without direct GHCR access, download the pre-built Docker image
 1.  **Download the tarball** (**141 MB** compressed; measured against the published v3.1.0 asset, not estimated):
     ```bash
     # Download from GitHub Releases
-    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v4.1.0/cyberchef-mcp-v4.1.0-docker-image.tar.gz
+    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v4.2.0/cyberchef-mcp-v4.2.0-docker-image.tar.gz
     ```
 
 2.  **Load the image into Docker:**
 
     ```bash
-    docker load < cyberchef-mcp-v4.1.0-docker-image.tar.gz
+    docker load < cyberchef-mcp-v4.2.0-docker-image.tar.gz
     ```
 
 3.  **Tag for easier usage:**
@@ -602,7 +602,7 @@ For detailed information, see:
 ## Project Roadmap
 
 The original roadmap scoped **19 releases across 6 phases through August 2027**. It was overtaken:
-all six phases are complete and the project is at **v4.1.0**. The table below is kept because it
+all six phases are complete and the project is at **v4.2.0**. The table below is kept because it
 records what each phase was *for*; [`docs/planning/ROADMAP.md`](docs/planning/ROADMAP.md) is the
 live source and has a row per shipped release.
 
@@ -614,7 +614,7 @@ live source and has a row per shipped release.
 | **Phase 4: Expansion** | v2.2.0 - v2.4.0 | Q4 2026 | Multi-modal (**v2.2.0 shipped**), protocol currency and transports (**v2.3.0 shipped**), the tool registry and its first four tools (**v2.4.0 shipped**) | Complete |
 | **Phase 5: Enterprise** | v2.5.0 - v2.7.0 | Q1 2027 | OAuth 2.1, RBAC, audit logging and multi-tenancy (**v2.5.0 shipped**), horizontal scaling and deployment (**v2.6.0 shipped**), metrics, tracing and dashboards (**v2.7.0 shipped**) | Complete |
 | **Phase 6: Evolution** | v2.8.0 - v3.0.0 | Q2-Q3 2027 | Edge deployment, AI-native features, v3.0.0 | **Completed** — and early: v3.0.0 shipped 2026-09 rather than Q3 2027 |
-| **Beyond the plan** | v3.1.0 - v4.1.0 | 2026-09 | Conformance against the official suite, magic re-ranking, the arm64 benchmark, PQC identification, retiring the v2 migration surface (v4.0.0), and the tool-surface work in v4.1.0 | **Shipped**, none of it in the original six phases |
+| **Beyond the plan** | v3.1.0 - v4.2.0 | 2026-09 | Conformance against the official suite, magic re-ranking, the arm64 benchmark, PQC identification, retiring the v2 migration surface (v4.0.0), the tool-surface work in v4.1.0, and the dispatch consolidation in v4.2.0 | **Shipped**, none of it in the original six phases |
 
 **External project integration — what it actually produced.** The planning tree
 ([External Project Integration](docs/planning/ext-proj-int/), 30 documents) scoped 80-120 new tools
@@ -691,6 +691,26 @@ Detailed documentation is organized in the [`docs/`](docs/) directory:
 *   [**Security Fixes Report**](docs/security/SECURITY_FIX_REPORT.md): Detailed report of 11 vulnerability fixes (ReDoS and cryptographic weaknesses)
 *   [**Security Fixes Summary**](docs/security/SECURITY_FIXES_SUMMARY.md): Quick reference for recent security improvements
 *   [**v2.0.0 Breaking Changes**](docs/v2.0.0-breaking-changes.md): Comprehensive migration guide for v2.0.0 with deprecation codes, examples, and FAQ
+*   [**Release Notes v4.2.0**](docs/releases/v4.2.0.md): One place to add a meta-tool for the eight of ten that are uniform — 24 dispatch branches down to 16 — and a release whose two central claims were both wrong: the gate it set out to build had existed since v3.7.0, and the two "identical" recipe branches that were not (`recipe_execute` guards input size, `recipe_export` was double-encoded by the table) kept theirs. Behaviour preservation proven byte-for-byte through a real client rather than asserted
+*   [**Release Notes v4.1.0**](docs/releases/v4.1.0.md): Registry tools get a navigation path and leave the default surface — the index falls from 41 tools / 44,968 bytes to 23 / 15,620 with nothing made unreachable, and the charter's headline claim turns out to be arithmetically impossible
+*   [**Release Notes v4.0.0**](docs/releases/v4.0.0.md): Retiring the v2 migration surface — the deprecation system, both migration tools and the `cyberchef-migrate` bin, advertised on every surface for a migration nine minors old
+*   [**Release Notes v3.11.0**](docs/releases/v3.11.0.md): Post-quantum identification (`cyberchef_pqc_identify`, all eighteen NIST parameter sets), and the thin coverage margin the previous release warned about being hit one release later
+*   [**Release Notes v3.10.0**](docs/releases/v3.10.0.md): `runServer()` ran on every test import, arming `process.exit(1)` in 23 files — and fixing it dropped coverage below the gate, because the bug had been executing itself
+*   [**Release Notes v3.9.0**](docs/releases/v3.9.0.md): The release with no charter, scoped from measurement instead: magic candidate re-ranking, one action version per workflow, and the surface figures measured through a real client
+*   [**Release Notes v3.8.0**](docs/releases/v3.8.0.md): Two carried-forward blockers that were never blocked — arm64 benchmarking on hardware CI was already using, and `cyberchef_cert_chain`
+*   [**Release Notes v3.7.0**](docs/releases/v3.7.0.md): A consistency gate that checked four of eleven files; its operation-count half now discovers its own targets
+*   [**Release Notes v3.6.0**](docs/releases/v3.6.0.md): The benchmark gate measured into existence — a noise floor and a detection curve from a deliberate tunable slowdown, rather than a plausible threshold
+*   [**Release Notes v3.5.0**](docs/releases/v3.5.0.md): Same-host benchmark comparison, and the MCP registry listing that had returned `count: 0` since the ownership proofs landed
+*   [**Release Notes v3.4.0**](docs/releases/v3.4.0.md): Three operations that had never worked, and `cyberchef_ecdsa_recover`
+*   [**Release Notes v3.3.0**](docs/releases/v3.3.0.md): Twelve analysis tools — classical ciphers, crib dragging, entropy scanning, hash cracking and statistics, JWT weaknesses, plaintext scoring, multi-key RSA, substitution and Vigenère breaking, timestamp identification, corpus diffing
+*   [**Release Notes v3.2.0**](docs/releases/v3.2.0.md): Every gate checked against its own claim — the benchmark workflow that said it could not fail, and two documents describing a shell-free base image that has a shell
+*   [**Release Notes v3.1.0**](docs/releases/v3.1.0.md): Cache hints at the 2026-era encode seam, and the conformance suite adopted as the oracle
+*   [**Release Notes v3.0.0**](docs/releases/v3.0.0.md): MCP 2026-07-28 conformance and the breaking cleanups it forced — scope filtering wired up, error codes aligned, and an npm publish guard that would have silently skipped this very release
+*   [**Release Notes v2.10.0**](docs/releases/v2.10.0.md): The unified configuration file, announced for v2.0.0 and first actually read here — 61 settings, env over file over default, failing closed on an unknown key
+*   [**Release Notes v2.9.0**](docs/releases/v2.9.0.md): Presented output resolved before the cache, so `JSON Beautify` stops returning unparseable JSON
+*   [**Release Notes v2.8.1**](docs/releases/v2.8.1.md): CI testing both ends of the supported Node range, rather than one end while the image shipped the other
+*   [**Release Notes v2.8.0**](docs/releases/v2.8.0.md): `linux/arm64` alongside `amd64`, and infrastructure scanning
+*   [**Release Notes v2.7.0**](docs/releases/v2.7.0.md): The image from 643 MB to 453 MB via `npm prune --omit=dev`, and OpenTelemetry spans on the API only
 *   [**Release Notes v2.6.0**](docs/releases/v2.6.0.md): Startup cut from ~1300 ms to ~185 ms by deferring an import of all 504 operations; health probes and a drain that loses no requests on a rolling update; a Helm chart and Compose file; a 5 s deadline and circuit breaker on calls to the authorization server. **Re-scoped:** the plan's Redis session store solved a problem MCP 2026-07-28 deleted — the protocol has no sessions. 1,246 MCP tests.
 *   [**Release Notes v2.5.0**](docs/releases/v2.5.0.md): Multi-tenancy completes the Enterprise Features milestone — the cache, recipe store, concurrency pool and audit trail isolated per tenant, with identity taken only from an already-verified token. Plus a rate limiter that had never limited anything since v1.7.0: it was keyed on a per-request UUID, so 1000 requests against a limit of 5 produced 0 denials and 1000 leaked map entries. 1,218 MCP tests.
 *   [**Release Notes v2.4.0**](docs/releases/v2.4.0.md): The tool registry and its first four tools — XOR key length by index of coincidence, De Bruijn patterns compatible with pwntools, hash identification with hashcat modes, and four RSA attacks. No plugin loader, with the `node:vm` measurement that rules one out. Three documents corrected that described work nobody had done.
@@ -793,7 +813,7 @@ All workflows use the latest CodeQL Action v4 for security scanning and SARIF up
 # Run all tests (requires Node.js >=26 <27; 241 Node-API + 2,289 operation tests)
 npm test
 
-# Run MCP validation test suite (1,720 tests across 77 files, with Vitest)
+# Run MCP validation test suite (1,728 tests across 75 files, with Vitest)
 npm run test:mcp
 
 # Run MCP tests with coverage report
@@ -814,9 +834,9 @@ npm run lint
 
 **Test Coverage:**
 The MCP server maintains comprehensive test coverage:
-- **1,720 MCP tests** across 77 suites, plus 241 Node-API tests, 2,289 operation tests and 9 runnable examples executed by CI
+- **1,728 MCP tests** across 75 suites, plus 241 Node-API tests, 2,289 operation tests and 9 runnable examples executed by CI
 - **Coverage thresholds** (`vitest.config.mjs`): 96% lines, 95% statements, 89% branches, 96% functions, with `src/node/lib/**` held separately at 99 lines / 99 statements / 94 branches / 100 functions
-- **Current coverage**: 96.14% lines, 95.15% statements, 96.57% functions, 89.31% branches (thresholds 96/89/96/95, lines/branches/functions/statements)
+- **Current coverage**: 96.46% lines, 95.53% statements, 96.84% functions, 89.93% branches (thresholds 96/89/96/95, lines/branches/functions/statements)
 - Note: individual suite names are not listed here because the list went stale three times;
   `ls tests/mcp/*.test.mjs` is authoritative.
 

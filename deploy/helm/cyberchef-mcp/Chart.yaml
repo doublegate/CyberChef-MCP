@@ -20,7 +20,7 @@ type: application
 # consumer, which is the only kind this chart currently has.
 version: 0.5.8
 # The application version this chart defaults to. Kept in step with the image tag in values.yaml.
-appVersion: "4.1.0"
+appVersion: "4.2.0"
 # Derived from the project's round-patch artwork: cropped to the patch, contrast-lifted and
 # reduced to 256px/128 colours, because the source is a 973 KB photograph of embroidery that
 # renders as a dark grey disc at the ~48px an Artifact Hub listing actually shows.

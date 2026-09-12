@@ -11,6 +11,33 @@ Full notes for every version live in
 > [`docs/planning/ROADMAP.md`](https://github.com/doublegate/CyberChef-MCP/blob/master/docs/planning/ROADMAP.md)
 > carries a one-row summary of every one of them.
 
+## v4.2.0 — one place to add a meta-tool, for the eight that are uniform
+
+A meta-tool that declares a `run` handler in the `META_TOOLS` literal is now dispatched from that
+declaration, so name, description, schema and handler live in one entry instead of a literal and a
+dispatch branch nothing checked agreed with. Eight of the ten recipe tools moved; the dispatch chain
+went from 24 `if` occurrences to 16. Nothing a caller can see changed.
+
+Both of the charter's claims were wrong, which is the more useful half of the release. Its headline
+— *"the dispatch table has never had its version"* — was false: `meta-tool-parity.test.mjs` was
+built in v3.7.0 and already asserted both directions, so a release about removing duplication opened
+by building a second copy of a check. That gate is *syntactic*, grepping for
+`if (name === "cyberchef_…")`, and the refactor it nominally protected **breaks** it, because a
+table-dispatched tool has no branch to grep. A gate that forbids the change it was written to
+protect is a lock, not a gate, so it is superseded and removed rather than patched.
+
+Its second claim — that the ten branches *"differ only in the method called"* — held for eight.
+`cyberchef_recipe_execute` guards input size first and returns the recipe's own string rather than a
+JSON envelope; `cyberchef_recipe_export` already returns a string, which the table encoded a second
+time, breaking its round-trip through `cyberchef_recipe_import`. Both keep their own branches, and
+the reason is written where the next person will try to remove them.
+
+Behaviour preservation was proven rather than asserted: `tools/list` is byte-identical before and
+after on all three surfaces, order included; `handleListTools` and its `visibleTools()` auth filter
+are unchanged line for line; and 27 meta-tool calls through a real client return byte-identical
+answers. Coverage of `mcp-server.mjs` moved 85.40% → 85.75% statements and 68.04% → 70.56% branches,
+on 25 fewer statements and 10 fewer branches to cover.
+
 ## v4.1.0 — registry tools get a navigation path
 
 The default tool surface fell from **41 tools / 44,968 bytes to 23 / 15,620** — 66% — with nothing

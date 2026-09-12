@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.2.0] - 2026-09-12
+
+One place to add a meta-tool, for the eight of ten that are uniform — and a release whose two
+central premises were both wrong, which is the more useful half of it.
+
+### Added
+
+- **A `run` handler on the `META_TOOLS` declaration.** A meta-tool that declares one is dispatched
+  from that declaration, so its name, description, schema and handler live in a single entry
+  instead of a literal and a dispatch branch that nothing checked agreed. Eight recipe tools moved;
+  the dispatch chain went from **24 `if` occurrences to 16**.
+- **`tests/mcp/dispatch-table.test.mjs`** — the behavioural gate, replacing a syntactic one. It
+  calls every advertised tool through a real client on all three surfaces and asks *can a caller
+  use what we advertised?*, distinguishing "the handler rejected your arguments" (a pass) from
+  "no such tool" (a failure). A grep-based version was tried first and produced a false positive on
+  `cyberchef_analyse`, which has no top-level branch by design.
+- **Two instruments in `docs/internal/measurements/`**: `list-contract-snapshot.mjs` dumps the whole
+  `tools/list` response — descriptions, schemas, annotations, titles and the order the 2026-07-28
+  deterministic-ordering SHOULD rests on — so two builds can be diffed on more than names;
+  `meta-tool-answers.mjs` calls all 27 meta-tool entry points and normalises the ids and timestamps
+  that would otherwise make every diff dirty.
+
+### Changed
+
+- **`tests/mcp/meta-tool-parity.test.mjs` is removed, superseded.** It was written in v3.7.0 and
+  already asserted both directions this release set out to gate, so the charter's claim that the
+  dispatch table "has never had its version" was false. It is syntactic — it greps for
+  `if (name === "cyberchef_…")` — so the consolidation breaks it, which is a gate forbidding the
+  change it was written to protect. Its one assertion behaviour cannot reach, that a meta-tool must
+  not shadow a registry tool, is carried into the new file and strengthened to derive names from
+  `ToolRegistry.exposedName` rather than a filename regex.
+- **`cyberchef_recipe_execute` and `cyberchef_recipe_export` keep their own dispatch branches**,
+  with the reason written where the next person will try to remove them. They are the two of ten
+  that are not uniform, and folding them in **changed their answers**: execute lost its
+  `validateInputSize` guard and returned `{"recipeId":…}` where it had returned `SGVsbG8=`, and
+  export was JSON-encoded a second time, returning `"{\n \"id\": …}"` instead of the document —
+  which round-trips through `recipe_import`, so it broke a pair rather than only cosmetics.
+
+### Notes
+
+No behaviour changes. Verified rather than asserted: `tools/list` is **byte-identical** before and
+after on all three surfaces (21,185 / 145,016 / 583,253 bytes, order included), `handleListTools`
+including its `visibleTools()` auth filter is unchanged line for line, and 27 meta-tool calls
+through a real client return byte-identical answers. Coverage of `mcp-server.mjs` moved 85.40% →
+85.75% statements and 68.04% → 70.56% branches on **25 fewer statements and 10 fewer branches**.
+
 ## [4.1.0] - 2026-09-11
 
 Registry tools get a navigation path, and leave the default surface. The index falls from
