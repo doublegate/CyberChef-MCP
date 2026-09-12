@@ -24,6 +24,14 @@ Not spot checks. Each of these has been wrong at least once, in a shipped releas
 - [ ] The entry-point refactor (F-13) should be gone by now — if it is still listed, ask why.
 - [ ] Shell-free base image: re-measure `cgr.dev/chainguard/node:latest-slim`. Declined three
       releases running at Node v25.9.0 against a shipped v26.8.x.
+- [ ] **Recipe dispatch runs outside the `OPERATION_TIMEOUT` contract** — added v4.2.0, from a
+      CodeRabbit finding on PR #141. `recipeManager.*` calls are not wrapped in
+      `executeWithTimeoutAndRetry`, so a stalled recipe can keep `tools/call` pending past the
+      configured timeout. **Pre-existing, not introduced by the consolidation** — verified against
+      `0d227d9d`, where the ten branches called `recipeManager` directly too — which is exactly why
+      it was declined there: v4.2.0's contract is that no behaviour changes, and adding a timeout to
+      ten handlers changes behaviour. It belongs in a release that can say so. `maxRetries: 0` is
+      the right shape when it happens, since recipe writes are not idempotent.
 
 ## Sprint 5.3 — Retire dead planning
 
