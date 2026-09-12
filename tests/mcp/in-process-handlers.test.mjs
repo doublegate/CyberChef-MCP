@@ -525,6 +525,11 @@ describe("in-process handlers: the cyberchef_analyse dispatcher", () => {
             const via = await client.callTool({
                 name: "cyberchef_analyse", arguments: { tool: "hash_identify", arguments: args } });
             expect(direct.isError).toBeFalsy();
+            // BOTH, not just the direct call. Checking only `direct` would pass a dispatcher
+            // regression that returns the right text with `isError: true` -- the payload would
+            // match while the call had failed, which is precisely the difference this test claims
+            // to be measuring. Reviewer-found.
+            expect(via.isError).toBeFalsy();
             expect(via.content?.[0]?.text).toBe(direct.content?.[0]?.text);
         } finally {
             await close();
