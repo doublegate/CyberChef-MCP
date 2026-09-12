@@ -454,6 +454,84 @@ describe("in-process handlers: the navigation hierarchy", () => {
     });
 });
 
+describe("in-process handlers: the cyberchef_analyse dispatcher", () => {
+    // IN-PROCESS on purpose, and that is the whole reason this block exists rather than living
+    // beside the other dispatcher tests in `stdio-client-contract.test.mjs`.
+    //
+    // Those run the server as a SUBPROCESS, so vitest cannot instrument it: the dispatcher's
+    // refusal branches were exercised end-to-end and still reported as uncovered, which is what
+    // pushed the v4.1.0 patch coverage to 87.5% against a 90% target. Covering them here is
+    // covering the code, not moving the bar -- the codecov.yml comment argues that case at length
+    // and it applies to its own number.
+
+    it("refuses a tool name that is not a string, rather than coercing it", async () => {
+        const { client, close } = await connected();
+        try {
+            // `String(["hash_identify"])` is "hash_identify", so a coercing implementation would
+            // ACCEPT an array as the string it happens to contain. Each of these must be refused
+            // as an unknown tool instead.
+            for (const bad of [["hash_identify"], { tool: "hash_identify" }, 42, true]) {
+                const res = await client.callTool({
+                    name: "cyberchef_analyse", arguments: { tool: bad, arguments: {} } });
+                const text = res.content?.[0]?.text ?? "";
+                expect(res.isError, JSON.stringify(bad)).toBe(true);
+                expect(text, JSON.stringify(bad)).toMatch(/Unknown analysis tool/);
+                // And it must not have reached a real tool by coercion.
+                expect(text, JSON.stringify(bad)).not.toMatch(/Invalid arguments for/);
+            }
+        } finally {
+            await close();
+        }
+    });
+
+    it("refuses an empty or whitespace-only tool name", async () => {
+        const { client, close } = await connected();
+        try {
+            for (const blank of ["", "   ", "\t"]) {
+                const res = await client.callTool({
+                    name: "cyberchef_analyse", arguments: { tool: blank, arguments: {} } });
+                expect(res.isError, JSON.stringify(blank)).toBe(true);
+                expect(res.content?.[0]?.text ?? "", JSON.stringify(blank))
+                    .toMatch(/Unknown analysis tool/);
+            }
+        } finally {
+            await close();
+        }
+    });
+
+    it("lists what is available when the tool name is unknown", async () => {
+        const { client, close } = await connected();
+        try {
+            const res = await client.callTool({
+                name: "cyberchef_analyse", arguments: { tool: "no_such_tool", arguments: {} } });
+            const text = res.content?.[0]?.text ?? "";
+            expect(res.isError).toBe(true);
+            // The available set, so the caller can correct the call without a second round trip.
+            const { buildRegistry } = await import("../../src/node/tools/index.mjs");
+            const registered = buildRegistry().list().map(t => t.name);
+            expect(text).toMatch(new RegExp(`This server has ${registered.length}:`));
+            for (const name of registered.slice(0, 3)) expect(text).toContain(name);
+        } finally {
+            await close();
+        }
+    });
+
+    it("dispatches a valid call and returns what the direct call returns", async () => {
+        const { client, close } = await connected();
+        try {
+            const args = { input: "5d41402abc4b2a76b9719d911017c592" };
+            const direct = await client.callTool(
+                { name: "cyberchef_hash_identify", arguments: args });
+            const via = await client.callTool({
+                name: "cyberchef_analyse", arguments: { tool: "hash_identify", arguments: args } });
+            expect(direct.isError).toBeFalsy();
+            expect(via.content?.[0]?.text).toBe(direct.content?.[0]?.text);
+        } finally {
+            await close();
+        }
+    });
+});
+
 describe("in-process handlers: recipe management", () => {
     it("round-trips a recipe through create, get, list, update, execute, export and delete", async () => {
         const { client, close } = await connected();
