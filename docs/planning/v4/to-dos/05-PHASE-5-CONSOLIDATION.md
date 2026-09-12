@@ -33,6 +33,21 @@ Not spot checks. Each of these has been wrong at least once, in a shipped releas
       ten handlers changes behaviour. It belongs in a release that can say so. `maxRetries: 0` is
       the right shape when it happens, since recipe writes are not idempotent.
 
+      **Two facts measured while declining it, including the one that argues against the decline.**
+      The exposure is real and specific: `executeRecipe` calls `bake(input, bakeRecipe)` from the
+      Node API directly — not through `bakeOnCore`, not through the worker pool — so nothing bounds
+      it. And `cyberchef_bake` **is** wrapped, at `mcp-server.mjs:1146`, running the same kind of
+      work: the identical recipe submitted inline already stops at `OPERATION_TIMEOUT` while the
+      saved-recipe path runs forever. That inconsistency is the strongest argument for just doing
+      it, and it is recorded here rather than left out because it was inconvenient.
+
+      What the release that does it must measure first: `OPERATION_TIMEOUT` defaults to **30s**, and
+      no one has measured how long real saved recipes take. A caller using `recipe_execute` on a
+      large input today has no cap; giving them one is correct, and it will also be the first time
+      their working deployment starts failing at 30 seconds. That needs to be announced, not slipped
+      into a consolidation release — which is the whole of the disagreement with the two reviewers
+      who raised it, one of them blocking. Neither is wrong about the defect.
+
 ## Sprint 5.3 — Retire dead planning
 
 - [ ] Any charter measurement has killed: archive with a dated banner naming what replaced it.

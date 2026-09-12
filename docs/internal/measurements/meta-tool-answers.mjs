@@ -99,7 +99,16 @@ try {
     // The recipe tools, in an order that gives each one something real to act on.
     const created = await call("cyberchef_recipe_create",
         { name: "probe", description: "answers probe", operations: OPERATIONS });
-    const realId = (created.raw.match(/"id":\s*"([^"]+)"/) ?? [])[1];
+    // PARSED, not pattern-matched. `recipe_create` returns `JSON.stringify(recipe, null, 2)`, so
+    // the payload is JSON whenever the call succeeded -- and when it did not, the text is an error
+    // message that must not be mined for something that looks like an id. Falling back to the regex
+    // would find one in a nested object or an error context and quietly key the whole run to it.
+    let realId;
+    try {
+        realId = JSON.parse(created.raw)?.id;
+    } catch {
+        realId = undefined;   // Not JSON: the create failed, and the guard below reports it.
+    }
     if (!realId) {
         // Fail loudly. Without an id every later call rejects identically on both builds, and the
         // diff reports a clean pass on a probe that measured nothing.

@@ -98,7 +98,12 @@ function isUndispatched(text, name) {
     if (/UNSUPPORTED_OPERATION/.test(text)) return true;
     // Belt and braces: the message shape without the code, anchored on the called name so a
     // complaint about some OTHER name (a recipe step, say) is not misread as this tool missing.
-    return new RegExp(`(Operation|Tool) '?${name}'? (not found|is unknown|does not exist)`, "i")
+    // ESCAPED. Every name today is `cyberchef_[a-z0-9_]+`, none of which is a regex metacharacter,
+    // so this is latent rather than live -- but the value is a TOOL NAME read from `tools/list`,
+    // and the whole point of this test is that it discovers its inputs instead of listing them.
+    // An interpolated `.` or `+` would quietly widen or break the match.
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`(Operation|Tool) '?${escaped}'? (not found|is unknown|does not exist)`, "i")
         .test(text);
 }
 
