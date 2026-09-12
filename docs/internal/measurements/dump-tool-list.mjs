@@ -54,7 +54,14 @@ try {
     console.error("bytes:", Buffer.byteLength(JSON.stringify({ tools }), "utf8"),
         "tools:", tools.length);
     console.log(JSON.stringify(
-        tools.map(t => ({ name: t.name, bytes: Buffer.byteLength(JSON.stringify(t)) }))));
+        tools.map(t => ({
+            name: t.name,
+            // "utf8" stated on both calls rather than relied on as the default. Every byte figure
+            // in this repository is utf8 by convention -- `benchmarks/tool-surface.mjs` and the
+            // surface gate both say so explicitly -- and a size that silently changed encoding
+            // would be the hardest kind of drift to notice.
+            bytes: Buffer.byteLength(JSON.stringify(t), "utf8")
+        }))));
 } catch (err) {
     // A clean one-line failure and exit 2, rather than a stack trace from an unhandled rejection.
     // The most common cause is a server command that does not start, and the message a reader
