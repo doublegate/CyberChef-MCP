@@ -1,0 +1,8 @@
+[mcp_servers.CyberChef-MCP]
+command = "podman"
+args = [
+    "run",
+    "-i",
+    "--rm",
+    "ghcr.io/doublegate/cyberchef-mcp_v3:3.8.0",
+]
