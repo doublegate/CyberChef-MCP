@@ -1,163 +1,163 @@
 {
   "_comment": "Committed regression baseline, captured ON THE RUNNER by .github/workflows/benchmark-baseline.yml -- not on a developer machine, which is what every baseline before v3.4.0 was. Generated from the MEDIAN of four consecutive 'npm run benchmark -- --json' runs. Regenerate by dispatching that workflow and merging the branch it pushes; running the capture locally produces a developer-machine baseline and now says so in _machine. A baseline moved without a stated reason is a gate switched off quietly. The TOLERANCE here is 50% and was briefly 20%; see toleranceRationale for why the measurement that supported 20% was too narrow and what disproved it.",
-  "capturedFor": "3.3.0",
-  "capturedAt": "2026-09-04T11:35:03.038Z",
-  "capturedOnRunnerRunId": "33868225945",
-  "node": "v26.8.1",
+  "capturedFor": "4.2.0",
+  "capturedAt": "2026-10-01T05:21:09.011Z",
+  "capturedOnRunnerRunId": "36818953985",
+  "node": "v26.10.0",
   "runs": 4,
   "tolerancePct": 50,
-  "toleranceRationale": "50%, after 20% was tried and DISPROVEN by CI within the hour. The cross-instance study (docs/internal/measurements/v3.4.0-runner-baseline.md) measured three captures 16 minutes apart and found a worst spread of 6.7% between their medians; on that evidence 20% looked generous. Four real CI runs on this branch then split two-pass / two-fail, with To Hex (100KB) at -41.8%, To Hex (10KB) at -37.0%, Entropy (100KB) at -26.2% and Frequency distribution (100KB) at -29.2% -- while Regular expression got 24-28% FASTER on the same run. Both directions at once, on tasks no commit in the branch touches: the benchmark imports src/node/index.mjs, which does not reach any changed module. The pool is heterogeneous in memory bandwidth, and three captures within one window sampled one class of host. 50% is what the OBSERVED spread supports. The tolerance is not the interesting number any more -- the baseline being runner-captured is, because it removes the systematic -9.6% machine offset that 50% previously had to absorb ON TOP of this variance.",
-  "_machine": "Captured on a GitHub Actions runner (Linux/X64), workflow run 33868225945. This is the machine class the regression gate executes on, so the comparison is like against like and the cross-machine offset that limited every earlier baseline does not apply.",
+  "toleranceRationale": "Measured, not chosen. Across 4 runs on this machine the worst per-task spread was 10.8% and the median was 2.1%. The tolerance of 50% is set from the CROSS-INSTANCE study in docs/internal/measurements/v3.4.0-runner-baseline.md, not from this single capture -- one machine's spread cannot tell you what a pool of machines does, which is the mistake that produced two false failures and a 50% stopgap.",
+  "_machine": "Captured on a GitHub Actions runner (Linux/X64), workflow run 36818953985. This is the machine class the regression gate executes on, so the comparison is like against like and the cross-machine offset that limited earlier baselines does not apply.",
   "tasks": {
     "AES Encrypt (100KB)": {
       "suite": "crypto",
-      "throughputMedian": 86.6,
-      "observedSpreadPct": 10.8
+      "throughputMedian": 106.3,
+      "observedSpreadPct": 3.1
     },
     "AES Encrypt (10KB)": {
       "suite": "crypto",
-      "throughputMedian": 939.2,
-      "observedSpreadPct": 1
+      "throughputMedian": 1177.4,
+      "observedSpreadPct": 8.2
     },
     "AES Encrypt (1KB)": {
       "suite": "crypto",
-      "throughputMedian": 8578.3,
+      "throughputMedian": 11378.9,
       "observedSpreadPct": 0.8
     },
     "Entropy (100KB)": {
       "suite": "analysis",
-      "throughputMedian": 2055.7,
-      "observedSpreadPct": 0.8
+      "throughputMedian": 2151,
+      "observedSpreadPct": 1.1
     },
     "Entropy (10KB)": {
       "suite": "analysis",
-      "throughputMedian": 14755.2,
-      "observedSpreadPct": 4.8
+      "throughputMedian": 16788,
+      "observedSpreadPct": 6.8
     },
     "Entropy (1KB)": {
       "suite": "analysis",
-      "throughputMedian": 38367.2,
-      "observedSpreadPct": 12.3
+      "throughputMedian": 55060.1,
+      "observedSpreadPct": 5.1
     },
     "Frequency distribution (100KB)": {
       "suite": "analysis",
-      "throughputMedian": 2094.4,
-      "observedSpreadPct": 3.5
+      "throughputMedian": 2114.7,
+      "observedSpreadPct": 4.1
     },
     "Frequency distribution (10KB)": {
       "suite": "analysis",
-      "throughputMedian": 11481.2,
-      "observedSpreadPct": 3.9
+      "throughputMedian": 13672.2,
+      "observedSpreadPct": 0.7
     },
     "Frequency distribution (1KB)": {
       "suite": "analysis",
-      "throughputMedian": 20809.5,
-      "observedSpreadPct": 6.7
+      "throughputMedian": 31357.6,
+      "observedSpreadPct": 1.9
     },
     "Gzip (100KB)": {
       "suite": "compression",
-      "throughputMedian": 3.2,
-      "observedSpreadPct": 0.3
+      "throughputMedian": 3,
+      "observedSpreadPct": 0.5
     },
     "Gzip (10KB)": {
       "suite": "compression",
-      "throughputMedian": 345.9,
-      "observedSpreadPct": 0.3
+      "throughputMedian": 438.6,
+      "observedSpreadPct": 4.2
     },
     "Gzip (1KB)": {
       "suite": "compression",
-      "throughputMedian": 2846.8,
-      "observedSpreadPct": 1.7
+      "throughputMedian": 3655.1,
+      "observedSpreadPct": 2.2
     },
     "MD5 (100KB)": {
       "suite": "hashing",
-      "throughputMedian": 180.9,
-      "observedSpreadPct": 1.5
+      "throughputMedian": 263.9,
+      "observedSpreadPct": 1.4
     },
     "MD5 (10KB)": {
       "suite": "hashing",
-      "throughputMedian": 1685.8,
-      "observedSpreadPct": 1.5
+      "throughputMedian": 2411.5,
+      "observedSpreadPct": 0.9
     },
     "MD5 (1KB)": {
       "suite": "hashing",
-      "throughputMedian": 10521.3,
-      "observedSpreadPct": 7.2
+      "throughputMedian": 15896.4,
+      "observedSpreadPct": 2.7
     },
     "Regular expression (100KB)": {
       "suite": "text",
-      "throughputMedian": 6018.9,
-      "observedSpreadPct": 5.5
+      "throughputMedian": 8799.7,
+      "observedSpreadPct": 1.2
     },
     "Regular expression (10KB)": {
       "suite": "text",
-      "throughputMedian": 10461,
-      "observedSpreadPct": 8.4
+      "throughputMedian": 16879.7,
+      "observedSpreadPct": 2.7
     },
     "Regular expression (1KB)": {
       "suite": "text",
-      "throughputMedian": 11300.2,
-      "observedSpreadPct": 9.2
+      "throughputMedian": 18478.6,
+      "observedSpreadPct": 4.4
     },
     "SHA2-256 (100KB)": {
       "suite": "hashing",
-      "throughputMedian": 207.8,
-      "observedSpreadPct": 0.6
+      "throughputMedian": 270.6,
+      "observedSpreadPct": 1.7
     },
     "SHA2-256 (10KB)": {
       "suite": "hashing",
-      "throughputMedian": 1855,
-      "observedSpreadPct": 2
+      "throughputMedian": 2407.3,
+      "observedSpreadPct": 1.8
     },
     "SHA2-256 (1KB)": {
       "suite": "hashing",
-      "throughputMedian": 9671.7,
-      "observedSpreadPct": 9.2
+      "throughputMedian": 14096.4,
+      "observedSpreadPct": 2.3
     },
     "SHA2-512 (100KB)": {
       "suite": "hashing",
-      "throughputMedian": 99.2,
+      "throughputMedian": 131,
       "observedSpreadPct": 0.8
     },
     "SHA2-512 (10KB)": {
       "suite": "hashing",
-      "throughputMedian": 958.8,
-      "observedSpreadPct": 0.6
+      "throughputMedian": 1243.6,
+      "observedSpreadPct": 1.4
     },
     "SHA2-512 (1KB)": {
       "suite": "hashing",
-      "throughputMedian": 6850,
-      "observedSpreadPct": 6.3
+      "throughputMedian": 9699.9,
+      "observedSpreadPct": 2
     },
     "To Base64 (100KB)": {
       "suite": "encoding",
-      "throughputMedian": 721,
-      "observedSpreadPct": 0.9
+      "throughputMedian": 942,
+      "observedSpreadPct": 10.8
     },
     "To Base64 (10KB)": {
       "suite": "encoding",
-      "throughputMedian": 4801.1,
-      "observedSpreadPct": 6.1
+      "throughputMedian": 6653.2,
+      "observedSpreadPct": 6.3
     },
     "To Base64 (1KB)": {
       "suite": "encoding",
-      "throughputMedian": 11104.8,
-      "observedSpreadPct": 12.5
+      "throughputMedian": 17048.7,
+      "observedSpreadPct": 3.8
     },
     "To Hex (100KB)": {
       "suite": "encoding",
-      "throughputMedian": 226.3,
-      "observedSpreadPct": 2.7
+      "throughputMedian": 175.8,
+      "observedSpreadPct": 5
     },
     "To Hex (10KB)": {
       "suite": "encoding",
-      "throughputMedian": 1951.3,
-      "observedSpreadPct": 4.5
+      "throughputMedian": 1634.6,
+      "observedSpreadPct": 1.8
     },
     "To Hex (1KB)": {
       "suite": "encoding",
-      "throughputMedian": 8530.5,
-      "observedSpreadPct": 9.8
+      "throughputMedian": 9729.7,
+      "observedSpreadPct": 1.1
     }
   }
 }
