@@ -681,7 +681,7 @@ function metaToolNames() {
  * Built at startup, from an explicit manifest -- nothing is loaded from disk. See
  * `src/node/tools/registry.mjs` and ADR 0002 for why there is no plugin loader.
  *
- * The reserved-name set is every tool name that already exists: all 504 operation tools plus the
+ * The reserved-name set is every tool name that already exists: all 505 operation tools plus the
  * meta-tools. Passing it in means a registry tool that would shadow one fails HERE, at startup,
  * rather than silently winning or losing a race at call time depending on import order.
  */

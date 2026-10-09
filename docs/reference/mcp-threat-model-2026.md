@@ -21,7 +21,7 @@ tool descriptions are not written by this project**. They come from
 GCHQ CyberChef on every upstream sync. So there is a path from an upstream commit to text a model
 reads as instruction, and the sync is automated.
 
-Measured across all 504 operations on 2026-09-03:
+Measured across all 505 operations on 2026-09-03:
 
 ```text
 Unicode TAG-block characters   0

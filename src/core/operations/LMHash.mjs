@@ -34,6 +34,12 @@ function expandKey(seven) {
 }
 
 /**
+ * The LAN Manager hashing algorithm only uses the first 14 characters of the
+ * uppercased password.
+ */
+const LM_HASH_MAX_LENGTH = 14;
+
+/**
  * LM Hash operation
  */
 class LMHash extends Operation {
@@ -86,9 +92,9 @@ class LMHash extends Operation {
         // fewer than 14 entries -- leaving the second half six bytes long and `expandKey` reading
         // an undefined seventh. LM is a byte algorithm over a legacy code page; code units are the
         // right unit here, and this keeps both halves exactly seven bytes for any input.
-        const padded = input.toUpperCase().slice(0, 14).padEnd(14, "\0");
+        const padded = input.toUpperCase().slice(0, LM_HASH_MAX_LENGTH).padEnd(LM_HASH_MAX_LENGTH, "\0");
         const bytes = [];
-        for (let i = 0; i < 14; i++) bytes.push(padded.charCodeAt(i) & 0xff);
+        for (let i = 0; i < LM_HASH_MAX_LENGTH; i++) bytes.push(padded.charCodeAt(i) & 0xff);
 
         let out = "";
         for (const half of [bytes.slice(0, 7), bytes.slice(7, 14)]) {

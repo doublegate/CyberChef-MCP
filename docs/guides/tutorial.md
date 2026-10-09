@@ -137,7 +137,7 @@ The equivalent runnable script is [`examples/01-quickstart.mjs`](../../examples/
 Ask for the tool list and you will get about two dozen tools, not 504. That is deliberate, and it
 is the thing most worth understanding about this server.
 
-**Why.** `tools/list` is sent to the model on *every* request. With all 504 operations exposed it
+**Why.** `tools/list` is sent to the model on *every* request. With all 505 operations exposed it
 is roughly 86,000 tokens — most of a context window, spent before you have typed anything. So the
 default surface is an **index**: navigation tools plus the executor, about 2,500 tokens.
 

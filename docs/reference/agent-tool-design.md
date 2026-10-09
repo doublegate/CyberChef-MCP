@@ -21,7 +21,7 @@ it is why the `index` surface can pre-load 23 tools without losing reach.
   the model to retry the same broad call.
 
 **Error messages are instructions.** Replace codes with what to do instead — `filter='status:active'`
-rather than a traceback. This server keys `ErrorSuggestions` by error code, so all 504 operations
+rather than a traceback. This server keys `ErrorSuggestions` by error code, so all 505 operations
 share one suggestion per code; the v2.9.0 findings log deferred fixing that, and v3.2.0 carries it.
 
 **Descriptions are onboarding documents.** Unambiguous parameter names, defined jargon, stated

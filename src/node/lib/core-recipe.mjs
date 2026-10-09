@@ -57,7 +57,7 @@ import File from "../File.mjs";
 // not one of them imports it. In the browser it is the platform's. On Node the shim in
 // `src/node/File.mjs` is meant to stand in for it, and the ONLY assignment is at
 // `src/node/index.mjs:516` -- the generated bridge, which this server deliberately does not import
-// eagerly (see the note at the top of `mcp-server.mjs`: it would pull all 504 operation
+// eagerly (see the note at the top of `mcp-server.mjs`: it would pull all 505 operation
 // implementations at startup).
 //
 // So the bridge's side effect went with it, and `new File(...)` in an operation resolved to

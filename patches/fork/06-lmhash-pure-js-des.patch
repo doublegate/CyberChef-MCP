@@ -34,8 +34,8 @@
 +}
  
  /**
-  * LM Hash operation
-@@ -28,12 +54,52 @@
+  * The LAN Manager hashing algorithm only uses the first 14 characters of the
+@@ -34,19 +60,52 @@
      }
  
      /**
@@ -64,7 +64,14 @@
       * @returns {string}
       */
      run(input, args) {
--        return smbhash.lmhash(input);
+-        // Uppercase *before* truncating to 14 characters. Some characters
+-        // expand when uppercased (e.g. "ß" -> "SS"), and the underlying ntlm
+-        // library truncates first and then uppercases into a fixed 14-byte
+-        // buffer, overflowing it and throwing a RangeError for such inputs
+-        // (#1807). Normalising here preserves the library's 14-byte invariant
+-        // and leaves every ASCII input's hash unchanged.
+-        const password = input.toUpperCase().slice(0, LM_HASH_MAX_LENGTH);
+-        return smbhash.lmhash(password);
 +        // Uppercased, truncated to 14 characters, NUL-padded, then split into two 7-byte halves.
 +        //
 +        // Indexed `charCodeAt`, NOT `Array.from`. `slice`/`padEnd` count UTF-16 code UNITS while
@@ -72,9 +79,9 @@
 +        // fewer than 14 entries -- leaving the second half six bytes long and `expandKey` reading
 +        // an undefined seventh. LM is a byte algorithm over a legacy code page; code units are the
 +        // right unit here, and this keeps both halves exactly seven bytes for any input.
-+        const padded = input.toUpperCase().slice(0, 14).padEnd(14, "\0");
++        const padded = input.toUpperCase().slice(0, LM_HASH_MAX_LENGTH).padEnd(LM_HASH_MAX_LENGTH, "\0");
 +        const bytes = [];
-+        for (let i = 0; i < 14; i++) bytes.push(padded.charCodeAt(i) & 0xff);
++        for (let i = 0; i < LM_HASH_MAX_LENGTH; i++) bytes.push(padded.charCodeAt(i) & 0xff);
 +
 +        let out = "";
 +        for (const half of [bytes.slice(0, 7), bytes.slice(7, 14)]) {

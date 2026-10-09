@@ -9,7 +9,7 @@
  * numbers now come from `npm run measure:surfaces`, which drives a real client and counts the
  * exact bytes of the result, rather than from a comment:
  *
- *     all       545 tools   426,706 bytes   416 KB
+ *     all       546 tools   427,123 bytes   417 KB
  *     curated   120 tools   109,548 bytes   107 KB
  *     index      23 tools    15,620 bytes    15 KB
  *
@@ -49,7 +49,7 @@
  *
  * The trade is honest and worth stating: reaching an operation costs an extra round trip the first
  * time. Measured, that trade is the index plus one operation schema -- 17,398 bytes against
- * 426,706, or **24.5x cheaper** than `all`. (This line read "42,415 bytes ... 9.5x" until v3.8.0,
+ * 427,123, or **24.6x cheaper** than `all`. (This line read "42,415 bytes ... 9.5x" until v3.8.0,
  * which is a figure SMALLER than the index alone and therefore impossible on its face -- the byte
  * column above was re-measured and this sentence was not. It was caught in review, not by a gate:
  * `check:versions` covers operation counts and does not cover tool-surface counts.) That
