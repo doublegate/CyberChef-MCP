@@ -35,3 +35,6 @@
 # the vestigial web build (which would be the better outcome -- this fork removed the web app in
 # v1.7.1 and the webpack browser aliases are the last thing keeping the dependency alive).
 CVE-2025-14505
+CVE-2026-84961
+CVE-2026-84933
+CVE-2026-85014
