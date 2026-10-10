@@ -33,7 +33,7 @@ operation is a pure `run(input, args)` over one input, which cannot express an *
 ## Is this GCHQ's CyberChef?
 
 It is a **fork** of it. All 504 operations come from
-[gchq/CyberChef](https://github.com/gchq/CyberChef) v11.4.0, mirrored verbatim. What this project
+[gchq/CyberChef](https://github.com/gchq/CyberChef) v11.5.0, mirrored verbatim. What this project
 adds is the MCP server around them: tool schemas, transports, recipe storage, streaming, batching.
 
 Anything under `src/core/` is upstream code and is never hand-edited here — deliberate changes are

@@ -6,7 +6,7 @@ By running this server, you enable AI assistants (like Claude, Cursor AI, and ot
 
 **Latest Release:** v4.2.0 | [Release Notes](docs/releases/v4.2.0.md) | [Tutorial](docs/guides/tutorial.md) | [Examples](examples/) | [Breaking Changes](docs/v2.0.0-breaking-changes.md) | [Security Policy](SECURITY.md)
 
-**Upstream base:** GCHQ CyberChef **v11.4.0** | **Licence:** GPL-3.0-or-later (from v2.0.0; v1.9.x and earlier remain Apache-2.0)
+**Upstream base:** GCHQ CyberChef **v11.5.0** | **Licence:** GPL-3.0-or-later (from v2.0.0; v1.9.x and earlier remain Apache-2.0)
 
 ![CyberChef MCP Banner](images/CyberChef-MCP_Banner-Logo.jpg)
 
