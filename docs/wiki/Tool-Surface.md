@@ -5,8 +5,8 @@ answer is a deliberate design decision rather than a limitation.
 
 ## The problem
 
-`tools/list` is sent to the model on **every** request. Exposing all 504 operations plus the
-meta-tools costs roughly **426,706 bytes** before the user has typed anything — and model
+`tools/list` is sent to the model on **every** request. Exposing all 505 operations plus the
+meta-tools costs roughly **427,123 bytes** before the user has typed anything — and model
 tool-selection quality is known to degrade well before that many definitions are in play.
 
 So the default is an **index**, not a catalogue.
@@ -51,7 +51,7 @@ cyberchef_categories            16 categories, with counts and examples   (~2 KB
 `cyberchef_search` short-circuits the walk when you already know roughly what you want.
 
 So the index costs a round trip on an unusual operation and saves roughly **411,086 bytes** on every
-request (426,706 − 15,620). For an assistant that mostly reaches for base64, hex, JWT and hashes, that is the right
+request (427,123 − 15,620). For an assistant that mostly reaches for base64, hex, JWT and hashes, that is the right
 trade — and when it is not, one environment variable changes it.
 
 ## What is always exposed, at every surface

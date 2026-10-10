@@ -32,7 +32,7 @@ the 1,190 packages in the old runtime image were dev-only — `typescript`, `@ro
 
 **It will not get to 50 MB, and you should not wait for that.** `@jimp` (89 MB) and
 `tesseract.js-core` (44 MB) are production dependencies of real operations: image manipulation and
-OCR. A server exposing all 504 operations cannot be a 50 MB image. If you need one, the honest
+OCR. A server exposing all 505 operations cannot be a 50 MB image. If you need one, the honest
 answer is a different product — a build with a fixed subset of operations — not a smaller version
 of this one.
 

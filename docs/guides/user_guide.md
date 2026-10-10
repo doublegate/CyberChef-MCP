@@ -163,9 +163,9 @@ tokenizer and every one of those was bytes divided by four.
 The index doubled at v3.3.0, from 28 tools and 20,297 bytes. Twelve registry tools were added, and
 a registry tool has no navigation path — `cyberchef_bake` runs recipes of *operations* — so one
 that is not listed cannot be called at all. The ratio between the three modes is what matters, and
-the index plus one operation schema is still 24.5x cheaper than `all`.
+the index plus one operation schema is still 24.6x cheaper than `all`.
 
-**Nothing becomes unreachable.** `cyberchef_bake` runs any of the 504 operations by name, and three
+**Nothing becomes unreachable.** `cyberchef_bake` runs any of the 505 operations by name, and three
 navigation tools let a client find the name and its arguments:
 
 ```
@@ -295,7 +295,7 @@ Not every result is text, and since v2.2.0 the server stops pretending otherwise
 ### Tool annotations
 
 Every tool carries `readOnlyHint`, `destructiveHint`, `idempotentHint` and `openWorldHint`, so a
-client can decide whether to ask you before running it. Nearly all 504 operations are pure
+client can decide whether to ask you before running it. Nearly all 505 operations are pure
 functions: read-only, non-destructive, idempotent, closed-world.
 
 Two things are worth knowing before you configure auto-approval:

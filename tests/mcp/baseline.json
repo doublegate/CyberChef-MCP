@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-08-31T01:15:12.519Z",
-  "tool_count": 506,
+  "timestamp": "2026-10-09T14:47:29.301Z",
+  "tool_count": 507,
   "tools": {
     "cyberchef_bake": {
       "type": "meta",
@@ -1022,8 +1022,8 @@
       "arg_types": [
         "option",
         "option",
-        "number",
-        "number",
+        "string",
+        "string",
         "boolean",
         "boolean"
       ]
@@ -2694,8 +2694,10 @@
     "cyberchef_pem_to_jwk": {
       "operation": "PEM to JWK",
       "description": "Converts Keys in PEM format to a JSON Web Key format.",
-      "args_count": 0,
-      "arg_types": []
+      "args_count": 1,
+      "arg_types": [
+        "boolean"
+      ]
     },
     "cyberchef_pgp_decrypt": {
       "operation": "PGP Decrypt",
@@ -2888,6 +2890,12 @@
     "cyberchef_parse_objectid_timestamp": {
       "operation": "Parse ObjectID timestamp",
       "description": "Parse timestamp from MongoDB/BSON ObjectID hex string.",
+      "args_count": 0,
+      "arg_types": []
+    },
+    "cyberchef_parse_pgp_key": {
+      "operation": "Parse PGP Key",
+      "description": "Parse the contents of a PGP (v4 or v6) Key",
       "args_count": 0,
       "arg_types": []
     },

@@ -99,7 +99,7 @@ const CATALOGUE_COUNT = /(?:all|loads|exposes|importing) ([0-9]{3})[- ]operation
 function discoverFiles() {
     const SKIP_DIRS = new Set([
         "node_modules", ".git", ".github/workflows/node_modules", "coverage", "test-results",
-        "ref-proj", "src/vendor", "src/core/vendor"
+        "ref-proj", "src/vendor", "src/core/vendor", ".vitest"
     ]);
     // Historical records: what was true when written, and not to be rewritten.
     const SKIP_PREFIXES = [

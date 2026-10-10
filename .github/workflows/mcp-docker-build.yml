@@ -183,6 +183,7 @@ jobs:
           severity: 'CRITICAL,HIGH'
           vuln-type: 'os,library'
           exit-code: '0'
+          trivyignores: '.trivyignore'
 
       - name: Upload Trivy scan results
         uses: github/codeql-action/upload-sarif@v4
@@ -214,3 +215,4 @@ jobs:
           severity: 'CRITICAL,HIGH'
           vuln-type: 'os,library'
           exit-code: '1'
+          trivyignores: '.trivyignore'

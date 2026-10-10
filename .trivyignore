@@ -35,3 +35,18 @@
 # the vestigial web build (which would be the better outcome -- this fork removed the web app in
 # v1.7.1 and the webpack browser aliases are the last thing keeping the dependency alive).
 CVE-2025-14505
+
+# CVE-2026-85393 -- node-forge <= 1.4.0, "Signature forgery vulnerability in RSA PKCS#1 v1.5 verification"
+# (CVSS 7.5, HIGH). A signature forgery vulnerability in RSA PKCS#1 v1.5 signature verification in node-forge
+# allows attackers to forge signatures under specific conditions.
+#
+# NO FIX EXISTS. node-forge 1.4.0 is the latest published version on npm; upstream has not released a patched
+# version yet.
+#
+# NOT REACHABLE FOR HOST AUTHENTICATION. CyberChef-MCP uses node-forge for standalone cryptographic utility
+# operations (RSAVerify, RSASign, RSAEncrypt, etc.) invoked explicitly by user/agent requests, not for server
+# transport authentication or TLS validation.
+#
+# REMOVABLE WHEN: node-forge publishes a fixed release addressing CVE-2026-85393.
+CVE-2026-85393
+

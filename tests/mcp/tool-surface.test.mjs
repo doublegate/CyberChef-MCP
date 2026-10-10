@@ -220,7 +220,7 @@ describe("index hierarchy: EVERY operation is reachable", () => {
         await client?.close();
     });
 
-    it("walks categories -> listings and reaches all 504 operations", async () => {
+    it("walks categories -> listings and reaches all 505 operations", async () => {
         // The claim the index surface is sold on, checked exhaustively rather than sampled. A
         // single unreachable operation would mean the small default is a smaller PRODUCT, and
         // sampling would very likely miss it -- the risk is concentrated in odd corners
