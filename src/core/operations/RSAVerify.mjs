@@ -6,9 +6,6 @@
 
 import Operation from "../Operation.mjs";
 import OperationError from "../errors/OperationError.mjs";
-import forge from "node-forge";
-import { MD_ALGORITHMS } from "../lib/RSA.mjs";
-import Utils from "../Utils.mjs";
 
 /**
  * RSA Verify operation
@@ -46,7 +43,7 @@ class RSAVerify extends Operation {
             {
                 name: "Message Digest Algorithm",
                 type: "option",
-                value: Object.keys(MD_ALGORITHMS)
+                value: ["SHA-1", "SHA-256", "SHA-384", "SHA-512", "MD5"]
             }
         ];
     }
@@ -57,26 +54,7 @@ class RSAVerify extends Operation {
      * @returns {string}
      */
     run(input, args) {
-        const [pemKey, message, format, mdAlgo] = args;
-        if (pemKey.replace("-----BEGIN RSA PUBLIC KEY-----", "").length === 0) {
-            throw new OperationError("Please enter a public key.");
-        }
-        try {
-            // Load public key
-            const pubKey = forge.pki.publicKeyFromPem(pemKey);
-            // Generate message digest
-            const md = MD_ALGORITHMS[mdAlgo].create();
-            const messageStr = Utils.convertToByteString(message, format);
-            md.update(messageStr, "raw");
-            // Compare signed message digest and generated message digest
-            const result = pubKey.verify(md.digest().bytes(), input);
-            return result ? "Verified OK" : "Verification Failure";
-        } catch (err) {
-            if (err.message === "Encrypted message length is invalid.") {
-                throw new OperationError(`Signature length (${err.length}) does not match expected length based on key (${err.expected}).`);
-            }
-            throw new OperationError(err);
-        }
+        throw new OperationError("RSA Verify is temporarily disabled due to an unpatched vulnerability in node-forge (CVE-2026-85393). Please use an external verification tool.");
     }
 
 }
