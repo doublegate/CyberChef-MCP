@@ -1,7 +1,7 @@
 # Fork & Upstream
 
 This is a fork of [gchq/CyberChef](https://github.com/gchq/CyberChef), currently tracking
-**v11.4.0**. Understanding the split matters if you intend to change anything under `src/core/`.
+**v11.5.0**. Understanding the split matters if you intend to change anything under `src/core/`.
 
 ## What belongs to whom
 

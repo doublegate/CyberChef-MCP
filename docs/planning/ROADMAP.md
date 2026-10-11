@@ -1,6 +1,6 @@
 # CyberChef MCP Server - Product Roadmap
 
-**Current version:** **v4.2.0** (released 2026-09-12) · **Upstream base:** CyberChef v11.4.0
+**Current version:** **v4.2.0** (released 2026-09-12) · **Upstream base:** CyberChef v11.5.0
 **Charted through:** v4.0.0 — as one plan plus five charters, not five plans
 **Timeline:** January 2026 - present
 **Last Updated:** 2026-09-12

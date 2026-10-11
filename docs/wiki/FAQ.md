@@ -32,8 +32,9 @@ operation is a pure `run(input, args)` over one input, which cannot express an *
 
 ## Is this GCHQ's CyberChef?
 
-It is a **fork** of it. All 504 operations come from
-[gchq/CyberChef](https://github.com/gchq/CyberChef) v11.4.0, mirrored verbatim. What this project
+It is a **fork** of it. Upstream operations are based on
+[gchq/CyberChef](https://github.com/gchq/CyberChef) v11.5.0, with 25 operations carrying documented
+fork patches (under `patches/fork/`) and RSAVerify intentionally disabled for CVE-2026-85393. What this project
 adds is the MCP server around them: tool schemas, transports, recipe storage, streaming, batching.
 
 Anything under `src/core/` is upstream code and is never hand-edited here — deliberate changes are

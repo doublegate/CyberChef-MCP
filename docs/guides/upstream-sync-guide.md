@@ -4,7 +4,7 @@
 
 CyberChef-MCP maintains a fork relationship with GCHQ/CyberChef while removing web UI components and focusing on the MCP server implementation. This guide explains the sync model and automated workflows.
 
-> **Current state (v2.0.0):** upstream base **v11.4.0**, 504 operations. The sync is a whole-tree
+> **Current state:** upstream base **v11.5.0**, 505 operations (504 active, RSAVerify disabled for CVE-2026-85393; 25 operations carrying fork patches). The sync is a whole-tree
 > `rsync -a --delete` mirror of `src/core/**` plus six upstream-owned `src/node/*.mjs` files, with
 > fork changes carried as `patches/fork/*.patch` re-applied afterwards, and an allowlist scope check
 > that fails the run on anything out of scope.
