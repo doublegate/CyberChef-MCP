@@ -2,11 +2,13 @@
 
 ## Executive Summary
 
-The detected "drift" against v11.4.0 is a combination of **intentional patches** (25 operations) and **cherry-picked fixes from v11.5.0** (7 operations). The repository is in an inconsistent state where:
+> **Historical pre-sync snapshot.** The findings and analysis below describe the state prior to the v11.5.0 sync formalization in PR #156.
 
-1. `package.json` declares the upstream base as `11.4.0`
-2. Some fixes from `v11.5.0` were cherry-picked (commit 2fddf748)
-3. The monitor compares against v11.4.0, so it detects these v11.5.0 changes as drift
+The detected "drift" against v11.4.0 was a combination of **intentional patches** (25 operations) plus **RSAVerify** and **upstream v11.5.0 sync changes from commit 2fddf748**:
+
+1. `package.json` declared the upstream base as `11.4.0` prior to this sync.
+2. Commit `2fddf748` had synced upstream v11.5.0 fixes into `src/core/` (including `Dish.mjs`, `Operation.mjs`, `Categories.json`, image pool fixes, etc.) but did not update the version declaration in `package.json`.
+3. The upstream monitor checks out the target release tag before comparing operation files; when comparing against v11.4.0, it detected the v11.5.0 changes as drift, while against v11.5.0 it detects only the 25 fork patches + RSAVerify.
 
 ## Detailed Findings
 
@@ -56,15 +58,15 @@ These modifications are **intentional and documented** in `patches/fork/README.m
 #### From patch 10 (Add Text to Image Node fonts):
 - (AddTextToImage.mjs already counted in patch 09)
 
-**Total: 24-25 operations** (SM3 was not mentioned in the patches README but is modified by patch 08)
+**Total: exactly 25 operations** (`patches/fork/README.md` explicitly lists SM3 under patch 08; AddTextToImage.mjs is already counted under patch 09).
 
-### Category 2: Cherry-picked from v11.5.0 (7 operations)
+### Category 2: Upstream v11.5.0 Changes (Commit 2fddf748)
 
-These modifications came from commit `2fddf748` which claimed to "sync upstream v11.5.0" but:
-- Did NOT update `cyberchefUpstreamVersion` in package.json (still says 11.4.0)
-- Only partially synced changes from v11.5.0
+Commit `2fddf748` synced upstream v11.5.0 changes (including `Dish.mjs`, `Operation.mjs`, `Categories.json`, image pool fixes, etc.) but:
+- Did NOT update `cyberchefUpstreamVersion` in package.json (left at 11.4.0)
+- Left sync documentation and action plans unupdated
 
-Modified files from that commit affecting operations:
+Modified operation files from that commit:
 1. **CSSSelector.mjs** - Changed `Error` → `OperationError`
 2. **DisassembleX86.mjs** - Added hexadecimal address parsing function
 3. **LMHash.mjs** - Fix for uppercase expansion crash (from upstream commit 4855e6a4)
@@ -74,14 +76,16 @@ Modified files from that commit affecting operations:
 7. **RenderMarkdown.mjs** - Fix for anchor tag target attribute (from upstream commit ed31d45a)
 
 Additionally:
-8. **RSAVerify.mjs** - Was later disabled by commit 89cc60b9 due to CVE-2026-85393
+8. **RSAVerify.mjs** - Intentionally disabled in fork (commit 89cc60b9) due to CVE-2026-85393
+
+Together with the 25 fork patches, this accounts for the 26 modified operations against v11.5.0 (25 patches + RSAVerify).
 
 ## Root Cause
 
-The repository is in an **inconsistent state**:
-- Claims to be on v11.4.0 (`cyberchefUpstreamVersion: "11.4.0"`)
-- Has changes from v11.5.0 cherry-picked in
-- The upstream monitor correctly detects this as drift
+The pre-sync repository state was inconsistent:
+- Declared base was v11.4.0 (`cyberchefUpstreamVersion: "11.4.0"`)
+- Actual codebase already contained the v11.5.0 sync from commit 2fddf748
+- The upstream monitor detected this divergence against v11.4.0
 
 ## Upstream v11.5.0 Status
 
@@ -102,12 +106,15 @@ There are 20 commits between v11.4.0 and v11.5.0, including:
 
 ## Recommendations
 
-### Option 1: Complete the v11.5.0 Sync (Recommended)
+### Option 1: Complete the v11.5.0 Sync (Recommended — Completed by PR #156)
+
+**Status: Completed by PR #156.**
 
 **Pros:**
+- Formalizes the v11.5.0 sync and aligns version declarations
 - Gets latest security fixes
 - Resolves the inconsistent state
-- Aligns with what commit 2fddf748 claimed to do
+- Aligns with what commit 2fddf748 delivered
 
 **Steps:**
 1. Update `cyberchefUpstreamVersion` to `11.5.0` in package.json

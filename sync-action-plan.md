@@ -2,18 +2,22 @@
 
 ## Summary
 
-The current repository state is inconsistent:
-- **Claims to be on**: v11.4.0 (per package.json)
-- **Actually has**: v11.4.0 + cherry-picked fixes from v11.5.0
-- **Monitor detects**: 32 modified operations (25 expected patches + 7 from partial v11.5.0 sync)
+> **Status:** Completed by PR #156. This document serves as the historical record of the v11.5.0 sync formalization and validation.
 
-## Recommended Action: Complete v11.5.0 Sync
+The pre-sync repository state was inconsistent:
+- **Claimed to be on**: v11.4.0 (per package.json)
+- **Actually had**: v11.4.0 + full upstream v11.5.0 sync from commit 2fddf748
+- **Monitor detected**: 32 modified operations against v11.4.0 (25 expected patches + RSAVerify + 6 upstream changes)
 
-This resolves the inconsistency and gets the latest upstream fixes.
+## Completed Action: Complete v11.5.0 Sync
+
+Formalized the v11.5.0 sync, updated all version declarations, reconciled fork patch inventory, and updated documentation.
 
 ## Step-by-Step Plan
 
 ### 1. Update Version Declaration
+
+**Status: Completed.**
 
 Update `package.json`:
 ```json
@@ -22,16 +26,20 @@ Update `package.json`:
 
 ### 2. Verify All Patches Still Apply
 
-Run through each patch in `patches/fork/`:
+**Status: Completed.**
+
+*Note on patch validation:* Working tree patches in `src/core/operations/` are already applied to the fork codebase. Running `git apply --check` directly in the fork working tree tests applying already-applied patches and produces false errors.
+
+To test applying patches cleanly against pristine upstream source:
 ```bash
-cd /workspace
+# Test applying patches against pristine upstream v11.5.0 reference clone:
 for patch in patches/fork/*.patch; do
-    echo "Testing $patch"
-    git apply --check "$patch" 2>&1 || echo "FAILED: $patch"
+    echo "Testing $patch against upstream v11.5.0"
+    git -C ref-proj/CyberChef apply --check --directory=src/core "../../$patch" 2>&1 || echo "FAILED: $patch"
 done
 ```
 
-Expected: All 10 patches should still apply cleanly since the v11.5.0 changes don't conflict with our patches.
+All 10 patches apply cleanly against upstream v11.5.0.
 
 ### 3. Check for New Operations in v11.5.0
 
@@ -59,13 +67,26 @@ for op in ref-proj/CyberChef/src/core/operations/*.mjs; do
 done
 ```
 
-### 5. Review Remaining Differences
+### 5. Review Content Differences for Matching Operations
 
-After accounting for our 10 patches, check if there are any other differences that need attention:
+Compare operation files present in both upstream v11.5.0 and the fork:
 ```bash
-# This would show operations that differ but aren't covered by our patches
-# These would be the cherry-picked changes that are already in place
+# Compare matching operation implementations between upstream and fork
+for fork_op in src/core/operations/*.mjs; do
+    basename_op=$(basename "$fork_op")
+    upstream_op="ref-proj/CyberChef/src/core/operations/$basename_op"
+    if [ -f "$upstream_op" ]; then
+        if ! diff -u "$upstream_op" "$fork_op" > /dev/null 2>&1; then
+            echo "MODIFIED: $basename_op"
+        fi
+    fi
+done
 ```
+
+Differences break down into:
+- 25 operation files modified by documented fork patches (`patches/fork/`)
+- 1 operation file (`RSAVerify.mjs`) disabled in fork due to CVE-2026-85393
+- Total: exactly 26 modified operations against v11.5.0
 
 ### 6. Update Documentation
 
@@ -73,7 +94,9 @@ Files to update:
 - `package.json` - cyberchefUpstreamVersion
 - `AGENTS.md` - Update "Upstream base" row
 - `CHANGELOG.md` - Add entry for v11.5.0 sync
-- Any other references to v11.4.0 as the upstream base
+- `docs/guides/upstream-sync-guide.md` - Update current state to v11.5.0
+- `docs/planning/ROADMAP.md` - Update upstream base to v11.5.0
+- `docs/wiki/FAQ.md` - Qualify upstream base description
 
 ### 7. Run Full Test Suite
 
@@ -96,8 +119,10 @@ This should pass with 505 operations.
 
 ### 9. Create PR
 
-- Branch name: `chore/complete-v11.5.0-sync`
-- Title: "chore(upstream): complete v11.5.0 sync and resolve version inconsistency"
+**Status: Completed by PR #156.**
+
+- Branch name: `cursor/complete-v11.5.0-sync-28f3`
+- Title: "Complete v11.5.0 sync and resolve version inconsistency (resolves DOU-82)"
 - Description: Explain the inconsistent state and how this PR resolves it
 
 ## Alternative: Stay on v11.4.0
@@ -122,13 +147,9 @@ If the decision is to stay on v11.4.0:
 ## What About the Issue Monitor?
 
 After completing the sync to v11.5.0:
-- The issue DOU-82 should be closed as "completed"
-- Update the ref-proj to v11.5.0 tag
-- Next monitor run should show:
-  - Latest upstream: v11.5.0
-  - Fork base: v11.5.0
-  - Modified operations: 25 (just the patches)
-  - Status: Clean (expected drift from patches)
+- Issue DOU-82 is resolved.
+- Retain `master` branch for `ref-proj/CyberChef` reference clone (submodule tracks upstream `master` rather than pinning a release tag, adhering to the monitor's persistence model in `upstream-monitor.yml` line 331).
+- Note on monitor behavior: Against upstream v11.5.0, the monitor detects 26 modified operations (25 fork patches + RSAVerify). Because `upstream-monitor.yml` flags any modified operation with `needs_update=true`, teaching the monitor to ignore documented fork patches and disabled RSAVerify is required for fully clean automated runs without manual triage.
 
 ## Risk Assessment
 
