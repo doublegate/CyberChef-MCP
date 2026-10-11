@@ -7,7 +7,7 @@
 The pre-sync repository state was inconsistent:
 - **Claimed to be on**: v11.4.0 (per package.json)
 - **Actually had**: v11.4.0 + full upstream v11.5.0 sync from commit 2fddf748
-- **Monitor detected**: 32 modified operations against v11.4.0 (25 expected patches + RSAVerify + 6 upstream changes)
+- **Monitor detected**: 33 modified operations against v11.4.0 (25 expected fork patches + RSAVerify + 7 upstream changes)
 
 ## Completed Action: Complete v11.5.0 Sync
 
@@ -35,7 +35,7 @@ To test applying patches cleanly against pristine upstream source:
 # Test applying patches against pristine upstream v11.5.0 reference clone:
 for patch in patches/fork/*.patch; do
     echo "Testing $patch against upstream v11.5.0"
-    git -C ref-proj/CyberChef apply --check --directory=src/core "../../$patch" 2>&1 || echo "FAILED: $patch"
+    git -C ref-proj/CyberChef apply --check --directory=src/core "../../$patch" 2>&1 || { echo "FAILED: $patch"; exit 1; }
 done
 ```
 
