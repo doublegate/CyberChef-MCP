@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Dependencies & container base image**: Updated runtime dependencies (`@modelcontextprotocol/node` 2.1.2, `@modelcontextprotocol/server` 2.4.0, `@opentelemetry/api` 1.10.0, `dompurify` 3.4.17, `js-yaml` 5.5.0, `jsonpath-plus` 11.2.1, `markdown-it` 15.0.3, `protobufjs` 8.8.1, `zod` 4.6.7), deduplicated transitive `@jimp/*` `zod` dependencies onto `zod` 4.6.7 via `overrides` (remediating CVE-2023-54404), updated development and documentation-site dependencies, and re-pinned `Dockerfile.mcp` Chainguard Node.js base images to Node v26.12.1.
+
 ## [4.2.0] - 2026-09-12
 
 One place to add a meta-tool, for the eight of ten that are uniform — and a release whose two
