@@ -76,25 +76,18 @@ agy_body_archive() {
       # emit it verbatim -- dropping it would silently destroy the review history, which is
       # a worse failure than the nesting this guards against.
       start = (first >= 0) ? first : 0
+      # Trim a trailing wrapper close (plus blank lines before it) ONLY when an older wrapper
+      # was actually skipped above (first > 0): that is the one case with a stray close to
+      # remove. The trim used to run on every archive, guarded by a whole-archive count of
+      # `^<details>` opens against `</details>` closes, and a CLEAN archive whose round quotes
+      # a standalone `</details>` or uses `<details open>` tipped that count and lost a
+      # legitimate closing tag (agy reviews of SLAC #24 and Rusty2600 #53).
+      if (first > 0) {
+        while (n > start && buf[n-1] == "") n--
+        if (n > start && buf[n-1] == "</details>") n--
+      }
       for (i = start; i < n; i++) print buf[i]
-    }' \
-  | awk 'BEGIN { n = 0 }
-         { line[n++] = $0 }
-         END {
-           # Trim a trailing wrapper close (plus any blank lines before it) left by a
-           # pre-migration body. A legitimate round always ends with its own </details>
-           # followed by nothing, so only ONE trailing close is ever removed here.
-           while (n > 0 && line[n-1] == "") n--
-           if (n > 0 && line[n-1] == "</details>") {
-             closes = 0; opens = 0
-             for (i = 0; i < n; i++) {
-               if (line[i] ~ /^<details>/) opens++
-               if (line[i] == "</details>") closes++
-             }
-             if (closes > opens) n--
-           }
-           for (i = 0; i < n; i++) print line[i]
-         }' || true
+    }' || true
 }
 
 # Prefix of the hidden line that records when a review was posted. The comment head carries

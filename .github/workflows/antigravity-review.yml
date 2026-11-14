@@ -132,7 +132,7 @@ jobs:
           # MAX_DIFF_BYTES: "5000000"      # sanity cap on a pathological diff (5 MB). Do NOT lower
           #                                # this to bound the review: it truncates the diff BEFORE the
           #                                # file handoff, so a low value defeats the large-PR path.
-          # MAX_PROMPT_BYTES: "125000"     # inline/file threshold + hard backstop on the argv prompt
+          # MAX_PROMPT_BYTES: "120000"     # inline/file threshold + hard backstop on the argv prompt
           # STYLE_GUIDE: .github/agy-review.md   # style guide, loaded if present
         run: |
           # The workflow and the scripts come from DIFFERENT REFS: for a `pull_request`

@@ -198,6 +198,22 @@ check "a body with no archive yields an empty archive" "" \
 check "the head never carries the marker into the archive" "" \
   "$(printf '%s\nX\n' "$MARKER" | agy_body_head "$MARKER" | grep -F -x "$MARKER" || true)"
 
+# REGRESSION (agy reviews of SLAC #24 and Rusty2600 #53): the pre-migration tail trim used to run
+# on EVERY archive and drop the last `</details>` whenever closes outnumbered `^<details>` opens.
+# A clean archive whose round QUOTES a standalone `</details>` (a code block, a review of this very
+# script) or uses `<details open>` tips that count and lost a legitimate closing tag.
+clean_quote="$(printf '%s\n<details>\n<summary>Round reviewed at X</summary>\n\nreview text\n```html\n</details>\n```\n\n</details>' "$AGY_ROUND_MARK")"
+check "a clean archive quoting a standalone </details> keeps its closing tag" "$clean_quote" \
+  "$(printf '%s\n%s\n%s\n%s\n' "$MARKER" "$AGY_ARCHIVE_START" "$clean_quote" "$AGY_ARCHIVE_END" | agy_body_archive)"
+clean_open="$(printf '%s\n<details>\n<summary>Round reviewed at X</summary>\n\n<details open>\n<summary>log</summary>\nL\n</details>\n\n</details>' "$AGY_ROUND_MARK")"
+check "a clean archive with a <details open> block keeps its closing tag" "$clean_open" \
+  "$(printf '%s\n%s\n%s\n%s\n' "$MARKER" "$AGY_ARCHIVE_START" "$clean_open" "$AGY_ARCHIVE_END" | agy_body_archive)"
+# The migration path must still heal: a pre-migration wrapper captured inside the sentinels ahead
+# of the first round mark, with its stray trailing close, comes out as the bare rounds.
+legacy_wrap="$(printf '<details>\n<summary>Earlier review rounds</summary>\n\n%s\n</details>' "$clean_quote")"
+check "a pre-migration wrapper and its stray close are still removed" "$clean_quote" \
+  "$(printf '%s\n%s\n%s\n%s\n' "$MARKER" "$AGY_ARCHIVE_START" "$legacy_wrap" "$AGY_ARCHIVE_END" | agy_body_archive)"
+
 # Trimming must terminate: with no `<details>` left, dropping fails rather than looping.
 check "dropping from an empty archive fails rather than spinning" "1" \
   "$(printf 'no rounds here\n' | agy_drop_oldest_round >/dev/null 2>&1; echo $?)"
@@ -330,6 +346,18 @@ check "an oversized review round is capped" "yes" \
   "$([ "$(wc -c < "$TMPD/round")" -le 1000 ] && echo yes || echo no)"
 check "a capped review round says it was truncated" "yes" \
   "$(grep -q 'Review truncated' "$TMPD/round" && echo yes || echo no)"
+# REGRESSION (agy reviews of SLAC #24 and RustyNES_MiSTer #78): agy_cap_prompt cut at the budget
+# MINUS its notice before checking the size, so a prompt that already fit -- anywhere in the last
+# ~260 bytes below the cap -- was cut and falsely told the model its diff was truncated.
+head -c 590 /dev/zero | tr '\0' 'f' > "$TMPD/fits"
+check "a prompt that fits the cap is not cut" "kept:590" \
+  "$(agy_cap_prompt "$TMPD/fits" 600 && echo "cut:$(wc -c < "$TMPD/fits")" || echo "kept:$(wc -c < "$TMPD/fits")")"
+# A non-positive cut size must be refused, never handed to GNU `head -c -N` (all-but-last-N bytes).
+printf '0123456789' > "$TMPD/neg"
+check "a non-positive cut size is refused and the file is untouched" "kept:10" \
+  "$(agy_cut_file "$TMPD/neg" -5 && echo "cut:$(wc -c < "$TMPD/neg")" || echo "kept:$(wc -c < "$TMPD/neg")")"
+check "a cap smaller than its own notice never cuts with a negative size" "kept:10" \
+  "$(agy_cap_prompt "$TMPD/neg" 50 && echo "cut:$(wc -c < "$TMPD/neg")" || echo "kept:$(wc -c < "$TMPD/neg")")"
 # --- UTF-8 scrub: one helper for the prompt AND the review output, executed -------
 # The review-output path once had iconv only while the prompt path also fell back to python3
 # (agy review, switch2-hub-patcher PR #1). Both now call agy_scrub_utf8; exercise each sanitizer.
@@ -515,24 +543,43 @@ if [ "$(grep -c '^[[:space:]]*timeout-minutes:' "$wf")" -gt 1 ]; then
   echo "  FAIL  more than one timeout-minutes in the workflow: wf_val needs the review job's"
   fails=$((fails + 1))
 fi
-job_min="$(wf_val timeout-minutes)"
-max_s="$(wf_val AGY_PRINT_TIMEOUT_MAX_SECONDS)"; [ -n "$max_s" ] || max_s="$(sh_default AGY_PRINT_TIMEOUT_MAX_SECONDS)"
-lock_s="$(wf_val AGY_LOCK_WAIT)";               [ -n "$lock_s" ] || lock_s="$(sh_default AGY_LOCK_WAIT)"
-retries="$(wf_val AGY_RETRIES)";  [ -n "$retries" ] || retries="$(sh_default AGY_RETRIES)"
-delay="$(wf_val AGY_RETRY_DELAY)"; [ -n "$delay" ] || delay="$(sh_default AGY_RETRY_DELAY)"
-if [ -z "$job_min" ] || [ -z "$max_s" ] || [ -z "$lock_s" ] || [ -z "$retries" ] \
-   || [ -z "$delay" ]; then
-  echo "  FAIL  could not read the timeout budget (job=$job_min max=$max_s lock=$lock_s retries=$retries delay=$delay)"
-  fails=$((fails + 1))
-else
-  worst=$(( lock_s + retries * max_s + delay * retries * (retries - 1) / 2 ))
-  if [ "$worst" -lt $(( job_min * 60 - 120 )) ]; then
-    echo "  ok    worst case ${worst}s fits the ${job_min}-minute job timeout with 2 minutes to spare"
-  else
-    echo "  FAIL  worst case ${worst}s does not fit the ${job_min}-minute job timeout"
-    fails=$((fails + 1))
-  fi
-fi
+# A workflow that PINS AGY_PRINT_TIMEOUT bypasses the per-MiB scaling and its cap entirely
+# (agy-review.sh: AGY_PRINT_TIMEOUT_EXPLICIT), so every attempt waits the pinned value; the budget
+# must use it, or raising the pin past the cap could exceed timeout-minutes unnoticed (agy review
+# of RustyNES_MiSTer #78). The value is a duration ("15m"), so wf_val's digits-only read won't do.
+wf_pin() { sed -n "s/^[[:space:]]*AGY_PRINT_TIMEOUT:[[:space:]]*[\"']\{0,1\}\([0-9][0-9]*[smh]\{0,1\}\).*/\1/p;T;q" "$wf"; }
+# budget_verdict: "fits" or "exceeds"; empty when the budget cannot be read. Uses $wf.
+budget_verdict() {
+  local job_min max_s lock_s retries delay pin per worst
+  job_min="$(wf_val timeout-minutes)"
+  max_s="$(wf_val AGY_PRINT_TIMEOUT_MAX_SECONDS)"; [ -n "$max_s" ] || max_s="$(sh_default AGY_PRINT_TIMEOUT_MAX_SECONDS)"
+  lock_s="$(wf_val AGY_LOCK_WAIT)";               [ -n "$lock_s" ] || lock_s="$(sh_default AGY_LOCK_WAIT)"
+  retries="$(wf_val AGY_RETRIES)";  [ -n "$retries" ] || retries="$(sh_default AGY_RETRIES)"
+  delay="$(wf_val AGY_RETRY_DELAY)"; [ -n "$delay" ] || delay="$(sh_default AGY_RETRY_DELAY)"
+  pin="$(wf_pin)"
+  per="$max_s"
+  if [ -n "$pin" ]; then per="$(duration_to_seconds "$pin")" || return 0; fi
+  [ -n "$job_min" ] && [ -n "$per" ] && [ -n "$lock_s" ] && [ -n "$retries" ] && [ -n "$delay" ] || return 0
+  worst=$(( lock_s + retries * per + delay * retries * (retries - 1) / 2 ))
+  if [ "$worst" -lt $(( job_min * 60 - 120 )) ]; then echo "fits ${worst}s ${job_min}m"; else echo "exceeds ${worst}s ${job_min}m"; fi
+}
+verdict="$(budget_verdict)"
+case "$verdict" in
+  fits*) echo "  ok    worst case ${verdict#fits } (job timeout) fits with 2 minutes to spare" ;;
+  exceeds*) echo "  FAIL  worst case ${verdict#exceeds } does not fit the job timeout"; fails=$((fails + 1)) ;;
+  *) echo "  FAIL  could not read the timeout budget from $wf"; fails=$((fails + 1)) ;;
+esac
+# The pin must count: the same workflow with a 50-minute pin has to be reported as exceeding.
+real_wf="$wf"
+sed 's/^\([[:space:]]*\)AGY_EFFORT:.*/&\n\1AGY_PRINT_TIMEOUT: 50m/' "$real_wf" > "$TMPD/pinned.yml"
+wf="$TMPD/pinned.yml"
+check "a pinned AGY_PRINT_TIMEOUT counts in the timeout budget" "exceeds" "$(budget_verdict | cut -d' ' -f1)"
+wf="$real_wf"
+# The prompt cap's default must sit at or below its own ceiling; above it, every run logged a
+# spurious "invalid ... clamping" warning and overrode its own default (agy review of Rusty2600 #53).
+ceiling="$(sed -n 's/^ARG_SIZE_CEILING=\([0-9][0-9]*\).*/\1/p' "$SCRIPT_DIR/agy-review.sh")"
+check "the MAX_PROMPT_BYTES default is within ARG_SIZE_CEILING" "yes" \
+  "$([ "$(sh_default MAX_PROMPT_BYTES)" -le "${ceiling:-0}" ] 2>/dev/null && echo yes || echo no)"
 
 # Both helpers run under the caller's `set -euo pipefail`. A head or archive far larger than a
 # pipe buffer must neither abort them nor be misread (an early-exiting reader used to SIGPIPE

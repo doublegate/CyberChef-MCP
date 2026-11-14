@@ -220,7 +220,7 @@ AGY_DIFF_MODE="${AGY_DIFF_MODE:-auto}"     # auto|inline|file. A diff is passed 
 MAX_DIFF_BYTES="${MAX_DIFF_BYTES:-5000000}" # sanity cap on a pathological diff (5 MB). No longer the
                                            # arg-size limit -- a large diff goes to agy as a file, not
                                            # as an argv value -- just a guard against a runaway diff.
-MAX_PROMPT_BYTES="${MAX_PROMPT_BYTES:-125000}" # hard ceiling on the INLINED prompt: agy takes it as a
+MAX_PROMPT_BYTES="${MAX_PROMPT_BYTES:-120000}" # hard ceiling on the INLINED prompt: agy takes it as a
                                            # --print VALUE (not stdin), and a single execve argument
                                            # cannot exceed MAX_ARG_STRLEN (PAGE_SIZE*32 = 128 KiB on
                                            # Linux). Over it, execve fails with E2BIG before agy even
@@ -659,8 +659,11 @@ truncated=""
 # be told so, and a notice appended before a later cut can be cut away -- so each cap that can hide
 # content writes its own notice AFTER cutting. Notices are plain ASCII: character count = bytes.
 # >>> SELFTEST-EXTRACT: truncation helpers
-# Cut file $1 to at most $2 bytes. Succeeds only when it actually cut.
+# Cut file $1 to at most $2 bytes. Succeeds only when it actually cut. A non-positive size is
+# refused, never handed to GNU `head -c -N`, which prints all-but-the-last-N bytes (a tiny
+# MAX_BODY_BYTES or MAX_PROMPT_BYTES minus a notice gets there; agy review of SLAC #24).
 agy_cut_file() {
+  [ "$2" -gt 0 ] 2>/dev/null || return 1
   [ "$(wc -c < "$1")" -gt "$2" ] || return 1
   head -c "$2" "$1" > "$1.cut" && mv "$1.cut" "$1"
 }
@@ -674,6 +677,10 @@ agy_diff_truncation_notice() {
 # Cap prompt file $1 at $2 bytes, keeping room for a notice written after the cut.
 agy_cap_prompt() {
   local notice=$'\n\n--- NOTE: TRUNCATED PROMPT ---\nThe prompt, including the diff, was cut at the argument-size limit; you have NOT seen\nthe rest. Say at the top of your review that it covers a truncated diff, and do not state or\nimply that the whole change was reviewed.\n'
+  # Size FIRST, like agy_cap_round: cutting to the budget minus the notice before asking whether
+  # the prompt even exceeds the budget cut prompts that already fit, and told the model a whole
+  # diff was truncated (agy reviews of SLAC #24 and RustyNES_MiSTer #78).
+  [ "$(wc -c < "$1")" -gt "$2" ] || return 1
   agy_cut_file "$1" "$(( $2 - ${#notice} ))" || return 1
   printf '%s' "$notice" >> "$1"
 }
