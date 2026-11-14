@@ -10,7 +10,8 @@
 # Flow: resolve PR -> `gh pr diff` -> build an adversarial-reviewer prompt
 #       (+ repo style guide) -> `agy --print` under a PTY -> post via `gh pr comment`.
 #
-# See ../README.md for setup, the issue #76 PTY workaround, and the ToS caveat.
+# See README.md (installed into target repos as .github/AGY-REVIEWER.md) for setup, the issue #76
+# PTY workaround, and the ToS caveat.
 set -euo pipefail
 
 # Helpers are defined FIRST: the configuration block below calls log() from the MAX_PROMPT_BYTES
@@ -62,7 +63,11 @@ have_text() { [ -s "$1" ] && grep -q '[^[:space:]]' "$1"; }
 # are unchanged: the error must be on LINE 1, and the whole capture must be under
 # AGY_ERROR_MAX_BYTES. The load-bearing half is the LINE 1 anchor: a review does not *open*
 # with a bare "Error:" line, however short it is.
-AGY_ERROR_RE='^[[:space:]]*Error:'
+# Case-insensitive on the word itself: under `unbuffer` agy 1.2.x prints its eligibility failure
+# as lowercase `error: Eligibility check failed: PERMISSION_DENIED (code 403) ...`, and the
+# case-sensitive `Error:` let it through. Observed on VeridianOS PR #5: that line was posted as
+# the entire review and the `review` check went green in 14 seconds.
+AGY_ERROR_RE='^[[:space:]]*[Ee][Rr][Rr][Oo][Rr]:'
 # Secondary safety net, not the primary discriminator. A backend failure IS the whole capture and
 # is a couple of hundred bytes; the cap only ensures that if a review ever did open with an
 # "Error:" line, length alone keeps it from being discarded. Reviews shorter than this exist, so
@@ -74,10 +79,16 @@ AGY_ERROR_MAX_BYTES="${AGY_ERROR_MAX_BYTES:-2000}"
 # UNAVAILABLE` on line 3. That is the false positive the anchoring was supposed to
 # prevent, reintroduced by the very check meant to enforce it. The invariant is that a
 # backend failure IS the whole capture, so only the first line can carry it.
+# A tool notice from agy's own file viewer, returned as the whole answer when the model stopped
+# after a truncated read instead of writing a review. Observed on VeridianOS PR #15: the posted
+# "review" was only `_The output was truncated. To view the remaining content, please use the
+# ContentOffset parameter ..._`, under a green check. Same rules as the error line: line 1 of a
+# short capture.
+AGY_TOOL_NOTICE_RE='^[[:space:]_*]*The output was truncated\.'
 service_error_present() {
   [ -s "$1" ] || return 1
   [ "$(wc -c < "$1")" -le "$AGY_ERROR_MAX_BYTES" ] || return 1
-  head -n 1 "$1" | grep -qE "$AGY_ERROR_RE"
+  head -n 1 "$1" | grep -qE "$AGY_ERROR_RE|$AGY_TOOL_NOTICE_RE"
 }
 
 # True when the run must FAIL rather than post: the backend errored at least once and no review
@@ -92,6 +103,16 @@ backend_outage_should_fail() {
   [ "${1:-0}" -gt 0 ] || return 1
   ! have_text "$2"
 }
+
+# agy's own --print-timeout marker. When the turn is still running at the timeout, agy does NOT
+# fail: it exits 0 and prints `[agy] print timeout after 5m0s with turn in progress; returning
+# partial output`, alone or after whatever it had written so far. That capture is non-empty, so
+# `have_text` passed it and it was posted AS the review -- a truncated review, or a bare timeout
+# notice, under a green check. Measured 2026-09-28 (agy 1.2.12): a 10 s timeout on a long prompt
+# exits 0 with exactly that line as the whole 78-byte capture. Anchored at a line start so a
+# review that merely quotes the message mid-sentence is not discarded.
+AGY_TIMEOUT_RE='^\[agy\] print timeout after '
+print_timeout_present() { [ -s "$1" ] && grep -qE "$AGY_TIMEOUT_RE" "$1"; }
 # <<< SELFTEST-EXTRACT
 # Guarding against a leak of agy's interactive Google OAuth login flow. When agy's cached
 # session lapses on the runner, `--print` emits the login prompt (a live OAuth URL + "paste the
@@ -144,7 +165,12 @@ AGY_PRINT_TIMEOUT="${AGY_PRINT_TIMEOUT:-5m}"
 # Seconds of budget per MiB of diff handed to agy, on top of the base. Reading a 1.6 MB patch and
 # reasoning over it is not work a five-minute budget can absorb, and the failure is indistinguishable
 # from a backend outage: `Error: timeout waiting for response`, three times, with no review.
-AGY_TIMEOUT_SECONDS_PER_MIB="${AGY_TIMEOUT_SECONDS_PER_MIB:-240}"
+#
+# 900, not the 240 this started with: a diff handed over as a FILE costs agy 6-8 minutes almost
+# whatever its size (reading it through its tools at high effort is mostly fixed cost). Measured on
+# VeridianOS: a 1.15 MB diff took 465 s, and a 426 KB one timed out three times at 300 + 240 x 0.41
+# = 397 s. At 900 s/MiB the 426 KB diff gets 665 s and anything over ~650 KB the cap.
+AGY_TIMEOUT_SECONDS_PER_MIB="${AGY_TIMEOUT_SECONDS_PER_MIB:-900}"
 AGY_PRINT_TIMEOUT_MAX_SECONDS="${AGY_PRINT_TIMEOUT_MAX_SECONDS:-1800}"
 
 # Both of the above reach `$(( ... ))`, so both are validated before they get there.
@@ -184,7 +210,7 @@ normalise_numeric_env() {
   esac
 }
 # <<< SELFTEST-EXTRACT
-normalise_numeric_env AGY_TIMEOUT_SECONDS_PER_MIB   240
+normalise_numeric_env AGY_TIMEOUT_SECONDS_PER_MIB   900
 normalise_numeric_env AGY_PRINT_TIMEOUT_MAX_SECONDS 1800
 AGY_DIFF_MODE="${AGY_DIFF_MODE:-auto}"     # auto|inline|file. A diff is passed to agy either inlined
                                            # in the --print prompt, or written to a FILE agy reads with
@@ -194,15 +220,21 @@ AGY_DIFF_MODE="${AGY_DIFF_MODE:-auto}"     # auto|inline|file. A diff is passed 
 MAX_DIFF_BYTES="${MAX_DIFF_BYTES:-5000000}" # sanity cap on a pathological diff (5 MB). No longer the
                                            # arg-size limit -- a large diff goes to agy as a file, not
                                            # as an argv value -- just a guard against a runaway diff.
-MAX_PROMPT_BYTES="${MAX_PROMPT_BYTES:-125000}" # hard ceiling on the INLINED prompt: agy takes it as a
+MAX_PROMPT_BYTES="${MAX_PROMPT_BYTES:-120000}" # hard ceiling on the INLINED prompt: agy takes it as a
                                            # --print VALUE (not stdin), and a single execve argument
                                            # cannot exceed MAX_ARG_STRLEN (PAGE_SIZE*32 = 128 KiB on
                                            # Linux). Over it, execve fails with E2BIG before agy even
                                            # starts. In `auto` mode this is the inline/file threshold;
                                            # it also backstops the assembled prompt in every mode.
-ARG_SIZE_CEILING=128000                     # hard cap: a configured MAX_PROMPT_BYTES above the
+ARG_SIZE_CEILING=120000                     # hard cap: a configured MAX_PROMPT_BYTES above the
                                            # MAX_ARG_STRLEN-derived safe bound would defeat the guard
                                            # and re-expose E2BIG, so clamp any override down to it.
+                                           # 120000, not 128000: MAX_ARG_STRLEN is 131072, and the
+                                           # prompt is not the only thing execve must fit - argv[0],
+                                           # the other flags and the whole environment count against
+                                           # the limit too. A ceiling 3 KB under it left no room for
+                                           # them, so a large environment could still hit E2BIG on a
+                                           # prompt the guard had just declared safe.
 # Require a POSITIVE integer at or below the ceiling. The `-gt 0` half is load-bearing, not
 # cosmetic: a negative override (e.g. MAX_PROMPT_BYTES=-1) satisfies `-le "$ARG_SIZE_CEILING"`,
 # so without it the clamp is skipped and the `head -c "$MAX_PROMPT_BYTES"` prompt cap below runs
@@ -221,8 +253,14 @@ STYLE_GUIDE="${STYLE_GUIDE:-.github/agy-review.md}"  # repo-relative; loaded if 
 LOG="${RUNNER_TEMP:-/tmp}/agy-review-${GITHUB_RUN_ID:-$$}.log"
 AGY_LOCK="${AGY_LOCK:-$HOME/.gemini/antigravity-cli/.agy-review.lock}"
 AGY_LOCK_WAIT="${AGY_LOCK_WAIT:-600}"      # seconds to wait for the agy lock before proceeding
+normalise_numeric_env AGY_LOCK_WAIT 600   # flock -w rejects a non-numeric value and aborts
 AGY_RETRIES="${AGY_RETRIES:-3}"            # attempts to get a usable agy response
 AGY_RETRY_DELAY="${AGY_RETRY_DELAY:-15}"   # base backoff seconds between retries (grows per attempt)
+# Both reach (( )) arithmetic: `08` would abort on an octal parse and `0` retries would skip every
+# attempt and report "no review output after 0 attempt(s)". Same validation as the other numerics.
+normalise_numeric_env AGY_RETRIES     3
+normalise_numeric_env AGY_RETRY_DELAY 15
+[ "$AGY_RETRIES" -ge 1 ] || AGY_RETRIES=1
 MARKER="<!-- antigravity-pr-review -->"
 
 # The comment body's format -- sentinels plus the split/trim helpers -- lives in a sourceable
@@ -290,7 +328,14 @@ agy_has_write_access() {
   _login="${1:-}"
   [ -n "$_login" ] || { log "no login to check for write access"; return 1; }
   _perm_err="$(mktemp)"
-  if _perm="$(gh api "repos/${REPO}/collaborators/${_login}/permission" \
+  # URL-encode the login before it becomes a path segment, the same way
+  # base_ref is handled below. GitHub logins are restricted in practice, but
+  # this value arrives from event payload rather than from us, and an unexpected
+  # character would corrupt the path and fail into the error branch as if the
+  # user simply had no write access - a silent wrong answer on a permission
+  # check, which is the worst place to have one.
+  _login_enc="$(jq -rn --arg v "$_login" '$v|@uri')"
+  if _perm="$(gh api "repos/${REPO}/collaborators/${_login_enc}/permission" \
                 --jq '.permission // empty' 2>"$_perm_err")"; then
     rm -f "$_perm_err"
   else
@@ -351,7 +396,7 @@ log "reviewing ${REPO}#${PR}"
 
 # Remove every temp file on exit. Pre-declared so the trap is safe under `set -u` even if the
 # script exits before a given file is created.
-diff_file= diff_err= meta_file= prompt_file= out_file= raw= body_file= agy_diff_file= agy_work_dir=
+diff_file= diff_err= meta_file= prompt_file= out_file= raw= body_file= agy_diff_file= agy_work_dir= jq_err= prior_body_file= archived_file= api_err=
 # Set to 1 if agy printed its interactive OAuth login flow instead of a review (lapsed session);
 # gates the no-post abort below. Pre-declared so `${auth_failed:-0}` is set-u-safe on every path.
 auth_failed=0
@@ -392,7 +437,8 @@ cleanup() {
   # abort DURING cleanup -- temp files left behind, and a confusing error masking the real exit
   # cause. The pre-declaration stays and is still the actual guarantee; this is the cheap second
   # line for a function that only ever runs while something else is going wrong.
-  for f in "${diff_file:-}" "${diff_err:-}" "${meta_file:-}" "${out_file:-}" "${raw:-}" "${body_file:-}"; do
+  for f in "${diff_file:-}" "${diff_err:-}" "${meta_file:-}" "${out_file:-}" "${raw:-}" "${body_file:-}" \
+           "${jq_err:-}" "${prior_body_file:-}" "${archived_file:-}" "${api_err:-}"; do
     [ -n "$f" ] && doomed+=("$f")
   done
   if [ -z "$keep_set" ]; then
@@ -463,27 +509,35 @@ esac
 # ambient credential helper.
 # ($diff_err was allocated alongside $diff_file / $meta_file above, so the cleanup
 # trap never references it before it exists.)
+# >>> SELFTEST-EXTRACT: diff-limit classifier
+# GitHub refuses an oversized diff TWO ways, with different wording: over
+# 20,000 lines, and over 300 FILES. Both are HTTP 406 and both mean the same
+# thing here -- the PR is too big for the API, not that anything went wrong --
+# so both must reach the local fallback. Matching only the `lines` variant made
+# a wide-but-shallow PR -- hundreds of files, well under the line limit, as a
+# bulk regeneration of test baselines produces -- fail the review outright
+# instead of falling back.
+#
+# On a match, print the limit that actually fired and succeed. Reporting
+# "20,000-line" for a file-count refusal is the same class of misleading triage
+# signal that made this bug look like a runner auth failure in the first place.
+# A function, not inline, so the self-test executes the real matcher and label
+# against both GitHub messages rather than grepping for its text.
+diff_limit_hit() {
+  grep -qiE 'diff exceeded the maximum number of (lines|files)' "$1" || return 1
+  if grep -qi 'maximum number of files' "$1"; then
+    printf '300-file'
+  else
+    printf '20,000-line'
+  fi
+}
+# <<< SELFTEST-EXTRACT
 if ! gh pr diff "$PR" --repo "$REPO" > "$diff_file" 2>"$diff_err"; then
-  # GitHub refuses an oversized diff TWO ways, with different wording: over
-  # 20,000 lines, and over 300 FILES. Both are HTTP 406 and both mean the same
-  # thing here -- the PR is too big for the API, not that anything went wrong --
-  # so both must reach the local fallback. Matching only the `lines` variant made
-  # a wide-but-shallow PR -- hundreds of files, well under the line limit, as a
-  # bulk regeneration of test baselines produces -- fail the review outright
-  # instead of falling back.
-  if grep -qiE 'diff exceeded the maximum number of (lines|files)' "$diff_err"; then
+  if hit="$(diff_limit_hit "$diff_err")"; then
     base_ref="$(jq -r '.baseRefName // empty' "$meta_file")"
     if [ -z "$base_ref" ] || [ "$base_ref" = "null" ]; then
       log "diff exceeds the API limit and the base branch is unknown; cannot fall back"
       exit 1
-    fi
-    # Name the limit that actually fired. Reporting "20,000-line" for a
-    # file-count refusal is the same class of misleading triage signal that
-    # made this bug look like a runner auth failure in the first place.
-    if grep -qi 'maximum number of files' "$diff_err"; then
-      hit="300-file"
-    else
-      hit="20,000-line"
     fi
     log "diff exceeds GitHub's ${hit} API limit; falling back to a local git diff"
     pr_ref="refs/agy/pr-${PR}"
@@ -501,6 +555,19 @@ if ! gh pr diff "$PR" --repo "$REPO" > "$diff_file" 2>"$diff_err"; then
     # runner is a shared workstation, so that window is real. `/proc/<pid>/environ` is
     # restricted to the same UID, so moving the secret from argv to the environment is what
     # actually closes it. Do not "simplify" this back to `git -c`.
+    # Every fetch on this path goes through agy_fetch so they all carry the header: the
+    # follow-up merge-base fetches below once omitted it, which fails on a private repo
+    # (agy review, switch2-hub-patcher PR #1). Token first, then git's ambient credentials.
+    agy_fetch() {
+      if [ -n "${GH_TOKEN:-}" ] \
+         && GIT_CONFIG_COUNT=1 \
+            GIT_CONFIG_KEY_0="http.extraheader" \
+            GIT_CONFIG_VALUE_0="AUTHORIZATION: bearer ${GH_TOKEN}" \
+            git fetch --no-tags --quiet "$@" 2>/dev/null; then
+        return 0
+      fi
+      git fetch --no-tags --quiet "$@" 2>/dev/null
+    }
     if [ -n "${GH_TOKEN:-}" ] \
        && GIT_CONFIG_COUNT=1 \
           GIT_CONFIG_KEY_0="http.extraheader" \
@@ -537,13 +604,28 @@ if ! gh pr diff "$PR" --repo "$REPO" > "$diff_file" 2>"$diff_err"; then
       # the path at the fragment. Either would fail silently into the `|| true` below,
       # which is exactly the class of bug this whole path exists to avoid.
       base_enc="$(jq -rn --arg v "$base_ref" '$v|@uri')"
+      compare_err="$(mktemp)"
       api_base="$(gh api "repos/${REPO}/compare/${base_enc}...${head_sha}" \
-                    --jq '.merge_base_commit.sha' 2>/dev/null || true)"
+                    --jq '.merge_base_commit.sha' 2>"$compare_err" || true)"
+      [ -n "$api_base" ] || log "compare API gave no merge base ($(head -c 300 "$compare_err" | tr '\n' ' '))"
+      rm -f "$compare_err"
       if [ -n "$api_base" ] && [ "$api_base" != "null" ]; then
-        if git fetch --no-tags --quiet origin "$api_base" 2>/dev/null \
-           || git fetch --no-tags --quiet --deepen=250 origin "${fetch_refspecs[@]}" 2>/dev/null; then
-          merge_base="$(git merge-base "$base_local" "$pr_ref" 2>/dev/null || echo "$api_base")"
-          log "shallow clone: merge base ${merge_base} resolved via the compare API"
+        if agy_fetch origin "$api_base" \
+           || agy_fetch --deepen=250 origin "${fetch_refspecs[@]}"; then
+          merge_base="$(git merge-base "$base_local" "$pr_ref" 2>/dev/null || true)"
+          # Fall back to the API's merge base only if that commit is actually
+          # here. When the SHA fetch fails and `--deepen=250` succeeds without
+          # reaching it, the object is absent, and using it anyway surfaced later
+          # as the generic "local git diff failed" -- the wrong diagnosis.
+          if [ -z "$merge_base" ]; then
+            if git cat-file -e "${api_base}^{commit}" 2>/dev/null; then
+              merge_base="$api_base"
+            else
+              log "compare API merge base ${api_base} is not in the local clone after both fetches"
+            fi
+          fi
+          [ -z "$merge_base" ] \
+            || log "shallow clone: merge base ${merge_base} resolved via the compare API"
         fi
       fi
     fi
@@ -571,8 +653,76 @@ truncated=""
 # limit. One minified-asset line in a diff can exceed the whole budget by itself, so "cut at a line
 # boundary" degenerates to either overshooting the cap or emitting nothing. Exact where the limit is
 # real, tolerant where the damage is already handled.
-if [ "$(wc -c < "$diff_file")" -gt "$MAX_DIFF_BYTES" ]; then
-  head -c "$MAX_DIFF_BYTES" "$diff_file" > "$diff_file.cut" && mv "$diff_file.cut" "$diff_file"
+# --- truncation helpers ---------------------------------------------------------
+# Every byte cap in this script goes through these, so the self-test can EXECUTE them rather than
+# grep for their text (CodeRabbit review, VeridianOS PR #5). A model that is handed a cut input must
+# be told so, and a notice appended before a later cut can be cut away -- so each cap that can hide
+# content writes its own notice AFTER cutting. Notices are plain ASCII: character count = bytes.
+# >>> SELFTEST-EXTRACT: truncation helpers
+# Cut file $1 to at most $2 bytes. Succeeds only when it actually cut. A non-positive size is
+# refused, never handed to GNU `head -c -N`, which prints all-but-the-last-N bytes (a tiny
+# MAX_BODY_BYTES or MAX_PROMPT_BYTES minus a notice gets there; agy review of SLAC #24).
+agy_cut_file() {
+  [ "$2" -gt 0 ] 2>/dev/null || return 1
+  [ "$(wc -c < "$1")" -gt "$2" ] || return 1
+  head -c "$2" "$1" > "$1.cut" && mv "$1.cut" "$1"
+}
+# Prompt text telling the model the diff it was given stops after $1 bytes.
+agy_diff_truncation_notice() {
+  printf '\n--- NOTE: TRUNCATED DIFF ---\n'
+  printf 'The diff above is only the first %s bytes; everything after that was cut and you have NOT\n' "$1"
+  printf 'seen it. Say at the top of your review that it covers a truncated diff, and do not state or\n'
+  printf 'imply that the whole change was reviewed.\n'
+}
+# Cap prompt file $1 at $2 bytes, keeping room for a notice written after the cut.
+agy_cap_prompt() {
+  local notice=$'\n\n--- NOTE: TRUNCATED PROMPT ---\nThe prompt, including the diff, was cut at the argument-size limit; you have NOT seen\nthe rest. Say at the top of your review that it covers a truncated diff, and do not state or\nimply that the whole change was reviewed.\n'
+  # Size FIRST, like agy_cap_round: cutting to the budget minus the notice before asking whether
+  # the prompt even exceeds the budget cut prompts that already fit, and told the model a whole
+  # diff was truncated (agy reviews of SLAC #24 and RustyNES_MiSTer #78).
+  [ "$(wc -c < "$1")" -gt "$2" ] || return 1
+  agy_cut_file "$1" "$(( $2 - ${#notice} ))" || return 1
+  printf '%s' "$notice" >> "$1"
+}
+# Cap review output $1 at $2 bytes so the posted comment fits GitHub's limit, saying what was cut.
+agy_cap_round() {
+  local size notice
+  size="$(wc -c < "$1")"
+  [ "$size" -gt "$2" ] || return 1
+  notice="$(printf '\n\n> **Review truncated:** about %s bytes of this round were omitted to stay under GitHub'"'"'s comment size limit.' "$(( size - $2 + 200 ))")"
+  # -1: the trailing newline written below is part of the budget too.
+  agy_cut_file "$1" "$(( $2 - ${#notice} - 1 ))" || return 1
+  printf '%s\n' "$notice" >> "$1"
+}
+# Drop invalid/partial UTF-8 sequences from file $1 in place (a byte cut can split one). Every byte
+# cap that feeds agy or a PR comment calls this, so the two paths cannot drift apart again (the
+# review-output path once had iconv only; agy review, switch2-hub-patcher PR #1). iconv first
+# (glibc and macOS ship it), then python3 -- also when iconv is present but fails. That case is the
+# common one, not an edge: GNU `iconv -c` writes the cleaned bytes but EXITS 1 whenever it dropped
+# anything ("incomplete character or shift sequence at end of buffer"), i.e. on exactly the byte-cut
+# input this exists for. The old iconv-only branches discarded that output, so on glibc hosts the
+# scrub was a no-op whenever it mattered (measured: glibc 2.44). A sanitizer that
+# exits 0 with ZERO bytes is a malfunction, not a result: replace the file only with non-empty
+# output, otherwise keep the original. A failed mv is fatal under `set -e`; the function returns
+# 0 when no sanitizer succeeded, so a host with neither tool proceeds with the original bytes.
+agy_scrub_utf8() {
+  if command -v iconv >/dev/null 2>&1 \
+      && iconv -c -f UTF-8 -t UTF-8 "$1" > "$1.utf8" 2>/dev/null && [ -s "$1.utf8" ]; then
+    mv "$1.utf8" "$1"; return
+  fi
+  rm -f "$1.utf8"
+  if command -v python3 >/dev/null 2>&1 \
+      && python3 -c 'import sys; sys.stdout.buffer.write(open(sys.argv[1],"rb").read().decode("utf-8","ignore").encode("utf-8"))' \
+           "$1" > "$1.utf8" 2>/dev/null && [ -s "$1.utf8" ]; then
+    mv "$1.utf8" "$1"; return
+  fi
+  rm -f "$1.utf8"
+}
+# <<< SELFTEST-EXTRACT
+
+diff_truncated=
+if agy_cut_file "$diff_file" "$MAX_DIFF_BYTES"; then
+  diff_truncated=1
   truncated=$'\n\n> Note: the diff exceeded '"${MAX_DIFF_BYTES}"$' bytes and was truncated for this review.'
   log "diff truncated to the ${MAX_DIFF_BYTES}-byte sanity cap"
 fi
@@ -650,7 +800,7 @@ if [ "$use_file" = "1" ]; then
   cp "$diff_file" "$agy_diff_file"
   {
     printf '\n--- UNIFIED DIFF (in a file) ---\n'
-    printf 'The full unified diff for this PR is in the file at the absolute path `%s`\n' "$agy_diff_file"
+    printf 'The unified diff for this PR is in the file at the absolute path `%s`\n' "$agy_diff_file"
     printf '(it is too large to inline). Read that file IN FULL with your file-reading tool first, then\n'
     printf 'produce the review above from its actual contents. Do not review from the PR title alone.\n'
   } >> "$prompt_file"
@@ -662,43 +812,38 @@ else
   { printf '\n--- UNIFIED DIFF ---\n'; cat "$diff_file"; } >> "$prompt_file"
   log "diff is ${diff_bytes} bytes; inlined into the prompt"
 fi
+# The sanity cap above may have cut the diff. The note in `$truncated` used to reach only the
+# posted comment, so the model was told it had the whole diff and could present a partial review
+# as complete. Say so in the prompt itself, whichever way the diff was delivered.
+if [ -n "$diff_truncated" ]; then
+  agy_diff_truncation_notice "$MAX_DIFF_BYTES" >> "$prompt_file"
+fi
 
 # --- guard the argv size (E2BIG) -----------------------------------------------
 # agy takes the prompt as a --print VALUE, so the whole prompt is one execve argument
 # and must stay under MAX_ARG_STRLEN (128 KiB). MAX_DIFF_BYTES bounds the diff, but the
 # boilerplate + style guide ride on top, so cap the assembled prompt as a hard backstop.
-if [ "$(wc -c < "$prompt_file")" -gt "$MAX_PROMPT_BYTES" ]; then
-  head -c "$MAX_PROMPT_BYTES" "$prompt_file" > "$prompt_file.cut" && mv "$prompt_file.cut" "$prompt_file"
+#
+# Cutting the tail also cuts whatever notice was appended there (the TRUNCATED DIFF note above),
+# and the model would never learn that its input was cut. So the cut leaves room for a notice of
+# its own, written AFTER the cut where nothing can remove it (agy review on VeridianOS PR #5).
+# The notice is plain ASCII, so its character count is its byte count.
+if agy_cap_prompt "$prompt_file" "$MAX_PROMPT_BYTES"; then
   truncated+=$'\n\n> Note: the review prompt was capped to '"${MAX_PROMPT_BYTES}"$' bytes (execve arg-size limit).'
   log "prompt capped to ${MAX_PROMPT_BYTES} bytes (execve arg-size ceiling)"
 fi
 # Byte truncation (here or in the MAX_DIFF_BYTES cap above) can slice a multi-byte UTF-8 sequence.
 # agy is a Rust binary and std::env::args() PANICS on a non-UTF-8 argument, which would reintroduce
 # an instant startup failure -- exactly the class of bug this guard exists to prevent. Drop any
-# invalid/partial sequences with iconv (glibc + macOS ship it), and fall back to python3 (present on
-# every CI runner) if iconv is absent, so a no-iconv host can't leave a split sequence in the prompt.
-# Explicit branches, not `&& mv || rm`: that idiom masks an mv failure and would then feed agy the
-# original (possibly split) bytes. A successful sanitize must replace the file; a failed mv is fatal
-# (set -e); a failed/absent sanitizer leaves the original and we proceed (it may already be clean, and
-# any residual invalid byte now surfaces via the captured stderr rather than a silent instant crash).
-# The `[ -s ... ]` guard is deliberate: the prompt is always non-empty here (boilerplate at
-# minimum), so a sanitizer that exits 0 but emits ZERO bytes is a malfunction, and mv-ing that
-# empty file over $prompt_file would wipe the prompt and hand agy nothing. Replace only on a
-# non-empty result; otherwise discard it and proceed with the original (already likely clean).
-if command -v iconv >/dev/null 2>&1; then
-  if iconv -c -f UTF-8 -t UTF-8 "$prompt_file" > "$prompt_file.utf8" 2>/dev/null && [ -s "$prompt_file.utf8" ]; then
-    mv "$prompt_file.utf8" "$prompt_file"
-  else
-    rm -f "$prompt_file.utf8"
-  fi
-elif command -v python3 >/dev/null 2>&1; then
-  if python3 -c 'import sys; sys.stdout.buffer.write(open(sys.argv[1],"rb").read().decode("utf-8","ignore").encode("utf-8"))' \
-       "$prompt_file" > "$prompt_file.utf8" 2>/dev/null && [ -s "$prompt_file.utf8" ]; then
-    mv "$prompt_file.utf8" "$prompt_file"
-  else
-    rm -f "$prompt_file.utf8"
-  fi
-fi
+# invalid/partial sequences with `agy_scrub_utf8` (iconv, then python3), so a host without iconv can't
+# leave a split sequence in the prompt. Explicit branches inside it, not `&& mv || rm`: that idiom
+# masks an mv failure and would then feed agy the original (possibly split) bytes. A successful
+# sanitize must replace the file; a failed mv is fatal (set -e); a failed/absent sanitizer leaves the
+# original and we proceed (it may already be clean, and any residual invalid byte now surfaces via the
+# captured stderr rather than a silent instant crash). Its non-empty guard matters here: the prompt is
+# always non-empty (boilerplate at minimum), so mv-ing an empty sanitizer result over $prompt_file
+# would wipe the prompt and hand agy nothing.
+agy_scrub_utf8 "$prompt_file"
 
 # Escape hatch for verifying the diff-acquisition and prompt-assembly path (including
 # the large-PR API-limit fallback and the inline/file decision) without spending an agy
@@ -909,6 +1054,15 @@ for (( attempt=1; attempt<=AGY_RETRIES; attempt++ )); do
     service_errors=$(( ${service_errors:-0} + 1 ))
   fi
 
+  # A timed-out turn is a partial review at best. Discard it and retry: posting half a review as
+  # if it were the whole one is the failure the service-error guard exists to prevent, one cause
+  # later. Counted like backend errors, so the final log line names the real cause.
+  if print_timeout_present "$out_file"; then
+    log "agy hit its print timeout (${AGY_PRINT_TIMEOUT}) before finishing (attempt ${attempt}/${AGY_RETRIES}); discarding the partial output"
+    : > "$out_file"
+    print_timeouts=$(( ${print_timeouts:-0} + 1 ))
+  fi
+
   have_text "$out_file" && break
   if [ "$attempt" -lt "$AGY_RETRIES" ]; then
     delay=$(( AGY_RETRY_DELAY * attempt ))
@@ -916,7 +1070,12 @@ for (( attempt=1; attempt<=AGY_RETRIES; attempt++ )); do
     sleep "$delay"
   fi
 done
-exec 9>&- 2>/dev/null || true    # release the agy lock so the next queued job proceeds
+# Release the agy lock so the next queued job proceeds. NO redirection on this `exec`: a bare
+# `exec` applies its redirections to the rest of the SCRIPT, so the `2>/dev/null` that used to be
+# here sent every later `log` line (they write to stderr) to /dev/null -- "posted", "updated",
+# and every failure cause alike. A healthy run and a silent crash looked identical in CI for as
+# long as that line existed (found 2026-09-28 on RustyNES #563). Closing an fd needs no guard.
+exec 9>&-
 
 # Lapsed-auth abort takes precedence over the generic empty-output path: it is a specific,
 # actionable cause (re-auth agy on the runner), not a transient backend blip, and we already
@@ -938,6 +1097,9 @@ if backend_outage_should_fail "${service_errors:-0}" "$out_file"; then
 fi
 
 if ! have_text "$out_file"; then
+  if [ "${print_timeouts:-0}" -gt 0 ]; then
+    log "agy hit its print timeout (${AGY_PRINT_TIMEOUT}) on ${print_timeouts} of ${AGY_RETRIES} attempt(s) and produced no complete review. Raise AGY_PRINT_TIMEOUT for this repository's diffs, then re-run with '/agy-review'."
+  fi
   log "no review output after ${AGY_RETRIES} attempt(s). Check $LOG and confirm 'agy -p \"hi\"' works for this user."
   # Surface agy's stderr into the job log. RUNNER_TEMP is wiped between jobs, so a bare
   # `exit 1` otherwise leaves the real cause invisible in CI (E2BIG, auth, backend, ...).
@@ -955,9 +1117,17 @@ if ! have_text "$out_file"; then
 fi
 
 # --- assemble the comment body -------------------------------------------------
+# MAX_BODY_BYTES bounded only the archive, so a review longer than GitHub's comment limit failed to
+# post at all (CodeRabbit review, VeridianOS PR #5). Bound the new round too, leaving room for the
+# framing and some archive, and say what was cut. A byte cut can split a UTF-8 sequence: scrub it.
+if agy_cap_round "$out_file" "$(( MAX_BODY_BYTES - 4096 ))"; then
+  log "review output capped to fit the ${MAX_BODY_BYTES}-byte comment budget"
+  agy_scrub_utf8 "$out_file"
+fi
 body_file="$(mktemp)"
 {
   printf '%s\n' "$MARKER"
+  printf '%s%s -->\n' "$AGY_REVIEWED_AT_PREFIX" "$(date -u +'%Y-%m-%d %H:%M UTC')"
   printf '## Antigravity review (Gemini via Ultra)\n\n'
   cat "$out_file"
   printf '%s' "$truncated"
@@ -988,6 +1158,9 @@ fi
 # costs only the archive, never the review.
 prior_id=""
 prior_body_file="$(mktemp)"
+# gh's stderr from the calls below. Each still falls back to a fresh post, but says WHY (expired
+# token, rate limit, 404), which a bare `2>/dev/null` threw away (agy review, VeridianOS PR #5).
+api_err="$(mktemp)"
 # `--paginate` emits one top-level JSON array PER PAGE, concatenated — not one merged array.
 # jq then runs the filter once per array, so `[ ... ] | first | .id` yields one id per page
 # that matches rather than one id overall. On a thread short enough to fit a single page that
@@ -996,18 +1169,27 @@ prior_body_file="$(mktemp)"
 # silently degrades into a duplicate post — exactly on the long threads where the archive
 # matters most. `jq -s add` merges the pages into the single array the filter assumes.
 # (`gh api --slurp` does this too, but only on gh >= 2.42; this works on any version.)
-if prior_json="$(gh api "repos/${REPO}/issues/${PR}/comments" --paginate 2>/dev/null \
+if prior_json="$(gh api "repos/${REPO}/issues/${PR}/comments" --paginate 2>"$api_err" \
                   | jq -s 'add // []' 2>/dev/null)"; then
-  prior_id="$(printf '%s' "$prior_json" | jq -r --arg marker "$MARKER" "$SELECT_OURS_JQ" 2>/dev/null || true)"
+  # Both jq steps still fall back to a fresh post (losing the archive, never the review), but the
+  # failure is LOGGED: swallowing it made a broken filter indistinguishable from a first review,
+  # and the archive would vanish with nothing to say why (agy review on VeridianOS PR #5).
+  jq_err="$(mktemp)"
+  if ! prior_id="$(printf '%s' "$prior_json" | jq -r --arg marker "$MARKER" "$SELECT_OURS_JQ" 2>"$jq_err")"; then
+    log "warning: finding the previous review comment failed (jq: $(head -c 300 "$jq_err" | tr '\n' ' ')); posting a fresh review without the archive"
+    prior_id=""
+  fi
   if [ -n "$prior_id" ] && [ "$prior_id" != "null" ]; then
-    printf '%s' "$prior_json" \
-      | jq -r --argjson id "$prior_id" '.[] | select(.id == $id) | .body' > "$prior_body_file" 2>/dev/null \
-      || : > "$prior_body_file"
+    if ! printf '%s' "$prior_json" \
+        | jq -r --argjson id "$prior_id" '.[] | select(.id == $id) | .body' > "$prior_body_file" 2>"$jq_err"; then
+      log "warning: reading the previous review comment failed (jq: $(head -c 300 "$jq_err" | tr '\n' ' ')); posting a fresh review without the archive"
+      : > "$prior_body_file"
+    fi
   else
     prior_id=""
   fi
 else
-  log "warning: could not list PR comments; posting a fresh review without the archive"
+  log "warning: could not list PR comments ($(head -c 300 "$api_err" | tr '\n' ' ')); posting a fresh review without the archive"
 fi
 
 if [ -n "$prior_id" ] && [ -s "$prior_body_file" ]; then
@@ -1019,14 +1201,8 @@ if [ -n "$prior_id" ] && [ -s "$prior_body_file" ]; then
   prior_archive="$(agy_body_archive < "$prior_body_file")"
 
   archived_file="$(mktemp)"
-  {
-    printf '%s\n' "$AGY_ROUND_MARK"
-    printf '<details>\n<summary>Round reviewed at %s</summary>\n\n' \
-      "$(date -u +'%Y-%m-%d %H:%M UTC')"
-    printf '%s\n' "$prior_head"
-    printf '\n</details>\n'
-    printf '%s\n' "$prior_archive"
-  } > "$archived_file"
+  agy_assemble_archive "$prior_head" "$prior_archive" "$(date -u +'%Y-%m-%d %H:%M UTC')" \
+    > "$archived_file"
 
   # Drop the oldest rounds until the whole comment fits, and SAY SO. A silent truncation
   # here would look identical to "there were never any earlier rounds", which is the exact
@@ -1043,14 +1219,18 @@ if [ -n "$prior_id" ] && [ -s "$prior_body_file" ]; then
   done
 
   {
-    printf '\n%s\n' "$AGY_ARCHIVE_START"
+    # Order matters. The `<details>` wrapper and the dropped-round note sit OUTSIDE the
+    # start/end sentinels, so `agy_body_archive` extracts only the rounds themselves. With
+    # the wrapper inside, every run re-captured it and nested another layer around it.
+    printf '\n%s\n' "$AGY_ARCHIVE_SECTION"
     if [ "$dropped" -gt 0 ]; then
       printf '<sub>%d earlier round(s) dropped to stay under GitHub'"'"'s comment size limit.</sub>\n\n' "$dropped"
     fi
     printf '<details>\n<summary><b>Earlier review rounds</b> (newest first)</summary>\n\n'
+    printf '%s\n' "$AGY_ARCHIVE_START"
     cat "$archived_file"
-    printf '\n</details>\n'
     printf '%s\n' "$AGY_ARCHIVE_END"
+    printf '\n</details>\n'
   } >> "$body_file"
   rm -f "$archived_file"
 
@@ -1070,12 +1250,12 @@ if [ -n "$prior_id" ] && [ -s "$prior_body_file" ]; then
   # JSON string by construction, so no shell quoting or `-F` type-coercion can
   # reinterpret a body that happens to look like a number or a boolean.
   if jq -n --rawfile b "$body_file" '{body: $b}' \
-       | gh api -X PATCH "repos/${REPO}/issues/comments/${prior_id}" --input - >/dev/null 2>&1; then
+       | gh api -X PATCH "repos/${REPO}/issues/comments/${prior_id}" --input - >/dev/null 2>"$api_err"; then
     log "updated review comment ${prior_id} on ${REPO}#${PR} (earlier rounds archived in place)"
     rm -f "$prior_body_file"
     exit 0
   fi
-  log "warning: could not edit comment ${prior_id}; posting a fresh review instead"
+  log "warning: could not edit comment ${prior_id} ($(head -c 300 "$api_err" | tr '\n' ' ')); posting a fresh review instead"
 fi
 rm -f "$prior_body_file"
 
