@@ -102,90 +102,10 @@ jobs:
           # supplies the token per command via `http.extraheader` rather than persisting it.
           persist-credentials: false
 
-      # BOOTSTRAP ONLY. On the very first install in a repo the scripts exist on the PR
-      # branch but not yet on the default branch, so the run step below chmods files that
-      # are not there and the job dies before it can review anything. Observed on
-      # CyberChef-MCP PR #41, and predicted by Copilot review on that same PR.
-      #
-      # This step checks out and then EXECUTES code from the PR head on a self-hosted runner,
-      # which is normally the thing you must never do. Three properties are what make it
-      # defensible here, and all three must hold — if you are editing this step, they are the
-      # invariant, not the YAML:
-      #
-      #  1. It fires only when the default branch has no reviewer at all (`hashFiles` empty),
-      #     i.e. exactly once in a repository's life, and never again after that PR merges.
-      #  2. The head must be a branch in THIS repository, so a fork PR can never reach it.
-      #  3. The PR author must hold write access AT RUN TIME, verified against the permissions
-      #     API by the step below — not inferred from `author_association`, and not merely
-      #     implied by their having been able to push the branch at some point in the past.
-      #     This is what closes the revoked-collaborator gap: a stale branch pushed by someone
-      #     whose access was later removed no longer bootstraps.
-      #
-      # Worth stating plainly, because it is what bounds the exposure: `pull_request` runs the
-      # workflow definition from the PR branch. Anyone who can satisfy (2) and (3) can already
-      # rewrite THIS FILE on their branch and have it execute on the runner. The bootstrap
-      # therefore grants no capability that the event type has not already granted to the same
-      # set of people. It is not a reason to relax any of the three conditions.
-      - name: Check bootstrap author still has write access
-        id: agy_bootstrap_auth
-        if: >-
-          hashFiles('scripts/agy-review.sh') == '' &&
-          github.event.pull_request.head.repo.full_name == github.repository
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-        run: |
-          set -eu
-          # Fails closed: an API error, an unknown login, or any role below `write` leaves
-          # `writer` unset, and the checkout below does not run.
-          #
-          # The failure REASON is surfaced, not swallowed. Denying silently makes "this person
-          # has no write access" (intended, one PR affected) indistinguishable from "the token
-          # lost its scope" (the bootstrap is dead for everyone) — an outage that reads as a
-          # decision. Redacted first: this log is public.
-          if perm="$(gh api "repos/${GITHUB_REPOSITORY}/collaborators/${PR_AUTHOR}/permission" \
-                       --jq '.permission // empty' 2>perm_err.txt)"; then
-            :
-          else
-            reason="$(tr '\n' ' ' < perm_err.txt \
-                        | sed -E 's/(gh[pousr]|github_pat)_[A-Za-z0-9_]+/<redacted-token>/g' \
-                        | cut -c1-300)"
-            echo "::warning::Reviewer bootstrap permission lookup failed for ${PR_AUTHOR}: ${reason}"
-            perm=""
-          fi
-          rm -f perm_err.txt
-          case "$perm" in
-            admin|maintain|write)
-              echo "writer=true" >> "$GITHUB_OUTPUT" ;;
-            *)
-              echo "::warning::Skipping reviewer bootstrap: ${PR_AUTHOR} has permission '${perm:-none}', write required." ;;
-          esac
-
-      - name: Bootstrap reviewer from PR head (first install only)
-        id: agy_bootstrap
-        if: steps.agy_bootstrap_auth.outputs.writer == 'true'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 1
-          persist-credentials: false
-          path: .agy-bootstrap
-
-      - name: Install bootstrapped reviewer
-        if: steps.agy_bootstrap.outcome == 'success'
-        run: |
-          set -eu
-          echo "::notice::Default branch has no reviewer yet; bootstrapping from the PR head."
-          mkdir -p scripts
-          cp .agy-bootstrap/scripts/agy-review.sh \
-             .agy-bootstrap/scripts/_agy_print.sh \
-             .agy-bootstrap/scripts/_agy_comment_body.sh scripts/
-          # The style guide is read from the workspace too, and is equally absent on a first install.
-          if [ -f .agy-bootstrap/.github/agy-review.md ] && [ ! -f .github/agy-review.md ]; then
-            mkdir -p .github && cp .agy-bootstrap/.github/agy-review.md .github/
-          fi
-          rm -rf .agy-bootstrap
-
+      # The template's first-install BOOTSTRAP steps are deliberately omitted here: the reviewer
+      # is already on this repository's default branch, so they could never fire, and their
+      # PR-head checkout trips CodeQL's actions/untrusted-checkout (high) on every scan.
+      # Re-add them only for a repository that has never had the reviewer on its default branch.
       - name: Run Antigravity review
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

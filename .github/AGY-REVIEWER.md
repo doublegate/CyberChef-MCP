@@ -246,11 +246,11 @@ yours to accept:
   `scripts/agy-review.sh`, which asks the permissions API for the commenter and
   fails closed; the script also re-checks that the PR is not from a fork, because
   the `issue_comment` payload has no head-repo field for the `if:` to gate on.
-- **First-install bootstrap:** on a repository whose default branch has no
-  reviewer yet, the workflow runs the PR head's scripts once, only for a same-repo
-  branch whose author has write access *at run time*. Remove the bootstrap steps
-  once the reviewer is on the default branch (they also trip CodeQL's
-  `actions/untrusted-checkout`).
+- **First-install bootstrap:** the checked-in workflow has no bootstrap steps. On a
+  repository whose default branch has no reviewer yet, add the guarded bootstrap
+  steps first. They run the PR head's scripts once, only for a same-repo branch
+  whose author has write access *at run time*. Remove them once the reviewer is on
+  the default branch (they also trip CodeQL's `actions/untrusted-checkout`).
 - **Least surface in the job:** review-only prompt, `--sandbox`, no repo secrets
   (built-in `GITHUB_TOKEN` only), temp files cleaned via an `EXIT` trap.
 
