@@ -509,6 +509,12 @@ fi
 wf="$SCRIPT_DIR/../.github/workflows/antigravity-review.yml"
 wf_val() { sed -n "s/^[[:space:]]*$1:[[:space:]]*[\"']\{0,1\}\([0-9][0-9]*\).*/\1/p;T;q" "$wf"; }
 sh_default() { sed -n "s/^$1=\"\${$1:-\([0-9][0-9]*\)}\".*/\1/p;T;q" "$SCRIPT_DIR/agy-review.sh"; }
+# wf_val takes the first match: right while the workflow has one job. A second
+# timeout-minutes would make it read the wrong one (adopted from VeridianOS, PR #6 review).
+if [ "$(grep -c '^[[:space:]]*timeout-minutes:' "$wf")" -gt 1 ]; then
+  echo "  FAIL  more than one timeout-minutes in the workflow: wf_val needs the review job's"
+  fails=$((fails + 1))
+fi
 job_min="$(wf_val timeout-minutes)"
 max_s="$(wf_val AGY_PRINT_TIMEOUT_MAX_SECONDS)"; [ -n "$max_s" ] || max_s="$(sh_default AGY_PRINT_TIMEOUT_MAX_SECONDS)"
 lock_s="$(wf_val AGY_LOCK_WAIT)";               [ -n "$lock_s" ] || lock_s="$(sh_default AGY_LOCK_WAIT)"

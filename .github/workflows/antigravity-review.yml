@@ -29,10 +29,13 @@ jobs:
     # and spends the owner's Google AI Ultra quota, so "who can start a run" is the
     # primary control):
     #  - pull_request: only from a branch in THIS repo. A FORK PR must never schedule
-    #    work on the self-hosted host. GitHub's "require approval for outside
-    #    collaborators" setting is belt-and-suspenders, not the gate — its default only
-    #    covers *first-time* contributors, so a returning outside contributor would
-    #    otherwise get a runner.
+    #    work on the self-hosted host. This `if:` alone cannot ensure that: for a
+    #    pull_request event GitHub runs the PR's own copy of this file, so a fork can
+    #    edit the condition away, or add a workflow of its own aimed at the `agy` label.
+    #    The gate for forks is the repository setting that requires approval for ALL
+    #    external contributors (approval_policy = all_external_contributors, see
+    #    .github/AGY-REVIEWER.md); GitHub's default covers only first-time contributors.
+    #    (Adopted from VeridianOS, whose copy corrected this.)
     #  - issue_comment: only `/agy-review`, and the association test below is a CHEAP
     #    PRE-FILTER, not the permission gate. `author_association` answers "what is this
     #    person's relationship to the repo", not "may they run code on my workstation":
