@@ -151,17 +151,60 @@ OAUTH_URL_RE='https?://accounts\.google\.com/o/oauth2'
 # URL is always present in a real login flow, so it alone is both necessary and sufficient; a
 # lapse is detected AND a leak is blocked by the same unconditional check.
 oauth_url_present() { [ -s "$1" ] && grep -qiE "$OAUTH_URL_RE" "$1"; }
+
+# Credential shapes that must never reach a public PR comment. Every pattern is anchored on a
+# leading non-identifier boundary, so an ordinary identifier (`task-...`, `disk-...`, a word ending
+# in `ghp`) cannot match and wrongly block a review. agy's --sandbox does NOT confine
+# reads (verified 2026-11-22: from the sandbox it read a canary file in $HOME with both its file
+# tool and a shell `cat`), so a prompt-injected diff could make it print a token from the runner
+# host. Fail closed on any match in agy's output. The log names only the KIND that matched, never
+# the value, since Actions logs of a public repository are public too.
+credential_kind_present() {
+  [ -s "$1" ] || return 1
+  local kind re
+  while IFS='|' read -r kind re; do
+    if grep -qE -- "$re" "$1"; then printf '%s' "$kind"; return 0; fi
+  done <<'CREDS'
+google-oauth-access-token|(^|[^A-Za-z0-9_-])ya29\.[0-9A-Za-z_-]{20,}
+google-oauth-refresh-token|(^|[^A-Za-z0-9_/-])1//0[0-9A-Za-z_-]{20,}
+github-token|(^|[^A-Za-z0-9_])gh[pousr]_[A-Za-z0-9]{30,}
+github-fine-grained-pat|(^|[^A-Za-z0-9_])github_pat_[A-Za-z0-9_]{40,}
+private-key-block|-----BEGIN [A-Z ]*PRIVATE KEY-----
+jwt|(^|[^A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}
+aws-access-key-id|(^|[^A-Za-z0-9])(AKIA|ASIA)[0-9A-Z]{16}([^A-Za-z0-9]|$)
+anthropic-key|(^|[^A-Za-z0-9_-])sk-ant-[A-Za-z0-9_-]{32,}
+openai-key|(^|[^A-Za-z0-9_-])sk-(proj-)?[A-Za-z0-9]{32,}([^A-Za-z0-9_-]|$)
+slack-token|(^|[^A-Za-z0-9_-])xox[abprs]-[A-Za-z0-9-]{10,}
+CREDS
+  return 1
+}
 # <<< SELFTEST-EXTRACT
 
 # --- configuration (all env-overridable from the workflow) ---------------------
 AGY_BIN="${AGY_BIN:-agy}"
 command -v "$AGY_BIN" >/dev/null 2>&1 || AGY_BIN="$HOME/.local/bin/agy"
+# Absolute paths before anything is created or a subshell changes directory: agy runs in a
+# subshell that first changes into the sandbox, so a relative TMPDIR (which every later mktemp honors), a relative
+# RUNNER_TEMP or a relative AGY_BIN would otherwise resolve against the sandbox.
+AGY_BIN="$(command -v "$AGY_BIN" 2>/dev/null || printf '%s' "$AGY_BIN")"
+case "$AGY_BIN" in /*) ;; *) AGY_BIN="$PWD/$AGY_BIN" ;; esac
+for _v in TMPDIR RUNNER_TEMP; do
+  case "${!_v:-}" in
+    ''|/*) ;;
+    *) if _abs="$(cd "${!_v}" 2>/dev/null && pwd -P)"; then export "$_v=$_abs"; else unset "$_v"; fi ;;
+  esac
+done
+unset _v _abs
 AGY_MODEL="${AGY_MODEL:-}"                 # empty = agy's configured default (Gemini 3.x Pro)
 AGY_EFFORT="${AGY_EFFORT:-high}"           # low|medium|high
 # Base timeout for a normal review. Scaled up for a large diff further down -- see
 # `scale_timeout_for_diff`. Set AGY_PRINT_TIMEOUT explicitly to pin it and skip the scaling.
 AGY_PRINT_TIMEOUT_EXPLICIT="${AGY_PRINT_TIMEOUT:+set}"
-AGY_PRINT_TIMEOUT="${AGY_PRINT_TIMEOUT:-5m}"
+# Base 10m (was 5m). Backported from three repositories that each pinned 10-15m after reviews
+# timed out at the old base: Infinity-Context PR #31 saw a 79 KB INLINED diff at high effort time
+# out twice at the scaled 367 s, and GH-ListRollup / RustyNES_MiSTer pinned 10m / 15m for the same
+# reason. The scaling below adds to this base for large diffs; the per-attempt cap still bounds it.
+AGY_PRINT_TIMEOUT="${AGY_PRINT_TIMEOUT:-10m}"
 # Seconds of budget per MiB of diff handed to agy, on top of the base. Reading a 1.6 MB patch and
 # reasoning over it is not work a five-minute budget can absorb, and the failure is indistinguishable
 # from a backend outage: `Error: timeout waiting for response`, three times, with no review.
@@ -175,7 +218,7 @@ AGY_PRINT_TIMEOUT_MAX_SECONDS="${AGY_PRINT_TIMEOUT_MAX_SECONDS:-1800}"
 
 # Both of the above reach `$(( ... ))`, so both are validated before they get there.
 # >>> SELFTEST-EXTRACT: numeric env validation
-# Validate and canonicalise a numeric setting that will reach an arithmetic expansion.
+# Validate and canonicalize a numeric setting that will reach an arithmetic expansion.
 #
 # @param $1 name of the variable to validate, assigned in place.
 # @param $2 default to fall back to when the value is not a non-negative decimal integer.
@@ -188,19 +231,19 @@ AGY_PRINT_TIMEOUT_MAX_SECONDS="${AGY_PRINT_TIMEOUT_MAX_SECONDS:-1800}"
 #     bash 5.3 (measured here): they reach the parser as a literal and are refused with
 #     "arithmetic syntax error: operand expected". This was reported in review as a CWE-78, and an
 #     earlier version of this comment asserted the execution -- WRONGLY, from a nested-quoting
-#     artefact in the test that ran it. It does not reproduce. What is left is still worth
+#     artifact in the test that ran it. It does not reproduce. What is left is still worth
 #     refusing: a value naming another variable silently means something other than what it says.
 #  2. Digits-only is not sufficient on its own. `09` is all digits, and bash reads the leading
 #     zero as OCTAL:
 #         $(( 1000000 * 09 / 1048576 ))   ->  value too great for base
 #     So a *valid* setting takes the script down under `set -e`. That one is demonstrated, not
-#     theoretical, and is the reason this function exists. Canonicalising to base 10 here, once,
+#     theoretical, and is the reason this function exists. Canonicalizing to base 10 here, once,
 #     means no downstream `$(( ))` has to remember `10#`.
 # The locals are `_nne_`-prefixed because this function assigns THROUGH A NAME the caller supplies.
 # Plain `name`/`val` locals shadow a caller variable of the same name, and the failure is silent --
-# `normalise_numeric_env val 240` reads and writes the local, leaving the caller's `val` untouched.
-# Verified: with unprefixed locals, `val=07; normalise_numeric_env val 240` leaves val as `07`.
-normalise_numeric_env() {
+# `normalize_numeric_env val 240` reads and writes the local, leaving the caller's `val` untouched.
+# Verified: with unprefixed locals, `val=07; normalize_numeric_env val 240` leaves val as `07`.
+normalize_numeric_env() {
   local _nne_name="$1" _nne_default="$2" _nne_val="${!1}"
   case "$_nne_val" in
     ""|*[!0-9]*)
@@ -210,8 +253,29 @@ normalise_numeric_env() {
   esac
 }
 # <<< SELFTEST-EXTRACT
-normalise_numeric_env AGY_TIMEOUT_SECONDS_PER_MIB   900
-normalise_numeric_env AGY_PRINT_TIMEOUT_MAX_SECONDS 1800
+normalize_numeric_env AGY_TIMEOUT_SECONDS_PER_MIB   900
+normalize_numeric_env AGY_PRINT_TIMEOUT_MAX_SECONDS 1800
+# >>> SELFTEST-EXTRACT: error cap validation
+# AGY_ERROR_MAX_BYTES is set above, inside the service-error block (which cannot call
+# normalize_numeric_env: it is defined later). A non-numeric value (GH-ListRollup PR #6) or 0
+# (PR #7) made service_error_present's `-le` test always fail, silently disabling the
+# backend-error guard. A function, so the selftest can run it with bad values (PR #7, round 2).
+agy_validate_error_cap() {
+  normalize_numeric_env AGY_ERROR_MAX_BYTES 2000
+  [ "$AGY_ERROR_MAX_BYTES" -gt 0 ] || { log "AGY_ERROR_MAX_BYTES=0 would disable the backend-error guard; using the default (2000)"; AGY_ERROR_MAX_BYTES=2000; }
+}
+# <<< SELFTEST-EXTRACT
+agy_validate_error_cap
+# OS-level isolation of agy (bubblewrap). agy's own --sandbox does NOT confine reads, and agy loads
+# the user's whole config (MCP servers, skills, hooks), so a prompt-injected diff could read host
+# files or drive powerful local tools. With `bwrap` (the default) agy runs in a jail with an empty
+# private HOME, read-only /usr and /etc, the review sandbox, and a D-Bus that is an xdg-dbus-proxy
+# exposing only agy's own Secret Service item. `none` runs agy unjailed (not recommended). A host
+# missing bwrap/xdg-dbus-proxy/gdbus fails closed rather than silently running unjailed.
+AGY_ISOLATION="${AGY_ISOLATION:-bwrap}"
+case "$AGY_ISOLATION" in bwrap|none) ;; *) echo "AGY_ISOLATION must be bwrap or none, got '$AGY_ISOLATION'" >&2; exit 1 ;; esac
+# Attributes agy uses to look up its keyring item (observed on the Secret Service bus).
+AGY_KEYRING_ATTRS="${AGY_KEYRING_ATTRS:-username=antigravity service=gemini}"
 AGY_DIFF_MODE="${AGY_DIFF_MODE:-auto}"     # auto|inline|file. A diff is passed to agy either inlined
                                            # in the --print prompt, or written to a FILE agy reads with
                                            # its own tools. `auto` inlines a diff that fits under the
@@ -220,6 +284,10 @@ AGY_DIFF_MODE="${AGY_DIFF_MODE:-auto}"     # auto|inline|file. A diff is passed 
 MAX_DIFF_BYTES="${MAX_DIFF_BYTES:-5000000}" # sanity cap on a pathological diff (5 MB). No longer the
                                            # arg-size limit -- a large diff goes to agy as a file, not
                                            # as an argv value -- just a guard against a runaway diff.
+# Same validation as the other numerics (agy review, GH-ListRollup PR #4): a non-numeric value such
+# as `5MB` failed agy_cut_file's `-gt 0` test and SILENTLY disabled the cap, and `0` does the same.
+normalize_numeric_env MAX_DIFF_BYTES 5000000
+[ "$MAX_DIFF_BYTES" -gt 0 ] || { log "MAX_DIFF_BYTES=0 would disable the sanity cap; using the default (5000000)"; MAX_DIFF_BYTES=5000000; }
 MAX_PROMPT_BYTES="${MAX_PROMPT_BYTES:-120000}" # hard ceiling on the INLINED prompt: agy takes it as a
                                            # --print VALUE (not stdin), and a single execve argument
                                            # cannot exceed MAX_ARG_STRLEN (PAGE_SIZE*32 = 128 KiB on
@@ -240,6 +308,12 @@ ARG_SIZE_CEILING=120000                     # hard cap: a configured MAX_PROMPT_
 # so without it the clamp is skipped and the `head -c "$MAX_PROMPT_BYTES"` prompt cap below runs
 # as GNU `head -c -1` (print all-but-last-byte) — silently defeating the E2BIG backstop. A
 # non-numeric value trips the `2>/dev/null` and is clamped too.
+#
+# normalize_numeric_env first (agy review, GH-ListRollup PR #4): `[ ]` reads `080000` as decimal and
+# lets it through, but the `$(( MAX_PROMPT_BYTES - ... ))` arithmetic below parses a leading zero as
+# octal and aborts the run under `set -e` ("value too great for base"). Normalizing strips the
+# leading zero and maps anything non-numeric (including a negative) to the default.
+normalize_numeric_env MAX_PROMPT_BYTES 120000
 if ! { [ "$MAX_PROMPT_BYTES" -gt 0 ] && [ "$MAX_PROMPT_BYTES" -le "$ARG_SIZE_CEILING" ]; } 2>/dev/null; then
   log "MAX_PROMPT_BYTES='${MAX_PROMPT_BYTES}' invalid, non-positive, or above the ${ARG_SIZE_CEILING}-byte ceiling; clamping"
   MAX_PROMPT_BYTES="$ARG_SIZE_CEILING"
@@ -253,13 +327,13 @@ STYLE_GUIDE="${STYLE_GUIDE:-.github/agy-review.md}"  # repo-relative; loaded if 
 LOG="${RUNNER_TEMP:-/tmp}/agy-review-${GITHUB_RUN_ID:-$$}.log"
 AGY_LOCK="${AGY_LOCK:-$HOME/.gemini/antigravity-cli/.agy-review.lock}"
 AGY_LOCK_WAIT="${AGY_LOCK_WAIT:-600}"      # seconds to wait for the agy lock before proceeding
-normalise_numeric_env AGY_LOCK_WAIT 600   # flock -w rejects a non-numeric value and aborts
+normalize_numeric_env AGY_LOCK_WAIT 600   # flock -w rejects a non-numeric value and aborts
 AGY_RETRIES="${AGY_RETRIES:-3}"            # attempts to get a usable agy response
 AGY_RETRY_DELAY="${AGY_RETRY_DELAY:-15}"   # base backoff seconds between retries (grows per attempt)
 # Both reach (( )) arithmetic: `08` would abort on an octal parse and `0` retries would skip every
 # attempt and report "no review output after 0 attempt(s)". Same validation as the other numerics.
-normalise_numeric_env AGY_RETRIES     3
-normalise_numeric_env AGY_RETRY_DELAY 15
+normalize_numeric_env AGY_RETRIES     3
+normalize_numeric_env AGY_RETRY_DELAY 15
 [ "$AGY_RETRIES" -ge 1 ] || AGY_RETRIES=1
 MARKER="<!-- antigravity-pr-review -->"
 
@@ -270,6 +344,10 @@ MARKER="<!-- antigravity-pr-review -->"
 . "$(dirname -- "${BASH_SOURCE[0]}")/_agy_comment_body.sh"
 
 MAX_BODY_BYTES="${MAX_BODY_BYTES:-60000}"
+# Reaches `$(( MAX_BODY_BYTES - 4096 ))`: `60k` or `060000` would abort the run there (agy review,
+# GH-ListRollup PR #4). It must also leave room for that 4096-byte reserve.
+normalize_numeric_env MAX_BODY_BYTES 60000
+[ "$MAX_BODY_BYTES" -gt 8192 ] || { log "MAX_BODY_BYTES=${MAX_BODY_BYTES} leaves no room for a review; using the default (60000)"; MAX_BODY_BYTES=60000; }
 
 # The jq program that finds THIS bot's existing review comment on the PR, so it can be edited
 # rather than replaced. Named, and exercised directly by `scripts/agy-review-selftest.sh`,
@@ -290,7 +368,7 @@ MAX_BODY_BYTES="${MAX_BODY_BYTES:-60000}"
 #
 # Do not "fix" that in advance by dropping the login and matching on `.user.type == "Bot"` plus the
 # marker. Under a PAT the comment's type is `"User"`, not `"Bot"`, so that clause fails in the same
-# scenario; and the marker is an HTML comment, so any bot that quotes or summarises a PR comment
+# scenario; and the marker is an HTML comment, so any bot that quotes or summarizes a PR comment
 # carries it along, which would let this script PATCH over ANOTHER bot's comment. Losing a review
 # that way is worse than posting a duplicate. Change this filter when the auth changes, not before,
 # and match on whatever identity the new credential actually presents.
@@ -305,6 +383,86 @@ readonly SELECT_OURS_JQ
 
 REPO="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY not set}"
 
+# The EXIT trap is installed HERE, before the first mktemp anywhere in the script (the first
+# is in agy_has_write_access, called from the event dispatch below). Installed later, an abort
+# during the permission lookup leaked its temp file, and the pre-declarations then reset
+# _perm_err so cleanup() could never see it (agy review, GH-ListRollup PR #6).
+# Remove every temp file on exit. Pre-declared so the trap is safe under `set -u` even if the
+# script exits before a given file is created.
+diff_file= diff_err= meta_file= prompt_file= out_file= raw= body_file= agy_diff_file= agy_sandbox= agy_jail_home= agy_jail_rt= agy_proxy_pid= jq_err= prior_body_file= archived_file= api_err=
+# Also created mid-flight (permission lookup, compare-API merge base, archive trimming); a signal
+# or abort while one of those commands runs would otherwise leak the file in /tmp.
+_perm_err='' compare_err='' trimmed=''
+# Set to 1 if agy printed its interactive OAuth login flow instead of a review (lapsed session);
+# gates the no-post abort below. Pre-declared so `${auth_failed:-0}` is set-u-safe on every path.
+auth_failed=0
+# Counts backend-error captures across attempts; see `service_error_present`. Pre-declared so
+# `${service_errors:-0}` is set-u-safe even on paths that never enter the retry loop.
+service_errors=0
+# Set when the large-diff fallback below creates refs/agy/* so the trap can remove them.
+agy_refs_created=
+# Set by the AGY_DRY_RUN block so cleanup KEEPS the two artifacts dry-run exists to expose. The
+# whole point of dry run is "let me look at the assembled prompt", and the EXIT trap fires on the
+# `exit 0` at the end of that block -- so it deleted the prompt on the way out, every time.
+# Everything else is still removed; only these two are spared, and their paths are printed.
+keep_artifacts=
+cleanup() {
+  # Built as an argv ARRAY rather than as `rm -f ${v:+"$v"} ...`.
+  #
+  # The problem being solved is the EMPTY operand: `rm -f ""` is silent and exits 0 on GNU
+  # coreutils -- which is why an unconditional `rm -f "$unset_var"` never surfaced on the Linux
+  # runner -- but BSD/macOS `rm` writes "No such file or directory" to stderr for it.
+  #
+  # A note for the next reader, because this was raised in review and the intuition is wrong:
+  # `rm -f ${v:+"$v"}` does NOT word-split. Bash honors the quotes inside the `:+` alternate
+  # word, so a path with a space or a glob character survives as one operand. Verified:
+  #
+  #     v='a*b';    rm -f ${v:+"$v"}   ->   + rm -f 'a*b'      (siblings axxb, ayb untouched)
+  #     v='a file'; rm -f ${v:+"$v"}   ->   one operand        (siblings a, file untouched)
+  #
+  # The array is used anyway, for a reason the expansion form genuinely does not cover: it lets
+  # `--` terminate option parsing, so a temp path that begins with `-` is treated as a path
+  # rather than as flags. An array element is also one word by construction, which does not
+  # depend on knowing that `:+` quoting rule.
+  local keep_set="${keep_artifacts:-}"
+  local -a doomed=()
+  local f
+  # `${v:-}` on every name, even though all of them are pre-declared at the top of the script and
+  # cannot be unset here. Belt-and-braces on purpose: this is an EXIT trap, so if a future edit
+  # ever moves the trap above the pre-declarations, the failure would be an `unbound variable`
+  # abort DURING cleanup -- temp files left behind, and a confusing error masking the real exit
+  # cause. The pre-declaration stays and is still the actual guarantee; this is the cheap second
+  # line for a function that only ever runs while something else is going wrong.
+  for f in "${diff_file:-}" "${diff_err:-}" "${meta_file:-}" "${out_file:-}" "${raw:-}" "${body_file:-}" \
+           "${jq_err:-}" "${prior_body_file:-}" "${archived_file:-}" "${api_err:-}" \
+           "${_perm_err:-}" "${compare_err:-}" "${trimmed:-}"; do
+    [ -n "$f" ] && doomed+=("$f")
+  done
+  if [ -z "$keep_set" ]; then
+    for f in "${prompt_file:-}" "${agy_diff_file:-}"; do
+      [ -n "$f" ] && doomed+=("$f")
+    done
+  fi
+  [ ${#doomed[@]} -gt 0 ] && rm -f -- "${doomed[@]}"
+  # agy's private working directory (see `agy_sandbox` below). It is this run's own `mktemp -d`,
+  # outside the checkout, so removing it whole cannot touch anything else. Kept on dry run (it holds
+  # the handed-off diff that dry run exists to expose).
+  if [ -n "${agy_sandbox:-}" ] && [ -d "$agy_sandbox" ] \
+     && { [ -z "$keep_set" ] || [ -z "${agy_diff_file:-}" ]; }; then
+    rm -rf -- "$agy_sandbox"   # an inline dry run has nothing in it to keep
+  fi
+  [ -n "${agy_proxy_pid:-}" ] && kill "$agy_proxy_pid" 2>/dev/null
+  [ -n "${agy_jail_home:-}" ] && [ -d "$agy_jail_home" ] && rm -rf -- "$agy_jail_home"
+  [ -n "${agy_jail_rt:-}" ] && [ -d "$agy_jail_rt" ] && rm -rf -- "$agy_jail_rt"
+  if [ -n "${agy_refs_created:-}" ] && [ -n "${PR:-}" ]; then
+    # Hooks and fsmonitor disabled: these git calls run after agy, with the job token in the
+    # environment, so they must not execute anything a compromised checkout could have planted.
+    git -c core.hooksPath=/dev/null -c core.fsmonitor=false update-ref -d "refs/agy/pr-${PR}" 2>/dev/null || true
+    git -c core.hooksPath=/dev/null -c core.fsmonitor=false update-ref -d "refs/agy/base-${PR}" 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT
+
 # Does $1 actually hold write access to this repository?
 #
 # `author_association` is NOT a permission check, which is the trap this replaces. It is a
@@ -314,7 +472,7 @@ REPO="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY not set}"
 # person schedule execution here" has to be answered by the permissions API, not inferred
 # from a label that was never meant to answer it.
 #
-# Fails CLOSED: any API error, missing token, or unrecognised role denies. A reviewer that
+# Fails CLOSED: any API error, missing token, or unrecognized role denies. A reviewer that
 # stops running is a visible annoyance; one that runs for the wrong person is not.
 #
 # But fail-closed makes the error TEXT load-bearing, which is why stderr is captured and logged
@@ -325,6 +483,9 @@ REPO="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY not set}"
 # an outage wearing a decision's clothes, and it would sit undiagnosed until someone noticed
 # reviews had quietly stopped.
 agy_has_write_access() {
+  # `local` like the other helpers -- except _perm_err, which stays global ON PURPOSE: the EXIT
+  # trap's cleanup() must see it to remove the temp file if the run aborts mid-lookup.
+  local _login _login_enc _perm
   _login="${1:-}"
   [ -n "$_login" ] || { log "no login to check for write access"; return 1; }
   _perm_err="$(mktemp)"
@@ -393,70 +554,6 @@ case "$PR" in
   ''|*[!0-9]*) log "invalid PR number '${PR}'; expected digits only"; exit 1 ;;
 esac
 log "reviewing ${REPO}#${PR}"
-
-# Remove every temp file on exit. Pre-declared so the trap is safe under `set -u` even if the
-# script exits before a given file is created.
-diff_file= diff_err= meta_file= prompt_file= out_file= raw= body_file= agy_diff_file= agy_work_dir= jq_err= prior_body_file= archived_file= api_err=
-# Set to 1 if agy printed its interactive OAuth login flow instead of a review (lapsed session);
-# gates the no-post abort below. Pre-declared so `${auth_failed:-0}` is set-u-safe on every path.
-auth_failed=0
-# Counts backend-error captures across attempts; see `service_error_present`. Pre-declared so
-# `${service_errors:-0}` is set-u-safe even on paths that never enter the retry loop.
-service_errors=0
-# Set when the large-diff fallback below creates refs/agy/* so the trap can remove them.
-agy_refs_created=
-# Set by the AGY_DRY_RUN block so cleanup KEEPS the two artefacts dry-run exists to expose. The
-# whole point of dry run is "let me look at the assembled prompt", and the EXIT trap fires on the
-# `exit 0` at the end of that block -- so it deleted the prompt on the way out, every time.
-# Everything else is still removed; only these two are spared, and their paths are printed.
-keep_artifacts=
-cleanup() {
-  # Built as an argv ARRAY rather than as `rm -f ${v:+"$v"} ...`.
-  #
-  # The problem being solved is the EMPTY operand: `rm -f ""` is silent and exits 0 on GNU
-  # coreutils -- which is why an unconditional `rm -f "$unset_var"` never surfaced on the Linux
-  # runner -- but BSD/macOS `rm` writes "No such file or directory" to stderr for it.
-  #
-  # A note for the next reader, because this was raised in review and the intuition is wrong:
-  # `rm -f ${v:+"$v"}` does NOT word-split. Bash honours the quotes inside the `:+` alternate
-  # word, so a path with a space or a glob character survives as one operand. Verified:
-  #
-  #     v='a*b';    rm -f ${v:+"$v"}   ->   + rm -f 'a*b'      (siblings axxb, ayb untouched)
-  #     v='a file'; rm -f ${v:+"$v"}   ->   one operand        (siblings a, file untouched)
-  #
-  # The array is used anyway, for a reason the expansion form genuinely does not cover: it lets
-  # `--` terminate option parsing, so a temp path that begins with `-` is treated as a path
-  # rather than as flags. An array element is also one word by construction, which does not
-  # depend on knowing that `:+` quoting rule.
-  local keep_set="${keep_artifacts:-}"
-  local -a doomed=()
-  local f
-  # `${v:-}` on every name, even though all of them are pre-declared at the top of the script and
-  # cannot be unset here. Belt-and-braces on purpose: this is an EXIT trap, so if a future edit
-  # ever moves the trap above the pre-declarations, the failure would be an `unbound variable`
-  # abort DURING cleanup -- temp files left behind, and a confusing error masking the real exit
-  # cause. The pre-declaration stays and is still the actual guarantee; this is the cheap second
-  # line for a function that only ever runs while something else is going wrong.
-  for f in "${diff_file:-}" "${diff_err:-}" "${meta_file:-}" "${out_file:-}" "${raw:-}" "${body_file:-}" \
-           "${jq_err:-}" "${prior_body_file:-}" "${archived_file:-}" "${api_err:-}"; do
-    [ -n "$f" ] && doomed+=("$f")
-  done
-  if [ -z "$keep_set" ]; then
-    for f in "${prompt_file:-}" "${agy_diff_file:-}"; do
-      [ -n "$f" ] && doomed+=("$f")
-    done
-  fi
-  [ ${#doomed[@]} -gt 0 ] && rm -f -- "${doomed[@]}"
-  # Remove the gitignored diff-handoff scratch dir once its file is gone. `rmdir` only unlinks an
-  # empty dir, so a concurrent run's file (a different $$) is never clobbered; a non-empty dir is
-  # gitignored and harmless if left behind.
-  [ -n "${agy_work_dir:-}" ] && [ -z "$keep_set" ] && rmdir "${agy_work_dir}" 2>/dev/null || true
-  if [ -n "${agy_refs_created:-}" ] && [ -n "${PR:-}" ]; then
-    git update-ref -d "refs/agy/pr-${PR}" 2>/dev/null || true
-    git update-ref -d "refs/agy/base-${PR}" 2>/dev/null || true
-  fi
-}
-trap cleanup EXIT
 
 # --- fetch metadata first, because the fork gate + the large-diff fallback depend on it ---
 # FAIL-CLOSED. A `{}` fallback was harmless when the only field read was the title,
@@ -648,7 +745,7 @@ truncated=""
 # overlooked: the UTF-8 scrub further down (`iconv -c`, python3 fallback) removes any partial
 # sequence before the prompt reaches agy, so the split never escapes this file.
 #
-# A line-aware cut would avoid creating the split, but cannot honour a byte ceiling — and the
+# A line-aware cut would avoid creating the split, but cannot honor a byte ceiling — and the
 # ceiling is the actual constraint, since this bounds what is handed to a model with a hard context
 # limit. One minified-asset line in a diff can exceed the whole budget by itself, so "cut at a line
 # boundary" degenerates to either overshooting the cap or emitting nothing. Exact where the limit is
@@ -706,9 +803,18 @@ agy_cap_round() {
 # output, otherwise keep the original. A failed mv is fatal under `set -e`; the function returns
 # 0 when no sanitizer succeeded, so a host with neither tool proceeds with the original bytes.
 agy_scrub_utf8() {
-  if command -v iconv >/dev/null 2>&1 \
-      && iconv -c -f UTF-8 -t UTF-8 "$1" > "$1.utf8" 2>/dev/null && [ -s "$1.utf8" ]; then
-    mv "$1.utf8" "$1"; return
+  # iconv's exit status is NOT the success test. With -c, GNU iconv exits 1 precisely when it
+  # dropped invalid bytes -- after writing every valid byte -- so 0 and 1 both mean "usable
+  # output". Treating 1 as failure made python3 a silent hard requirement (it was the only path
+  # that ever succeeded on byte-cut input), although it is documented as a fallback. Any higher
+  # status, or empty output, still falls through to python3.
+  local iconv_rc
+  if command -v iconv >/dev/null 2>&1; then
+    iconv_rc=0
+    iconv -c -f UTF-8 -t UTF-8 "$1" > "$1.utf8" 2>/dev/null || iconv_rc=$?
+    if [ "$iconv_rc" -le 1 ] && [ -s "$1.utf8" ]; then
+      mv "$1.utf8" "$1"; return
+    fi
   fi
   rm -f "$1.utf8"
   if command -v python3 >/dev/null 2>&1 \
@@ -717,6 +823,40 @@ agy_scrub_utf8() {
     mv "$1.utf8" "$1"; return
   fi
   rm -f "$1.utf8"
+}
+# <<< SELFTEST-EXTRACT
+
+# >>> SELFTEST-EXTRACT: script capture filter
+# Filter (stdin -> stdout) for the script(1) fallback capture. util-linux `script` writes a
+# "Script started on ..." record as the first line of the typescript and a "Script done on ..."
+# record as the last, and `-q` does NOT suppress them in the file (measured: util-linux 2.42.4;
+# -q only silences the terminal messages). Left in, they make an EMPTY or failed agy run look
+# like non-empty output, and they push a backend error off the first line where
+# service_error_present looks for it -- so the retry loop could accept, and post, session
+# metadata or a failure as a review. Only those two framing records are removed: the first line
+# if it is a start record, and the last non-blank line if it is a done record. A review that
+# merely mentions such text elsewhere is left intact.
+#
+# Locale-independent (agy review, GH-ListRollup PR #6): util-linux translates the "Script started
+# on" / "Script done on" prose through gettext, but NOT the key=value fields it appends, so a
+# record is recognized by `[COMMAND="` (start; we always run `script -c`) or a trailing
+# `[COMMAND_EXIT_CODE="N"]` (done) as well as by the English prefix. Forcing LC_ALL=C on script
+# was rejected: it would also change agy's own locale, and with it its UTF-8 handling.
+agy_strip_script_records() {
+  awk '
+    NR == 1 && (/^Script started on / || /\[COMMAND="/) { next }
+    { lines[++n] = $0 }
+    END {
+      last = n
+      while (last > 0 && lines[last] ~ /^[[:space:]]*$/) last--
+      if (last > 0 && (lines[last] ~ /^Script done on / || lines[last] ~ /\[COMMAND_EXIT_CODE="[0-9]+"\][[:space:]]*$/)) {
+        last--
+        while (last > 0 && lines[last] ~ /^[[:space:]]*$/) last--
+      } else {
+        last = n
+      }
+      for (i = 1; i <= last; i++) print lines[i]
+    }'
 }
 # <<< SELFTEST-EXTRACT
 
@@ -773,6 +913,23 @@ head_bytes="$(wc -c < "$prompt_file")"
 diff_bytes="$(wc -c < "$diff_file")"
 inline_budget=$(( MAX_PROMPT_BYTES - head_bytes - 512 ))   # margin covers the diff header + file notice
 [ "$inline_budget" -lt 0 ] && inline_budget=0             # a huge STYLE_GUIDE can exceed it: file the diff
+# agy's private working directory. agy runs under --dangerously-skip-permissions and ingests an
+# untrusted diff (a prompt-injection surface), so it must never have the repository checkout in its
+# workspace: a write to .git/hooks or .git/config there would later execute in a git command that
+# holds the job token. agy is therefore started FROM this empty directory (its workspace root),
+# the large-diff handoff file is written INTO it, and only it is passed to --add-dir. It lives in
+# RUNNER_TEMP (outside the checkout, wiped between jobs) and the EXIT trap removes it.
+agy_sandbox="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/agy-sandbox.XXXXXX")"
+# Stored canonical: a relative RUNNER_TEMP/TMPDIR would otherwise put a relative path in the prompt
+# (agy's file tool needs an absolute one) and make `--add-dir` resolve against the sandbox itself
+# after the `cd "$agy_sandbox"` below.
+agy_sandbox="$(cd "$agy_sandbox" && pwd -P)"
+case "$agy_sandbox/" in
+  "$(pwd -P)"/*)
+    log "agy sandbox ${agy_sandbox} is inside the checkout; refusing to expose the repository to agy"
+    exit 1 ;;
+esac
+
 use_file=0
 case "$AGY_DIFF_MODE" in
   file)   use_file=1 ;;
@@ -781,22 +938,12 @@ case "$AGY_DIFF_MODE" in
 esac
 
 if [ "$use_file" = "1" ]; then
-  # agy's CWD is the repo checkout, so a file written under it is readable by its file tool. Write it
-  # into a dedicated, gitignored scratch dir (`.agy-review-work/`, listed in .gitignore) rather than
-  # `.git/` (a sandbox may deny tool access to the hidden `.git` dir) or the repo root (an untracked
-  # `.patch` there pollutes `git status` if agy inspects repo state). Being gitignored, the dir never
-  # shows as working-tree pollution; the EXIT trap removes the file and the (now-empty) dir.
-  #
-  # The prompt hands agy an ABSOLUTE path, and the run below adds "$PWD" to agy's workspace via
-  # --add-dir. Both are load-bearing and were proven on the live runner: agy's sandboxed file tool
-  # does NOT resolve a relative path against the shell CWD (it uses its own workspace root), so a
-  # relative `.agy-review-work/...` comes back "does not exist on the filesystem" — the exact
-  # large-diff review failure this fixes. An absolute path resolves on its own, and --add-dir makes
-  # the checkout part of the sandbox workspace; using both is belt-and-suspenders.
-  agy_work_dir="$PWD/.agy-review-work"
-  mkdir -p "$agy_work_dir"
-  diff_name=".agy-review-work/agy-review-diff.$$.patch"
-  agy_diff_file="$PWD/$diff_name"
+  # The diff goes into agy's private sandbox directory (see `agy_sandbox` above), never into the
+  # checkout. The prompt hands agy an ABSOLUTE path, and the run below adds the sandbox (only) to
+  # agy's workspace via --add-dir. Both are load-bearing and were proven on the live runner: agy's
+  # sandboxed file tool does NOT resolve a relative path against the shell CWD (it uses its own
+  # workspace root), so a relative path comes back "does not exist on the filesystem".
+  agy_diff_file="$agy_sandbox/agy-review-diff.patch"
   cp "$diff_file" "$agy_diff_file"
   {
     printf '\n--- UNIFIED DIFF (in a file) ---\n'
@@ -918,7 +1065,7 @@ scale_timeout_for_diff() {
   # against. Then the same guard the settings get, so a non-numeric value falls back rather than
   # becoming a syntax error in the expansion below.
   bytes="${bytes//[[:space:]]/}"
-  normalise_numeric_env bytes 0
+  normalize_numeric_env bytes 0
   [ -z "$AGY_PRINT_TIMEOUT_EXPLICIT" ] || { log "AGY_PRINT_TIMEOUT set explicitly ($AGY_PRINT_TIMEOUT); not scaling"; return 0; }
 
   # Computed from BYTES, not from truncated whole MiB: `mib = bytes / 1048576` in integer
@@ -929,7 +1076,7 @@ scale_timeout_for_diff() {
 
   local base_s
   if ! base_s="$(duration_to_seconds "$AGY_PRINT_TIMEOUT")"; then
-    log "AGY_PRINT_TIMEOUT ('$AGY_PRINT_TIMEOUT') is not a recognised duration; leaving it alone"
+    log "AGY_PRINT_TIMEOUT ('$AGY_PRINT_TIMEOUT') is not a recognized duration; leaving it alone"
     return 0
   fi
 
@@ -947,17 +1094,100 @@ scale_timeout_for_diff "$diff_bytes"
 #     stdout when stdout is not a TTY, e.g. piped/redirected/subprocess) ---------
 flags=( --print-timeout "$AGY_PRINT_TIMEOUT" --sandbox --dangerously-skip-permissions )
 # In file-handoff mode agy must read the on-disk diff, and --sandbox otherwise confines its file
-# tool to its own workspace root (NOT the shell CWD) — so add the checkout to the workspace. Only in
-# file mode: an inline review reads nothing from disk, so it keeps zero filesystem access (narrower
-# prompt-injection surface for the common path). Proven necessary on the live runner: without this
-# (and the absolute path above) the large-diff handoff file reads back as "does not exist".
-[ "${use_file:-0}" = "1" ] && flags+=( --add-dir "$PWD" )
+# tool to its own workspace root (NOT the shell CWD) — so add the sandbox directory that holds it.
+# Never the checkout (see `agy_sandbox`). Proven necessary on the live runner: without this (and the
+# absolute path above) the large-diff handoff file reads back as "does not exist".
+[ "${use_file:-0}" = "1" ] && flags+=( --add-dir "$agy_sandbox" )
 
-# Strip the repo tokens from agy's own environment. agy runs under
-# --dangerously-skip-permissions and ingests an untrusted diff (prompt-injection
-# surface); `gh` and the large-diff fetch run in THIS script, before and after, and
-# agy has no use for GH_TOKEN / GITHUB_TOKEN — so it should not inherit them.
-agy_env=( env -u GH_TOKEN -u GITHUB_TOKEN )
+# agy gets an ALLOWLISTED environment (`env -i` plus the variables below), never the job's.
+# agy runs under --dangerously-skip-permissions and ingests an untrusted diff (prompt-injection
+# surface); `gh` and the large-diff fetch run in THIS script, before and after, and agy needs none
+# of the job's credentials: not GH_TOKEN/GITHUB_TOKEN, not ACTIONS_RUNTIME_TOKEN (cache/artifact
+# API), not ACTIONS_ID_TOKEN_* (OIDC), and not whatever a workflow puts in `env:` under an
+# ordinary-looking name (a DATABASE_URL with a password in it, say), which a name-pattern denylist
+# would miss. What agy does need is its user session: HOME for its config and conversation store,
+# PATH, the locale, and XDG_RUNTIME_DIR + DBUS_SESSION_BUS_ADDRESS to reach the desktop keyring that
+# holds its Google OAuth session. Verified on the runner host with no other agy running: agy
+# authenticates and answers under exactly this environment. (An earlier test that "hung" had
+# collided with a concurrent review: agy is one singleton per user, which is why the flock below
+# exists.) AGY_ENV_PASSTHROUGH may name extra variables, space-separated, for a host that needs one.
+agy_allowlisted_env_args() {
+  local name
+  local -a extra=()
+  # `read -a` splits on whitespace without pathname expansion, so a glob character in the
+  # passthrough list can never expand against the checkout.
+  # -d '' reads across newlines too, so a multi-line YAML block (`AGY_ENV_PASSTHROUGH: |`) keeps
+  # every entry; read returns 1 at end of input, which is expected.
+  IFS=$' \t\n' read -r -d '' -a extra <<<"${AGY_ENV_PASSTHROUGH:-}" || true
+  printf '%s\0' "-i"
+  for name in HOME PATH USER LOGNAME SHELL LANG LANGUAGE LC_ALL LC_CTYPE LC_MESSAGES TERM TMPDIR TZ \
+              XDG_RUNTIME_DIR XDG_CONFIG_HOME XDG_DATA_HOME XDG_CACHE_HOME XDG_STATE_HOME \
+              DBUS_SESSION_BUS_ADDRESS DISPLAY WAYLAND_DISPLAY XAUTHORITY "${extra[@]}"; do
+    # A valid identifier only: never an assignment, and never a leading digit (`1` would read the
+    # positional parameter $1, and `1FOO` aborts with "bad substitution").
+    [[ "$name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+    [ -n "${!name+x}" ] && printf '%s\0' "${name}=${!name}"
+  done
+  return 0
+}
+agy_env=( env )
+while IFS= read -r -d '' arg; do agy_env+=( "$arg" ); done < <(agy_allowlisted_env_args)
+
+# --- the bubblewrap jail (AGY_ISOLATION=bwrap) --------------------------------------------------
+# Verified 2026-11-22: inside this jail agy authenticates and reviews, sees only an empty HOME, has
+# no MCP servers/skills/hooks, cannot read any host file outside the jail, and over D-Bus can fetch
+# only its own keyring item (another item's GetSecret, the bulk Service.GetSecrets and every other
+# session service are AccessDenied by the proxy).
+agy_jail=()
+if [ "$AGY_ISOLATION" = bwrap ]; then
+  for _t in bwrap xdg-dbus-proxy gdbus; do
+    command -v "$_t" >/dev/null 2>&1 || { log "AGY_ISOLATION=bwrap needs '$_t' on the runner host; refusing to run agy unjailed (set AGY_ISOLATION=none to override, not recommended)"; exit 1; }
+  done
+  [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ] \
+    || { log "AGY_ISOLATION=bwrap needs XDG_RUNTIME_DIR and DBUS_SESSION_BUS_ADDRESS (a user session)"; exit 1; }
+  # agy's own keyring item(s), resolved OUTSIDE the jail: object paths only, never secrets.
+  _dict=""
+  for _kv in $AGY_KEYRING_ATTRS; do
+    [[ "$_kv" =~ ^[A-Za-z0-9_.-]+=[A-Za-z0-9_.:@-]+$ ]] || { log "invalid AGY_KEYRING_ATTRS entry '$_kv'"; exit 1; }
+    _dict="${_dict:+$_dict, }'${_kv%%=*}': '${_kv#*=}'"
+  done
+  mapfile -t _items < <(gdbus call --session --dest org.freedesktop.secrets \
+      --object-path /org/freedesktop/secrets/aliases/default \
+      --method org.freedesktop.Secret.Collection.SearchItems "{${_dict}}" 2>/dev/null \
+    | grep -oE '/org/freedesktop/secrets/collection/[A-Za-z0-9_]+/[A-Za-z0-9_]+')
+  [ "${#_items[@]}" -ge 1 ] || { log "no keyring item matches AGY_KEYRING_ATTRS ($AGY_KEYRING_ATTRS); is agy logged in on this host?"; exit 1; }
+  _rules=(
+    "--call=org.freedesktop.secrets=org.freedesktop.Secret.Service.OpenSession@/org/freedesktop/secrets"
+    "--call=org.freedesktop.secrets=org.freedesktop.Secret.Service.Unlock@/org/freedesktop/secrets"
+    "--call=org.freedesktop.secrets=org.freedesktop.DBus.Properties.Get@/org/freedesktop/secrets"
+    "--call=org.freedesktop.secrets=org.freedesktop.Secret.Collection.SearchItems@/org/freedesktop/secrets/aliases/default"
+    "--call=org.freedesktop.secrets=org.freedesktop.Secret.Session.Close@/org/freedesktop/secrets/session/*"
+  )
+  for _it in "${_items[@]}"; do _rules+=( "--call=org.freedesktop.secrets=org.freedesktop.Secret.Item.GetSecret@${_it}" ); done
+  agy_jail_rt="$(mktemp -d "$XDG_RUNTIME_DIR/agy-jail.XXXXXX")"
+  agy_jail_home="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/agy-home.XXXXXX")"
+  agy_jail_home="$(cd "$agy_jail_home" && pwd -P)"
+  xdg-dbus-proxy "$DBUS_SESSION_BUS_ADDRESS" "$agy_jail_rt/bus" --filter "${_rules[@]}" &
+  agy_proxy_pid=$!
+  for _ in $(seq 1 100); do [ -S "$agy_jail_rt/bus" ] && break; sleep 0.1; done
+  [ -S "$agy_jail_rt/bus" ] || { log "xdg-dbus-proxy did not start; refusing to run agy unjailed"; exit 1; }
+  _uid="$(id -u)"
+  agy_jail=( bwrap --unshare-all --share-net --die-with-parent --new-session
+    --ro-bind /usr /usr
+    --symlink usr/lib /lib --symlink usr/lib /lib64 --symlink usr/bin /bin --symlink usr/bin /sbin
+    --ro-bind /etc /etc --proc /proc --dev /dev --tmpfs /tmp
+    --ro-bind-try /run/systemd/resolve /run/systemd/resolve
+    --tmpfs /home --bind "$agy_jail_home" "$HOME"
+    --ro-bind "$(readlink -f "$AGY_BIN")" "$AGY_BIN"
+    --ro-bind "$(cd "$(dirname "$0")" && pwd)/_agy_print.sh" "$(cd "$(dirname "$0")" && pwd)/_agy_print.sh"
+    --ro-bind "$prompt_file" "$prompt_file"
+    --bind "$agy_sandbox" "$agy_sandbox" --chdir "$agy_sandbox"
+    --dir "/run/user/$_uid" --ro-bind "$agy_jail_rt/bus" "/run/user/$_uid/bus" )
+  # Inside the jail, D-Bus is the filtered proxy (later env assignments override earlier ones).
+  agy_env+=( "XDG_RUNTIME_DIR=/run/user/$_uid" "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$_uid/bus" )
+  log "agy isolation: bwrap jail, empty HOME, D-Bus limited to ${#_items[@]} keyring item(s)"
+  unset _t _dict _kv _items _rules _it _uid
+fi
 [ -n "$AGY_MODEL" ]  && flags+=( --model "$AGY_MODEL" )
 [ -n "$AGY_EFFORT" ] && flags+=( --effort "$AGY_EFFORT" )
 
@@ -1001,7 +1231,11 @@ for (( attempt=1; attempt<=AGY_RETRIES; attempt++ )); do
 
   if command -v unbuffer >/dev/null 2>&1; then
     log "running agy via unbuffer (allocates a PTY) [attempt ${attempt}/${AGY_RETRIES}]"
-    "${agy_env[@]}" unbuffer "$AGY_BIN" "${flags[@]}" --print "$(cat "$prompt_file")" > "$out_file" 2>>"$LOG" || true
+    # From the sandbox directory, so agy's workspace root is never the checkout.
+    # `env -i ...` starts unbuffer itself inside the allowlisted environment (verified to work in
+    # the runner's environment). Putting it the other way round made every NAME=VALUE an argv
+    # entry of the long-lived unbuffer process, world-readable in /proc/<pid>/cmdline.
+    ( cd "$agy_sandbox" && "${agy_env[@]}" unbuffer "${agy_jail[@]}" "$AGY_BIN" "${flags[@]}" --print "$(cat "$prompt_file")" ) > "$out_file" 2>>"$LOG" || true
   else
     log "unbuffer not found; falling back to script(1) [attempt ${attempt}/${AGY_RETRIES}]"
     raw="$(mktemp)"
@@ -1010,9 +1244,13 @@ for (( attempt=1; attempt<=AGY_RETRIES; attempt++ )); do
     # (AGY_MODEL / AGY_EFFORT / AGY_PRINT_TIMEOUT) -- is shell-escaped for the inner shell.
     # A raw `${flags[*]}` here would let a shell metacharacter in any of those be evaluated
     # by `sh -c` (command injection); `%q` quotes each token exactly.
-    cmd="$(printf '%q ' "$here/_agy_print.sh" "$prompt_file" "${flags[@]}")"
-    "${agy_env[@]}" AGY_BIN="$AGY_BIN" script -qfec "$cmd" "$raw" >/dev/null 2>>"$LOG" || true
-    col -b < "$raw" > "$out_file"
+    # script(1) is a plain binary, so it (and the _agy_print.sh it runs) can start inside the
+    # allowlisted environment; agy inherits it from there.
+    cmd="$(printf '%q ' "${agy_jail[@]}" "$here/_agy_print.sh" "$prompt_file" "${flags[@]}")"
+    ( cd "$agy_sandbox" && "${agy_env[@]}" AGY_BIN="$AGY_BIN" script -qfec "$cmd" "$raw" ) >/dev/null 2>>"$LOG" || true
+    # Strip script(1)'s own start/done records so they cannot pass as agy output (see
+    # agy_strip_script_records).
+    col -b < "$raw" | agy_strip_script_records > "$out_file"
     rm -f "$raw"   # each retry makes a fresh $raw; the EXIT trap only holds the last one
   fi
 
@@ -1133,6 +1371,12 @@ body_file="$(mktemp)"
   printf '%s' "$truncated"
   printf '\n\n<sub>Automated first-pass review by `agy` on a self-hosted runner -- not a human review.</sub>\n'
 } > "$body_file"
+# Fail closed before ANY post path (edit-in-place or new comment) if agy's output carries a
+# credential shape; see credential_kind_present.
+if cred_kind="$(credential_kind_present "$out_file")"; then
+  log "refusing to post: agy's output contains a credential-shaped string (${cred_kind}). Nothing was posted. Inspect the runner host; the diff may carry a prompt injection."
+  exit 1
+fi
 
 # Final hard guard — the last line of defense, and UNCONDITIONAL, run BEFORE anything is
 # deleted or posted. Layer 1 (the retry loop) already rejects a lapsed-session capture, but
@@ -1199,6 +1443,9 @@ if [ -n "$prior_id" ] && [ -s "$prior_body_file" ]; then
   # metacharacters, backslashes and HTML.
   prior_head="$(agy_body_head "$MARKER" < "$prior_body_file")"
   prior_archive="$(agy_body_archive < "$prior_body_file")"
+  # Rounds earlier runs already dropped: carried forward so the disclosure is cumulative and a
+  # later run that drops nothing does not erase it (agy review of Rusty2600 #53).
+  prior_dropped="$(agy_body_dropped_count < "$prior_body_file")"
 
   archived_file="$(mktemp)"
   agy_assemble_archive "$prior_head" "$prior_archive" "$(date -u +'%Y-%m-%d %H:%M UTC')" \
@@ -1223,14 +1470,24 @@ if [ -n "$prior_id" ] && [ -s "$prior_body_file" ]; then
     # start/end sentinels, so `agy_body_archive` extracts only the rounds themselves. With
     # the wrapper inside, every run re-captured it and nested another layer around it.
     printf '\n%s\n' "$AGY_ARCHIVE_SECTION"
-    if [ "$dropped" -gt 0 ]; then
-      printf '<sub>%d earlier round(s) dropped to stay under GitHub'"'"'s comment size limit.</sub>\n\n' "$dropped"
+    total_dropped=$(( dropped + prior_dropped ))
+    if [ "$total_dropped" -gt 0 ]; then
+      printf '<sub>%d earlier round(s) dropped to stay under GitHub'"'"'s comment size limit.</sub>\n\n' "$total_dropped"
     fi
-    printf '<details>\n<summary><b>Earlier review rounds</b> (newest first)</summary>\n\n'
+    # The sentinels are always written (later runs locate the archive and its dropped count by
+    # them), but the visible `<details>` wrapper only when a round survived the trimming above --
+    # otherwise it renders as an empty disclosure (agy review, GH-ListRollup PR #4).
+    # `if`, not `[ -s ] && printf`: as the group's last command, a false `&&` list would make the
+    # whole `{ } >> "$body_file"` group return 1 and abort the run under `set -e`.
+    if [ -s "$archived_file" ]; then
+      printf '<details>\n<summary><b>Earlier review rounds</b> (newest first)</summary>\n\n'
+    fi
     printf '%s\n' "$AGY_ARCHIVE_START"
     cat "$archived_file"
     printf '%s\n' "$AGY_ARCHIVE_END"
-    printf '\n</details>\n'
+    if [ -s "$archived_file" ]; then
+      printf '\n</details>\n'
+    fi
   } >> "$body_file"
   rm -f "$archived_file"
 

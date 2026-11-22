@@ -34,7 +34,7 @@ is why this uses a self-hosted runner rather than GitHub's cloud runners.
 
 ## How it works
 
-```
+```text
 GitHub PR event ──▶ self-hosted runner (YOUR machine, systemd --user)
                       │  gh pr diff ─▶ build adversarial-reviewer prompt (+ style guide)
                       │  agy --print  (PTY-wrapped, OAuth/Ultra)  ─▶ review text
@@ -61,8 +61,8 @@ Files in this template:
 > **Copy into a target repo** (what `install-into-repo.sh` does): the workflow, the four
 > scripts `agy-review.sh`, `_agy_print.sh`, `_agy_comment_body.sh` and
 > `agy-review-selftest.sh`, this README as `.github/AGY-REVIEWER.md`,
-> `.github/actionlint.yaml` when the target has none, optionally `.github/agy-review.md`,
-> and one appended `.gitignore` line (`/.agy-review-work/`). Everything else
+> `.github/actionlint.yaml` when the target has none, and optionally `.github/agy-review.md`.
+> The target's `.gitignore` is not touched. Everything else
 > (`systemd/`, the provision/deprovision scripts, this repo's `.gitignore`, `*.example`,
 > `gitignore.snippet`) stays here.
 
@@ -78,8 +78,14 @@ agy -p "reply with the single word: ok"     # should print: ok
 
 # Tools the reviewer uses (all already present here):
 #   gh jq sqlite3 col script  + unbuffer (from `expect`)
-pacman -Q github-cli jq sqlite expect util-linux >/dev/null   # verify; install any missing with paru/pacman
+#   bwrap xdg-dbus-proxy gdbus   (the agy jail; AGY_ISOLATION=bwrap, the default)
+#   iconv (glibc) for UTF-8 scrubbing; python3 is an optional fallback used only without iconv
+pacman -Q github-cli jq sqlite expect util-linux bubblewrap xdg-dbus-proxy glib2 >/dev/null   # verify; install any missing with paru/pacman
 ```
+
+`unbuffer` is preferred. Without it, the reviewer falls back to `script(1)` and strips the
+`Script started on` and `Script done on` records that util-linux writes into the capture even
+with `-q`.
 
 If `agy -p` prints nothing, fix auth first (run `agy` interactively once to
 complete the Google sign-in) — the reviewer can't work until that one-liner does.
@@ -153,26 +159,15 @@ the `git add/commit/push` to finish. Then jump to **Triggering it** below.
 That's it — no repository secrets. The job uses the built-in `GITHUB_TOKEN` to
 post comments and your local `agy` session for the model.
 
-### About `.gitignore` (append, don't overwrite)
+### About `.gitignore`
 
-The reviewer works in temporary directories (`mktemp` / `$RUNNER_TEMP`) for
-everything **except** one case: when a PR's diff is too large to inline in the
-argv prompt, it writes the diff to a gitignored working-tree scratch dir,
-`.agy-review-work/`, so agy can read it in full with its file tools instead of
-the review being truncated to the execve arg-size ceiling. The file and the
-(now-empty) dir are removed by the script's `EXIT` trap. Because that path is in
-the working tree, a target repo **does** need `/.agy-review-work/` in its
-`.gitignore` — otherwise the transient `.patch` shows as untracked pollution on
-large-diff PRs. Still **never** copy this template's own `.gitignore` over a
-project's.
-
-**Append** the ignore entries idempotently:
-
-```fish
-# from the target repo root
-grep -qxF '/.agy-review-work/' .gitignore 2>/dev/null
-  or cat $TPL/gitignore.snippet >> .gitignore   # TPL: your checkout of this template
-```
+The reviewer writes nothing into the working tree. All its files, including the
+large-diff handoff file agy reads when a diff is too large to inline, live in a
+private `mktemp -d` sandbox under `$RUNNER_TEMP` that the `EXIT` trap removes, so a
+target repo needs no ignore entry. (Earlier versions wrote the handoff file to
+`.agy-review-work/` in the checkout and required `/.agy-review-work/` in
+`.gitignore`; that line is now unused and harmless where it already exists.)
+**Never** copy this template's own `.gitignore` over a project's.
 
 ---
 
@@ -200,7 +195,7 @@ consecutive rounds each raised a blocking issue and only the second survived —
 clean comment list is not evidence that nothing was raised.
 
 The script no longer issues a `DELETE` at all; `agy-review-selftest.sh` asserts
-that, so the behaviour cannot come back unnoticed. The archive is bounded by
+that, so the behavior cannot come back unnoticed. The archive is bounded by
 `MAX_BODY_BYTES` (default 60000, under GitHub's 65536 limit); when rounds must be
 dropped to fit, the oldest go first **and the body says how many were dropped**,
 because a silent truncation would look exactly like a PR reviewed only once.
@@ -211,7 +206,7 @@ because a silent truncation would look exactly like a PR reviewed only once.
 > immediately.
 >
 > The same rule governs the **scripts**: the workflow checks out the default branch
-> to run them, so a change to `agy-review.sh` (the archive behaviour above included)
+> to run them, so a change to `agy-review.sh` (the archive behavior above included)
 > has **no effect on any PR until it is merged**, not even on the PR that makes it.
 
 ---
@@ -246,13 +241,49 @@ yours to accept:
   `scripts/agy-review.sh`, which asks the permissions API for the commenter and
   fails closed; the script also re-checks that the PR is not from a fork, because
   the `issue_comment` payload has no head-repo field for the `if:` to gate on.
-- **First-install bootstrap:** the checked-in workflow has no bootstrap steps. On a
-  repository whose default branch has no reviewer yet, add the guarded bootstrap
-  steps first. They run the PR head's scripts once, only for a same-repo branch
-  whose author has write access *at run time*. Remove them once the reviewer is on
-  the default branch (they also trip CodeQL's `actions/untrusted-checkout`).
+- **First-install bootstrap:** as shipped, on a repository whose default branch has
+  no reviewer yet, the workflow runs the PR head's scripts once, only for a
+  same-repo branch whose author has write access *at run time*. Remove the
+  bootstrap steps once the reviewer is on the default branch (they also trip
+  CodeQL's `actions/untrusted-checkout`); most repositories carrying this reviewer
+  have done so. Without them, a PR opened while the default branch has no
+  reviewer gets a `::warning::` and a skipped review step (the "Check the
+  reviewer is present" step), not a red check.
 - **Least surface in the job:** review-only prompt, `--sandbox`, no repo secrets
   (built-in `GITHUB_TOKEN` only), temp files cleaned via an `EXIT` trap.
+- **agy runs in a bubblewrap jail (`AGY_ISOLATION=bwrap`, the default):** agy's
+  own `--sandbox` does **not** confine reads (verified: it read a canary file in
+  `$HOME`), and agy loads the user's whole configuration, including MCP servers
+  (REA, Blender, ...), skills and hooks. So the script starts it in a `bwrap` jail
+  with an empty private `HOME`, read-only `/usr` and `/etc`, the review sandbox,
+  and no other part of the host filesystem. Its D-Bus is an `xdg-dbus-proxy` with
+  `--filter` that allows only the Secret Service calls agy makes, and `GetSecret`
+  only on agy's own keyring item. The script resolves that item outside the jail
+  from `AGY_KEYRING_ATTRS`. Verified: inside the jail agy logs in and reviews, has
+  no MCP tools, cannot read `~/.config/gh` or any repository, and fetching another
+  keyring item (the `gh` token), the bulk `GetSecrets` call or any other session
+  service is `AccessDenied`. A host without `bwrap`, `xdg-dbus-proxy` or `gdbus`
+  fails closed. `AGY_ISOLATION=none` opts out, which is not recommended.
+- **agy never sees the checkout:** agy runs with `--dangerously-skip-permissions`
+  and reads an untrusted diff, so a prompt injection could try to write files.
+  It is started from a private, empty `mktemp -d` sandbox under `$RUNNER_TEMP`
+  (the script refuses to run if that path is inside the checkout), the large-diff
+  handoff file is written there, and only that directory is passed to
+  `--add-dir`. A planted `.git/hooks` or `.git/config` in the checkout, which a
+  later token-bearing `git` call would execute, is therefore out of reach; the
+  script's own post-agy `git` calls also run with `core.hooksPath=/dev/null` and
+  `core.fsmonitor=false`.
+- **agy gets no credentials:** agy is started with an **allowlisted** environment
+  (`env -i` plus `HOME`, `PATH`, `USER`, `LOGNAME`, `SHELL`, the locale, `TERM`,
+  `TMPDIR`, `TZ`, the `XDG_*` directories, `DBUS_SESSION_BUS_ADDRESS`, `DISPLAY`,
+  `WAYLAND_DISPLAY`, `XAUTHORITY`). Nothing else from the job reaches it: no
+  `GH_TOKEN`/`GITHUB_TOKEN`, no `ACTIONS_RUNTIME_TOKEN` or OIDC request token, and no
+  workflow `env:` value, including secrets under ordinary names that a
+  name-pattern denylist would miss. The session variables are what agy needs to
+  reach the desktop keyring holding its Google OAuth session, which was verified on
+  the runner host. `AGY_ENV_PASSTHROUGH` (space-separated names) adds a variable
+  if a host needs one. `unbuffer` keeps its own environment and runs `env -i ... agy`,
+  so only agy is reduced. `agy-review-selftest.sh` asserts all of the above.
 
 To reduce the remaining exposure, run each job on a **clean, disposable host** (a VM or
 container image recreated per job). Re-registering a runner on the same host is not enough,
@@ -268,19 +299,31 @@ runner, so disable fork workflows there or gate them the same way.
 |----------|---------|---------|
 | `AGY_MODEL` | *(agy default)* | e.g. `gemini-3-pro`; run `agy models` to see IDs |
 | `AGY_EFFORT` | `high` | reasoning effort: `low` / `medium` / `high` |
-| `AGY_PRINT_TIMEOUT` | `5m` | base wait for a single `agy --print`; raised for a large diff (next row). Setting it pins it and turns the raise off |
+| `AGY_PRINT_TIMEOUT` | `10m` | base wait for a single `agy --print`; raised for a large diff (next row). Setting it pins it and turns the raise off. Was `5m`: mid-size inlined diffs at `high` effort timed out at that base |
 | `AGY_TIMEOUT_SECONDS_PER_MIB` | `900` | extra seconds per MiB of diff. A diff handed over as a file costs agy 6-8 minutes almost whatever its size, so this is deliberately steep (240 left a 426 KB diff at 397 s, too little) |
 | `AGY_PRINT_TIMEOUT_MAX_SECONDS` | `1800` (workflow: `900`) | ceiling on one attempt after the raise |
 | `AGY_RETRIES` | `3` (workflow: `2`) | attempts; a retry is for a transient backend error, so more of them at the same budget only repeat a timeout |
+| `AGY_LOCK_WAIT` | `600` (workflow: `1860`) | seconds to wait for the host-wide agy lock before giving up. Every repository's review on the host shares it (agy is one singleton per user), and a review holds it across all its attempts and the pauses between them, so the wait must outlast another review's whole hold: 1860 s covers one review at two 900 s attempts plus the 15 s pause, so it is sized for ONE review ahead in the queue: with two or more large reviews already waiting from other repositories, a third can still time out (re-run it). It counts toward the job's worst case, so raising it means raising `timeout-minutes` (the selftest checks the sum) |
 | `AGY_DIFF_MODE` | `auto` | how the diff reaches agy: `inline` (in the `--print` prompt), `file` (written to a file agy reads with its tools), or `auto` (inline if it fits the arg-size budget, else file — so **large PRs are never truncated**) |
 | `MAX_DIFF_BYTES` | `5000000` | sanity cap on a pathological diff (5 MB). Not the arg-size limit — a large diff goes to agy as a file, not an argv value |
 | `MAX_PROMPT_BYTES` | `120000` | the inline/file threshold in `auto` mode, and a hard backstop on the **inlined** prompt. agy takes an inlined prompt as a `--print` argv value, and a single `execve` argument cannot exceed `MAX_ARG_STRLEN` (128 KiB); over it `execve` fails with E2BIG before agy starts. Clamped below 128 KiB |
 | `STYLE_GUIDE` | `.github/agy-review.md` | repo-relative style guide, loaded if present |
+| `AGY_ISOLATION` | `bwrap` | `bwrap` runs agy in the jail described under the security model; `none` runs it unjailed (not recommended) |
+| `AGY_KEYRING_ATTRS` | `username=antigravity service=gemini` | Secret Service attributes of agy's own login item; the jail's D-Bus proxy allows `GetSecret` on the matching item(s) only |
+| `AGY_ENV_PASSTHROUGH` | *(empty)* | extra environment variable NAMES (space-separated) to pass to agy on top of the session allowlist; everything else is withheld |
 
 ---
 
 ## Troubleshooting
 
+- **"agy lock timed out after Ns" and a red job with no review:** another
+  review on the same host held the agy lock longer than `AGY_LOCK_WAIT`. The
+  lock is shared by every repository's review there, so two PRs opened at once
+  in different repositories queue behind each other; with a wait shorter than
+  one review (the old 300 s), the second gives up. Re-run the job once the other
+  review finishes, and keep `AGY_LOCK_WAIT` above another review's worst-case
+  hold (`AGY_RETRIES` x the per-attempt cap, plus the pauses). The lock fails
+  closed: a timeout exits rather than running two agy processes at once.
 - **Review comment never appears / job succeeds but empty:** the classic
   Antigravity **issue #76** — `agy -p` drops stdout when it isn't attached to a
   TTY. This template runs `agy` under a PTY (`unbuffer`, or `scripts/_agy_print.sh`

@@ -90,6 +90,24 @@ agy_body_archive() {
     }' || true
 }
 
+# How many rounds earlier runs dropped to fit GitHub's comment limit, from the
+# "<sub>N earlier round(s) dropped" note; 0 when there is none.
+#
+# The note sits between the SECTION and START sentinels, outside both regions the next run reads
+# back (agy_body_head stops at the section, agy_body_archive starts after START), and the caller's
+# count restarted at 0 every run -- so a later round that dropped nothing erased the disclosure
+# (agy review of Rusty2600 #53). Only that one region is searched, so a note quoted inside a
+# round's review text is never mistaken for the real one.
+agy_body_dropped_count() {
+  awk -v sec="$AGY_ARCHIVE_SECTION" -v s="$AGY_ARCHIVE_START" '
+    $0 == sec { between = 1; next }
+    $0 == s   { exit }
+    between && match($0, /^<sub>[0-9]+ earlier round\(s\) dropped/) {
+      n = substr($0, 6); sub(/[^0-9].*$/, "", n); print n + 0; found = 1; exit
+    }
+    END { if (!found) print 0 }'
+}
+
 # Prefix of the hidden line that records when a review was posted. The comment head carries
 # it so that, when the round is archived on the next run, the summary can say when it was
 # REVIEWED; the time of archiving says nothing useful.
@@ -99,7 +117,7 @@ AGY_REVIEWED_AT_PREFIX='<!-- agy-reviewed-at: '
 # ahead of the rounds already archived.
 #
 # Args: $1 previous head, $2 previous archive (may be empty), $3 time to show when the head
-# carries no reviewed-at line (labelled "archived at", because that is all it is).
+# carries no reviewed-at line (labeled "archived at", because that is all it is).
 #
 # A previous archive with no round marker predates markers. It is wrapped as ONE round behind
 # its own marker; emitted bare, the only marker would be the new round's, and trimming the

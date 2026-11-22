@@ -54,7 +54,7 @@ extract_filter() {
 }
 
 # The extracted blocks are eval'd without the rest of agy-review.sh, so any helper they call has
-# to exist here. `normalise_numeric_env` logs its fallback; keep that off the checks' stdout.
+# to exist here. `normalize_numeric_env` logs its fallback; keep that off the checks' stdout.
 log() { :; }
 
 # Every marked block must exist and be sourceable. A renamed or unbalanced marker would
@@ -62,7 +62,7 @@ log() { :; }
 # absence-reads-as-agreement failure the markers were adopted to prevent.
 for guard in "service-error guard" "oauth guard" "ours-comment filter" "duration parser" \
              "numeric env validation" "diff-size scaling" "truncation helpers" \
-             "diff-limit classifier"; do
+             "diff-limit classifier" "script capture filter" "error cap validation"; do
   blk="$(extract_block "$guard")"
   [ -n "$blk" ] || { echo "FAIL: SELFTEST-EXTRACT block '$guard' is missing or empty" >&2; exit 1; }
   printf '%s\n' "$blk" | bash -n - 2>/dev/null \
@@ -89,7 +89,8 @@ FILTER="$(extract_filter)"
 # The script must actually USE the shared helper, or these checks test a file nothing runs.
 grep -q '_agy_comment_body.sh' "$SCRIPT_DIR/agy-review.sh" \
   || { echo "FAIL: agy-review.sh does not source _agy_comment_body.sh" >&2; exit 1; }
-for fn in agy_body_head agy_body_archive agy_drop_oldest_round agy_assemble_archive; do
+for fn in agy_body_head agy_body_archive agy_drop_oldest_round agy_assemble_archive \
+          agy_body_dropped_count; do
   grep -q "$fn" "$SCRIPT_DIR/agy-review.sh" \
     || { echo "FAIL: agy-review.sh does not call $fn" >&2; exit 1; }
 done
@@ -211,6 +212,21 @@ check "a clean archive with a <details open> block keeps its closing tag" "$clea
 # The migration path must still heal: a pre-migration wrapper captured inside the sentinels ahead
 # of the first round mark, with its stray trailing close, comes out as the bare rounds.
 legacy_wrap="$(printf '<details>\n<summary>Earlier review rounds</summary>\n\n%s\n</details>' "$clean_quote")"
+# REGRESSION (agy review of Rusty2600 #53): the "N earlier round(s) dropped" note sits between the
+# section and start sentinels, outside both regions the next run reads back, and the count restarted
+# at 0 every run -- so a later round that dropped nothing erased the disclosure. The prior count
+# must be readable so the next comment can carry the cumulative total.
+dropped_body="$(printf '%s\nNEW\n%s\n<sub>3 earlier round(s) dropped to stay under GitHub'"'"'s comment size limit.</sub>\n\n<details>\n<summary><b>Earlier review rounds</b> (newest first)</summary>\n\n%s\n%s\nR\n%s\n</details>\n' \
+  "$MARKER" "$AGY_ARCHIVE_SECTION" "$AGY_ARCHIVE_START" "$AGY_ROUND_MARK" "$AGY_ARCHIVE_END")"
+check "the prior dropped-round count is read back" "3" \
+  "$(printf '%s\n' "$dropped_body" | agy_body_dropped_count)"
+check "a body without a dropped note reads as 0" "0" \
+  "$(printf '%s\n' "$round_trip_body" | agy_body_dropped_count)"
+check "a dropped note quoted inside a ROUND is not counted" "0" \
+  "$(printf '%s\n%s\n%s\n<sub>9 earlier round(s) dropped to stay under GitHub'"'"'s comment size limit.</sub>\n%s\n' \
+       "$MARKER" "$AGY_ARCHIVE_START" "$AGY_ROUND_MARK" "$AGY_ARCHIVE_END" | agy_body_dropped_count)"
+check "the assembled comment carries the cumulative dropped total" "yes" \
+  "$(grep -q 'prior_dropped' "$SCRIPT_DIR/agy-review.sh" && grep -q 'dropped + prior_dropped\|prior_dropped + dropped' "$SCRIPT_DIR/agy-review.sh" && echo yes || echo no)"
 check "a pre-migration wrapper and its stray close are still removed" "$clean_quote" \
   "$(printf '%s\n%s\n%s\n%s\n' "$MARKER" "$AGY_ARCHIVE_START" "$legacy_wrap" "$AGY_ARCHIVE_END" | agy_body_archive)"
 
@@ -321,7 +337,7 @@ check "an unfamiliar error signature is caught" "MATCH" \
 
 # REGRESSION, observed on VeridianOS PR #5: agy under `unbuffer` printed the auth failure in
 # lowercase, the case-sensitive guard missed it, and the error was posted as the review under a
-# green check. Any capitalisation of the word is the same failure.
+# green check. Any capitalization of the word is the same failure.
 # --- truncation: executed, not grepped (CodeRabbit review, VeridianOS PR #5) -----
 # A diff cut by MAX_DIFF_BYTES, a prompt cut by MAX_PROMPT_BYTES, and a review cut to fit the comment
 # limit must each leave the model -- or the reader -- a notice. These run the real helpers.
@@ -369,14 +385,112 @@ for t in python3 mv rm; do ln -sf "$(command -v "$t")" "$TMPD/noiconv/$t"; done
 printf 'abc\xe2\x82' > "$TMPD/split"
 ( PATH="$TMPD/noiconv"; agy_scrub_utf8 "$TMPD/split" )
 check "the python3 fallback scrubs when iconv is absent" "abc" "$(cat "$TMPD/split")"
+# REGRESSION (agy review, GH-ListRollup PR #4): GNU `iconv -c` exits 1 when it drops a byte, and
+# the iconv branch treated that as failure, so only python3 ever scrubbed byte-cut input --
+# python3 was a silent hard requirement. With iconv present and python3 absent, iconv's output
+# must be used.
+if command -v iconv >/dev/null 2>&1; then
+  mkdir -p "$TMPD/nopython"
+  for t in iconv mv rm; do ln -sf "$(command -v "$t")" "$TMPD/nopython/$t"; done
+  printf 'abc\xe2\x82' > "$TMPD/split"
+  ( PATH="$TMPD/nopython"; agy_scrub_utf8 "$TMPD/split" )
+  check "iconv alone scrubs a split sequence (python3 absent, iconv -c exits 1)" "abc" \
+    "$(cat "$TMPD/split")"
+fi
 printf '\xe2\x82' > "$TMPD/allbad"            # no valid byte: every sanitizer yields nothing
 agy_scrub_utf8 "$TMPD/allbad"
 check "a sanitizer's empty result never replaces the file" "2" "$(wc -c < "$TMPD/allbad" | tr -d ' ')"
 check "both byte-cap paths call the shared scrub" "2" \
   "$(grep -c '^ *agy_scrub_utf8 "\$' "$SCRIPT_DIR/agy-review.sh")"
+# --- script(1) fallback capture: its framing records are not agy output -----------
+# REGRESSION (Codex review, GH-ListRollup PR #4): util-linux `script -qfec` still writes
+# "Script started on" / "Script done on" records into the typescript, so an empty or failed agy
+# run read as non-empty output, and a backend error was no longer on the first line.
+ts_start='Script started on 2026-11-16 02:05:52-05:00 [COMMAND="x" <not executed on terminal>]'
+ts_done='Script done on 2026-11-16 02:05:52-05:00 [COMMAND_EXIT_CODE="0"]'
+check "script records around an empty run leave nothing" "" \
+  "$(printf '%s\n\n%s\n' "$ts_start" "$ts_done" | agy_strip_script_records)"
+check "script records around a review leave only the review" "## Review|body" \
+  "$(printf '%s\n## Review\nbody\n\n%s\n' "$ts_start" "$ts_done" | agy_strip_script_records | paste -sd'|')"
+check "a backend error is back on the first line" "MATCH" \
+  "$(se "$(printf '%s\nerror: backend unavailable\n%s\n' "$ts_start" "$ts_done" | agy_strip_script_records)")"
+check "text that merely mentions a record mid-review is kept" "a|Script done on Tuesday|b" \
+  "$(printf 'a\nScript done on Tuesday\nb\n' | agy_strip_script_records | paste -sd'|')"
+check "the script fallback pipes its capture through the filter" "1" \
+  "$(grep -c 'col -b < "\$raw" | agy_strip_script_records > "\$out_file"' "$SCRIPT_DIR/agy-review.sh")"
+# REGRESSION (agy review, GH-ListRollup PR #6): util-linux localizes the record prose, so a
+# non-English runner must still be handled through the untranslated key=value fields.
+ts_start_de='Skript gestartet am 2026-11-16 02:05:52-05:00 [COMMAND="x" <not executed on terminal>]'
+ts_done_de='Skript beendet am 2026-11-16 02:05:52-05:00 [COMMAND_EXIT_CODE="0"]'
+check "localized script records are stripped too" "## Review|body" \
+  "$(printf '%s\n## Review\nbody\n\n%s\n' "$ts_start_de" "$ts_done_de" | agy_strip_script_records | paste -sd'|')"
+
+# --- every mktemp'd variable is removed by the EXIT trap -------------------------
+# REGRESSION (agy review, GH-ListRollup PR #4): _perm_err, compare_err and trimmed were created
+# mid-flight but missing from cleanup(), so an abort while they existed leaked them.
+cleanup_src="$(sed -n '/^cleanup() {/,/^}/p' "$SCRIPT_DIR/agy-review.sh")"
+missing=""
+for v in $(grep -oE '[A-Za-z_][A-Za-z0-9_]*="\$\(mktemp' "$SCRIPT_DIR/agy-review.sh" | cut -d= -f1 | sort -u); do
+  printf '%s' "$cleanup_src" | grep -qF "\${$v:-}" || missing="$missing $v"
+done
+check "every mktemp'd variable is in the cleanup trap" "" "${missing# }"
+# REGRESSION (agy review, GH-ListRollup PR #6): listing a variable in cleanup() is not enough if
+# the trap is installed after the file is created -- agy_has_write_access ran (and created
+# _perm_err) before `trap cleanup EXIT`, and the pre-declarations then reset it. The trap and
+# every pre-declaration must precede the first mktemp anywhere in the script.
+# `tail -1`, not `head -1` (agy review, GH-ListRollup PR #6): a duplicate pre-declaration block
+# left lower in the script by a merge would reset _perm_err again, and head -1 would not see it.
+trap_line="$(grep -n '^trap cleanup EXIT$' "$SCRIPT_DIR/agy-review.sh" | tail -1 | cut -d: -f1 || true)"
+first_mktemp="$(grep -nE '="\$\(mktemp' "$SCRIPT_DIR/agy-review.sh" | grep -vE '^[0-9]+:[[:space:]]*#' | head -1 | cut -d: -f1 || true)"
+decl_line="$(grep -n "^_perm_err='' " "$SCRIPT_DIR/agy-review.sh" | tail -1 | cut -d: -f1 || true)"
+diff_decl_line="$(grep -n '^diff_file= ' "$SCRIPT_DIR/agy-review.sh" | tail -1 | cut -d: -f1 || true)"
+check "the EXIT trap and pre-declarations precede the first mktemp" "yes" \
+  "$([ -n "$trap_line" ] && [ -n "$first_mktemp" ] && [ -n "$decl_line" ] && [ -n "$diff_decl_line" ] \
+      && [ "$trap_line" -lt "$first_mktemp" ] && [ "$decl_line" -lt "$first_mktemp" ] \
+      && [ "$diff_decl_line" -lt "$first_mktemp" ] \
+      && echo yes || echo "no (trap:${trap_line:-none} decl:${decl_line:-none}/${diff_decl_line:-none} first mktemp:${first_mktemp:-none})")"
+check "the trap and each pre-declaration block appear exactly once" "1 1 1" \
+  "$(grep -c '^trap cleanup EXIT$' "$SCRIPT_DIR/agy-review.sh") $(grep -c "^_perm_err='' " "$SCRIPT_DIR/agy-review.sh") $(grep -c '^diff_file= ' "$SCRIPT_DIR/agy-review.sh")"
+
 # A failed jq step in the archive lookup must be logged, not swallowed.
 check "archive jq failures are logged" "no" \
   "$(grep -n 'SELECT_OURS_JQ" 2>/dev/null' "$SCRIPT_DIR/agy-review.sh" >/dev/null && echo yes || echo no)"
+
+# --- byte limits are normalized before any arithmetic uses them -------------------
+# REGRESSION (agy review, GH-ListRollup PR #4): MAX_PROMPT_BYTES=080000 passed the `[ ]` check and
+# then aborted in `$(( ))` as invalid octal; MAX_BODY_BYTES=60k aborted the same way; and a
+# non-numeric MAX_DIFF_BYTES silently disabled the diff cap. Each must be normalized, and before
+# the first line that does arithmetic on it or passes it to agy_cut_file.
+for v in MAX_DIFF_BYTES MAX_PROMPT_BYTES MAX_BODY_BYTES; do
+  # `|| true`: under pipefail a missing line must report as a FAIL below, not abort the selftest.
+  norm_line="$(grep -n "^normalize_numeric_env $v " "$SCRIPT_DIR/agy-review.sh" | head -1 | cut -d: -f1 || true)"
+  # Code lines only: the explanatory comments quote the arithmetic they guard against. Matches the
+  # variable ANYWHERE inside an arithmetic expansion, or as any argument to an agy_cut_*/agy_cap_*
+  # helper -- not only as the first operand (agy review, GH-ListRollup PR #6).
+  use_line="$(grep -nE "\\(\\([^)]*\\b$v\\b|agy_c(ut|ap)_[a-z_]+ .*\\\$\\{?$v\\b" "$SCRIPT_DIR/agy-review.sh" \
+                | grep -vE '^[0-9]+:[[:space:]]*#' | head -1 | cut -d: -f1 || true)"
+  check "$v is normalized before its first arithmetic use" "yes" \
+    "$([ -n "$norm_line" ] && [ -n "$use_line" ] && [ "$norm_line" -lt "$use_line" ] && echo yes || echo "no (normalize:${norm_line:-none} use:${use_line:-none})")"
+done
+_nne_probe=080000; normalize_numeric_env _nne_probe 120000
+check "normalize_numeric_env turns a leading-zero 080000 into 80000" "80000" "$_nne_probe"
+
+# --- an archive emptied by trimming renders no empty <details> -------------------
+# REGRESSION (agy review, GH-ListRollup PR #4): when every archived round was dropped, the
+# "Earlier review rounds" <details> wrapper was still emitted around nothing.
+# Whitespace-tolerant (agy review, GH-ListRollup PR #6): not coupled to the exact indentation.
+check "the archive <details> wrapper is guarded on a non-empty archive" "2" \
+  "$(grep -cE '^[[:space:]]*if \[ -s "\$archived_file" \]; then[[:space:]]*$' "$SCRIPT_DIR/agy-review.sh")"
+# AGY_ERROR_MAX_BYTES: run the real validation with bad values, not a grep for its shape
+# (agy review, GH-ListRollup PR #7). A non-numeric value or 0 would disable the backend-error
+# guard; both must fall back to the default, and a leading-zero value must parse as decimal.
+for _cap in "0:2000" "abc:2000" "5MB:2000" ":2000" "080:80" "4096:4096"; do
+  AGY_ERROR_MAX_BYTES="${_cap%%:*}"; agy_validate_error_cap
+  check "AGY_ERROR_MAX_BYTES='${_cap%%:*}' validates to ${_cap#*:}" "${_cap#*:}" "$AGY_ERROR_MAX_BYTES"
+done
+check "the script calls the error cap validation" "1" \
+  "$(grep -c '^agy_validate_error_cap$' "$SCRIPT_DIR/agy-review.sh")"
+AGY_ERROR_MAX_BYTES=2000
 
 check "a lowercase error (agy under unbuffer) is caught" "MATCH" \
   "$(se 'error: Eligibility check failed: PERMISSION_DENIED (code 403): Request had insufficient authentication scopes.. Please log out (/logout) and log back in (/login).')"
@@ -421,14 +535,14 @@ done
 # one of them -- which is exactly how the octal case survived the first version of this guard.
 nne() {                                    # run the real function, echo what the variable became
   local v="$1"; local T="$v"
-  normalise_numeric_env T 240 >/dev/null 2>&1 || echo "CRASHED"
+  normalize_numeric_env T 240 >/dev/null 2>&1 || echo "CRASHED"
   printf '%s' "$T"
 }
 check "numeric env: plain integer passes through"   "300"  "$(nne 300)"
 check "numeric env: zero is a legal setting"        "0"    "$(nne 0)"
 # 9, not a crash and not 8: `09` is all digits, so the digits-only check admits it, and bash then
 # reads the leading zero as OCTAL. This is the case the digits-only check alone did NOT cover.
-check "numeric env: leading zero canonicalises"     "9"    "$(nne 09)"
+check "numeric env: leading zero canonicalizes"     "9"    "$(nne 09)"
 check "numeric env: many leading zeros"             "8"    "$(nne 0008)"
 check "numeric env: empty falls back"               "240"  "$(nne "")"
 check "numeric env: non-numeric falls back"         "240"  "$(nne 30s)"
@@ -446,15 +560,15 @@ check "numeric env: a variable name falls back"     "240"  "$(nne a_name)"
 # already swallowed the evidence. Kept as a note because a test that cannot fail is worse than
 # no test -- it reads as coverage.
 check "numeric env: a non-numeric value never reaches arithmetic" "" \
-  "$( { T=a_name; normalise_numeric_env T 240; } 2>&1 >/dev/null || true )"
+  "$( { T=a_name; normalize_numeric_env T 240; } 2>&1 >/dev/null || true )"
 # It assigns THROUGH a caller-supplied name, so its own locals must not collide with one. With
 # plain `name`/`default`/`val` locals these two silently no-op -- the function reads and writes its
 # own local and the caller's variable is never touched. Verified as a real failure before fixing.
-name=09; normalise_numeric_env name 240
+name=09; normalize_numeric_env name 240
 check "numeric env: a caller variable named 'name' is not shadowed" "9" "$name"
-val=07;  normalise_numeric_env val 240
+val=07;  normalize_numeric_env val 240
 check "numeric env: a caller variable named 'val' is not shadowed"  "7" "$val"
-default=08; normalise_numeric_env default 240
+default=08; normalize_numeric_env default 240
 check "numeric env: a caller variable named 'default' is not shadowed" "8" "$default"
 
 # --- diff-size scaling -------------------------------------------------------------------------
@@ -477,9 +591,9 @@ check "scaling: an explicit timeout is not touched" "5m" "$(sc 20000000)"
 AGY_PRINT_TIMEOUT_EXPLICIT=""
 
 # And the value it produces must survive the arithmetic it exists to feed.
-T=09; normalise_numeric_env T 240
+T=09; normalize_numeric_env T 240
 # 9. Feeding the RAW `09` to the same expansion dies "value too great for base" under `set -e`,
-# which is the crash this canonicalisation exists to prevent -- asserted directly below.
+# which is the crash this canonicalization exists to prevent -- asserted directly below.
 check "numeric env: canonical value is arithmetic-safe" "9" \
   "$(bash -c 'set -e; echo $(( 1048576 * '"$T"' / 1048576 ))' 2>/dev/null || echo CRASHED)"
 check "numeric env: the RAW value would have crashed"   "CRASHED" \
@@ -522,7 +636,7 @@ check "a legacy archive becomes one droppable round behind the new one" "NEW" \
 check "an archived round keeps its reviewed-at time" "1" \
   "$(agy_assemble_archive "$(printf '%s2026-10-06 12:34 UTC -->\nBODY' "$AGY_REVIEWED_AT_PREFIX")" "" "LATER" \
      | grep -c -F '<summary>Round reviewed at 2026-10-06 12:34 UTC</summary>')"
-check "a head without the line is labelled archived-at" "1" \
+check "a head without the line is labeled archived-at" "1" \
   "$(agy_assemble_archive "BODY" "" "LATER" | grep -c -F '<summary>Round archived at LATER</summary>')"
 if grep -q 'AGY_REVIEWED_AT_PREFIX' "$SCRIPT_DIR/agy-review.sh"; then
   echo "  ok    the posted head records its reviewed-at time"
@@ -569,9 +683,46 @@ case "$verdict" in
   exceeds*) echo "  FAIL  worst case ${verdict#exceeds } does not fit the job timeout"; fails=$((fails + 1)) ;;
   *) echo "  FAIL  could not read the timeout budget from $wf"; fails=$((fails + 1)) ;;
 esac
+# lock_verdict: "covers" when AGY_LOCK_WAIT outlasts ONE other review's whole hold of the
+# host-wide agy lock (every attempt at the per-attempt budget plus the pauses between them),
+# else "short"; empty when unreadable. The sum above can fit the job timeout while the wait
+# itself is shorter than another review's hold, and then a review queued behind a busy
+# repository's still times out red (AGY_LOCK_WAIT 300 against a ~15-minute review, RustyNES
+# #664 / RustyNES_MiSTer #79, 2026-11-15; Antigravity on RustyNES #665).
+lock_verdict() {
+  local max_s lock_s retries delay pin per hold
+  max_s="$(wf_val AGY_PRINT_TIMEOUT_MAX_SECONDS)"; [ -n "$max_s" ] || max_s="$(sh_default AGY_PRINT_TIMEOUT_MAX_SECONDS)"
+  lock_s="$(wf_val AGY_LOCK_WAIT)";               [ -n "$lock_s" ] || lock_s="$(sh_default AGY_LOCK_WAIT)"
+  retries="$(wf_val AGY_RETRIES)";  [ -n "$retries" ] || retries="$(sh_default AGY_RETRIES)"
+  delay="$(wf_val AGY_RETRY_DELAY)"; [ -n "$delay" ] || delay="$(sh_default AGY_RETRY_DELAY)"
+  pin="$(wf_pin)"
+  per="$max_s"
+  if [ -n "$pin" ]; then per="$(duration_to_seconds "$pin")" || return 0; fi
+  [ -n "$per" ] && [ -n "$lock_s" ] && [ -n "$retries" ] && [ -n "$delay" ] || return 0
+  hold=$(( retries * per + delay * retries * (retries - 1) / 2 ))
+  if [ "$lock_s" -gt "$hold" ]; then echo "covers ${lock_s}s ${hold}s"; else echo "short ${lock_s}s ${hold}s"; fi
+}
+lv="$(lock_verdict)"
+case "$lv" in
+  covers*) read -r lw lh <<<"${lv#covers }"; echo "  ok    AGY_LOCK_WAIT $lw outlasts one other review's whole hold of the agy lock ($lh)" ;;
+  short*)  read -r lw lh <<<"${lv#short }"; echo "  FAIL  AGY_LOCK_WAIT $lw is shorter than one other review's hold of the agy lock ($lh)"; fails=$((fails + 1)) ;;
+  *) echo "  FAIL  could not read the lock-wait budget from $wf"; fails=$((fails + 1)) ;;
+esac
+# And it must be able to fail: the old 300 s wait against the same workflow is short.
+real_wf="$wf"
+sed 's/^\([[:space:]]*AGY_LOCK_WAIT:[[:space:]]*\)"\{0,1\}[0-9]*"\{0,1\}/\1"300"/' "$real_wf" > "$TMPD/lock300.yml"
+wf="$TMPD/lock300.yml"
+check "a 300 s AGY_LOCK_WAIT is reported shorter than one review's hold" "short" "$(lock_verdict | cut -d' ' -f1)"
+wf="$real_wf"
 # The pin must count: the same workflow with a 50-minute pin has to be reported as exceeding.
 real_wf="$wf"
-sed 's/^\([[:space:]]*\)AGY_EFFORT:.*/&\n\1AGY_PRINT_TIMEOUT: 50m/' "$real_wf" > "$TMPD/pinned.yml"
+# Drop any pin the real workflow already carries first, so the synthetic file has exactly one
+# AGY_PRINT_TIMEOUT key whatever this repository pins (a duplicate key only "worked" because the
+# reader stops at the first match).
+sed -e '/^[[:space:]]*AGY_PRINT_TIMEOUT:/d' \
+    -e 's/^\([[:space:]]*\)AGY_EFFORT:.*/&\n\1AGY_PRINT_TIMEOUT: 50m/' "$real_wf" > "$TMPD/pinned.yml"
+check "the synthetic pinned workflow has exactly one AGY_PRINT_TIMEOUT key" "1" \
+  "$(grep -c '^[[:space:]]*AGY_PRINT_TIMEOUT:' "$TMPD/pinned.yml")"
 wf="$TMPD/pinned.yml"
 check "a pinned AGY_PRINT_TIMEOUT counts in the timeout budget" "exceeds" "$(budget_verdict | cut -d' ' -f1)"
 wf="$real_wf"
@@ -603,6 +754,85 @@ if grep -nE '^[[:space:]]*exec[[:space:]][^#]*>[[:space:]]*/dev/null' "$SCRIPT_D
 else
   echo "  ok    no \`exec\` redirects to /dev/null"
 fi
+
+# agy runs under --dangerously-skip-permissions and reads an untrusted diff, so the repository
+# checkout must never be in its workspace: a planted .git/hooks or .git/config would execute in a
+# later token-bearing git call. The large-diff handoff once used `--add-dir "$PWD"`.
+check "agy is never given the checkout via --add-dir" "0" \
+  "$(grep -cE -- '--add-dir[[:space:]]+"?\$(PWD|\{PWD\})' "$SCRIPT_DIR/agy-review.sh")"
+check "agy runs from its private sandbox directory (both PTY paths)" "2" \
+  "$(grep -cE '\( cd "\$agy_sandbox" && ' "$SCRIPT_DIR/agy-review.sh")"
+check "both PTY paths start inside the allowlisted environment (env -i before unbuffer/script)" "2" \
+  "$(grep -cE '\( cd "\$agy_sandbox" && "\$\{agy_env\[@\]\}" (unbuffer|AGY_BIN=)' "$SCRIPT_DIR/agy-review.sh")"
+# bubblewrap isolation (AGY_ISOLATION=bwrap): agy's --sandbox does not confine reads and agy loads
+# the user's MCP servers/skills/hooks, so the jail is the real boundary. Statically pin its shape.
+SCRIPT="$SCRIPT_DIR/agy-review.sh"
+check "isolation defaults to bwrap" "1" \
+  "$(grep -c '^AGY_ISOLATION="\${AGY_ISOLATION:-bwrap}"' "$SCRIPT")"
+check "both PTY paths launch agy through the jail" "2" \
+  "$(grep -cE 'unbuffer "\$\{agy_jail\[@\]\}" "\$AGY_BIN"|printf .%q . "\$\{agy_jail\[@\]\}" "\$here/_agy_print.sh"' "$SCRIPT")"
+check "the jail gives agy an empty private HOME (tmpfs /home + private bind)" "1" \
+  "$(grep -c -- '--tmpfs /home --bind "\$agy_jail_home" "\$HOME"' "$SCRIPT")"
+check "Item.GetSecret is granted only on the resolved keyring item(s)" "1" \
+  "$(grep -c 'Secret.Item.GetSecret@' "$SCRIPT")"
+check "the GetSecret grant uses the resolved item variable, never a wildcard" "1" \
+  "$(grep -c 'Secret.Item.GetSecret@\${_it}' "$SCRIPT")"
+check "the bulk Service.GetSecrets call is never granted" "0" \
+  "$(grep -c 'Secret.Service.GetSecrets' "$SCRIPT")"
+check "a missing bwrap/xdg-dbus-proxy/gdbus fails closed" "1" \
+  "$(grep -c "refusing to run agy unjailed (set AGY_ISOLATION=none" "$SCRIPT")"
+check "the proxy runs with --filter (deny by default)" "1" \
+  "$(grep -c 'xdg-dbus-proxy "\$DBUS_SESSION_BUS_ADDRESS" "\$agy_jail_rt/bus" --filter' "$SCRIPT")"
+# Credential scan: every shape is caught, ordinary review text is not.
+cred_tmp="$TMPD/cred.txt"
+# Samples are assembled at runtime from split pieces, so this file never contains a literal that a
+# repository secret scanner (gitleaks) would flag.
+s_jwt="eyJ""hbGciOiJIUzI1NiJ9.""eyJ""zdWIiOiIxMjM0NTY3ODkwIn0.abcdefghijklmnop"
+s_aws="AKI""AABCDEFGHIJKLMNOP"
+s_key="-----BEGIN OPENSSH ""PRIVATE KEY-----"
+for sample in "token ya2""9.$(printf 'a%.0s' {1..30})" "refresh 1/""/0$(printf 'b%.0s' {1..30})" \
+              "gh""p_$(printf 'c%.0s' {1..36})" "github""_pat_$(printf 'd%.0s' {1..50})" \
+              "$s_key" "$s_jwt" "key $s_aws." "sk-a""nt-$(printf 'e%.0s' {1..40})" \
+              "sk-pro""j-$(printf 'f%.0s' {1..40})" "xox""b-1234567890-abcdef"; do
+  printf '## Review\n\nfound %s here\n' "$sample" > "$cred_tmp"
+  check "credential scan catches: ${sample:0:14}..." "yes" \
+    "$(credential_kind_present "$cred_tmp" >/dev/null && echo yes || echo no)"
+done
+# No false positives on ordinary identifiers that merely CONTAIN a token prefix.
+for benign in "task-$(printf 'g%.0s' {1..40})" "disk-$(printf 'h%.0s' {1..40})" \
+              "risk-assessment-of-the-new-staging-pipeline-in-detail" \
+              "xghp_$(printf 'i%.0s' {1..36})" "myxoxb-thing" "BAKIA$(printf 'J%.0s' {1..16})Z"; do
+  printf '## Review\n\nsee %s for details\n' "$benign" > "$cred_tmp"
+  check "credential scan ignores: ${benign:0:14}..." "no" \
+    "$(credential_kind_present "$cred_tmp" >/dev/null && echo yes || echo no)"
+done
+printf '## Review\n\nNo blocking issues. GH_TOKEN is stripped; see ya29 docs and the BEGIN marker.\n' > "$cred_tmp"
+check "credential scan passes ordinary review text" "no" \
+  "$(credential_kind_present "$cred_tmp" >/dev/null && echo yes || echo no)"
+check "post-agy git calls disable hooks and fsmonitor" "2" \
+  "$(grep -cE 'git -c core\.hooksPath=/dev/null -c core\.fsmonitor=false update-ref' "$SCRIPT_DIR/agy-review.sh")"
+
+# The allowlisted environment: run the real function against a fake job environment. Anything not
+# on the allowlist is dropped, including credentials under ordinary-looking names.
+env_fn="$(sed -n '/^agy_allowlisted_env_args() {/,/^}/p' "$SCRIPT_DIR/agy-review.sh")"
+check "the allowlist function was found in agy-review.sh" "yes" "$([ -n "$env_fn" ] && echo yes || echo no)"
+env_out="$(
+  export GH_TOKEN=x GITHUB_TOKEN=x ACTIONS_RUNTIME_TOKEN=x ACTIONS_ID_TOKEN_REQUEST_TOKEN=x \
+         RUNNER_TEMP=/t NPM_TOKEN=x DATABASE_URL='postgres://u:pw@h/db' SOME_SETTING=x \
+         HOME=/home/u PATH=/usr/bin DBUS_SESSION_BUS_ADDRESS=unix:path=/b XDG_RUNTIME_DIR=/run/u \
+         EXTRA_OK=1 AGY_ENV_PASSTHROUGH='BAD=NAME 1 1FOO * ../x EXTRA_OK'
+  eval "$env_fn"
+  args=( env )
+  while IFS= read -r -d '' a; do args+=( "$a" ); done < <(agy_allowlisted_env_args)
+  "${args[@]}" env
+)"
+check "agy's environment drops everything off the allowlist (tokens, ordinary-named secrets)" "0" \
+  "$(grep -cE '^(GH_TOKEN|GITHUB_TOKEN|ACTIONS_RUNTIME_TOKEN|ACTIONS_ID_TOKEN_REQUEST_TOKEN|RUNNER_TEMP|NPM_TOKEN|DATABASE_URL|SOME_SETTING|AGY_ENV_PASSTHROUGH|BAD)=' <<<"$env_out" || true)"
+# Invalid passthrough entries (an assignment, a bare digit that would read $1, `1FOO` that used
+# to abort with "bad substitution", a glob, a path) are skipped without aborting, so EXTRA_OK,
+# listed last, must still arrive.
+check "agy's environment keeps the session variables it needs, plus AGY_ENV_PASSTHROUGH names" "5" \
+  "$(grep -cE '^(HOME|PATH|DBUS_SESSION_BUS_ADDRESS|XDG_RUNTIME_DIR|EXTRA_OK)=' <<<"$env_out" || true)"
 
 if [ "$fails" -ne 0 ]; then
   echo "$fails check(s) failed" >&2
