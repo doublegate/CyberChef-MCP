@@ -213,21 +213,22 @@ credential_kind_present() {
 # line (or to the end of the text, which fails safe). Several passes, because adjacent matches
 # can share a boundary character. The caller re-scans and fails closed on anything left.
 agy_redact_credentials() {
-  local f="$1" kind lead core trail groups n pass
-  local tmp="$1.redact"   # a sibling of the capture, removed below
+  # In memory, not through a scratch file: the capture is bounded (GitHub's comment limit), and a
+  # predictable sibling in a shared TMPDIR would be readable or symlink-raceable. The `x` sentinel
+  # keeps trailing newlines through the command substitution.
+  local f="$1" buf kind lead core trail groups n pass
   for pass in 1 2 3; do
     while IFS='~' read -r kind lead core trail; do
       if [ "$kind" = private-key-block ]; then
-        sed -E "/${core}/,/-----END [A-Z ]*PRIVATE KEY-----/c\\[REDACTED: ${kind}]" "$f" > "$tmp" || return 1
+        buf="$(sed -E "/${core}/,/-----END [A-Z ]*PRIVATE KEY-----/c\\[REDACTED: ${kind}]" "$f" && printf x)" || return 1
       else
         groups="${core//[^(]/}"; n=$(( 2 + ${#groups} ))
-        sed -E "s#${lead:-()}${core}${trail:-()}#\\1[REDACTED: ${kind}]\\${n}#g" "$f" > "$tmp" || return 1
+        buf="$(sed -E "s#${lead:-()}${core}${trail:-()}#\\1[REDACTED: ${kind}]\\${n}#g" "$f" && printf x)" || return 1
       fi
-      cat "$tmp" > "$f"
+      printf '%s' "${buf%x}" > "$f"
     done < <(agy_credential_patterns)
     : "$pass"
   done
-  rm -f -- "$tmp"
 }
 # <<< SELFTEST-EXTRACT
 
@@ -1401,19 +1402,17 @@ async def copy_chunked(cr, uw):
         size = int(size_txt, 16)
         uw.write(f"{size:x}\r\n".encode())  # chunk extensions are dropped
         if size == 0:
-            while True:  # trailers, forwarded only if they are well formed
+            # Trailers are read (bounded) and DISCARDED: forwarding them would let a client add
+            # headers after validation. Only the terminating CRLF goes upstream.
+            for _ in range(64):
                 t = await cr.readuntil(b"\r\n")
+                if len(t) > MAX_CHUNK_LINE:
+                    raise Refuse
                 if t == b"\r\n":
                     uw.write(b"\r\n")
                     await uw.drain()
                     return
-                if (
-                    len(t) > MAX_CHUNK_LINE
-                    or TOKEN.fullmatch(t[:-2].split(b":", 1)[0].decode("latin-1"))
-                    is None
-                ):
-                    raise Refuse
-                uw.write(t)
+            raise Refuse
         await copy_exact(cr, uw, size)
         if await cr.readexactly(2) != b"\r\n":
             raise Refuse

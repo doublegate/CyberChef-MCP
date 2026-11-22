@@ -968,6 +968,13 @@ check "adjacent matches are all redacted, boundaries kept" "keys [REDACTED: aws-
 check "the capture loop redacts instead of failing" "1" \
   "$(grep -c '^    if ! agy_redact_credentials "\$out_file" || left="\$(credential_kind_present "\$out_file")"; then' "$SCRIPT")"
 check "a redacted review says so in the comment" "1" "$(grep -c 'credential-shaped strings were redacted from this review before posting' "$SCRIPT")"
+# Commit security review of 1d782bb: chunk trailers are discarded, never forwarded, and redaction
+# uses no scratch file (a predictable sibling in a shared TMPDIR).
+check "chunked trailers are read and discarded, never written upstream" "0" "$(grep -c '^ *uw.write(t)$' "$proxy_py")"
+check "only the terminating CRLF follows the last chunk" "1" \
+  "$(grep -c 'Trailers are read (bounded) and DISCARDED' "$proxy_py")"
+check "redaction works in memory, with no scratch file" "0" \
+  "$(sed -n '/^agy_redact_credentials() {/,/^}/p' "$SCRIPT" | grep -cE 'mktemp|\.redact|> *"\$tmp"')"
 # Credential scan: every shape is caught, ordinary review text is not.
 cred_tmp="$TMPD/cred.txt"
 # Samples are assembled at runtime from split pieces, so this file never contains a literal that a
