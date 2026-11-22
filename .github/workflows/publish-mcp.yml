@@ -91,8 +91,19 @@ jobs:
       - name: Install mcp-publisher
         run: |
           set -o pipefail
-          curl -fsSL --retry 5 --retry-all-errors --retry-delay 15 "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" \
-            | tar xz mcp-publisher
+          # The newest non-draft release whose linux_amd64 asset is fully uploaded. The registry
+          # publishes several releases a day, and releases/latest/download 404s while the newest
+          # one is still uploading its assets.
+          url="$(curl -fsSL --retry 5 --retry-all-errors --retry-delay 15 \
+              'https://api.github.com/repos/modelcontextprotocol/registry/releases?per_page=5' \
+            | jq -r '[.[] | select((.draft or .prerelease) | not) | .assets[]
+                     | select(.name == "mcp-publisher_linux_amd64.tar.gz" and .state == "uploaded")
+                     | .browser_download_url][0] // empty')"
+          if [ -z "$url" ]; then
+            echo "::error::no recent modelcontextprotocol/registry release has a complete mcp-publisher_linux_amd64 asset"
+            exit 1
+          fi
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 15 "$url" | tar xz mcp-publisher
           ./mcp-publisher --help > /dev/null
 
       # The registry's own validator, before authenticating. A document that fails here fails for
