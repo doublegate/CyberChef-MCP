@@ -70,7 +70,7 @@ jobs:
     - name: server.json against the registry's own validator
       run: |
         set -o pipefail
-        curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" \
+        curl -fsSL --retry 5 --retry-all-errors --retry-delay 15 "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" \
           | tar xz mcp-publisher
         ./mcp-publisher validate 2>&1 | tee validation.txt
         # The tool exits 0 on a deprecated schema. Treat that as a failure here, because shipping a
