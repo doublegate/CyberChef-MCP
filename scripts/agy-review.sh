@@ -152,6 +152,29 @@ OAUTH_URL_RE='https?://accounts\.google\.com/o/oauth2'
 # lapse is detected AND a leak is blocked by the same unconditional check.
 oauth_url_present() { [ -s "$1" ] && grep -qiE "$OAUTH_URL_RE" "$1"; }
 
+# Append this run's denied egress targets (deduplicated, tagged, bounded to the newest 500 lines)
+# to a host-private log created mode 600. Never called with a public destination.
+agy_record_denied() {
+  local src="$1" dst="$2" tag="$3" stamp
+  [ -s "$src" ] || return 0
+  stamp="$(date -u +%FT%TZ)"
+  (
+    umask 077
+    {
+      if [ -f "$dst" ]; then tail -n 400 "$dst"; fi
+      sort -u "$src" | cut -c1-253 | sed "s|^|${stamp} ${tag} |"
+    } > "$dst.new" || exit 1
+    tail -n 500 "$dst.new" > "$dst.tmp" && mv -f "$dst.tmp" "$dst" && rm -f -- "$dst.new"
+  )
+}
+
+# True when the captured output is a jail launch diagnostic rather than agy's: its first
+# non-blank line comes from bwrap itself or from the in-jail wrapper (argv0 `agy-jail`).
+agy_jail_failed() {
+  [ -s "$1" ] || return 1
+  grep -m1 -v '^[[:space:]]*$' "$1" | grep -qE '^(bwrap|agy-jail): '
+}
+
 # Credential shapes that must never reach a public PR comment. Every pattern is anchored on a
 # leading non-identifier boundary, so an ordinary identifier (`task-...`, `disk-...`, a word ending
 # in `ghp`) cannot match and wrongly block a review. agy's --sandbox does NOT confine
@@ -276,6 +299,25 @@ AGY_ISOLATION="${AGY_ISOLATION:-bwrap}"
 case "$AGY_ISOLATION" in bwrap|none) ;; *) echo "AGY_ISOLATION must be bwrap or none, got '$AGY_ISOLATION'" >&2; exit 1 ;; esac
 # Attributes agy uses to look up its keyring item (observed on the Secret Service bus).
 AGY_KEYRING_ATTRS="${AGY_KEYRING_ATTRS:-username=antigravity service=gemini}"
+# Network egress from the jail. `filtered` (default) gives the jail NO network namespace access:
+# its only route out is an allowlisting HTTPS CONNECT proxy outside the jail, reached through a
+# bind-mounted Unix socket. Without this, a prompt-injected diff could make agy read its own
+# Google login token (which it must be able to read) and send it anywhere. `open` keeps the host
+# network (not recommended). Hosts are EXACT names, never wildcards: `.googleapis.com` would
+# include Cloud Storage, where anyone can own a writable bucket.
+AGY_EGRESS="${AGY_EGRESS:-filtered}"
+case "$AGY_EGRESS" in filtered|open) ;; *) echo "AGY_EGRESS must be filtered or open, got '$AGY_EGRESS'" >&2; exit 1 ;; esac
+# Observed 2026-11-22: the Gemini backends, the OAuth token endpoint, and www.googleapis.com for the
+# userinfo eligibility check. Telemetry, the avatar host and the auto-updater are left out (agy
+# works without them).
+AGY_EGRESS_ALLOW="${AGY_EGRESS_ALLOW:-daily-cloudcode-pa.googleapis.com aicode.googleapis.com oauth2.googleapis.com www.googleapis.com}"
+# www.googleapis.com ALSO serves the Cloud Storage JSON API (verified: an upload to a nonexistent
+# bucket there answers "The specified bucket does not exist"), so that host is TLS-intercepted and
+# only this path is forwarded, as a body-less GET that the proxy REBUILDS (its own Host header, a
+# short header allowlist): forwarding the client's Host would let it front to any Google service.
+AGY_EGRESS_INTERCEPT_HOST="${AGY_EGRESS_INTERCEPT_HOST:-www.googleapis.com}"
+# Exact path, no query: agy sends none (verified), and a query string is a data channel.
+AGY_EGRESS_INTERCEPT_PATH="${AGY_EGRESS_INTERCEPT_PATH:-/oauth2/v2/userinfo}"
 AGY_DIFF_MODE="${AGY_DIFF_MODE:-auto}"     # auto|inline|file. A diff is passed to agy either inlined
                                            # in the --print prompt, or written to a FILE agy reads with
                                            # its own tools. `auto` inlines a diff that fits under the
@@ -389,7 +431,7 @@ REPO="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY not set}"
 # _perm_err so cleanup() could never see it (agy review, GH-ListRollup PR #6).
 # Remove every temp file on exit. Pre-declared so the trap is safe under `set -u` even if the
 # script exits before a given file is created.
-diff_file= diff_err= meta_file= prompt_file= out_file= raw= body_file= agy_diff_file= agy_sandbox= agy_jail_home= agy_jail_rt= agy_proxy_pid= jq_err= prior_body_file= archived_file= api_err=
+diff_file= diff_err= meta_file= prompt_file= out_file= raw= body_file= agy_diff_file= agy_sandbox= agy_jail_home= agy_jail_rt= agy_proxy_pid= agy_egress_pid= jq_err= log_tail= prior_body_file= archived_file= api_err=
 # Also created mid-flight (permission lookup, compare-API merge base, archive trimming); a signal
 # or abort while one of those commands runs would otherwise leak the file in /tmp.
 _perm_err='' compare_err='' trimmed=''
@@ -434,7 +476,7 @@ cleanup() {
   # cause. The pre-declaration stays and is still the actual guarantee; this is the cheap second
   # line for a function that only ever runs while something else is going wrong.
   for f in "${diff_file:-}" "${diff_err:-}" "${meta_file:-}" "${out_file:-}" "${raw:-}" "${body_file:-}" \
-           "${jq_err:-}" "${prior_body_file:-}" "${archived_file:-}" "${api_err:-}" \
+           "${jq_err:-}" "${log_tail:-}" "${prior_body_file:-}" "${archived_file:-}" "${api_err:-}" \
            "${_perm_err:-}" "${compare_err:-}" "${trimmed:-}"; do
     [ -n "$f" ] && doomed+=("$f")
   done
@@ -451,7 +493,10 @@ cleanup() {
      && { [ -z "$keep_set" ] || [ -z "${agy_diff_file:-}" ]; }; then
     rm -rf -- "$agy_sandbox"   # an inline dry run has nothing in it to keep
   fi
-  [ -n "${agy_proxy_pid:-}" ] && kill "$agy_proxy_pid" 2>/dev/null
+  # `|| true`: under set -e a failed kill (the proxy already exited) would otherwise end this trap
+  # before the jail home and runtime dirs below are removed.
+  [ -n "${agy_proxy_pid:-}" ] && { kill "$agy_proxy_pid" 2>/dev/null || true; }
+  [ -n "${agy_egress_pid:-}" ] && { kill "$agy_egress_pid" 2>/dev/null || true; }
   [ -n "${agy_jail_home:-}" ] && [ -d "$agy_jail_home" ] && rm -rf -- "$agy_jail_home"
   [ -n "${agy_jail_rt:-}" ] && [ -d "$agy_jail_rt" ] && rm -rf -- "$agy_jail_rt"
   if [ -n "${agy_refs_created:-}" ] && [ -n "${PR:-}" ]; then
@@ -1133,6 +1178,232 @@ agy_allowlisted_env_args() {
 agy_env=( env )
 while IFS= read -r -d '' arg; do agy_env+=( "$arg" ); done < <(agy_allowlisted_env_args)
 
+# The egress proxy, run with the host's python3 OUTSIDE the jail (embedded, so the vendored file
+# set stays the same in every repository). The self-test extracts and exercises it.
+agy_egress_proxy_src() {
+  cat <<'AGYPY'
+"""agy-review egress proxy: the jail's only route to the network (stdlib only).
+
+Serves HTTP CONNECT on a Unix socket that is bind-mounted into the jail. A tunnel is opened only
+to port 443 of a host that EXACTLY equals an allowlist entry (no wildcards, no suffixes: a
+wildcard such as .googleapis.com would include Cloud Storage, where anyone can own a bucket).
+One host may be intercepted: TLS is terminated with a per-run leaf certificate the jail trusts
+(the CA key never enters the jail) and only body-less HTTP/1.1 GETs whose path fully matches a
+regex are forwarded, one request per connection. This exists because www.googleapis.com serves
+both the userinfo call agy needs and the Cloud Storage JSON API.
+
+The log records verdicts and allowlisted host names only. A denied host name or any path is
+attacker-chosen and could carry a secret, so neither is ever written anywhere.
+
+argv: SOCKET LOG ALLOW_CSV [INTERCEPT_HOST PATH_REGEX CERT KEY]
+"""
+
+import asyncio
+import contextlib
+import os
+import re
+import ssl
+import sys
+
+sock_path, log_path, allow_csv = sys.argv[1], sys.argv[2], sys.argv[3]
+allow = {h for h in allow_csv.split(",") if h}
+icpt_host = sys.argv[4] if len(sys.argv) > 4 else ""
+icpt_path = re.compile(sys.argv[5]) if icpt_host else None
+server_ctx = None
+if icpt_host:
+    server_ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+    server_ctx.load_cert_chain(sys.argv[6], sys.argv[7])
+    server_ctx.set_alpn_protocols(["http/1.1"])
+upstream_ctx = ssl.create_default_context()
+logf = open(log_path, "a", buffering=1)  # noqa: SIM115 - lives as long as the process
+# Private file OUTSIDE the jail for denied names (never the public job log).
+denied_path = os.environ.get("AGY_EGRESS_DENIED_FILE", "")
+deniedf = open(denied_path, "a", buffering=1) if denied_path else None  # noqa: SIM115
+
+
+def log(verdict, host=""):
+    logf.write(f"{verdict} {host if host in allow else ''}\n".rstrip() + "\n")
+
+
+def close(w):
+    with contextlib.suppress(OSError, RuntimeError):
+        w.close()
+
+
+async def pipe(r, w):
+    try:
+        while data := await r.read(65536):
+            w.write(data)
+            await w.drain()
+    except (ConnectionError, OSError, asyncio.IncompleteReadError):
+        pass
+    finally:
+        close(w)
+
+
+async def refuse(cw, status):
+    with contextlib.suppress(OSError, RuntimeError):
+        cw.write(status + b"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+        await cw.drain()
+    close(cw)
+
+
+async def read_head(cr):
+    return await asyncio.wait_for(cr.readuntil(b"\r\n\r\n"), 30)
+
+
+async def handle(cr, cw):
+    try:
+        head = await read_head(cr)
+    except (
+        TimeoutError,
+        OSError,
+        asyncio.IncompleteReadError,
+        asyncio.LimitOverrunError,
+    ):
+        close(cw)
+        return
+    parts = head.split(b"\r\n", 1)[0].decode("latin-1", "replace").split()
+    if len(parts) != 3 or parts[0] != "CONNECT":
+        log("REFUSE-NONCONNECT")
+        await refuse(cw, b"HTTP/1.1 405 Method Not Allowed")
+        return
+    host, _, port = parts[1].rpartition(":")
+    if port != "443" or host not in allow:
+        log("DENY", host)
+        if deniedf is not None:
+            deniedf.write(parts[1][:300].replace("\n", " ") + "\n")
+        await refuse(cw, b"HTTP/1.1 403 Forbidden")
+        return
+    if host == icpt_host:
+        await intercept(cr, cw, host)
+        return
+    try:
+        ur, uw = await asyncio.wait_for(asyncio.open_connection(host, 443), 30)
+    except (TimeoutError, OSError):
+        log("FAIL", host)
+        await refuse(cw, b"HTTP/1.1 502 Bad Gateway")
+        return
+    log("ALLOW", host)
+    cw.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+    await cw.drain()
+    await asyncio.gather(pipe(cr, uw), pipe(ur, cw))
+
+
+TOKEN = re.compile(r"[!#$%&'*+.^_`|~0-9A-Za-z-]+")
+# Only these client headers are forwarded; everything else (including the client's own Host,
+# Content-Length and Transfer-Encoding) is dropped, and Host is set by the proxy.
+FORWARD = (
+    "authorization",
+    "user-agent",
+    "accept",
+    "accept-encoding",
+    "accept-language",
+)
+
+
+def rebuild_request(head, host):
+    """Return the upstream request bytes, or None to refuse.
+
+    Nothing the client wrote is forwarded verbatim: the request line is rebuilt from the
+    validated path, Host is the intercepted host, and only FORWARD headers are copied.
+    """
+    if not head.endswith(b"\r\n\r\n"):
+        return None
+    body = head[:-4]
+    # Every line must end in CRLF: no bare CR or LF anywhere, and no other control byte or DEL.
+    if b"\r" in body.replace(b"\r\n", b"") or b"\n" in body.replace(b"\r\n", b""):
+        return None
+    if any((c < 0x20 and c not in (0x0D, 0x0A)) or c == 0x7F for c in body):
+        return None
+    lines = body.decode("ascii", "strict").split("\r\n") if body.isascii() else None
+    if not lines:
+        return None
+    req = lines[0].split(" ")
+    if len(req) != 3 or req[0] != "GET" or req[2] != "HTTP/1.1":
+        return None
+    if icpt_path is None or icpt_path.fullmatch(req[1]) is None:
+        return None
+    hosts, keep = [], []
+    for line in lines[1:]:
+        if not line or line[0] in " \t":
+            return None  # empty line inside the head, or obs-fold continuation
+        name, sep, value = line.partition(":")
+        if not sep or TOKEN.fullmatch(name) is None:
+            return None
+        lname, value = name.lower(), value.strip(" \t")
+        if lname == "host":
+            hosts.append(value.lower())
+        elif lname in ("content-length", "transfer-encoding"):
+            if lname == "transfer-encoding" or value != "0":
+                return None
+        elif lname in FORWARD:
+            keep.append(f"{name}: {value}")
+    if len(hosts) != 1 or hosts[0] not in (host, f"{host}:443"):
+        return None
+    out = [
+        f"GET {req[1]} HTTP/1.1",
+        f"Host: {host}",
+        *keep,
+        "Connection: close",
+        "",
+        "",
+    ]
+    return "\r\n".join(out).encode("ascii")
+
+
+async def intercept(cr, cw, host):
+    cw.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+    await cw.drain()
+    try:
+        await cw.start_tls(server_ctx)
+        head = await read_head(cr)
+    except (
+        TimeoutError,
+        ssl.SSLError,
+        OSError,
+        asyncio.IncompleteReadError,
+        asyncio.LimitOverrunError,
+    ):
+        log("FAIL-TLS", host)
+        close(cw)
+        return
+    out = rebuild_request(head, host)
+    if out is None:
+        log("DENY-PATH", host)
+        await refuse(cw, b"HTTP/1.1 403 Forbidden")
+        return
+    try:
+        ur, uw = await asyncio.wait_for(
+            asyncio.open_connection(host, 443, ssl=upstream_ctx, server_hostname=host),
+            30,
+        )
+    except (TimeoutError, OSError):
+        log("FAIL", host)
+        close(cw)
+        return
+    log("ALLOW-PATH", host)
+    uw.write(out)
+    await uw.drain()
+    await pipe(
+        ur, cw
+    )  # requests after the first one on this connection are never forwarded
+    close(uw)
+
+
+async def main():
+    with contextlib.suppress(FileNotFoundError):
+        os.unlink(sock_path)
+    srv = await asyncio.start_unix_server(handle, path=sock_path)
+    os.chmod(sock_path, 0o600)
+    async with srv:
+        await srv.serve_forever()
+
+
+asyncio.run(main())
+AGYPY
+}
+
 # --- the bubblewrap jail (AGY_ISOLATION=bwrap) --------------------------------------------------
 # Verified 2026-11-22: inside this jail agy authenticates and reviews, sees only an empty HOME, has
 # no MCP servers/skills/hooks, cannot read any host file outside the jail, and over D-Bus can fetch
@@ -1140,7 +1411,9 @@ while IFS= read -r -d '' arg; do agy_env+=( "$arg" ); done < <(agy_allowlisted_e
 # session service are AccessDenied by the proxy).
 agy_jail=()
 if [ "$AGY_ISOLATION" = bwrap ]; then
-  for _t in bwrap xdg-dbus-proxy gdbus; do
+  _need=( bwrap xdg-dbus-proxy gdbus )
+  [ "$AGY_EGRESS" = filtered ] && _need+=( socat python3 openssl )
+  for _t in "${_need[@]}"; do
     command -v "$_t" >/dev/null 2>&1 || { log "AGY_ISOLATION=bwrap needs '$_t' on the runner host; refusing to run agy unjailed (set AGY_ISOLATION=none to override, not recommended)"; exit 1; }
   done
   [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ] \
@@ -1151,6 +1424,9 @@ if [ "$AGY_ISOLATION" = bwrap ]; then
     [[ "$_kv" =~ ^[A-Za-z0-9_.-]+=[A-Za-z0-9_.:@-]+$ ]] || { log "invalid AGY_KEYRING_ATTRS entry '$_kv'"; exit 1; }
     _dict="${_dict:+$_dict, }'${_kv%%=*}': '${_kv#*=}'"
   done
+  # Secret Service treats an empty attribute set as match-all, which would grant GetSecret on
+  # every item (including the gh token). Refuse it outright.
+  [ -n "$_dict" ] || { log "AGY_KEYRING_ATTRS is empty; refusing to grant agy keyring access"; exit 1; }
   mapfile -t _items < <(gdbus call --session --dest org.freedesktop.secrets \
       --object-path /org/freedesktop/secrets/aliases/default \
       --method org.freedesktop.Secret.Collection.SearchItems "{${_dict}}" 2>/dev/null \
@@ -1172,21 +1448,74 @@ if [ "$AGY_ISOLATION" = bwrap ]; then
   for _ in $(seq 1 100); do [ -S "$agy_jail_rt/bus" ] && break; sleep 0.1; done
   [ -S "$agy_jail_rt/bus" ] || { log "xdg-dbus-proxy did not start; refusing to run agy unjailed"; exit 1; }
   _uid="$(id -u)"
-  agy_jail=( bwrap --unshare-all --share-net --die-with-parent --new-session
-    --ro-bind /usr /usr
-    --symlink usr/lib /lib --symlink usr/lib /lib64 --symlink usr/bin /bin --symlink usr/bin /sbin
+  _net=( --share-net --ro-bind-try /run/systemd/resolve /run/systemd/resolve )
+  _egress_binds=() _egress_env=() _inner=()
+  if [ "$AGY_EGRESS" = filtered ]; then
+    _allow=""
+    for _h in $AGY_EGRESS_ALLOW; do
+      [[ "$_h" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$ ]] \
+        || { log "invalid AGY_EGRESS_ALLOW entry '$_h' (exact lowercase host names only, no wildcards)"; exit 1; }
+      _allow="${_allow:+$_allow,}$_h"
+    done
+    _ca_sys=""
+    for _c in /etc/ssl/certs/ca-certificates.crt /etc/pki/tls/certs/ca-bundle.crt /etc/ssl/cert.pem; do
+      [ -s "$_c" ] && { _ca_sys="$_c"; break; }
+    done
+    [ -n "$_ca_sys" ] || { log "AGY_EGRESS=filtered: no system CA bundle found; refusing to run agy"; exit 1; }
+    # Per-run CA + leaf for the intercepted host. Both keys stay in the private runtime dir, which
+    # is never mounted into the jail; the jail gets only a CA bundle (system roots + this CA).
+    _pki="$agy_jail_rt/pki"; mkdir -m 700 "$_pki"
+    if ! { openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 1 \
+             -subj "/CN=agy-review egress CA" -addext "basicConstraints=critical,CA:TRUE" \
+             -addext "keyUsage=critical,keyCertSign" -keyout "$_pki/ca.key" -out "$_pki/ca.pem" \
+         && openssl req -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes \
+             -subj "/CN=$AGY_EGRESS_INTERCEPT_HOST" -keyout "$_pki/leaf.key" -out "$_pki/leaf.csr" \
+         && openssl x509 -req -in "$_pki/leaf.csr" -CA "$_pki/ca.pem" -CAkey "$_pki/ca.key" -days 1 \
+             -extfile <(printf 'subjectAltName=DNS:%s\nextendedKeyUsage=serverAuth\nbasicConstraints=CA:FALSE\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid\n' "$AGY_EGRESS_INTERCEPT_HOST") \
+             -out "$_pki/leaf.pem"; } >/dev/null 2>&1; then
+      log "AGY_EGRESS=filtered: could not create the per-run certificates; refusing to run agy"; exit 1
+    fi
+    cat "$_ca_sys" "$_pki/ca.pem" > "$agy_jail_rt/ca-bundle.pem"
+    agy_egress_proxy_src > "$agy_jail_rt/egress.py"
+    : > "$agy_jail_rt/egress-denied.txt"; chmod 600 "$agy_jail_rt/egress-denied.txt"
+    AGY_EGRESS_DENIED_FILE="$agy_jail_rt/egress-denied.txt" \
+    python3 -I "$agy_jail_rt/egress.py" "$agy_jail_rt/egress.sock" "$agy_jail_rt/egress.log" "$_allow" \
+      "$AGY_EGRESS_INTERCEPT_HOST" "$AGY_EGRESS_INTERCEPT_PATH" "$_pki/leaf.pem" "$_pki/leaf.key" \
+      2>>"$LOG" &
+    agy_egress_pid=$!
+    for _ in $(seq 1 100); do [ -S "$agy_jail_rt/egress.sock" ] && break; sleep 0.1; done
+    [ -S "$agy_jail_rt/egress.sock" ] || { log "egress proxy did not start; refusing to run agy"; exit 1; }
+    _net=()   # --unshare-all without --share-net: the jail has only its own loopback
+    _egress_binds=( --ro-bind "$agy_jail_rt/egress.sock" /run/agy-egress.sock
+                    --ro-bind "$agy_jail_rt/ca-bundle.pem" /run/agy-ca-bundle.pem )
+    _egress_env=( "HTTPS_PROXY=http://127.0.0.1:3128" "https_proxy=http://127.0.0.1:3128"
+                  "HTTP_PROXY=http://127.0.0.1:3128" "http_proxy=http://127.0.0.1:3128"
+                  "NO_PROXY=" "no_proxy=" "SSL_CERT_FILE=/run/agy-ca-bundle.pem" )
+    # Inside the jail: bridge loopback 3128 to the proxy socket, wait for it, then exec the payload.
+    _inner=( /usr/bin/bash -c 'socat TCP-LISTEN:3128,bind=127.0.0.1,fork,reuseaddr UNIX-CONNECT:/run/agy-egress.sock 2>/dev/null & for _ in $(seq 1 100); do (exec 3<>/dev/tcp/127.0.0.1/3128) 2>/dev/null && break; sleep 0.1; done; exec "$@"' agy-jail )
+  fi
+  # Mirror the host's real top-level layout: merged-/usr distributions differ (Arch links /lib64
+  # to usr/lib, Debian and Ubuntu to usr/lib64), and the ELF interpreter must resolve the same way.
+  _toplevel=()
+  for _d in /bin /sbin /lib /lib32 /lib64 /libx32; do
+    if [ -L "$_d" ]; then _toplevel+=( --symlink "$(readlink "$_d")" "$_d" )
+    elif [ -d "$_d" ]; then _toplevel+=( --ro-bind "$_d" "$_d" )
+    fi
+  done
+  agy_jail=( bwrap --unshare-all "${_net[@]}" --die-with-parent --new-session
+    --ro-bind /usr /usr "${_toplevel[@]}"
     --ro-bind /etc /etc --proc /proc --dev /dev --tmpfs /tmp
-    --ro-bind-try /run/systemd/resolve /run/systemd/resolve
     --tmpfs /home --bind "$agy_jail_home" "$HOME"
     --ro-bind "$(readlink -f "$AGY_BIN")" "$AGY_BIN"
     --ro-bind "$(cd "$(dirname "$0")" && pwd)/_agy_print.sh" "$(cd "$(dirname "$0")" && pwd)/_agy_print.sh"
     --ro-bind "$prompt_file" "$prompt_file"
     --bind "$agy_sandbox" "$agy_sandbox" --chdir "$agy_sandbox"
-    --dir "/run/user/$_uid" --ro-bind "$agy_jail_rt/bus" "/run/user/$_uid/bus" )
+    --dir "/run/user/$_uid" --ro-bind "$agy_jail_rt/bus" "/run/user/$_uid/bus"
+    "${_egress_binds[@]}" "${_inner[@]}" )
   # Inside the jail, D-Bus is the filtered proxy (later env assignments override earlier ones).
-  agy_env+=( "XDG_RUNTIME_DIR=/run/user/$_uid" "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$_uid/bus" )
-  log "agy isolation: bwrap jail, empty HOME, D-Bus limited to ${#_items[@]} keyring item(s)"
-  unset _t _dict _kv _items _rules _it _uid
+  agy_env+=( "XDG_RUNTIME_DIR=/run/user/$_uid" "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$_uid/bus" "TMPDIR=/tmp" "${_egress_env[@]}" )
+  log "agy isolation: bwrap jail, empty HOME, D-Bus limited to ${#_items[@]} keyring item(s), egress ${AGY_EGRESS}"
+  unset _t _need _dict _kv _items _rules _it _uid _net _egress_binds _egress_env _inner _allow _h _ca_sys _c _pki _toplevel _d
 fi
 [ -n "$AGY_MODEL" ]  && flags+=( --model "$AGY_MODEL" )
 [ -n "$AGY_EFFORT" ] && flags+=( --effort "$AGY_EFFORT" )
@@ -1257,6 +1586,22 @@ for (( attempt=1; attempt<=AGY_RETRIES; attempt++ )); do
   # normalize CRs without sed -i (avoid in-place edit footguns)
   tr -d '\r' < "$out_file" > "$out_file.clean" && mv "$out_file.clean" "$out_file"
 
+  # These two run on EVERY capture before any handler below logs or clears it: the backend-error
+  # handler prints a short capture's first line to the public job log, which must never carry a
+  # credential, and a jail diagnostic must never be retried or posted.
+  if cred_kind="$(credential_kind_present "$out_file")"; then
+    log "refusing to post: agy's output contains a credential-shaped string (${cred_kind}) (attempt ${attempt}/${AGY_RETRIES}). Nothing was posted or logged from it. Inspect the runner host; the diff may carry a prompt injection."
+    : > "$out_file"
+    exit 1
+  fi
+  # A jail that never started (no user namespaces, a missing bind source, ...) prints its own
+  # diagnostic, which the PTY capture keeps while `|| true` drops the exit status. Never let that
+  # text be posted as a review, and do not retry: the next attempt would fail the same way.
+  if agy_jail_failed "$out_file"; then
+    log "the agy jail failed to start; nothing was posted. First line: $(grep -m1 -v '^[[:space:]]*$' "$out_file" | cut -c1-200)"
+    exit 1
+  fi
+
   # If the capture carries a live OAuth authorization URL, agy's cached Google session has lapsed
   # on this runner and there is NO review — just its interactive login flow (the OAuth URL + a
   # "paste the authorization code" prompt). That must never reach a public PR comment (noise,
@@ -1308,6 +1653,22 @@ for (( attempt=1; attempt<=AGY_RETRIES; attempt++ )); do
     sleep "$delay"
   fi
 done
+# Egress summary: verdict COUNTS only. A denied host name or path is attacker-chosen and could
+# carry a secret, and this log is public on a public repository, so names are never printed.
+# Denied names go ONLY to a host-private log (mode 600, beside agy's own state), so a new host
+# that an agy update starts using can be found and added to AGY_EGRESS_ALLOW.
+if [ -s "${agy_jail_rt:-}/egress-denied.txt" ]; then
+  _dl="${AGY_EGRESS_DENIED_LOG:-$HOME/.gemini/antigravity-cli/agy-egress-denied.log}"
+  if agy_record_denied "$agy_jail_rt/egress-denied.txt" "$_dl" "${REPO:-?}#${PR:-?}"; then
+    log "egress: denied host names (if any are needed, add them to AGY_EGRESS_ALLOW) are in $_dl on the runner host"
+  else
+    log "egress: could not write the private denied-host log $_dl"
+  fi
+  unset _dl
+fi
+if [ -s "${agy_jail_rt:-}/egress.log" ]; then
+  log "egress: $(awk '{print $1}' "$agy_jail_rt/egress.log" | sort | uniq -c | awk '{printf "%s %s, ", $2, $1}' | sed 's/, $//')"
+fi
 # Release the agy lock so the next queued job proceeds. NO redirection on this `exec`: a bare
 # `exec` applies its redirections to the rest of the SCRIPT, so the `2>/dev/null` that used to be
 # here sent every later `log` line (they write to stderr) to /dev/null -- "posted", "updated",
@@ -1346,7 +1707,17 @@ if ! have_text "$out_file"; then
     # GITHUB_TOKEN) in logs, and this is agy's own diagnostic stream, but a bounded tail avoids
     # publishing an unbounded volume of stderr (which could echo prompt/diff content) into CI.
     log "----- captured agy stderr ($LOG), last ${AGY_LOG_TAIL_LINES:-60} lines (secrets auto-masked) -----"
-    tail -n "${AGY_LOG_TAIL_LINES:-60}" "$LOG" | sed 's/^/[agy] /' >&2 || true
+    # GitHub masks only REGISTERED secrets; agy's own Google token is not one. Withhold the whole
+    # tail if it carries any credential shape, naming only the kind.
+    # A regular file, not a pipe: the scan tests -s and reads its input once per pattern.
+    log_tail="$(mktemp)"
+    tail -n "${AGY_LOG_TAIL_LINES:-60}" "$LOG" > "$log_tail" || true
+    if log_cred="$(credential_kind_present "$log_tail")"; then
+      log "(withheld: agy's stderr contains a credential-shaped string (${log_cred}); inspect $LOG on the runner host)"
+    else
+      sed 's/^/[agy] /' "$log_tail" >&2 || true
+    fi
+    rm -f -- "$log_tail"
     log "----- end agy stderr -----"
   else
     log "(agy stderr log is empty -- agy likely failed before writing, e.g. execve E2BIG on an oversized prompt)"
