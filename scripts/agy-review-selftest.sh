@@ -799,31 +799,116 @@ check "the CA and leaf keys are never bound into the jail" "0" \
   "$(grep -E -- '--(ro-)?bind[^)]*(pki|ca\.key|leaf\.key)' "$SCRIPT" | grep -vc '^ *#')"
 check "egress needs socat/python3/openssl or fails closed" "1" \
   "$(grep -c '\[ "\$AGY_EGRESS" = filtered \] && _need+=( socat python3 openssl )' "$SCRIPT")"
+check "egress needs python3 >= 3.11 or fails closed" "1" \
+  "$(grep -c "sys.exit(sys.version_info < (3, 11))" "$SCRIPT")"
+check "the bridge wrapper refuses to launch agy when the bridge is down" "1" \
+  "$(grep -c 'agy-jail: the egress bridge did not start' "$SCRIPT")"
+check "path rules must name an allowlisted host" "1" "$(grep -c 'which is not in AGY_EGRESS_ALLOW' "$SCRIPT")"
+check "the leaf certificate covers every allowlisted host" "1" "$(grep -c '_san="DNS:\${_allow//,/,DNS:}"' "$SCRIPT")"
 check "the job log prints egress verdict counts, never names" "1" \
   "$(grep -c "awk '{print \$1}' \"\$agy_jail_rt/egress.log\"" "$SCRIPT")"
 proxy_py="$TMPD/egress.py"
 sed -n "/^  cat <<'AGYPY'$/,/^AGYPY$/p" "$SCRIPT" | sed '1d;$d' > "$proxy_py"
 check "the embedded egress proxy compiles" "0" \
   "$(python3 -I -m py_compile "$proxy_py" >/dev/null 2>&1; echo $?)"
-if command -v python3 >/dev/null 2>&1 && command -v curl >/dev/null 2>&1; then
-  # Unix socket paths are capped at 108 bytes, so the sockets live in a short dir, not under TMPD.
+# The egress proxy, exercised offline over real TLS (round 6). EVERY allowlisted host is
+# TLS-terminated and each request is rebuilt, because Google's front end routes by Host on any
+# googleapis connection (fronting to Cloud Storage was verified through oauth2, aicode and
+# daily-cloudcode-pa). Every refusal below happens before any upstream connection, so no network
+# is needed. A host that has python3 and openssl must run these: a certificate failure is a FAIL.
+if command -v python3 >/dev/null 2>&1 && command -v openssl >/dev/null 2>&1; then
+  # Unix socket paths are capped at 108 bytes, so the socket lives in a short dir, not under TMPD.
   sockd="$(mktemp -d "${XDG_RUNTIME_DIR:-/tmp}/agyst.XXXXXX")"
-  px_sock="$sockd/e.sock"; px_log="$TMPD/egress.log"; : > "$px_log"
-  python3 -I "$proxy_py" "$px_sock" "$px_log" "allowed.example" &
-  px_pid=$!
-  for _ in $(seq 1 50); do [ -S "$px_sock" ] && break; sleep 0.1; done
-  px() { curl -s -m 5 -o /dev/null -w '%{http_code}' --unix-socket "$px_sock" -X CONNECT \
-           --request-target "$1" "http://proxy/" 2>/dev/null; }
-  check "proxy refuses an unlisted host" "403" "$(px 'secret-token-in-name.evil.example:443')"
-  check "proxy refuses a suffix of an allowed host" "403" "$(px 'x.allowed.example:443')"
-  check "proxy refuses an allowed host on another port" "403" "$(px 'allowed.example:80')"
-  check "proxy refuses plain-HTTP proxying" "405" \
-    "$(curl -s -m 5 -o /dev/null -w '%{http_code}' --unix-socket "$px_sock" http://allowed.example/ 2>/dev/null)"
-  kill "$px_pid" 2>/dev/null; wait "$px_pid" 2>/dev/null || true   # 143 from the kill is expected
-  check "proxy never logs a denied host name" "0" "$(grep -c 'evil' "$px_log")"
-  check "proxy logged all three denials" "3" "$(grep -c '^DENY' "$px_log")"
-  check "a denial names only an allowlisted host, if any" "0" \
-    "$(grep '^DENY ' "$px_log" | grep -vcx 'DENY allowed.example')"
+  ip="$TMPD/icpt"; mkdir -p "$ip"
+  certs_ok=no
+  if { openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 1 \
+         -subj "/CN=selftest CA" -addext "basicConstraints=critical,CA:TRUE" \
+         -addext "keyUsage=critical,keyCertSign" -keyout "$ip/ca.key" -out "$ip/ca.pem" \
+       && openssl req -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -subj "/CN=selftest" \
+         -keyout "$ip/leaf.key" -out "$ip/leaf.csr" \
+       && openssl x509 -req -in "$ip/leaf.csr" -CA "$ip/ca.pem" -CAkey "$ip/ca.key" -days 1 \
+         -extfile <(printf 'subjectAltName=DNS:allowed.example,DNS:paths.example\nextendedKeyUsage=serverAuth\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid\n') \
+         -out "$ip/leaf.pem"; } >/dev/null 2>&1; then
+    certs_ok=yes
+  fi
+  check "the self-test can create its TLS certificates (openssl present)" "yes" "$certs_ok"
+  if [ "$certs_ok" = yes ]; then
+    px_log="$ip/log"; : > "$px_log"
+    python3 -I "$proxy_py" "$sockd/p.sock" "$px_log" "allowed.example,paths.example" \
+      "$ip/leaf.pem" "$ip/leaf.key" "paths.example=/oauth2/v2/userinfo" 2>"$ip/err" &
+    px_pid=$!
+    for _ in $(seq 1 50); do [ -S "$sockd/p.sock" ] && break; sleep 0.1; done
+    cat > "$ip/client.py" <<'PYC'
+import socket, ssl, sys
+sock_path, ca, target, raw = sys.argv[1:5]
+head = raw.encode("latin-1").decode("unicode_escape").encode("latin-1")
+s = socket.socket(socket.AF_UNIX); s.settimeout(10); s.connect(sock_path)
+s.sendall(f"CONNECT {target} HTTP/1.1\r\nHost: {target}\r\n\r\n".encode())
+first = s.recv(4096).split(b"\r\n", 1)[0].split(b" ")
+if len(first) < 2 or first[1] != b"200":
+    print(first[1].decode() if len(first) > 1 else "closed"); sys.exit()
+if raw == "-":
+    print("200"); sys.exit()
+t = ssl.create_default_context(cafile=ca).wrap_socket(s, server_hostname=target.rsplit(":", 1)[0])
+t.sendall(head)
+try:
+    print(t.recv(4096).split(b"\r\n", 1)[0].split(b" ")[1].decode())
+except (OSError, IndexError):
+    print("closed")
+PYC
+    pc() { python3 -I "$ip/client.py" "$sockd/p.sock" "$ip/ca.pem" "$1" "$2" 2>/dev/null || echo error; }
+    A='allowed.example:443'; H='Host: allowed.example\r\n'
+    check "proxy refuses an unlisted host" "403" "$(pc 'secret-token-in-name.evil.example:443' -)"
+    check "proxy refuses a suffix of an allowed host" "403" "$(pc 'x.allowed.example:443' -)"
+    check "proxy refuses an allowed host on another port" "403" "$(pc 'allowed.example:80' -)"
+    check "fronting refused: foreign Host on an allowed connection" "403" \
+      "$(pc "$A" 'GET /storage/v1/b/x HTTP/1.1\r\nHost: storage.googleapis.com\r\n\r\n')"
+    check "fronting refused: bucket subdomain Host" "403" \
+      "$(pc "$A" 'GET /p?t=secret HTTP/1.1\r\nHost: evil-bucket.storage.googleapis.com\r\n\r\n')"
+    check "duplicate Host refused" "403" "$(pc "$A" "GET / HTTP/1.1\\r\\n${H}Host: storage.googleapis.com\\r\\n\\r\\n")"
+    check "missing Host refused" "403" "$(pc "$A" 'GET / HTTP/1.1\r\n\r\n')"
+    check "absolute-form target refused" "403" \
+      "$(pc "$A" "GET https://storage.googleapis.com/x HTTP/1.1\\r\\n${H}\\r\\n")"
+    check "Content-Length with Transfer-Encoding refused" "403" \
+      "$(pc "$A" "POST / HTTP/1.1\\r\\n${H}Content-Length: 3\\r\\nTransfer-Encoding: chunked\\r\\n\\r\\n")"
+    check "a transfer coding other than chunked refused" "403" \
+      "$(pc "$A" "POST / HTTP/1.1\\r\\n${H}Transfer-Encoding: gzip, chunked\\r\\n\\r\\n")"
+    check "conflicting Content-Length values refused" "403" \
+      "$(pc "$A" "POST / HTTP/1.1\\r\\n${H}Content-Length: 3\\r\\nContent-Length: 4\\r\\n\\r\\n")"
+    check "bare LF inside the head refused (smuggling)" "403" \
+      "$(pc "$A" "GET / HTTP/1.1\\r\\n${H}X-A: 1\\nHost: storage.googleapis.com\\r\\n\\r\\n")"
+    check "obs-fold refused" "403" "$(pc "$A" "GET / HTTP/1.1\\r\\n${H}X-A: 1\\r\\n folded\\r\\n\\r\\n")"
+    check "control byte refused" "403" "$(pc "$A" "GET / HTTP/1.1\\r\\n${H}X-A: a\\x01b\\r\\n\\r\\n")"
+    check "HTTP/1.0 refused" "403" "$(pc "$A" "GET / HTTP/1.0\\r\\n${H}\\r\\n")"
+    P='paths.example:443'; PH='Host: paths.example\r\n'
+    check "path rule: a query string is refused" "403" \
+      "$(pc "$P" "GET /oauth2/v2/userinfo?x=secret HTTP/1.1\\r\\n${PH}\\r\\n")"
+    check "path rule: another path is refused" "403" "$(pc "$P" "GET /storage/v1/b/x HTTP/1.1\\r\\n${PH}\\r\\n")"
+    check "path rule: a POST to the allowed path is refused" "403" \
+      "$(pc "$P" "POST /oauth2/v2/userinfo HTTP/1.1\\r\\n${PH}Content-Length: 1\\r\\n\\r\\n")"
+    check "path rule: the path is literal, not a regex" "403" \
+      "$(pc "$P" "GET /oauth2/v2/userinfoX HTTP/1.1\\r\\n${PH}\\r\\n")"
+    kill "$px_pid" 2>/dev/null; wait "$px_pid" 2>/dev/null || true   # 143 from the kill is expected
+    check "proxy never logs a denied host name" "0" "$(grep -c 'evil' "$px_log")"
+    check "every denial is logged by verdict" "yes" \
+      "$([ "$(grep -cE '^DENY' "$px_log")" -ge 17 ] && echo yes || echo no)"
+    # rebuild_request, unit level: Host set by the proxy, hop-by-hop dropped, framing canonical.
+    rb="$(python3 -I - "$proxy_py" "$ip/leaf.pem" "$ip/leaf.key" <<'PYR' 2>/dev/null
+import sys
+src = open(sys.argv[1]).read().split("\nasyncio.run(main())", 1)[0]
+sys.argv = ["x", "/dev/null", "/dev/null", "allowed.example", sys.argv[2], sys.argv[3], ""]
+ns = {"__name__": "agy_egress_test"}
+exec(compile(src, "proxy", "exec"), ns)
+head = (b"POST /v1/x HTTP/1.1\r\nHost: allowed.example\r\nAuthorization: Bearer t\r\n"
+        b"Connection: keep-alive\r\nUpgrade: h2c\r\nTransfer-Encoding: chunked\r\nX-Goog-Api-Client: a\r\n\r\n")
+out, kind, n = ns["rebuild_request"](head, "allowed.example")
+print(kind + "|" + "|".join(out.decode().split("\r\n")))
+PYR
+)" || rb="(rebuild_request missing or failed)"
+    check "the rebuilt request sets Host itself, drops hop-by-hop headers, keeps chunked framing" \
+      "chunked|POST /v1/x HTTP/1.1|Host: allowed.example|Authorization: Bearer t|X-Goog-Api-Client: a|Transfer-Encoding: chunked|Connection: close||" "$rb"
+  fi
+  rm -rf -- "$sockd"
 fi
 # A jail launch diagnostic is never accepted as a review (Codex P2), and cleanup survives a dead proxy.
 jf="$TMPD/jail-fail.txt"
@@ -864,76 +949,25 @@ check "denied-host log is mode 600" "600" "$(stat -c %a "$ddst" 2>/dev/null || e
 agy_record_denied "$dsrc" "$ddst" "o/r#2"
 check "denied-host log appends on a later run" "4" "$(wc -l < "$ddst" 2>/dev/null || echo 0)"
 for _ in $(seq 1 300); do agy_record_denied "$dsrc" "$ddst" "o/r#n"; done
-check "denied-host log stays bounded" "yes" "$([ "$(wc -l < "$ddst")" -le 500 ] && echo yes || echo no)"
-# The intercepted host: the proxy must REBUILD the request (round 5, commit security review).
-# Every case below is refused before any upstream connection, so this runs offline over real TLS.
-if command -v python3 >/dev/null 2>&1 && command -v openssl >/dev/null 2>&1; then
-  ip="$TMPD/icpt"; mkdir -p "$ip"
-  if { openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 1 \
-         -subj "/CN=selftest CA" -addext "basicConstraints=critical,CA:TRUE" \
-         -addext "keyUsage=critical,keyCertSign" -keyout "$ip/ca.key" -out "$ip/ca.pem" \
-       && openssl req -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -subj "/CN=allowed.example" \
-         -keyout "$ip/leaf.key" -out "$ip/leaf.csr" \
-       && openssl x509 -req -in "$ip/leaf.csr" -CA "$ip/ca.pem" -CAkey "$ip/ca.key" -days 1 \
-         -extfile <(printf 'subjectAltName=DNS:allowed.example\nextendedKeyUsage=serverAuth\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid\n') \
-         -out "$ip/leaf.pem"; } >/dev/null 2>&1; then
-    python3 -I "$proxy_py" "$sockd/i.sock" "$ip/log" "allowed.example" \
-      "allowed.example" "/oauth2/v2/userinfo" "$ip/leaf.pem" "$ip/leaf.key" &
-    ip_pid=$!
-    for _ in $(seq 1 50); do [ -S "$sockd/i.sock" ] && break; sleep 0.1; done
-    cat > "$ip/client.py" <<'PYC'
-import socket, ssl, sys
-sock_path, ca, head = sys.argv[1], sys.argv[2], sys.argv[3].encode("latin-1").decode("unicode_escape").encode("latin-1")
-s = socket.socket(socket.AF_UNIX); s.settimeout(10); s.connect(sock_path)
-s.sendall(b"CONNECT allowed.example:443 HTTP/1.1\r\nHost: allowed.example:443\r\n\r\n")
-if b" 200 " not in s.recv(4096):
-    print("no-tunnel"); sys.exit()
-ctx = ssl.create_default_context(cafile=ca)
-t = ctx.wrap_socket(s, server_hostname="allowed.example")
-t.sendall(head)
-try:
-    print(t.recv(4096).split(b"\r\n", 1)[0].split(b" ")[1].decode())
-except (OSError, IndexError):
-    print("closed")
-PYC
-    ic() { python3 -I "$ip/client.py" "$sockd/i.sock" "$ip/ca.pem" "$1" 2>/dev/null || echo error; }
-    H='Host: allowed.example\r\n'
-    check "intercept refuses a foreign Host (fronting to another Google service)" "403" \
-      "$(ic 'GET /oauth2/v2/userinfo HTTP/1.1\r\nHost: bucket.storage.googleapis.com\r\n\r\n')"
-    check "intercept refuses a duplicate Host" "403" \
-      "$(ic "GET /oauth2/v2/userinfo HTTP/1.1\\r\\n${H}Host: evil.example\\r\\n\\r\\n")"
-    check "intercept refuses a missing Host" "403" "$(ic 'GET /oauth2/v2/userinfo HTTP/1.1\r\n\r\n')"
-    check "intercept refuses a query string (a data channel)" "403" \
-      "$(ic "GET /oauth2/v2/userinfo?x=secret HTTP/1.1\\r\\n${H}\\r\\n")"
-    check "intercept refuses another path" "403" "$(ic "GET /storage/v1/b/x HTTP/1.1\\r\\n${H}\\r\\n")"
-    check "intercept refuses an absolute-form target" "403" \
-      "$(ic "GET https://storage.googleapis.com/oauth2/v2/userinfo HTTP/1.1\\r\\n${H}\\r\\n")"
-    check "intercept refuses a bare LF inside the head (smuggling)" "403" \
-      "$(ic "GET /oauth2/v2/userinfo HTTP/1.1\\r\\n${H}X-A: 1\\nHost: evil.example\\r\\n\\r\\n")"
-    check "intercept refuses obs-fold" "403" "$(ic "GET /oauth2/v2/userinfo HTTP/1.1\\r\\n${H}X-A: 1\\r\\n folded\\r\\n\\r\\n")"
-    check "intercept refuses a control byte" "403" "$(ic "GET /oauth2/v2/userinfo HTTP/1.1\\r\\n${H}X-A: a\\x01b\\r\\n\\r\\n")"
-    check "intercept refuses a request body" "403" \
-      "$(ic "GET /oauth2/v2/userinfo HTTP/1.1\\r\\n${H}Content-Length: 5\\r\\n\\r\\n")"
-    check "intercept refuses a non-GET method" "403" "$(ic "POST /oauth2/v2/userinfo HTTP/1.1\\r\\n${H}\\r\\n")"
-    kill "$ip_pid" 2>/dev/null; wait "$ip_pid" 2>/dev/null || true   # 143 from the kill is expected
-  fi
-fi
-[ -n "${sockd:-}" ] && rm -rf -- "$sockd"
-# rebuild_request, unit level: the upstream head is built by the proxy, never copied.
-rb="$(python3 -I - "$proxy_py" <<'PYR' 2>/dev/null
-import importlib.util, sys
-src = open(sys.argv[1]).read().split("\nasyncio.run(main())", 1)[0]
-ns = {"__name__": "agy_egress_test"}
-sys.argv = ["x", "/dev/null", "/dev/null", "", "www.googleapis.com", "/oauth2/v2/userinfo", "", ""]
-code = src.replace('    server_ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)\n    server_ctx.load_cert_chain(sys.argv[6], sys.argv[7])\n', '    server_ctx = None\n')
-exec(compile(code.replace("    server_ctx.set_alpn_protocols", "    pass  #"), "proxy", "exec"), ns)
-head = b"GET /oauth2/v2/userinfo HTTP/1.1\r\nHost: www.googleapis.com\r\nAuthorization: Bearer t\r\nX-Exfil: data\r\nUser-Agent: agy\r\n\r\n"
-out = ns["rebuild_request"](head, "www.googleapis.com").decode()
-print("|".join(out.split("\r\n")))
-PYR
-)" || rb="(rebuild_request missing or failed)"
-check "the rebuilt request sets Host itself and drops unlisted headers" \
-  "GET /oauth2/v2/userinfo HTTP/1.1|Host: www.googleapis.com|Authorization: Bearer t|User-Agent: agy|Connection: close||" "$rb"
+check "denied-host log keeps exactly the newest 500 records" "500" "$(wc -l < "$ddst")"
+check "the newest record survives trimming" "yes" "$(tail -n 1 "$ddst" | grep -q 'o/r#n other.example:443' && echo yes || echo no)"
+# Redaction (redact-and-post): every positive shape is fully redacted, boundaries survive, and a
+# fixture-style JWT in an otherwise ordinary review leaves the rest of the text intact.
+rd="$TMPD/redact.txt"
+s_jwt2="eyJ""hbGciOiJIUzI1NiJ9.""eyJ""zdWIiOiIxMjM0NTY3ODkwIn0.abcdefghijklmnop"
+printf '## Review\n\nThe fixture (%s) in tests/auth.rs is fine.\nKeep this line.\n' "$s_jwt2" > "$rd"
+agy_redact_credentials "$rd"
+check "a fixture JWT is redacted, not fatal" "yes" "$(grep -q '(\[REDACTED: jwt\]) in tests/auth.rs is fine.' "$rd" && echo yes || echo no)"
+check "redaction leaves the rest of the review intact" "yes" "$(grep -qx 'Keep this line.' "$rd" && echo yes || echo no)"
+printf 'one\n-----BEGIN OPENSSH ''PRIVATE KEY-----\nAAAAB3NzaC1yc2E\nmore-key-body\n-----END OPENSSH ''PRIVATE KEY-----\ntwo\n' > "$rd"
+agy_redact_credentials "$rd"
+check "a private-key block is redacted whole, body lines included" "one|[REDACTED: private-key-block]|two" "$(paste -sd'|' "$rd")"
+printf 'keys %s.%s and %s\n' "AKI""AABCDEFGHIJKLMNOP" "AKI""AQRSTUVWXYZ234567" "gh""p_$(printf 'c%.0s' {1..36})" > "$rd"
+agy_redact_credentials "$rd"
+check "adjacent matches are all redacted, boundaries kept" "keys [REDACTED: aws-access-key-id].[REDACTED: aws-access-key-id] and [REDACTED: github-token]" "$(cat "$rd")"
+check "the capture loop redacts instead of failing" "1" \
+  "$(grep -c '^    if ! agy_redact_credentials "\$out_file" || left="\$(credential_kind_present "\$out_file")"; then' "$SCRIPT")"
+check "a redacted review says so in the comment" "1" "$(grep -c 'credential-shaped strings were redacted from this review before posting' "$SCRIPT")"
 # Credential scan: every shape is caught, ordinary review text is not.
 cred_tmp="$TMPD/cred.txt"
 # Samples are assembled at runtime from split pieces, so this file never contains a literal that a
@@ -947,6 +981,9 @@ for sample in "token ya2""9.$(printf 'a%.0s' {1..30})" "refresh 1/""/0$(printf '
               "sk-pro""j-$(printf 'f%.0s' {1..40})" "xox""b-1234567890-abcdef"; do
   printf '## Review\n\nfound %s here\n' "$sample" > "$cred_tmp"
   check "credential scan catches: ${sample:0:14}..." "yes" \
+    "$(credential_kind_present "$cred_tmp" >/dev/null && echo yes || echo no)"
+  agy_redact_credentials "$cred_tmp"
+  check "redaction removes it entirely: ${sample:0:14}..." "no" \
     "$(credential_kind_present "$cred_tmp" >/dev/null && echo yes || echo no)"
 done
 # No false positives on ordinary identifiers that merely CONTAIN a token prefix.

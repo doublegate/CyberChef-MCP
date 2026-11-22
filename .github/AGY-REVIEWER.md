@@ -84,7 +84,7 @@ agy -p "reply with the single word: ok"     # should print: ok
 # Tools the reviewer uses (all already present here):
 #   gh jq sqlite3 col script, plus unbuffer (from `expect`)
 #   bwrap xdg-dbus-proxy gdbus  the agy jail (AGY_ISOLATION=bwrap)
-#   socat python3 openssl       its egress filter (AGY_EGRESS=filtered)
+#   socat python3>=3.11 openssl its egress filter (AGY_EGRESS=filtered)
 #   iconv (glibc) scrubs UTF-8; python3 is the fallback without iconv
 # Verify; install any missing with paru/pacman:
 pacman -Q github-cli jq sqlite expect util-linux bubblewrap \
@@ -280,34 +280,55 @@ yours to accept:
   agy must be able to read its own Google login token, so the network is the
   remaining way to leak it. The jail gets only its own loopback. Its single
   route out is an HTTPS `CONNECT` proxy outside the jail, reached through a
-  bind-mounted Unix socket, which tunnels only to port 443 of hosts that
+  bind-mounted Unix socket, which accepts only port 443 of hosts that
   **exactly** match `AGY_EGRESS_ALLOW`. Wildcards are rejected, because
   `.googleapis.com` would include Cloud Storage, where anyone can own a writable
-  bucket. One host needs more than that: `www.googleapis.com` serves both the
-  userinfo call agy makes at startup and the Cloud Storage JSON API. So the
-  proxy terminates TLS for that host only, with a per-run CA whose private key
-  never enters the jail, and forwards only a body-less `GET /oauth2/v2/userinfo`
-  (exact path, no query), which it rebuilds itself. It sets its own `Host`
-  header, because Google's front end routes by `Host` and a forwarded one could
-  front to Cloud Storage. It also copies only a short header allowlist, and
-  refuses bare CR or LF, control bytes, obs-fold and duplicate or foreign `Host`
-  headers. Verified from inside the jail: Cloud Storage uploads and reads
-  through `www.googleapis.com` (including path-traversal, encoded-path and
-  HTTP/2 variants), `storage.googleapis.com`, any other host or port, direct
-  connections, raw TCP and DNS are all refused, while a full review completes.
-  The job log reports egress verdict **counts** only, because a denied host name
-  or path is attacker-chosen and could itself carry a secret into a public log.
-  Residual risk: the allowed Gemini backends and the token endpoint can still be
-  reached, but data sent there goes to Google under the reviewer's own account,
-  not to an attacker.
+  bucket.
+
+  An exact host list is not enough on its own: Google's front end routes by the
+  `Host` header on any googleapis connection, so a request to an allowed host
+  carrying `Host: storage.googleapis.com` reaches Cloud Storage (verified
+  through `oauth2`, `aicode` and `daily-cloudcode-pa`). So the proxy terminates
+  TLS for **every** allowed host, with a per-run CA whose private key never
+  enters the jail, and carries exactly one HTTP/1.1 request per connection,
+  which it validates strictly and rebuilds. It sets its own `Host` header and
+  refuses a missing, duplicate or foreign one, an absolute-form target, bare CR
+  or LF, control bytes and obs-fold. It forwards the body exactly once (one
+  `Content-Length`, or `chunked` parsed chunk by chunk; both, or any other
+  coding, is refused) and never forwards bytes after it, so nothing can be
+  smuggled behind the request. It sends `Connection: close` and streams the
+  response back unchanged, so server-sent events keep working.
+
+  A host in `AGY_EGRESS_PATH_RULES` accepts only a body-less GET of exactly that
+  path, with no query, matched literally. The default keeps
+  `www.googleapis.com`, which also serves the Cloud Storage JSON API, to the
+  `/oauth2/v2/userinfo` call agy makes at startup. Verified from inside the
+  jail: fronting through all four allowed hosts, Cloud Storage uploads and
+  reads, `storage.googleapis.com`, any other host or port, direct connections,
+  raw TCP and DNS are all refused, while a full review completes. The job log
+  reports egress verdict **counts** only, because a denied host name or path is
+  attacker-chosen and could itself carry a secret into a public log. Residual
+  risk: the allowed Gemini backends and the token endpoint can still be reached,
+  but data sent there goes to Google under the reviewer's own account, not to an
+  attacker. The proxy needs Python 3.11 or later.
+
   **If reviews start failing after an agy update**, the new version probably
   needs a host that is not on the list. The job log shows the egress counts.
   Denied host names never appear there; they go to
   `~/.gemini/antigravity-cli/agy-egress-denied.log` on the runner host (mode
   600, beside agy's own state). Add a needed host to `AGY_EGRESS_ALLOW`, which
-  takes exact names only. If the host also serves storage or another API,
-  path-filter it through `AGY_EGRESS_INTERCEPT_HOST` and
-  `AGY_EGRESS_INTERCEPT_PATH` instead.
+  takes exact names only, and add a path rule for it too if it also serves
+  storage or another API.
+- **Credential-shaped output is redacted:** before posting, agy's output is
+  scanned for Google OAuth tokens, GitHub tokens, private keys, JWTs, and AWS,
+  Anthropic, OpenAI and Slack keys. Each match is replaced with `[REDACTED:
+  <kind>]` and the comment says that something was redacted; the review is still
+  posted. The scan cannot tell a leaked secret from a sample a PR adds (a
+  test-fixture JWT), so a redaction note on a PR that adds sample tokens is
+  expected. If redaction cannot remove every match, nothing is posted. A
+  credential-shaped tail of agy's stderr is withheld from the job log entirely.
+  The scan is a backstop: an injected prompt could encode a token so it does not
+  match, which is why the jail and the egress filter are the real boundary.
 - **agy never sees the checkout:** agy runs with `--dangerously-skip-permissions`
   and reads an untrusted diff, so a prompt injection could try to write files.
   It is started from a private, empty `mktemp -d` sandbox under `$RUNNER_TEMP`
@@ -359,7 +380,7 @@ disable fork workflows there or gate them the same way.
 | `AGY_ISOLATION` | `bwrap` | `bwrap` runs agy in the jail described under the security model; `none` runs it unjailed (not recommended) |
 | `AGY_EGRESS` | `filtered` | `filtered` gives the jail no network except the allowlisting proxy; `open` keeps the host network (not recommended) |
 | `AGY_EGRESS_ALLOW` | the 4 hosts agy needs | space-separated EXACT host names the proxy will tunnel to on port 443; wildcards and suffixes are rejected |
-| `AGY_EGRESS_INTERCEPT_HOST` / `_PATH` | `www.googleapis.com` / `/oauth2/v2/userinfo` | the one host whose TLS is terminated so that only body-less GETs fully matching the path regex are forwarded |
+| `AGY_EGRESS_PATH_RULES` | `www.googleapis.com=/oauth2/v2/userinfo` | space-separated `host=/exact/path` entries; such a host accepts only a body-less GET of exactly that path (no query, matched literally). Every allowed host is TLS-intercepted and gets its `Host` header rebuilt, whether or not it has a rule |
 | `AGY_EGRESS_DENIED_LOG` | `~/.gemini/antigravity-cli/agy-egress-denied.log` | host-private (mode 600) log of denied egress host names, for diagnosing an agy update; never printed to the job log |
 | `AGY_KEYRING_ATTRS` | `username=antigravity service=gemini` | Secret Service attributes of agy's own login item; the jail's D-Bus proxy allows `GetSecret` on the matching item(s) only |
 | `AGY_ENV_PASSTHROUGH` | *(empty)* | extra environment variable NAMES (space-separated) to pass to agy on top of the session allowlist; everything else is withheld |

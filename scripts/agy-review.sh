@@ -161,7 +161,7 @@ agy_record_denied() {
   (
     umask 077
     {
-      if [ -f "$dst" ]; then tail -n 400 "$dst"; fi
+      if [ -f "$dst" ]; then cat "$dst"; fi
       sort -u "$src" | cut -c1-253 | sed "s|^|${stamp} ${tag} |"
     } > "$dst.new" || exit 1
     tail -n 500 "$dst.new" > "$dst.tmp" && mv -f "$dst.tmp" "$dst" && rm -f -- "$dst.new"
@@ -182,24 +182,52 @@ agy_jail_failed() {
 # tool and a shell `cat`), so a prompt-injected diff could make it print a token from the runner
 # host. Fail closed on any match in agy's output. The log names only the KIND that matched, never
 # the value, since Actions logs of a public repository are public too.
+# One table for detection AND redaction (`~`-separated, a non-whitespace IFS so empty fields
+# survive: kind, leading boundary, core, trailing
+# boundary), so the two can never drift apart. The boundaries keep an ordinary identifier
+# (`task-...`, a word ending in `ghp`) from matching.
+agy_credential_patterns() {
+  cat <<'CREDS'
+google-oauth-access-token~(^|[^A-Za-z0-9_-])~ya29\.[0-9A-Za-z_-]{20,}~
+google-oauth-refresh-token~(^|[^A-Za-z0-9_/-])~1//0[0-9A-Za-z_-]{20,}~
+github-token~(^|[^A-Za-z0-9_])~gh[pousr]_[A-Za-z0-9]{30,}~
+github-fine-grained-pat~(^|[^A-Za-z0-9_])~github_pat_[A-Za-z0-9_]{40,}~
+private-key-block~~-----BEGIN [A-Z ]*PRIVATE KEY-----~
+jwt~(^|[^A-Za-z0-9_-])~eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}~
+aws-access-key-id~(^|[^A-Za-z0-9])~(AKIA|ASIA)[0-9A-Z]{16}~([^A-Za-z0-9]|$)
+anthropic-key~(^|[^A-Za-z0-9_-])~sk-ant-[A-Za-z0-9_-]{32,}~
+openai-key~(^|[^A-Za-z0-9_-])~sk-(proj-)?[A-Za-z0-9]{32,}~([^A-Za-z0-9_-]|$)
+slack-token~(^|[^A-Za-z0-9_-])~xox[abprs]-[A-Za-z0-9-]{10,}~
+CREDS
+}
 credential_kind_present() {
   [ -s "$1" ] || return 1
-  local kind re
-  while IFS='|' read -r kind re; do
-    if grep -qE -- "$re" "$1"; then printf '%s' "$kind"; return 0; fi
-  done <<'CREDS'
-google-oauth-access-token|(^|[^A-Za-z0-9_-])ya29\.[0-9A-Za-z_-]{20,}
-google-oauth-refresh-token|(^|[^A-Za-z0-9_/-])1//0[0-9A-Za-z_-]{20,}
-github-token|(^|[^A-Za-z0-9_])gh[pousr]_[A-Za-z0-9]{30,}
-github-fine-grained-pat|(^|[^A-Za-z0-9_])github_pat_[A-Za-z0-9_]{40,}
-private-key-block|-----BEGIN [A-Z ]*PRIVATE KEY-----
-jwt|(^|[^A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}
-aws-access-key-id|(^|[^A-Za-z0-9])(AKIA|ASIA)[0-9A-Z]{16}([^A-Za-z0-9]|$)
-anthropic-key|(^|[^A-Za-z0-9_-])sk-ant-[A-Za-z0-9_-]{32,}
-openai-key|(^|[^A-Za-z0-9_-])sk-(proj-)?[A-Za-z0-9]{32,}([^A-Za-z0-9_-]|$)
-slack-token|(^|[^A-Za-z0-9_-])xox[abprs]-[A-Za-z0-9-]{10,}
-CREDS
+  local kind lead core trail
+  while IFS='~' read -r kind lead core trail; do
+    if grep -qE -- "${lead}${core}${trail}" "$1"; then printf '%s' "$kind"; return 0; fi
+  done < <(agy_credential_patterns)
   return 1
+}
+# Replace every credential-shaped string in $1 (in place) with `[REDACTED: <kind>]`, keeping the
+# boundary characters. A private-key block is replaced whole, from its BEGIN line through its END
+# line (or to the end of the text, which fails safe). Several passes, because adjacent matches
+# can share a boundary character. The caller re-scans and fails closed on anything left.
+agy_redact_credentials() {
+  local f="$1" kind lead core trail groups n pass
+  local tmp="$1.redact"   # a sibling of the capture, removed below
+  for pass in 1 2 3; do
+    while IFS='~' read -r kind lead core trail; do
+      if [ "$kind" = private-key-block ]; then
+        sed -E "/${core}/,/-----END [A-Z ]*PRIVATE KEY-----/c\\[REDACTED: ${kind}]" "$f" > "$tmp" || return 1
+      else
+        groups="${core//[^(]/}"; n=$(( 2 + ${#groups} ))
+        sed -E "s#${lead:-()}${core}${trail:-()}#\\1[REDACTED: ${kind}]\\${n}#g" "$f" > "$tmp" || return 1
+      fi
+      cat "$tmp" > "$f"
+    done < <(agy_credential_patterns)
+    : "$pass"
+  done
+  rm -f -- "$tmp"
 }
 # <<< SELFTEST-EXTRACT
 
@@ -311,13 +339,13 @@ case "$AGY_EGRESS" in filtered|open) ;; *) echo "AGY_EGRESS must be filtered or 
 # userinfo eligibility check. Telemetry, the avatar host and the auto-updater are left out (agy
 # works without them).
 AGY_EGRESS_ALLOW="${AGY_EGRESS_ALLOW:-daily-cloudcode-pa.googleapis.com aicode.googleapis.com oauth2.googleapis.com www.googleapis.com}"
-# www.googleapis.com ALSO serves the Cloud Storage JSON API (verified: an upload to a nonexistent
-# bucket there answers "The specified bucket does not exist"), so that host is TLS-intercepted and
-# only this path is forwarded, as a body-less GET that the proxy REBUILDS (its own Host header, a
-# short header allowlist): forwarding the client's Host would let it front to any Google service.
-AGY_EGRESS_INTERCEPT_HOST="${AGY_EGRESS_INTERCEPT_HOST:-www.googleapis.com}"
-# Exact path, no query: agy sends none (verified), and a query string is a data channel.
-AGY_EGRESS_INTERCEPT_PATH="${AGY_EGRESS_INTERCEPT_PATH:-/oauth2/v2/userinfo}"
+# Every allowlisted host is TLS-intercepted and each request is REBUILT with the proxy's own Host
+# header: Google's front end routes by Host on ANY googleapis connection (verified: a request to
+# oauth2, aicode or daily-cloudcode-pa carrying `Host: storage.googleapis.com` reaches Cloud
+# Storage). A host listed here additionally accepts only a body-less GET of exactly this path (no
+# query; matched literally): www.googleapis.com also serves the Cloud Storage JSON API, and agy
+# needs only its userinfo call there. Entries are `host=/path`, space-separated.
+AGY_EGRESS_PATH_RULES="${AGY_EGRESS_PATH_RULES:-www.googleapis.com=/oauth2/v2/userinfo}"
 AGY_DIFF_MODE="${AGY_DIFF_MODE:-auto}"     # auto|inline|file. A diff is passed to agy either inlined
                                            # in the --print prompt, or written to a FILE agy reads with
                                            # its own tools. `auto` inlines a diff that fits under the
@@ -431,7 +459,7 @@ REPO="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY not set}"
 # _perm_err so cleanup() could never see it (agy review, GH-ListRollup PR #6).
 # Remove every temp file on exit. Pre-declared so the trap is safe under `set -u` even if the
 # script exits before a given file is created.
-diff_file= diff_err= meta_file= prompt_file= out_file= raw= body_file= agy_diff_file= agy_sandbox= agy_jail_home= agy_jail_rt= agy_proxy_pid= agy_egress_pid= jq_err= log_tail= prior_body_file= archived_file= api_err=
+diff_file= diff_err= meta_file= prompt_file= out_file= raw= body_file= agy_diff_file= agy_sandbox= agy_jail_home= agy_jail_rt= agy_proxy_pid= agy_egress_pid= jq_err= log_tail= redacted_kinds= left= prior_body_file= archived_file= api_err=
 # Also created mid-flight (permission lookup, compare-API merge base, archive trimming); a signal
 # or abort while one of those commands runs would otherwise leak the file in /tmp.
 _perm_err='' compare_err='' trimmed=''
@@ -1182,20 +1210,32 @@ while IFS= read -r -d '' arg; do agy_env+=( "$arg" ); done < <(agy_allowlisted_e
 # set stays the same in every repository). The self-test extracts and exercises it.
 agy_egress_proxy_src() {
   cat <<'AGYPY'
-"""agy-review egress proxy: the jail's only route to the network (stdlib only).
+"""agy-review egress proxy: the jail's only route to the network (stdlib only, Python >= 3.11).
 
-Serves HTTP CONNECT on a Unix socket that is bind-mounted into the jail. A tunnel is opened only
-to port 443 of a host that EXACTLY equals an allowlist entry (no wildcards, no suffixes: a
-wildcard such as .googleapis.com would include Cloud Storage, where anyone can own a bucket).
-One host may be intercepted: TLS is terminated with a per-run leaf certificate the jail trusts
-(the CA key never enters the jail) and only body-less HTTP/1.1 GETs whose path fully matches a
-regex are forwarded, one request per connection. This exists because www.googleapis.com serves
-both the userinfo call agy needs and the Cloud Storage JSON API.
+Serves HTTP CONNECT on a Unix socket that is bind-mounted into the jail. A CONNECT is accepted only
+for port 443 of a host that EXACTLY equals an allowlist entry (no wildcards: `.googleapis.com`
+would include Cloud Storage, where anyone can own a writable bucket).
+
+Every accepted tunnel is TLS-terminated with a per-run leaf certificate the jail trusts (the CA key
+never enters the jail). A raw tunnel is not enough: Google's front end routes by the Host header,
+so a request on a connection to ANY allowed googleapis host that says `Host: storage.googleapis.com`
+reaches Cloud Storage (verified for oauth2, aicode and daily-cloudcode-pa). So each connection
+carries exactly one HTTP/1.1 request, which the proxy validates strictly and REBUILDS:
+  * Host is set by the proxy to the CONNECT host; a missing, duplicate or foreign Host is refused;
+  * only origin-form targets; bare CR/LF, control bytes, DEL, non-ASCII, obs-fold and non-token
+    header names are refused;
+  * the body is forwarded exactly once: one Content-Length (that many bytes), or Transfer-Encoding
+    exactly `chunked` (parsed chunk by chunk); both, or any other coding, is refused. Bytes after
+    the request are never forwarded, so nothing can be smuggled behind it;
+  * hop-by-hop headers are dropped and `Connection: close` is sent, so upstream closes after one
+    response, which is streamed back unchanged (server-sent events keep working).
+A host with a path rule accepts only body-less GETs of exactly that path (no query).
 
 The log records verdicts and allowlisted host names only. A denied host name or any path is
-attacker-chosen and could carry a secret, so neither is ever written anywhere.
+attacker-chosen and could carry a secret, so neither is written to it. Denied CONNECT targets go
+to the private file named by AGY_EGRESS_DENIED_FILE (outside the jail, never the job log).
 
-argv: SOCKET LOG ALLOW_CSV [INTERCEPT_HOST PATH_REGEX CERT KEY]
+argv: SOCKET LOG ALLOW_CSV CERT KEY [PATH_RULES]   PATH_RULES: "host=/exact/path,host2=/p"
 """
 
 import asyncio
@@ -1205,40 +1245,53 @@ import re
 import ssl
 import sys
 
-sock_path, log_path, allow_csv = sys.argv[1], sys.argv[2], sys.argv[3]
+sock_path, log_path, allow_csv, cert, key = sys.argv[1:6]
 allow = {h for h in allow_csv.split(",") if h}
-icpt_host = sys.argv[4] if len(sys.argv) > 4 else ""
-icpt_path = re.compile(sys.argv[5]) if icpt_host else None
-server_ctx = None
-if icpt_host:
-    server_ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-    server_ctx.load_cert_chain(sys.argv[6], sys.argv[7])
-    server_ctx.set_alpn_protocols(["http/1.1"])
+path_rules = {}
+for rule in (sys.argv[6] if len(sys.argv) > 6 else "").split(","):
+    if rule:
+        rule_host, _, rule_path = rule.partition("=")
+        path_rules[rule_host] = rule_path
+server_ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+server_ctx.load_cert_chain(cert, key)
+server_ctx.set_alpn_protocols(
+    ["http/1.1"]
+)  # one HTTP/1.1 request per connection, never h2
 upstream_ctx = ssl.create_default_context()
 logf = open(log_path, "a", buffering=1)  # noqa: SIM115 - lives as long as the process
-# Private file OUTSIDE the jail for denied names (never the public job log).
 denied_path = os.environ.get("AGY_EGRESS_DENIED_FILE", "")
 deniedf = open(denied_path, "a", buffering=1) if denied_path else None  # noqa: SIM115
 
+TOKEN = re.compile(r"[!#$%&'*+.^_`|~0-9A-Za-z-]+")
+HOP_BY_HOP = {
+    "connection",
+    "keep-alive",
+    "proxy-connection",
+    "proxy-authorization",
+    "proxy-authenticate",
+    "te",
+    "trailer",
+    "upgrade",
+    "host",
+    "content-length",
+    "transfer-encoding",
+}
+METHODS = {"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}
+MAX_HEAD = 65536
+MAX_CHUNK_LINE = 4096
+
+
+class Refuse(Exception):
+    """The request is refused (403); the reason is never echoed anywhere."""
+
 
 def log(verdict, host=""):
-    logf.write(f"{verdict} {host if host in allow else ''}\n".rstrip() + "\n")
+    logf.write(f"{verdict} {host if host in allow else ''}".rstrip() + "\n")
 
 
 def close(w):
     with contextlib.suppress(OSError, RuntimeError):
         w.close()
-
-
-async def pipe(r, w):
-    try:
-        while data := await r.read(65536):
-            w.write(data)
-            await w.drain()
-    except (ConnectionError, OSError, asyncio.IncompleteReadError):
-        pass
-    finally:
-        close(w)
 
 
 async def refuse(cw, status):
@@ -1248,13 +1301,138 @@ async def refuse(cw, status):
     close(cw)
 
 
-async def read_head(cr):
-    return await asyncio.wait_for(cr.readuntil(b"\r\n\r\n"), 30)
+def clean_head(head):
+    """Validate a request head's bytes; return its lines (request line first)."""
+    if not head.endswith(b"\r\n\r\n"):
+        raise Refuse
+    body = head[:-4]
+    if not body.isascii():
+        raise Refuse
+    stripped = body.replace(b"\r\n", b"")
+    if b"\r" in stripped or b"\n" in stripped:
+        raise Refuse
+    if any(c < 0x20 or c == 0x7F for c in stripped):
+        raise Refuse
+    return body.decode("ascii").split("\r\n")
+
+
+def rebuild_request(head, host):
+    """Return (upstream head bytes, body kind, body length) or raise Refuse.
+
+    Body kind is "none", "length" or "chunked". Nothing the client wrote is forwarded verbatim.
+    """
+    lines = clean_head(head)
+    req = lines[0].split(" ")
+    if len(req) != 3 or req[0] not in METHODS or req[2] != "HTTP/1.1":
+        raise Refuse
+    method, target = req[0], req[1]
+    if not target.startswith("/") or target.startswith("//"):
+        raise Refuse  # origin-form only: no absolute-form or authority-form target
+    hosts, keep, lengths, codings = [], [], [], []
+    for line in lines[1:]:
+        if not line or line[0] in " \t":
+            raise Refuse  # empty line inside the head, or obs-fold continuation
+        name, sep, value = line.partition(":")
+        if not sep or TOKEN.fullmatch(name) is None:
+            raise Refuse
+        lname, value = name.lower(), value.strip(" \t")
+        if lname == "host":
+            hosts.append(value.lower())
+        elif lname == "content-length":
+            lengths.append(value)
+        elif lname == "transfer-encoding":
+            codings.append(value.lower())
+        elif lname not in HOP_BY_HOP:
+            keep.append(f"{name}: {value}")
+    if len(hosts) != 1 or hosts[0] not in (host, f"{host}:443"):
+        raise Refuse
+    if lengths and codings:
+        raise Refuse
+    if codings:
+        if codings != ["chunked"]:
+            raise Refuse
+        kind, length = "chunked", 0
+    elif lengths:
+        if len(set(lengths)) != 1 or not lengths[0].isdigit() or len(lengths[0]) > 15:
+            raise Refuse
+        length = int(lengths[0])
+        kind = "length" if length else "none"
+    else:
+        kind, length = "none", 0
+    if host in path_rules and (
+        method != "GET" or target != path_rules[host] or kind != "none"
+    ):
+        raise Refuse
+    framing = []
+    if kind == "length":
+        framing = [f"Content-Length: {length}"]
+    elif kind == "chunked":
+        framing = ["Transfer-Encoding: chunked"]
+    out = [
+        f"{method} {target} HTTP/1.1",
+        f"Host: {host}",
+        *keep,
+        *framing,
+        "Connection: close",
+        "",
+        "",
+    ]
+    return "\r\n".join(out).encode("ascii"), kind, length
+
+
+async def copy_exact(cr, uw, n):
+    while n > 0:
+        data = await cr.read(min(65536, n))
+        if not data:
+            raise Refuse
+        uw.write(data)
+        await uw.drain()
+        n -= len(data)
+
+
+async def copy_chunked(cr, uw):
+    while True:
+        line = await cr.readuntil(b"\r\n")
+        if len(line) > MAX_CHUNK_LINE:
+            raise Refuse
+        size_txt = line[:-2].split(b";", 1)[0].strip()
+        if not size_txt or not re.fullmatch(rb"[0-9A-Fa-f]{1,15}", size_txt):
+            raise Refuse
+        size = int(size_txt, 16)
+        uw.write(f"{size:x}\r\n".encode())  # chunk extensions are dropped
+        if size == 0:
+            while True:  # trailers, forwarded only if they are well formed
+                t = await cr.readuntil(b"\r\n")
+                if t == b"\r\n":
+                    uw.write(b"\r\n")
+                    await uw.drain()
+                    return
+                if (
+                    len(t) > MAX_CHUNK_LINE
+                    or TOKEN.fullmatch(t[:-2].split(b":", 1)[0].decode("latin-1"))
+                    is None
+                ):
+                    raise Refuse
+                uw.write(t)
+        await copy_exact(cr, uw, size)
+        if await cr.readexactly(2) != b"\r\n":
+            raise Refuse
+        uw.write(b"\r\n")
+        await uw.drain()
+
+
+async def pipe(r, w):
+    try:
+        while data := await r.read(65536):
+            w.write(data)
+            await w.drain()
+    except (ConnectionError, OSError, asyncio.IncompleteReadError):
+        pass
 
 
 async def handle(cr, cw):
     try:
-        head = await read_head(cr)
+        head = await asyncio.wait_for(cr.readuntil(b"\r\n\r\n"), 30)
     except (
         TimeoutError,
         OSError,
@@ -1272,92 +1450,37 @@ async def handle(cr, cw):
     if port != "443" or host not in allow:
         log("DENY", host)
         if deniedf is not None:
-            deniedf.write(parts[1][:300].replace("\n", " ") + "\n")
+            deniedf.write(parts[1][:300] + "\n")
         await refuse(cw, b"HTTP/1.1 403 Forbidden")
         return
-    if host == icpt_host:
-        await intercept(cr, cw, host)
-        return
+    uw = None
     try:
-        ur, uw = await asyncio.wait_for(asyncio.open_connection(host, 443), 30)
-    except (TimeoutError, OSError):
-        log("FAIL", host)
-        await refuse(cw, b"HTTP/1.1 502 Bad Gateway")
-        return
-    log("ALLOW", host)
-    cw.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
-    await cw.drain()
-    await asyncio.gather(pipe(cr, uw), pipe(ur, cw))
-
-
-TOKEN = re.compile(r"[!#$%&'*+.^_`|~0-9A-Za-z-]+")
-# Only these client headers are forwarded; everything else (including the client's own Host,
-# Content-Length and Transfer-Encoding) is dropped, and Host is set by the proxy.
-FORWARD = (
-    "authorization",
-    "user-agent",
-    "accept",
-    "accept-encoding",
-    "accept-language",
-)
-
-
-def rebuild_request(head, host):
-    """Return the upstream request bytes, or None to refuse.
-
-    Nothing the client wrote is forwarded verbatim: the request line is rebuilt from the
-    validated path, Host is the intercepted host, and only FORWARD headers are copied.
-    """
-    if not head.endswith(b"\r\n\r\n"):
-        return None
-    body = head[:-4]
-    # Every line must end in CRLF: no bare CR or LF anywhere, and no other control byte or DEL.
-    if b"\r" in body.replace(b"\r\n", b"") or b"\n" in body.replace(b"\r\n", b""):
-        return None
-    if any((c < 0x20 and c not in (0x0D, 0x0A)) or c == 0x7F for c in body):
-        return None
-    lines = body.decode("ascii", "strict").split("\r\n") if body.isascii() else None
-    if not lines:
-        return None
-    req = lines[0].split(" ")
-    if len(req) != 3 or req[0] != "GET" or req[2] != "HTTP/1.1":
-        return None
-    if icpt_path is None or icpt_path.fullmatch(req[1]) is None:
-        return None
-    hosts, keep = [], []
-    for line in lines[1:]:
-        if not line or line[0] in " \t":
-            return None  # empty line inside the head, or obs-fold continuation
-        name, sep, value = line.partition(":")
-        if not sep or TOKEN.fullmatch(name) is None:
-            return None
-        lname, value = name.lower(), value.strip(" \t")
-        if lname == "host":
-            hosts.append(value.lower())
-        elif lname in ("content-length", "transfer-encoding"):
-            if lname == "transfer-encoding" or value != "0":
-                return None
-        elif lname in FORWARD:
-            keep.append(f"{name}: {value}")
-    if len(hosts) != 1 or hosts[0] not in (host, f"{host}:443"):
-        return None
-    out = [
-        f"GET {req[1]} HTTP/1.1",
-        f"Host: {host}",
-        *keep,
-        "Connection: close",
-        "",
-        "",
-    ]
-    return "\r\n".join(out).encode("ascii")
-
-
-async def intercept(cr, cw, host):
-    cw.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
-    await cw.drain()
-    try:
+        cw.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+        await cw.drain()
         await cw.start_tls(server_ctx)
-        head = await read_head(cr)
+        rhead = await asyncio.wait_for(cr.readuntil(b"\r\n\r\n"), 60)
+        try:
+            out, kind, length = rebuild_request(rhead, host)
+        except Refuse:
+            log("DENY-REQ", host)
+            await refuse(cw, b"HTTP/1.1 403 Forbidden")
+            return
+        ur, uw = await asyncio.wait_for(
+            asyncio.open_connection(host, 443, ssl=upstream_ctx, server_hostname=host),
+            30,
+        )
+        uw.write(out)
+        await uw.drain()
+        if kind == "length":
+            await copy_exact(cr, uw, length)
+        elif kind == "chunked":
+            await copy_chunked(cr, uw)
+        log("ALLOW", host)
+        await pipe(
+            ur, cw
+        )  # Connection: close upstream ends the response; later client bytes are ignored
+    except Refuse:
+        log("DENY-BODY", host)
     except (
         TimeoutError,
         ssl.SSLError,
@@ -1365,36 +1488,17 @@ async def intercept(cr, cw, host):
         asyncio.IncompleteReadError,
         asyncio.LimitOverrunError,
     ):
-        log("FAIL-TLS", host)
-        close(cw)
-        return
-    out = rebuild_request(head, host)
-    if out is None:
-        log("DENY-PATH", host)
-        await refuse(cw, b"HTTP/1.1 403 Forbidden")
-        return
-    try:
-        ur, uw = await asyncio.wait_for(
-            asyncio.open_connection(host, 443, ssl=upstream_ctx, server_hostname=host),
-            30,
-        )
-    except (TimeoutError, OSError):
         log("FAIL", host)
+    finally:
+        if uw is not None:
+            close(uw)
         close(cw)
-        return
-    log("ALLOW-PATH", host)
-    uw.write(out)
-    await uw.drain()
-    await pipe(
-        ur, cw
-    )  # requests after the first one on this connection are never forwarded
-    close(uw)
 
 
 async def main():
     with contextlib.suppress(FileNotFoundError):
         os.unlink(sock_path)
-    srv = await asyncio.start_unix_server(handle, path=sock_path)
+    srv = await asyncio.start_unix_server(handle, path=sock_path, limit=MAX_HEAD)
     os.chmod(sock_path, 0o600)
     async with srv:
         await srv.serve_forever()
@@ -1416,6 +1520,10 @@ if [ "$AGY_ISOLATION" = bwrap ]; then
   for _t in "${_need[@]}"; do
     command -v "$_t" >/dev/null 2>&1 || { log "AGY_ISOLATION=bwrap needs '$_t' on the runner host; refusing to run agy unjailed (set AGY_ISOLATION=none to override, not recommended)"; exit 1; }
   done
+  # The egress proxy needs asyncio's StreamWriter.start_tls (Python 3.11+).
+  if [ "$AGY_EGRESS" = filtered ] && ! python3 -I -c 'import sys; sys.exit(sys.version_info < (3, 11))'; then
+    log "AGY_EGRESS=filtered needs python3 >= 3.11 on the runner host (found $(python3 -V 2>&1)); refusing to run agy"; exit 1
+  fi
   [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ] \
     || { log "AGY_ISOLATION=bwrap needs XDG_RUNTIME_DIR and DBUS_SESSION_BUS_ADDRESS (a user session)"; exit 1; }
   # agy's own keyring item(s), resolved OUTSIDE the jail: object paths only, never secrets.
@@ -1457,21 +1565,30 @@ if [ "$AGY_ISOLATION" = bwrap ]; then
         || { log "invalid AGY_EGRESS_ALLOW entry '$_h' (exact lowercase host names only, no wildcards)"; exit 1; }
       _allow="${_allow:+$_allow,}$_h"
     done
+    _prules=""
+    for _r in $AGY_EGRESS_PATH_RULES; do
+      [[ "$_r" =~ ^([a-z0-9.-]+)=(/[A-Za-z0-9._~/-]*)$ ]] \
+        || { log "invalid AGY_EGRESS_PATH_RULES entry '$_r' (expected host=/exact/path)"; exit 1; }
+      [[ ",$_allow," == *",${BASH_REMATCH[1]},"* ]] \
+        || { log "AGY_EGRESS_PATH_RULES names '${BASH_REMATCH[1]}', which is not in AGY_EGRESS_ALLOW"; exit 1; }
+      _prules="${_prules:+$_prules,}$_r"
+    done
+    _san="DNS:${_allow//,/,DNS:}"
     _ca_sys=""
     for _c in /etc/ssl/certs/ca-certificates.crt /etc/pki/tls/certs/ca-bundle.crt /etc/ssl/cert.pem; do
       [ -s "$_c" ] && { _ca_sys="$_c"; break; }
     done
     [ -n "$_ca_sys" ] || { log "AGY_EGRESS=filtered: no system CA bundle found; refusing to run agy"; exit 1; }
-    # Per-run CA + leaf for the intercepted host. Both keys stay in the private runtime dir, which
-    # is never mounted into the jail; the jail gets only a CA bundle (system roots + this CA).
+    # Per-run CA + one leaf covering every allowlisted host. Both keys stay in the private runtime
+    # dir, which is never mounted into the jail; the jail gets only a CA bundle (roots + this CA).
     _pki="$agy_jail_rt/pki"; mkdir -m 700 "$_pki"
     if ! { openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 1 \
              -subj "/CN=agy-review egress CA" -addext "basicConstraints=critical,CA:TRUE" \
              -addext "keyUsage=critical,keyCertSign" -keyout "$_pki/ca.key" -out "$_pki/ca.pem" \
          && openssl req -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes \
-             -subj "/CN=$AGY_EGRESS_INTERCEPT_HOST" -keyout "$_pki/leaf.key" -out "$_pki/leaf.csr" \
+             -subj "/CN=agy-review egress" -keyout "$_pki/leaf.key" -out "$_pki/leaf.csr" \
          && openssl x509 -req -in "$_pki/leaf.csr" -CA "$_pki/ca.pem" -CAkey "$_pki/ca.key" -days 1 \
-             -extfile <(printf 'subjectAltName=DNS:%s\nextendedKeyUsage=serverAuth\nbasicConstraints=CA:FALSE\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid\n' "$AGY_EGRESS_INTERCEPT_HOST") \
+             -extfile <(printf 'subjectAltName=%s\nextendedKeyUsage=serverAuth\nbasicConstraints=CA:FALSE\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid\n' "$_san") \
              -out "$_pki/leaf.pem"; } >/dev/null 2>&1; then
       log "AGY_EGRESS=filtered: could not create the per-run certificates; refusing to run agy"; exit 1
     fi
@@ -1480,7 +1597,7 @@ if [ "$AGY_ISOLATION" = bwrap ]; then
     : > "$agy_jail_rt/egress-denied.txt"; chmod 600 "$agy_jail_rt/egress-denied.txt"
     AGY_EGRESS_DENIED_FILE="$agy_jail_rt/egress-denied.txt" \
     python3 -I "$agy_jail_rt/egress.py" "$agy_jail_rt/egress.sock" "$agy_jail_rt/egress.log" "$_allow" \
-      "$AGY_EGRESS_INTERCEPT_HOST" "$AGY_EGRESS_INTERCEPT_PATH" "$_pki/leaf.pem" "$_pki/leaf.key" \
+      "$_pki/leaf.pem" "$_pki/leaf.key" "$_prules" \
       2>>"$LOG" &
     agy_egress_pid=$!
     for _ in $(seq 1 100); do [ -S "$agy_jail_rt/egress.sock" ] && break; sleep 0.1; done
@@ -1492,7 +1609,9 @@ if [ "$AGY_ISOLATION" = bwrap ]; then
                   "HTTP_PROXY=http://127.0.0.1:3128" "http_proxy=http://127.0.0.1:3128"
                   "NO_PROXY=" "no_proxy=" "SSL_CERT_FILE=/run/agy-ca-bundle.pem" )
     # Inside the jail: bridge loopback 3128 to the proxy socket, wait for it, then exec the payload.
-    _inner=( /usr/bin/bash -c 'socat TCP-LISTEN:3128,bind=127.0.0.1,fork,reuseaddr UNIX-CONNECT:/run/agy-egress.sock 2>/dev/null & for _ in $(seq 1 100); do (exec 3<>/dev/tcp/127.0.0.1/3128) 2>/dev/null && break; sleep 0.1; done; exec "$@"' agy-jail )
+    # Inside the jail: bridge loopback 3128 to the proxy socket and wait for it. If the bridge never
+    # comes up, say so with the `agy-jail:` prefix (agy_jail_failed) instead of launching agy anyway.
+    _inner=( /usr/bin/bash -c 'socat TCP-LISTEN:3128,bind=127.0.0.1,fork,reuseaddr UNIX-CONNECT:/run/agy-egress.sock 2>/dev/null & up=0; for _ in $(seq 1 100); do if (exec 3<>/dev/tcp/127.0.0.1/3128) 2>/dev/null; then up=1; break; fi; sleep 0.1; done; [ "$up" = 1 ] || { echo "agy-jail: the egress bridge did not start" >&2; exit 1; }; exec "$@"' agy-jail )
   fi
   # Mirror the host's real top-level layout: merged-/usr distributions differ (Arch links /lib64
   # to usr/lib, Debian and Ubuntu to usr/lib64), and the ELF interpreter must resolve the same way.
@@ -1515,7 +1634,7 @@ if [ "$AGY_ISOLATION" = bwrap ]; then
   # Inside the jail, D-Bus is the filtered proxy (later env assignments override earlier ones).
   agy_env+=( "XDG_RUNTIME_DIR=/run/user/$_uid" "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$_uid/bus" "TMPDIR=/tmp" "${_egress_env[@]}" )
   log "agy isolation: bwrap jail, empty HOME, D-Bus limited to ${#_items[@]} keyring item(s), egress ${AGY_EGRESS}"
-  unset _t _need _dict _kv _items _rules _it _uid _net _egress_binds _egress_env _inner _allow _h _ca_sys _c _pki _toplevel _d
+  unset _t _need _dict _kv _items _rules _it _uid _net _egress_binds _egress_env _inner _allow _h _ca_sys _c _pki _toplevel _d _prules _r _san
 fi
 [ -n "$AGY_MODEL" ]  && flags+=( --model "$AGY_MODEL" )
 [ -n "$AGY_EFFORT" ] && flags+=( --effort "$AGY_EFFORT" )
@@ -1589,10 +1708,16 @@ for (( attempt=1; attempt<=AGY_RETRIES; attempt++ )); do
   # These two run on EVERY capture before any handler below logs or clears it: the backend-error
   # handler prints a short capture's first line to the public job log, which must never carry a
   # credential, and a jail diagnostic must never be retried or posted.
+  # A credential-shaped string is REDACTED, not fatal: the scan cannot tell a leaked secret from a
+  # test fixture a PR adds (a sample JWT), and either way the string never reaches the comment.
   if cred_kind="$(credential_kind_present "$out_file")"; then
-    log "refusing to post: agy's output contains a credential-shaped string (${cred_kind}) (attempt ${attempt}/${AGY_RETRIES}). Nothing was posted or logged from it. Inspect the runner host; the diff may carry a prompt injection."
-    : > "$out_file"
-    exit 1
+    if ! agy_redact_credentials "$out_file" || left="$(credential_kind_present "$out_file")"; then
+      log "refusing to post: a credential-shaped string (${left:-$cred_kind}) could not be redacted from agy's output. Nothing was posted."
+      : > "$out_file"
+      exit 1
+    fi
+    redacted_kinds="${redacted_kinds:+$redacted_kinds, }${cred_kind}"
+    log "redacted credential-shaped string(s) (${cred_kind}, and any others) from agy's output (attempt ${attempt}/${AGY_RETRIES}). If this PR adds sample tokens (test fixtures), that is the likely source; otherwise inspect the runner host, the diff may carry a prompt injection."
   fi
   # A jail that never started (no user namespaces, a missing bind source, ...) prints its own
   # diagnostic, which the PTY capture keeps while `|| true` drops the exit status. Never let that
@@ -1740,10 +1865,13 @@ body_file="$(mktemp)"
   printf '## Antigravity review (Gemini via Ultra)\n\n'
   cat "$out_file"
   printf '%s' "$truncated"
+  if [ -n "${redacted_kinds:-}" ]; then
+    printf '\n\n> **Note:** credential-shaped strings were redacted from this review before posting (%s). If this PR adds sample tokens, that is the likely source.\n' "$redacted_kinds"
+  fi
   printf '\n\n<sub>Automated first-pass review by `agy` on a self-hosted runner -- not a human review.</sub>\n'
 } > "$body_file"
-# Fail closed before ANY post path (edit-in-place or new comment) if agy's output carries a
-# credential shape; see credential_kind_present.
+# Last-resort guard before ANY post path (edit-in-place or new comment). The capture loop already
+# redacted every credential shape, so reaching this means redaction missed one: fail closed.
 if cred_kind="$(credential_kind_present "$out_file")"; then
   log "refusing to post: agy's output contains a credential-shaped string (${cred_kind}). Nothing was posted. Inspect the runner host; the diff may carry a prompt injection."
   exit 1
