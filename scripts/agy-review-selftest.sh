@@ -910,6 +910,47 @@ PYR
 )" || rb="(rebuild_request missing or failed)"
     check "the rebuilt request sets Host itself, drops hop-by-hop and Connection-named headers, keeps chunked framing" \
       "chunked|POST /v1/x HTTP/1.1|Host: allowed.example|Authorization: Bearer t|X-Goog-Api-Client: a|Transfer-Encoding: chunked|Connection: close||" "$rb"
+    # copy_chunked on real streams (round 9): a trailer after the last chunk is consumed and NOT
+    # forwarded, exactly the terminating `0\r\n\r\n` goes upstream, and the bytes of a following
+    # request stay unread (never smuggled upstream behind the body).
+    cc="$(python3 -I - "$proxy_py" "$ip/leaf.pem" "$ip/leaf.key" <<'PYC' 2>/dev/null
+import asyncio, sys
+src = open(sys.argv[1]).read().split("\nasyncio.run(main())", 1)[0]
+sys.argv = ["x", "/dev/null", "/dev/null", "allowed.example", sys.argv[2], sys.argv[3], ""]
+ns = {"__name__": "agy_egress_test"}
+exec(compile(src, "proxy", "exec"), ns)
+
+
+class Rec:
+    def __init__(self):
+        self.out = bytearray()
+
+    def write(self, b):
+        self.out += b
+
+    async def drain(self):
+        pass
+
+
+async def run(feed):
+    r = asyncio.StreamReader()
+    r.feed_data(feed)
+    r.feed_eof()
+    w = Rec()
+    await ns["copy_chunked"](r, w)
+    return bytes(w.out), await r.read()
+
+
+for feed in (b"0\r\nX-Injected: 1\r\n\r\nGET /next HTTP/1.1\r\n",
+             b"3;ext=1\r\nabc\r\n0\r\n\r\nGET /next HTTP/1.1\r\n"):
+    out, rest = asyncio.run(run(feed))
+    print(repr(out) + "|" + repr(rest))
+PYC
+)" || cc="(copy_chunked missing or failed)"
+    check "a chunk trailer is dropped and exactly 0 CRLF CRLF goes upstream; the next request stays unread" \
+      "b'0\\r\\n\\r\\n'|b'GET /next HTTP/1.1\\r\\n'" "$(printf '%s\n' "$cc" | sed -n 1p)"
+    check "a data chunk is forwarded without its extension, then the terminator; the next request stays unread" \
+      "b'3\\r\\nabc\\r\\n0\\r\\n\\r\\n'|b'GET /next HTTP/1.1\\r\\n'" "$(printf '%s\n' "$cc" | sed -n 2p)"
   fi
   rm -rf -- "$sockd"
 fi
@@ -993,9 +1034,7 @@ check "the capture loop redacts instead of failing" "1" \
 check "a redacted review says so in the comment" "1" "$(grep -c 'credential-shaped strings were redacted from this review before posting' "$SCRIPT")"
 # Commit security review of 1d782bb: chunk trailers are discarded, never forwarded, and redaction
 # uses no scratch file (a predictable sibling in a shared TMPDIR).
-check "chunked trailers are read and discarded, never written upstream" "0" "$(grep -c '^ *uw.write(t)$' "$proxy_py")"
-check "only the terminating CRLF follows the last chunk" "1" \
-  "$(grep -c 'Trailers are read (bounded) and DISCARDED' "$proxy_py")"
+# (The trailer handling is exercised on real streams in the TLS block above.)
 check "redaction works in memory, with no scratch file" "0" \
   "$(sed -n '/^agy_redact_credentials() {/,/^}/p' "$SCRIPT" | grep -cE 'mktemp|\.redact|> *"\$tmp"')"
 # Credential scan: every shape is caught, ordinary review text is not.
