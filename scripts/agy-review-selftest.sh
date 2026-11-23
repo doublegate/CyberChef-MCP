@@ -983,9 +983,8 @@ check "a one-line private key is redacted without eating the rest of the review"
   "one|key [REDACTED: private-key-block] here|two|three" "$(paste -sd'|' "$rd")"
 printf 'one\n-----BEGIN RSA ''PRIVATE KEY-----\nMIIEabc\n' > "$rd"
 agy_redact_credentials "$rd"
-# GNU sed prints a `c` range's text only when the range closes; unclosed, it deletes to the end.
-check "an unterminated private key is deleted through the end of the text (fail safe)" \
-  "one" "$(paste -sd'|' "$rd")"
+check "an unterminated private key is removed to the end, and the comment says text was removed" \
+  "one|[REDACTED: private-key-block]|[REDACTED: the rest of this review was removed: it quoted the start of a private key with no END line]" "$(paste -sd'|' "$rd")"
 printf 'keys %s.%s and %s\n' "AKI""AABCDEFGHIJKLMNOP" "AKI""AQRSTUVWXYZ234567" "gh""p_$(printf 'c%.0s' {1..36})" > "$rd"
 agy_redact_credentials "$rd"
 check "adjacent matches are all redacted, boundaries kept" "keys [REDACTED: aws-access-key-id].[REDACTED: aws-access-key-id] and [REDACTED: github-token]" "$(cat "$rd")"

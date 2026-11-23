@@ -220,11 +220,16 @@ agy_redact_credentials() {
   for pass in 1 2 3; do
     while IFS='~' read -r kind lead core trail; do
       if [ "$kind" = private-key-block ]; then
-        # A one-line block is substituted in place first: a range looks for its END only from
-        # the NEXT line, so it would swallow the rest of the review. A multi-line or
-        # unterminated block still goes through the range (to the end of text, fail safe).
-        buf="$(sed -E -e "s#${core}.*-----END [A-Z ]*PRIVATE KEY-----#[REDACTED: ${kind}]#g" \
-          -e "/${core}/,/-----END [A-Z ]*PRIVATE KEY-----/c\\[REDACTED: ${kind}]" "$f" && printf x)" || return 1
+        # awk, not a sed range: a one-line block (BEGIN and END on the same line) is replaced in
+        # place, a multi-line block becomes one marker line, and a block with NO END line removes
+        # the rest of the text but SAYS so, so the review can never be silently cut short.
+        buf="$(awk -v b="$core" -v e='-----END [A-Z ]*PRIVATE KEY-----' -v m="[REDACTED: ${kind}]" '
+          inblk { if ($0 ~ e) inblk = 0; next }
+          { gsub(b ".*" e, m) }
+          $0 ~ b { print m; inblk = 1; if ($0 ~ e) inblk = 0; next }
+          { print }
+          END { if (inblk) print "[REDACTED: the rest of this review was removed: it quoted the start of a private key with no END line]" }
+        ' "$f" && printf x)" || return 1
       else
         groups="${core//[^(]/}"; n=$(( 2 + ${#groups} ))
         buf="$(sed -E "s#${lead:-()}${core}${trail:-()}#\\1[REDACTED: ${kind}]\\${n}#g" "$f" && printf x)" || return 1
