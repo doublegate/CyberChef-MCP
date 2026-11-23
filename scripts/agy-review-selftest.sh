@@ -1037,6 +1037,12 @@ check "the assembled body is scanned after the archive is appended" "yes" \
   "$([ -n "$final_scan" ] && [ -n "$arch_app" ] && [ "$final_scan" -gt "$arch_app" ] && echo yes || echo no)"
 check "an empty AGY_EGRESS_ALLOW is refused by name" "1" "$(grep -c 'AGY_EGRESS_ALLOW is empty; refusing' "$SCRIPT")"
 check "a second path rule for the same host is refused" "1" "$(grep -c "names '\${_rh}' twice (one exact path per host)" "$SCRIPT")"
+check "list settings are split without pathname expansion" "0" \
+  "$(grep -cE '^ *for _(kv|h|r) in \$AGY_' "$SCRIPT")"
+check "list settings are read with read -a" "3" \
+  "$(grep -cE '^ *read -r -a _(kvs|hs|rs) <<<"\$AGY_(KEYRING_ATTRS|EGRESS_ALLOW|EGRESS_PATH_RULES)"$' "$SCRIPT")"
+check "the stderr tail is withheld when the WHOLE log carries a credential shape" "1" \
+  "$(grep -c '^    if log_cred="\$(credential_kind_present "\$LOG")" || ' "$SCRIPT")"
 check "a missing AGY_BIN is refused before the jail is built" "1" "$(grep -c 'is not an executable file on the runner host; refusing to build the jail' "$SCRIPT")"
 check "the proxy startup waits stop as soon as the proxy has exited" "2" \
   "$(grep -cE 'kill -0 "\$agy_(proxy|egress)_pid" 2>/dev/null \|\| break; sleep 0.1; done$' "$SCRIPT")"
@@ -1064,7 +1070,7 @@ agy_redact_credentials "$grow"
 check "(why) the same error, redacted, has grown past the size guard" "no" \
   "$(service_error_present "$grow" && echo yes || echo no)"
 check "the public stderr tail is scanned from a regular file and withheld on a match" "1" \
-  "$(grep -c '^    if log_cred="\$(credential_kind_present "\$log_tail")"; then' "$SCRIPT")"
+  "$(grep -c '|| log_cred="\$(credential_kind_present "\$log_tail")"; then$' "$SCRIPT")"
 check "an empty AGY_KEYRING_ATTRS is refused (SearchItems {} matches every item)" "1" \
   "$(grep -c 'AGY_KEYRING_ATTRS is empty; refusing to grant agy keyring access' "$SCRIPT")"
 check "agy gets TMPDIR=/tmp inside the jail" "1" "$(grep -c '"TMPDIR=/tmp"' "$SCRIPT")"

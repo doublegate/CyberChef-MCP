@@ -1626,7 +1626,11 @@ if [ "$AGY_ISOLATION" = bwrap ]; then
     || { log "AGY_ISOLATION=bwrap needs XDG_RUNTIME_DIR and DBUS_SESSION_BUS_ADDRESS (a user session)"; exit 1; }
   # agy's own keyring item(s), resolved OUTSIDE the jail: object paths only, never secrets.
   _dict=""
-  for _kv in $AGY_KEYRING_ATTRS; do
+  # Split on whitespace with NO pathname expansion (read -a, not an unquoted for): `for x in $VAR`
+  # globs, so a wildcard entry (`*.com`) would expand to file names in the checkout -- which the PR
+  # controls -- and then pass validation as an exact value.
+  read -r -a _kvs <<<"$AGY_KEYRING_ATTRS"
+  for _kv in "${_kvs[@]}"; do
     [[ "$_kv" =~ ^[A-Za-z0-9_.-]+=[A-Za-z0-9_.:@-]+$ ]] || { log "invalid AGY_KEYRING_ATTRS entry '$_kv'"; exit 1; }
     _dict="${_dict:+$_dict, }'${_kv%%=*}': '${_kv#*=}'"
   done
@@ -1658,14 +1662,16 @@ if [ "$AGY_ISOLATION" = bwrap ]; then
   _egress_binds=() _egress_env=() _inner=()
   if [ "$AGY_EGRESS" = filtered ]; then
     _allow=""
-    for _h in $AGY_EGRESS_ALLOW; do
+    read -r -a _hs <<<"$AGY_EGRESS_ALLOW"
+    for _h in "${_hs[@]}"; do
       [[ "$_h" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$ ]] \
         || { log "invalid AGY_EGRESS_ALLOW entry '$_h' (exact lowercase host names only, no wildcards)"; exit 1; }
       _allow="${_allow:+$_allow,}$_h"
     done
     [ -n "$_allow" ] || { log "AGY_EGRESS_ALLOW is empty; refusing to run agy with no reachable host"; exit 1; }
     _prules="" _prhosts=""
-    for _r in $AGY_EGRESS_PATH_RULES; do
+    read -r -a _rs <<<"$AGY_EGRESS_PATH_RULES"
+    for _r in "${_rs[@]}"; do
       [[ "$_r" =~ ^([a-z0-9.-]+)=(/[A-Za-z0-9._~/-]*)$ ]] \
         || { log "invalid AGY_EGRESS_PATH_RULES entry '$_r' (expected host=/exact/path)"; exit 1; }
       _rh="${BASH_REMATCH[1]}"
@@ -1739,7 +1745,7 @@ if [ "$AGY_ISOLATION" = bwrap ]; then
   # Inside the jail, D-Bus is the filtered proxy (later env assignments override earlier ones).
   agy_env+=( "XDG_RUNTIME_DIR=/run/user/$_uid" "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$_uid/bus" "TMPDIR=/tmp" "${_egress_env[@]}" )
   log "agy isolation: bwrap jail, empty HOME, D-Bus limited to ${#_items[@]} keyring item(s), egress ${AGY_EGRESS}"
-  unset _t _need _dict _kv _items _rules _it _uid _net _egress_binds _egress_env _inner _allow _h _ca_sys _c _pki _toplevel _d _prules _r _san _rh _prhosts
+  unset _t _need _dict _kv _items _rules _it _uid _net _egress_binds _egress_env _inner _allow _h _ca_sys _c _pki _toplevel _d _prules _r _san _rh _prhosts _kvs _hs _rs
 fi
 [ -n "$AGY_MODEL" ]  && flags+=( --model "$AGY_MODEL" )
 [ -n "$AGY_EFFORT" ] && flags+=( --effort "$AGY_EFFORT" )
@@ -1928,7 +1934,9 @@ if ! have_text "$out_file"; then
     # A regular file, not a pipe: the scan tests -s and reads its input once per pattern.
     log_tail="$(mktemp)"
     tail -n "${AGY_LOG_TAIL_LINES:-60}" "$LOG" > "$log_tail" || true
-    if log_cred="$(credential_kind_present "$log_tail")"; then
+    # Decided on the WHOLE log, not just the tail printed: a private key whose BEGIN line falls
+    # before the tail would leave only its body lines in it, which no pattern recognizes.
+    if log_cred="$(credential_kind_present "$LOG")" || log_cred="$(credential_kind_present "$log_tail")"; then
       log "(withheld: agy's stderr contains a credential-shaped string (${log_cred}); inspect $LOG on the runner host)"
     else
       sed 's/^/[agy] /' "$log_tail" >&2 || true
