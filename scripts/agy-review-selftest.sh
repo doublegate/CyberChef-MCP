@@ -281,8 +281,10 @@ fi
 # Line continuations are folded first: `--arg` moved onto a continuation line would otherwise sit
 # on a different physical line from `gh api`, and a line-by-line grep would report a false pass on
 # exactly the mistake this check exists to catch.
-if sed -e ':a' -e '/\\$/{N;s/\\\n//;ba' -e '}' "$SCRIPT_DIR/agy-review.sh" \
-     | grep -qE 'gh api[^|]*--(arg|argjson)'; then
+# grep reads a process substitution, not a pipe: under pipefail, grep -q exiting on an early
+# match SIGPIPEs the writer and fails the pipeline, which here would read as a PASS.
+if grep -qE 'gh api[^|]*--(arg|argjson)' \
+     < <(sed -e ':a' -e '/\\$/{N;s/\\\n//;ba' -e '}' "$SCRIPT_DIR/agy-review.sh"); then
   echo "  FAIL  --arg/--argjson passed to \`gh api\` (jq flags; gh api rejects them)"
   fails=$((fails + 1))
 else
@@ -296,7 +298,18 @@ fi
 # string as its entire body. A control that cannot fail is worse than no control.
 se() { printf '%s' "$1" > "$TMPD/cap"; service_error_present "$TMPD/cap" && echo MATCH || echo NOMATCH; }
 TMPD="$(mktemp -d)"
-trap 'rm -rf "$TMPD"' EXIT
+# The live proxy and its socket dir are removed too if the suite exits early.
+# Each is cleared as soon as the suite cleans it up itself, so the trap never signals a reaped
+# (possibly reused) PID; the suite's own exit status is kept.
+px_pid= sockd=
+selftest_exit() {
+  local st=$?
+  rm -rf "$TMPD"
+  if [ -n "$px_pid" ]; then kill "$px_pid" 2>/dev/null || true; fi
+  if [ -n "$sockd" ]; then rm -rf -- "$sockd"; fi
+  exit "$st"
+}
+trap selftest_exit EXIT
 
 check "a bare backend 503 is caught" "MATCH" \
   "$(se 'Error: Eligibility check failed: UNAVAILABLE (code 503): The service is currently unavailable.')"
@@ -431,7 +444,9 @@ check "localized script records are stripped too" "## Review|body" \
 cleanup_src="$(sed -n '/^cleanup() {/,/^}/p' "$SCRIPT_DIR/agy-review.sh")"
 missing=""
 for v in $(grep -oE '[A-Za-z_][A-Za-z0-9_]*="\$\(mktemp' "$SCRIPT_DIR/agy-review.sh" | cut -d= -f1 | sort -u); do
-  printf '%s' "$cleanup_src" | grep -qF "\${$v:-}" || missing="$missing $v"
+  # A here-string, not `printf | grep -q`: under pipefail an early match can SIGPIPE printf and
+  # report a present variable as missing (this check flaked that way, 2026-11-23).
+  grep -qF "\${$v:-}" <<<"$cleanup_src" || missing="$missing $v"
 done
 check "every mktemp'd variable is in the cleanup trap" "" "${missing# }"
 # REGRESSION (agy review, GH-ListRollup PR #6): listing a variable in cleanup() is not enough if
@@ -816,7 +831,10 @@ check "the embedded egress proxy compiles" "0" \
 # googleapis connection (fronting to Cloud Storage was verified through oauth2, aicode and
 # daily-cloudcode-pa). Every refusal below happens before any upstream connection, so no network
 # is needed. A host that has python3 and openssl must run these: a certificate failure is a FAIL.
-if command -v python3 >/dev/null 2>&1 && command -v openssl >/dev/null 2>&1; then
+# The proxy needs Python 3.11 (StreamWriter.start_tls); an older python3 would fail every TLS case
+# with an opaque error, so it is reported as a skip instead.
+if command -v python3 >/dev/null 2>&1 && python3 -I -c 'import sys; sys.exit(sys.version_info < (3, 11))' \
+   && command -v openssl >/dev/null 2>&1; then
   # Unix socket paths are capped at 108 bytes, so the socket lives in a short dir, not under TMPD.
   sockd="$(mktemp -d "${XDG_RUNTIME_DIR:-/tmp}/agyst.XXXXXX")"
   ip="$TMPD/icpt"; mkdir -p "$ip"
@@ -891,6 +909,7 @@ PYC
     check "Expect: 100-continue is answered 417, not stalled" "417" \
       "$(pc "$A" "POST / HTTP/1.1\\r\\n${H}Content-Length: 1\\r\\nExpect: 100-continue\\r\\n\\r\\n")"
     kill "$px_pid" 2>/dev/null; wait "$px_pid" 2>/dev/null || true   # 143 from the kill is expected
+    px_pid=
     check "proxy never logs a denied host name" "0" "$(grep -c 'evil' "$px_log")"
     # One verdict per refused case above: 3 CONNECT, 12 request-head, 4 path-rule, 1 Expect.
     check "every denial is logged by verdict, one per refused request" "20" "$(grep -cE '^DENY' "$px_log")"
@@ -910,6 +929,25 @@ PYR
 )" || rb="(rebuild_request missing or failed)"
     check "the rebuilt request sets Host itself, drops hop-by-hop and Connection-named headers, keeps chunked framing" \
       "chunked|POST /v1/x HTTP/1.1|Host: allowed.example|Authorization: Bearer t|X-Goog-Api-Client: a|Transfer-Encoding: chunked|Connection: close||" "$rb"
+    cl0="$(python3 -I - "$proxy_py" "$ip/leaf.pem" "$ip/leaf.key" <<'PYL' 2>/dev/null
+import sys
+src = open(sys.argv[1]).read().split("\nasyncio.run(main())", 1)[0]
+sys.argv = ["x", "/dev/null", "/dev/null", "allowed.example", sys.argv[2], sys.argv[3], ""]
+ns = {"__name__": "agy_egress_test"}
+exec(compile(src, "proxy", "exec"), ns)
+for head in (b"POST /v1/x HTTP/1.1\r\nHost: allowed.example\r\nContent-Length: 0\r\n\r\n",
+             b"POST /v1/x HTTP/1.1\r\nHost: allowed.example\r\n\r\n",
+             b"GET /v1/x HTTP/1.1\r\nHost: allowed.example\r\n\r\n"):
+    out, kind, n = ns["rebuild_request"](head, "allowed.example")
+    print(kind + "|" + "|".join(out.decode().split("\r\n")))
+PYL
+)" || cl0="(rebuild_request missing or failed)"
+    check "an empty POST keeps Content-Length: 0 (Google answers 411 without it)" \
+      "none|POST /v1/x HTTP/1.1|Host: allowed.example|Content-Length: 0|Connection: close||" "$(printf '%s\n' "$cl0" | sed -n 1p)"
+    check "a POST with no length header is sent with Content-Length: 0" \
+      "none|POST /v1/x HTTP/1.1|Host: allowed.example|Content-Length: 0|Connection: close||" "$(printf '%s\n' "$cl0" | sed -n 2p)"
+    check "a GET with no body gets no framing header" \
+      "none|GET /v1/x HTTP/1.1|Host: allowed.example|Connection: close||" "$(printf '%s\n' "$cl0" | sed -n 3p)"
     # copy_chunked on real streams (round 9): a trailer after the last chunk is consumed and NOT
     # forwarded, exactly the terminating `0\r\n\r\n` goes upstream, and the bytes of a following
     # request stay unread (never smuggled upstream behind the body).
@@ -952,7 +990,9 @@ PYC
     check "a data chunk is forwarded without its extension, then the terminator; the next request stays unread" \
       "b'3\\r\\nabc\\r\\n0\\r\\n\\r\\n'|b'GET /next HTTP/1.1\\r\\n'" "$(printf '%s\n' "$cc" | sed -n 2p)"
   fi
-  rm -rf -- "$sockd"
+  rm -rf -- "$sockd"; sockd=
+else
+  echo "  skip  the egress-proxy cases: they need python3 >= 3.11 and openssl"
 fi
 # A jail launch diagnostic is never accepted as a review (Codex P2), and cleanup survives a dead proxy.
 jf="$TMPD/jail-fail.txt"
@@ -964,6 +1004,17 @@ printf '## Review\n\nThe bwrap: prefix appears only mid-review here.\nbwrap: not
 check "a review that merely mentions bwrap is not a jail failure" "no" "$(agy_jail_failed "$jf" && echo yes || echo no)"
 check "the capture loop refuses a jail failure before any retry or post" "1" \
   "$(grep -c '^  if agy_jail_failed "\$out_file"; then' "$SCRIPT")"
+check "cleanup reaps both proxies before removing their runtime dir" "2" \
+  "$(grep -cE '^  \[ -n "\$\{agy_(proxy|egress)_pid:-\}" \] && \{ wait "\$agy_(proxy|egress)_pid" 2>/dev/null \|\| true; \}$' "$SCRIPT")"
+lock_line="$(grep -n '^flock -w "\$AGY_LOCK_WAIT" 9 || {$' "$SCRIPT" | head -1 | cut -d: -f1)"
+jail_line="$(grep -n '^  agy_jail_rt="\$(mktemp -d' "$SCRIPT" | head -1 | cut -d: -f1)"
+check "the agy lock is taken before the jail and its proxies are started" "yes" \
+  "$([ -n "$lock_line" ] && [ -n "$jail_line" ] && [ "$lock_line" -lt "$jail_line" ] && echo yes || echo no)"
+check "each attempt starts with no redactions recorded" "1" \
+  "$(grep -c '^  redacted_kinds=   # this attempt' "$SCRIPT")"
+check "the last guard scans the assembled comment body" "1" \
+  "$(grep -c '^if cred_kind="\$(credential_kind_present "\$body_file")"; then$' "$SCRIPT")"
+check "an empty AGY_EGRESS_ALLOW is refused by name" "1" "$(grep -c 'AGY_EGRESS_ALLOW is empty; refusing' "$SCRIPT")"
 check "cleanup ignores a failed kill of either proxy (set -e safe)" "2" \
   "$(grep -cE '^  \[ -n "\$\{agy_(proxy|egress)_pid:-\}" \] && \{ kill "\$agy_(proxy|egress)_pid" 2>/dev/null \|\| true; \}$' "$SCRIPT")"
 # Round-4 review fixes.
@@ -1007,6 +1058,17 @@ check "denied-host log appends on a later run" "4" "$(wc -l < "$ddst" 2>/dev/nul
 for _ in $(seq 1 300); do agy_record_denied "$dsrc" "$ddst" "o/r#n"; done
 check "denied-host log keeps exactly the newest 500 records" "500" "$(wc -l < "$ddst")"
 check "the newest record survives trimming" "yes" "$(tail -n 1 "$ddst" | grep -q 'o/r#n other.example:443' && echo yes || echo no)"
+# Round 10: control bytes never reach the host log, and a custom log path's directory is created.
+printf 'evil\033]0;pwned\007.example:443\n' > "$dsrc"
+ddst2="$TMPD/new/dir/agy-egress-denied.log"
+agy_record_denied "$dsrc" "$ddst2" "o/r#c" || true   # a failure is reported by the checks below
+check "denied-host log creates a missing parent directory" "yes" "$([ -s "$ddst2" ] && echo yes || echo no)"
+check "denied-host log strips control bytes from attacker-chosen targets" "0" \
+  "$(LC_ALL=C grep -c "$(printf '[\001-\010\013-\037\177]')" "$ddst2" || true)"
+printf 'a|b&c\\d.example:443\n' > "$dsrc"
+agy_record_denied "$dsrc" "$ddst2" 'o/r|&\x' || true   # a failure is reported by the checks below
+check "denied-host log prefixes a tag with sed metacharacters intact" "yes" \
+  "$(tail -n 1 "$ddst2" | grep -qF 'o/r|&\x a|b&c\d.example:443' && echo yes || echo no)"
 # Redaction (redact-and-post): every positive shape is fully redacted, boundaries survive, and a
 # fixture-style JWT in an otherwise ordinary review leaves the rest of the text intact.
 rd="$TMPD/redact.txt"
@@ -1026,6 +1088,15 @@ printf 'one\n-----BEGIN RSA ''PRIVATE KEY-----\nMIIEabc\n' > "$rd"
 agy_redact_credentials "$rd"
 check "an unterminated private key is removed to the end, and the comment says text was removed" \
   "one|[REDACTED: private-key-block]|[REDACTED: the rest of this review was removed: it quoted the start of a private key with no END line]" "$(paste -sd'|' "$rd")"
+# Round 10: an END followed by a second BEGIN on the same line must not hide the second key.
+printf -- '-----BEGIN RSA ''PRIVATE KEY-----\nAAAA\n-----END RSA ''PRIVATE KEY----- x -----BEGIN EC ''PRIVATE KEY-----\nBBBB\n-----END EC ''PRIVATE KEY-----\ntwo\n' > "$rd"
+agy_redact_credentials "$rd"
+check "a second private key opened on the first key's END line is redacted too" \
+  "[REDACTED: private-key-block]| x [REDACTED: private-key-block]|two" "$(paste -sd'|' "$rd")"
+printf 'a -----BEGIN RSA ''PRIVATE KEY-----K1-----END RSA ''PRIVATE KEY----- b -----BEGIN RSA ''PRIVATE KEY-----K2-----END RSA ''PRIVATE KEY----- c\n' > "$rd"
+agy_redact_credentials "$rd"
+check "two one-line private keys on one line keep the text between them" \
+  "a [REDACTED: private-key-block] b [REDACTED: private-key-block] c" "$(cat "$rd")"
 printf 'keys %s.%s and %s\n' "AKI""AABCDEFGHIJKLMNOP" "AKI""AQRSTUVWXYZ234567" "gh""p_$(printf 'c%.0s' {1..36})" > "$rd"
 agy_redact_credentials "$rd"
 check "adjacent matches are all redacted, boundaries kept" "keys [REDACTED: aws-access-key-id].[REDACTED: aws-access-key-id] and [REDACTED: github-token]" "$(cat "$rd")"
@@ -1039,6 +1110,9 @@ check "redaction works in memory, with no scratch file" "0" \
   "$(sed -n '/^agy_redact_credentials() {/,/^}/p' "$SCRIPT" | grep -cE 'mktemp|\.redact|> *"\$tmp"')"
 # Credential scan: every shape is caught, ordinary review text is not.
 cred_tmp="$TMPD/cred.txt"
+printf 'key AKIA%s and gh''p_%s here\n' "$(printf 'Q%.0s' {1..16})" "$(printf 'k%.0s' {1..36})" > "$cred_tmp"
+check "every credential kind present is named, not only the first" "github-token, aws-access-key-id" \
+  "$(credential_kinds_present "$cred_tmp")"
 # Samples are assembled at runtime from split pieces, so this file never contains a literal that a
 # repository secret scanner (gitleaks) would flag.
 s_jwt="eyJ""hbGciOiJIUzI1NiJ9.""eyJ""zdWIiOiIxMjM0NTY3ODkwIn0.abcdefghijklmnop"
@@ -1047,7 +1121,8 @@ s_key="-----BEGIN OPENSSH ""PRIVATE KEY-----"
 for sample in "token ya2""9.$(printf 'a%.0s' {1..30})" "refresh 1/""/0$(printf 'b%.0s' {1..30})" \
               "gh""p_$(printf 'c%.0s' {1..36})" "github""_pat_$(printf 'd%.0s' {1..50})" \
               "$s_key" "$s_jwt" "key $s_aws." "sk-a""nt-$(printf 'e%.0s' {1..40})" \
-              "sk-pro""j-$(printf 'f%.0s' {1..40})" "xox""b-1234567890-abcdef"; do
+              "sk-pro""j-$(printf 'f%.0s' {1..40})" "xox""b-1234567890-abcdef" \
+              "sk-pro""j-$(printf 'aB3_-%.0s' {1..9})" "sk-svc""acct-$(printf 'Zq9-_%.0s' {1..8})"; do
   printf '## Review\n\nfound %s here\n' "$sample" > "$cred_tmp"
   check "credential scan catches: ${sample:0:14}..." "yes" \
     "$(credential_kind_present "$cred_tmp" >/dev/null && echo yes || echo no)"

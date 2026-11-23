@@ -160,9 +160,13 @@ agy_record_denied() {
   stamp="$(date -u +%FT%TZ)"
   (
     umask 077
+    mkdir -p -- "$(dirname -- "$dst")" || exit 1
     {
       if [ -f "$dst" ]; then cat "$dst"; fi
-      sort -u "$src" | cut -c1-253 | sed "s|^|${stamp} ${tag} |"
+      # Control bytes are stripped: a denied target is attacker-chosen, and raw escape sequences
+      # would act on the terminal of whoever later reads this log.
+      LC_ALL=C tr -d '\000-\010\013-\037\177' < "$src" | sort -u | cut -c1-253 \
+        | AGY_DENIED_PREFIX="${stamp} ${tag} " awk '{ print ENVIRON["AGY_DENIED_PREFIX"] $0 }'   # not -v: it would expand backslashes
     } > "$dst.new" || exit 1
     tail -n 500 "$dst.new" > "$dst.tmp" && mv -f "$dst.tmp" "$dst" && rm -f -- "$dst.new"
   )
@@ -196,7 +200,7 @@ private-key-block~~-----BEGIN [A-Z ]*PRIVATE KEY-----~
 jwt~(^|[^A-Za-z0-9_-])~eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}~
 aws-access-key-id~(^|[^A-Za-z0-9])~(AKIA|ASIA)[0-9A-Z]{16}~([^A-Za-z0-9]|$)
 anthropic-key~(^|[^A-Za-z0-9_-])~sk-ant-[A-Za-z0-9_-]{32,}~
-openai-key~(^|[^A-Za-z0-9_-])~sk-(proj-)?[A-Za-z0-9]{32,}~([^A-Za-z0-9_-]|$)
+openai-key~(^|[^A-Za-z0-9_-])~sk-(proj-|svcacct-|admin-)?[A-Za-z0-9_-]{32,}~([^A-Za-z0-9_-]|$)
 slack-token~(^|[^A-Za-z0-9_-])~xox[abprs]-[A-Za-z0-9-]{10,}~
 CREDS
 }
@@ -207,6 +211,15 @@ credential_kind_present() {
     if grep -qE -- "${lead}${core}${trail}" "$1"; then printf '%s' "$kind"; return 0; fi
   done < <(agy_credential_patterns)
   return 1
+}
+# Every kind present in $1, comma-separated (empty when none): the note names all of them.
+credential_kinds_present() {
+  [ -s "$1" ] || return 0
+  local kind lead core trail found=""
+  while IFS='~' read -r kind lead core trail; do
+    grep -qE -- "${lead}${core}${trail}" "$1" && found="${found:+$found, }$kind"
+  done < <(agy_credential_patterns)
+  printf '%s' "$found"
 }
 # Replace every credential-shaped string in $1 (in place) with `[REDACTED: <kind>]`, keeping the
 # boundary characters. A private-key block is replaced whole, from its BEGIN line through its END
@@ -220,14 +233,28 @@ agy_redact_credentials() {
   for pass in 1 2 3; do
     while IFS='~' read -r kind lead core trail; do
       if [ "$kind" = private-key-block ]; then
-        # awk, not a sed range: a one-line block (BEGIN and END on the same line) is replaced in
-        # place, a multi-line block becomes one marker line, and a block with NO END line removes
-        # the rest of the text but SAYS so, so the review can never be silently cut short.
+        # awk, not a sed range. Each line is scanned left to right: text before a BEGIN is kept and
+        # the block becomes one marker; inside a block everything up to its END is dropped, and the
+        # scan resumes AFTER the END, so a second BEGIN on that same line (or a second one-line key)
+        # is caught too. A line wholly inside a block prints nothing. A block with NO END line
+        # removes the rest of the text but SAYS so, so the review can never be silently cut short.
         buf="$(awk -v b="$core" -v e='-----END [A-Z ]*PRIVATE KEY-----' -v m="[REDACTED: ${kind}]" '
-          inblk { if ($0 ~ e) inblk = 0; next }
-          { gsub(b ".*" e, m) }
-          $0 ~ b { print m; inblk = 1; if ($0 ~ e) inblk = 0; next }
-          { print }
+          {
+            line = $0; out = ""; emit = !inblk
+            while (1) {
+              if (inblk) {
+                if (match(line, e)) { line = substr(line, RSTART + RLENGTH); inblk = 0; continue }
+                break
+              }
+              if (match(line, b)) {
+                out = out substr(line, 1, RSTART - 1) m; emit = 1
+                line = substr(line, RSTART + RLENGTH); inblk = 1; continue
+              }
+              if (line != "") { out = out line; emit = 1 }
+              break
+            }
+            if (emit) print out
+          }
           END { if (inblk) print "[REDACTED: the rest of this review was removed: it quoted the start of a private key with no END line]" }
         ' "$f" && printf x)" || return 1
       else
@@ -469,7 +496,7 @@ REPO="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY not set}"
 # _perm_err so cleanup() could never see it (agy review, GH-ListRollup PR #6).
 # Remove every temp file on exit. Pre-declared so the trap is safe under `set -u` even if the
 # script exits before a given file is created.
-diff_file= diff_err= meta_file= prompt_file= out_file= raw= body_file= agy_diff_file= agy_sandbox= agy_jail_home= agy_jail_rt= agy_proxy_pid= agy_egress_pid= jq_err= log_tail= redacted_kinds= left= prior_body_file= archived_file= api_err=
+diff_file= diff_err= meta_file= prompt_file= out_file= raw= body_file= agy_diff_file= agy_sandbox= agy_jail_home= agy_jail_rt= agy_proxy_pid= agy_egress_pid= jq_err= log_tail= redacted_kinds= cred_kinds= left= prior_body_file= archived_file= api_err=
 # Also created mid-flight (permission lookup, compare-API merge base, archive trimming); a signal
 # or abort while one of those commands runs would otherwise leak the file in /tmp.
 _perm_err='' compare_err='' trimmed=''
@@ -535,6 +562,9 @@ cleanup() {
   # before the jail home and runtime dirs below are removed.
   [ -n "${agy_proxy_pid:-}" ] && { kill "$agy_proxy_pid" 2>/dev/null || true; }
   [ -n "${agy_egress_pid:-}" ] && { kill "$agy_egress_pid" 2>/dev/null || true; }
+  # Reap them before their runtime dir goes, so no in-flight log write races the removal.
+  [ -n "${agy_proxy_pid:-}" ] && { wait "$agy_proxy_pid" 2>/dev/null || true; }
+  [ -n "${agy_egress_pid:-}" ] && { wait "$agy_egress_pid" 2>/dev/null || true; }
   [ -n "${agy_jail_home:-}" ] && [ -d "$agy_jail_home" ] && rm -rf -- "$agy_jail_home"
   [ -n "${agy_jail_rt:-}" ] && [ -d "$agy_jail_rt" ] && rm -rf -- "$agy_jail_rt"
   if [ -n "${agy_refs_created:-}" ] && [ -n "${PR:-}" ]; then
@@ -1385,7 +1415,9 @@ def rebuild_request(head, host):
     ):
         raise Refuse
     framing = []
-    if kind == "length":
+    if kind == "length" or (
+        kind == "none" and (lengths or method in ("POST", "PUT", "PATCH"))
+    ):
         framing = [f"Content-Length: {length}"]
     elif kind == "chunked":
         framing = ["Transfer-Encoding: chunked"]
@@ -1469,7 +1501,10 @@ async def handle(cr, cw):
     if port != "443" or host not in allow:
         log("DENY", host)
         if deniedf is not None:
-            deniedf.write(parts[1][:300] + "\n")
+            # attacker-chosen: only printable characters reach the host log
+            deniedf.write(
+                "".join(c if c.isprintable() else "?" for c in parts[1][:300]) + "\n"
+            )
         await refuse(cw, b"HTTP/1.1 403 Forbidden")
         return
     uw = None
@@ -1531,6 +1566,39 @@ asyncio.run(main())
 AGYPY
 }
 
+# Serialize agy across concurrent review jobs on this host. Taken BEFORE the jail is built, so
+# its proxies and per-run CA are not left idling for the whole wait. agy runs a SINGLETON
+# local language-server + conversation store per user, so two `--print` calls at
+# once collide (one reports the backend "unavailable"). flock makes jobs queue
+# instead of failing. FAIL CLOSED: if flock is missing, or the lock can't be
+# taken/times out, exit rather than let two agy processes race each other --
+# a fail-open here made the exact collision this lock exists to prevent still
+# reachable (one run can burn the whole ${AGY_RETRIES}x${AGY_LOCK_WAIT}s wait).
+command -v flock >/dev/null 2>&1 || {
+  log "flock is required to serialize agy; refusing to run unserialized"
+  exit 1
+}
+# Create the lock dir first: a failed `exec 9>` redirection is a FATAL shell error (it aborts
+# before the `|| log` fallback can run), so ensure the parent exists on a fresh runner. `>>` opens
+# for append rather than truncating the lockfile — flock uses the fd, not the contents.
+# Validated before use: an empty `AGY_LOCK` (an env override set to "") would make `dirname`
+# yield "." and the redirection below fail with an obscure shell error, at the one point where a
+# clear message matters -- this is the guard that keeps two agy runs off each other.
+if [ -z "$AGY_LOCK" ]; then
+  log "AGY_LOCK is empty; refusing to run unserialized"
+  exit 1
+fi
+mkdir -p "$(dirname "$AGY_LOCK")"
+exec 9>>"$AGY_LOCK"
+flock -w "$AGY_LOCK_WAIT" 9 || {
+  log "agy lock timed out after ${AGY_LOCK_WAIT}s"
+  exit 1
+}
+
+# One resolution of the script directory, shared by the jail bind and the script(1) fallback, so a
+# symlinked checkout path cannot make them name different files.
+here="$(cd "$(dirname "$0")" && pwd)"
+[ "$AGY_ISOLATION" = none ] && log "WARNING: AGY_ISOLATION=none: agy runs unjailed, with the host's files, keyring and network; AGY_EGRESS has no effect"
 # --- the bubblewrap jail (AGY_ISOLATION=bwrap) --------------------------------------------------
 # Verified 2026-11-22: inside this jail agy authenticates and reviews, sees only an empty HOME, has
 # no MCP servers/skills/hooks, cannot read any host file outside the jail, and over D-Bus can fetch
@@ -1588,6 +1656,7 @@ if [ "$AGY_ISOLATION" = bwrap ]; then
         || { log "invalid AGY_EGRESS_ALLOW entry '$_h' (exact lowercase host names only, no wildcards)"; exit 1; }
       _allow="${_allow:+$_allow,}$_h"
     done
+    [ -n "$_allow" ] || { log "AGY_EGRESS_ALLOW is empty; refusing to run agy with no reachable host"; exit 1; }
     _prules=""
     for _r in $AGY_EGRESS_PATH_RULES; do
       [[ "$_r" =~ ^([a-z0-9.-]+)=(/[A-Za-z0-9._~/-]*)$ ]] \
@@ -1631,7 +1700,6 @@ if [ "$AGY_ISOLATION" = bwrap ]; then
     _egress_env=( "HTTPS_PROXY=http://127.0.0.1:3128" "https_proxy=http://127.0.0.1:3128"
                   "HTTP_PROXY=http://127.0.0.1:3128" "http_proxy=http://127.0.0.1:3128"
                   "NO_PROXY=" "no_proxy=" "SSL_CERT_FILE=/run/agy-ca-bundle.pem" )
-    # Inside the jail: bridge loopback 3128 to the proxy socket, wait for it, then exec the payload.
     # Inside the jail: bridge loopback 3128 to the proxy socket and wait for it. If the bridge never
     # comes up, say so with the `agy-jail:` prefix (agy_jail_failed) instead of launching agy anyway.
     _inner=( /usr/bin/bash -c 'socat TCP-LISTEN:3128,bind=127.0.0.1,fork,reuseaddr UNIX-CONNECT:/run/agy-egress.sock 2>/dev/null & up=0; for _ in $(seq 1 100); do if (exec 3<>/dev/tcp/127.0.0.1/3128) 2>/dev/null; then up=1; break; fi; sleep 0.1; done; [ "$up" = 1 ] || { echo "agy-jail: the egress bridge did not start" >&2; exit 1; }; exec "$@"' agy-jail )
@@ -1649,7 +1717,7 @@ if [ "$AGY_ISOLATION" = bwrap ]; then
     --ro-bind /etc /etc --proc /proc --dev /dev --tmpfs /tmp
     --tmpfs /home --bind "$agy_jail_home" "$HOME"
     --ro-bind "$(readlink -f "$AGY_BIN")" "$AGY_BIN"
-    --ro-bind "$(cd "$(dirname "$0")" && pwd)/_agy_print.sh" "$(cd "$(dirname "$0")" && pwd)/_agy_print.sh"
+    --ro-bind "$here/_agy_print.sh" "$here/_agy_print.sh"
     --ro-bind "$prompt_file" "$prompt_file"
     --bind "$agy_sandbox" "$agy_sandbox" --chdir "$agy_sandbox"
     --dir "/run/user/$_uid" --ro-bind "$agy_jail_rt/bus" "/run/user/$_uid/bus"
@@ -1663,42 +1731,15 @@ fi
 [ -n "$AGY_EFFORT" ] && flags+=( --effort "$AGY_EFFORT" )
 
 out_file="$(mktemp)"
-here="$(cd "$(dirname "$0")" && pwd)"
 : > "$LOG"
 
-# Serialize agy across concurrent review jobs on this host. agy runs a SINGLETON
-# local language-server + conversation store per user, so two `--print` calls at
-# once collide (one reports the backend "unavailable"). flock makes jobs queue
-# instead of failing. FAIL CLOSED: if flock is missing, or the lock can't be
-# taken/times out, exit rather than let two agy processes race each other --
-# a fail-open here made the exact collision this lock exists to prevent still
-# reachable (one run can burn the whole ${AGY_RETRIES}x${AGY_LOCK_WAIT}s wait).
-command -v flock >/dev/null 2>&1 || {
-  log "flock is required to serialize agy; refusing to run unserialized"
-  exit 1
-}
-# Create the lock dir first: a failed `exec 9>` redirection is a FATAL shell error (it aborts
-# before the `|| log` fallback can run), so ensure the parent exists on a fresh runner. `>>` opens
-# for append rather than truncating the lockfile — flock uses the fd, not the contents.
-# Validated before use: an empty `AGY_LOCK` (an env override set to "") would make `dirname`
-# yield "." and the redirection below fail with an obscure shell error, at the one point where a
-# clear message matters -- this is the guard that keeps two agy runs off each other.
-if [ -z "$AGY_LOCK" ]; then
-  log "AGY_LOCK is empty; refusing to run unserialized"
-  exit 1
-fi
-mkdir -p "$(dirname "$AGY_LOCK")"
-exec 9>>"$AGY_LOCK"
-flock -w "$AGY_LOCK_WAIT" 9 || {
-  log "agy lock timed out after ${AGY_LOCK_WAIT}s"
-  exit 1
-}
 
 # Retry the whole agy attempt on empty/failed output: transient "agy is down"
 # (backend rate-limit / local-server contention) usually clears within seconds.
 # The flock (above) is held across all attempts, released after the loop.
 for (( attempt=1; attempt<=AGY_RETRIES; attempt++ )); do
   : > "$out_file"   # clear any partial output from a prior attempt
+  redacted_kinds=   # this attempt's only: a discarded attempt's redactions must not reach the note
 
   if command -v unbuffer >/dev/null 2>&1; then
     log "running agy via unbuffer (allocates a PTY) [attempt ${attempt}/${AGY_RETRIES}]"
@@ -1739,13 +1780,14 @@ for (( attempt=1; attempt<=AGY_RETRIES; attempt++ )); do
   # A credential-shaped string is REDACTED, not fatal: the scan cannot tell a leaked secret from a
   # test fixture a PR adds (a sample JWT), and either way the string never reaches the comment.
   if cred_kind="$(credential_kind_present "$out_file")"; then
+    cred_kinds="$(credential_kinds_present "$out_file")"
     if ! agy_redact_credentials "$out_file" || left="$(credential_kind_present "$out_file")"; then
       log "refusing to post: a credential-shaped string (${left:-$cred_kind}) could not be redacted from agy's output. Nothing was posted."
       : > "$out_file"
       exit 1
     fi
-    redacted_kinds="${redacted_kinds:+$redacted_kinds, }${cred_kind}"
-    log "redacted credential-shaped string(s) (${cred_kind}, and any others) from agy's output (attempt ${attempt}/${AGY_RETRIES}). If this PR adds sample tokens (test fixtures), that is the likely source; otherwise inspect the runner host, the diff may carry a prompt injection."
+    redacted_kinds="${cred_kinds:-$cred_kind}"
+    log "redacted credential-shaped string(s) (${redacted_kinds}) from agy's output (attempt ${attempt}/${AGY_RETRIES}). If this PR adds sample tokens (test fixtures), that is the likely source; otherwise inspect the runner host, the diff may carry a prompt injection."
   fi
   # A jail that never started (no user namespaces, a missing bind source, ...) prints its own
   # diagnostic, which the PTY capture keeps while `|| true` drops the exit status. Never let that
@@ -1898,11 +1940,16 @@ body_file="$(mktemp)"
   fi
   printf '\n\n<sub>Automated first-pass review by `agy` on a self-hosted runner -- not a human review.</sub>\n'
 } > "$body_file"
-# Last-resort guard before ANY post path (edit-in-place or new comment). The capture loop already
-# redacted every credential shape, so reaching this means redaction missed one: fail closed.
-if cred_kind="$(credential_kind_present "$out_file")"; then
-  log "refusing to post: agy's output contains a credential-shaped string (${cred_kind}). Nothing was posted. Inspect the runner host; the diff may carry a prompt injection."
-  exit 1
+# Last-resort guard before ANY post path (edit-in-place or new comment), on the BODY that is posted:
+# agy's output was redacted in the capture loop, but the header and the archived earlier rounds
+# were not. Those rounds were posted by an earlier template whose patterns may have been narrower,
+# so a match there is redacted too; anything redaction cannot remove fails closed.
+if cred_kind="$(credential_kind_present "$body_file")"; then
+  if ! agy_redact_credentials "$body_file" || left="$(credential_kind_present "$body_file")"; then
+    log "refusing to post: the comment body contains a credential-shaped string (${left:-$cred_kind}) that could not be redacted. Nothing was posted. Inspect the runner host; the diff may carry a prompt injection."
+    exit 1
+  fi
+  log "redacted a credential-shaped string (${cred_kind}) from the assembled comment body (header or archived rounds)"
 fi
 
 # Final hard guard — the last line of defense, and UNCONDITIONAL, run BEFORE anything is
