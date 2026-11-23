@@ -220,7 +220,11 @@ agy_redact_credentials() {
   for pass in 1 2 3; do
     while IFS='~' read -r kind lead core trail; do
       if [ "$kind" = private-key-block ]; then
-        buf="$(sed -E "/${core}/,/-----END [A-Z ]*PRIVATE KEY-----/c\\[REDACTED: ${kind}]" "$f" && printf x)" || return 1
+        # A one-line block is substituted in place first: a range looks for its END only from
+        # the NEXT line, so it would swallow the rest of the review. A multi-line or
+        # unterminated block still goes through the range (to the end of text, fail safe).
+        buf="$(sed -E -e "s#${core}.*-----END [A-Z ]*PRIVATE KEY-----#[REDACTED: ${kind}]#g" \
+          -e "/${core}/,/-----END [A-Z ]*PRIVATE KEY-----/c\\[REDACTED: ${kind}]" "$f" && printf x)" || return 1
       else
         groups="${core//[^(]/}"; n=$(( 2 + ${#groups} ))
         buf="$(sed -E "s#${lead:-()}${core}${trail:-()}#\\1[REDACTED: ${kind}]\\${n}#g" "$f" && printf x)" || return 1
@@ -1286,6 +1290,11 @@ class Refuse(Exception):
     """The request is refused (403); the reason is never echoed anywhere."""
 
 
+class ExpectationFailed(Refuse):
+    """`Expect` is not supported: answered 417 so a client can retry without it, instead of
+    waiting for a `100 Continue` the proxy would only relay after the body (a stall)."""
+
+
 def log(verdict, host=""):
     logf.write(f"{verdict} {host if host in allow else ''}".rstrip() + "\n")
 
@@ -1329,7 +1338,7 @@ def rebuild_request(head, host):
     method, target = req[0], req[1]
     if not target.startswith("/") or target.startswith("//"):
         raise Refuse  # origin-form only: no absolute-form or authority-form target
-    hosts, keep, lengths, codings = [], [], [], []
+    hosts, keep, lengths, codings, conn_opts = [], [], [], [], set()
     for line in lines[1:]:
         if not line or line[0] in " \t":
             raise Refuse  # empty line inside the head, or obs-fold continuation
@@ -1343,8 +1352,14 @@ def rebuild_request(head, host):
             lengths.append(value)
         elif lname == "transfer-encoding":
             codings.append(value.lower())
+        elif lname == "expect":
+            raise ExpectationFailed
+        elif lname == "connection":
+            conn_opts.update(t.strip(" \t").lower() for t in value.split(","))
         elif lname not in HOP_BY_HOP:
-            keep.append(f"{name}: {value}")
+            keep.append((lname, f"{name}: {value}"))
+    # RFC 9110 7.6.1: a field named in Connection is connection-local and is not forwarded.
+    keep = [line for lname, line in keep if lname not in conn_opts]
     if len(hosts) != 1 or hosts[0] not in (host, f"{host}:443"):
         raise Refuse
     if lengths and codings:
@@ -1460,6 +1475,10 @@ async def handle(cr, cw):
         rhead = await asyncio.wait_for(cr.readuntil(b"\r\n\r\n"), 60)
         try:
             out, kind, length = rebuild_request(rhead, host)
+        except ExpectationFailed:
+            log("DENY-EXPECT", host)
+            await refuse(cw, b"HTTP/1.1 417 Expectation Failed")
+            return
         except Refuse:
             log("DENY-REQ", host)
             await refuse(cw, b"HTTP/1.1 403 Forbidden")
@@ -1704,6 +1723,11 @@ for (( attempt=1; attempt<=AGY_RETRIES; attempt++ )); do
   # normalize CRs without sed -i (avoid in-place edit footguns)
   tr -d '\r' < "$out_file" > "$out_file.clean" && mv "$out_file.clean" "$out_file"
 
+  # Classify a backend error on the capture exactly as agy produced it, BEFORE redaction: a
+  # marker is longer than what it replaces (a 20-byte AWS key id becomes 29 bytes), so a short
+  # error could otherwise grow past AGY_ERROR_MAX_BYTES, escape the guard and be posted.
+  # Only the decision is taken here; the handler below logs the REDACTED first line.
+  svc_err=no; service_error_present "$out_file" && svc_err=yes
   # These two run on EVERY capture before any handler below logs or clears it: the backend-error
   # handler prints a short capture's first line to the public job log, which must never carry a
   # credential, and a jail diagnostic must never be retried or posted.
@@ -1755,7 +1779,7 @@ for (( attempt=1; attempt<=AGY_RETRIES; attempt++ )); do
   # output" cause, and the reverse would claim the backend was down on every attempt when it was
   # down on one. Both exit non-zero, so nothing unsafe -- but the log line is the only thing
   # telling a human which outage they are looking at.
-  if service_error_present "$out_file"; then
+  if [ "$svc_err" = yes ]; then
     log "agy returned a backend error rather than a review (attempt ${attempt}/${AGY_RETRIES}): $(head -n 1 "$out_file")"
     : > "$out_file"
     service_errors=$(( ${service_errors:-0} + 1 ))

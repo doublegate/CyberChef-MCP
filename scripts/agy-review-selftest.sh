@@ -835,7 +835,7 @@ if command -v python3 >/dev/null 2>&1 && command -v openssl >/dev/null 2>&1; the
   if [ "$certs_ok" = yes ]; then
     px_log="$ip/log"; : > "$px_log"
     python3 -I "$proxy_py" "$sockd/p.sock" "$px_log" "allowed.example,paths.example" \
-      "$ip/leaf.pem" "$ip/leaf.key" "paths.example=/oauth2/v2/userinfo" 2>"$ip/err" &
+      "$ip/leaf.pem" "$ip/leaf.key" "paths.example=/v1/user.info" 2>"$ip/err" &
     px_pid=$!
     for _ in $(seq 1 50); do [ -S "$sockd/p.sock" ] && break; sleep 0.1; done
     cat > "$ip/client.py" <<'PYC'
@@ -882,16 +882,18 @@ PYC
     check "HTTP/1.0 refused" "403" "$(pc "$A" "GET / HTTP/1.0\\r\\n${H}\\r\\n")"
     P='paths.example:443'; PH='Host: paths.example\r\n'
     check "path rule: a query string is refused" "403" \
-      "$(pc "$P" "GET /oauth2/v2/userinfo?x=secret HTTP/1.1\\r\\n${PH}\\r\\n")"
+      "$(pc "$P" "GET /v1/user.info?x=secret HTTP/1.1\\r\\n${PH}\\r\\n")"
     check "path rule: another path is refused" "403" "$(pc "$P" "GET /storage/v1/b/x HTTP/1.1\\r\\n${PH}\\r\\n")"
     check "path rule: a POST to the allowed path is refused" "403" \
-      "$(pc "$P" "POST /oauth2/v2/userinfo HTTP/1.1\\r\\n${PH}Content-Length: 1\\r\\n\\r\\n")"
-    check "path rule: the path is literal, not a regex" "403" \
-      "$(pc "$P" "GET /oauth2/v2/userinfoX HTTP/1.1\\r\\n${PH}\\r\\n")"
+      "$(pc "$P" "POST /v1/user.info HTTP/1.1\\r\\n${PH}Content-Length: 1\\r\\n\\r\\n")"
+    check "path rule: the path is literal, not a regex (. is not a wildcard)" "403" \
+      "$(pc "$P" "GET /v1/userXinfo HTTP/1.1\\r\\n${PH}\\r\\n")"
+    check "Expect: 100-continue is answered 417, not stalled" "417" \
+      "$(pc "$A" "POST / HTTP/1.1\\r\\n${H}Content-Length: 1\\r\\nExpect: 100-continue\\r\\n\\r\\n")"
     kill "$px_pid" 2>/dev/null; wait "$px_pid" 2>/dev/null || true   # 143 from the kill is expected
     check "proxy never logs a denied host name" "0" "$(grep -c 'evil' "$px_log")"
-    check "every denial is logged by verdict" "yes" \
-      "$([ "$(grep -cE '^DENY' "$px_log")" -ge 17 ] && echo yes || echo no)"
+    # One verdict per refused case above: 3 CONNECT, 12 request-head, 4 path-rule, 1 Expect.
+    check "every denial is logged by verdict, one per refused request" "20" "$(grep -cE '^DENY' "$px_log")"
     # rebuild_request, unit level: Host set by the proxy, hop-by-hop dropped, framing canonical.
     rb="$(python3 -I - "$proxy_py" "$ip/leaf.pem" "$ip/leaf.key" <<'PYR' 2>/dev/null
 import sys
@@ -900,12 +902,13 @@ sys.argv = ["x", "/dev/null", "/dev/null", "allowed.example", sys.argv[2], sys.a
 ns = {"__name__": "agy_egress_test"}
 exec(compile(src, "proxy", "exec"), ns)
 head = (b"POST /v1/x HTTP/1.1\r\nHost: allowed.example\r\nAuthorization: Bearer t\r\n"
-        b"Connection: keep-alive\r\nUpgrade: h2c\r\nTransfer-Encoding: chunked\r\nX-Goog-Api-Client: a\r\n\r\n")
+        b"Connection: keep-alive, X-Diag\r\nX-Diag: local\r\nUpgrade: h2c\r\nTransfer-Encoding: chunked\r\n"
+        b"X-Goog-Api-Client: a\r\n\r\n")
 out, kind, n = ns["rebuild_request"](head, "allowed.example")
 print(kind + "|" + "|".join(out.decode().split("\r\n")))
 PYR
 )" || rb="(rebuild_request missing or failed)"
-    check "the rebuilt request sets Host itself, drops hop-by-hop headers, keeps chunked framing" \
+    check "the rebuilt request sets Host itself, drops hop-by-hop and Connection-named headers, keeps chunked framing" \
       "chunked|POST /v1/x HTTP/1.1|Host: allowed.example|Authorization: Bearer t|X-Goog-Api-Client: a|Transfer-Encoding: chunked|Connection: close||" "$rb"
   fi
   rm -rf -- "$sockd"
@@ -924,9 +927,21 @@ check "cleanup ignores a failed kill of either proxy (set -e safe)" "2" \
   "$(grep -cE '^  \[ -n "\$\{agy_(proxy|egress)_pid:-\}" \] && \{ kill "\$agy_(proxy|egress)_pid" 2>/dev/null \|\| true; \}$' "$SCRIPT")"
 # Round-4 review fixes.
 cred_line="$(grep -n '^  if cred_kind="\$(credential_kind_present "\$out_file")"; then' "$SCRIPT" | head -1 | cut -d: -f1 || true)"
-svc_line="$(grep -n '^  if service_error_present "\$out_file"; then' "$SCRIPT" | head -1 | cut -d: -f1 || true)"
+svc_line="$(grep -n '^  if \[ "\$svc_err" = yes \]; then' "$SCRIPT" | head -1 | cut -d: -f1 || true)"
+svc_class="$(grep -n '^  svc_err=no; service_error_present "\$out_file" && svc_err=yes$' "$SCRIPT" | head -1 | cut -d: -f1 || true)"
 check "each capture is credential-scanned before any handler logs it" "yes" \
   "$([ -n "$cred_line" ] && [ -n "$svc_line" ] && [ "$cred_line" -lt "$svc_line" ] && echo yes || echo no)"
+# Round 8: a backend error is classified on the unredacted capture, because a redaction marker
+# is longer than the key it replaces and can push a short error past AGY_ERROR_MAX_BYTES.
+check "a backend error is classified before redaction can lengthen it" "yes" \
+  "$([ -n "$svc_class" ] && [ -n "$cred_line" ] && [ "$svc_class" -lt "$cred_line" ] && echo yes || echo no)"
+grow="$TMPD/grow.txt"
+{ printf 'Error: backend failed for key AKIA%s ' "$(printf 'Q%.0s' {1..16})"; head -c 1945 /dev/zero | tr '\0' x; } > "$grow"
+check "(why) a near-limit backend error is caught as agy produced it" "yes" \
+  "$(service_error_present "$grow" && echo yes || echo no)"
+agy_redact_credentials "$grow"
+check "(why) the same error, redacted, has grown past the size guard" "no" \
+  "$(service_error_present "$grow" && echo yes || echo no)"
 check "the public stderr tail is scanned from a regular file and withheld on a match" "1" \
   "$(grep -c '^    if log_cred="\$(credential_kind_present "\$log_tail")"; then' "$SCRIPT")"
 check "an empty AGY_KEYRING_ATTRS is refused (SearchItems {} matches every item)" "1" \
@@ -962,6 +977,15 @@ check "redaction leaves the rest of the review intact" "yes" "$(grep -qx 'Keep t
 printf 'one\n-----BEGIN OPENSSH ''PRIVATE KEY-----\nAAAAB3NzaC1yc2E\nmore-key-body\n-----END OPENSSH ''PRIVATE KEY-----\ntwo\n' > "$rd"
 agy_redact_credentials "$rd"
 check "a private-key block is redacted whole, body lines included" "one|[REDACTED: private-key-block]|two" "$(paste -sd'|' "$rd")"
+printf 'one\nkey -----BEGIN RSA ''PRIVATE KEY-----MIIEabc-----END RSA ''PRIVATE KEY----- here\ntwo\nthree\n' > "$rd"
+agy_redact_credentials "$rd"
+check "a one-line private key is redacted without eating the rest of the review" \
+  "one|key [REDACTED: private-key-block] here|two|three" "$(paste -sd'|' "$rd")"
+printf 'one\n-----BEGIN RSA ''PRIVATE KEY-----\nMIIEabc\n' > "$rd"
+agy_redact_credentials "$rd"
+# GNU sed prints a `c` range's text only when the range closes; unclosed, it deletes to the end.
+check "an unterminated private key is deleted through the end of the text (fail safe)" \
+  "one" "$(paste -sd'|' "$rd")"
 printf 'keys %s.%s and %s\n' "AKI""AABCDEFGHIJKLMNOP" "AKI""AQRSTUVWXYZ234567" "gh""p_$(printf 'c%.0s' {1..36})" > "$rd"
 agy_redact_credentials "$rd"
 check "adjacent matches are all redacted, boundaries kept" "keys [REDACTED: aws-access-key-id].[REDACTED: aws-access-key-id] and [REDACTED: github-token]" "$(cat "$rd")"

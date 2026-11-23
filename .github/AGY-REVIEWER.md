@@ -187,6 +187,10 @@ to `.agy-review-work/` in the checkout and required `/.agy-review-work/` in
   PR that adds the workflow is itself a live test, and every follow-up push
   re-reviews (`synchronize`). Auto-runs only for PRs authored by a trusted user
   (see the security model) so a fork's code never auto-executes on the runner.
+  The PR that adds the reviewer is reviewed only while the workflow keeps its
+  first-install bootstrap steps. Most repositories remove them (see the security
+  model), and there reviews start once the reviewer is on the default branch;
+  until then the review step is skipped with a warning.
 - **On demand:** comment **`/agy-review`** on any PR to (re)run it.
 
 ### One comment per PR, appended to — never replaced
