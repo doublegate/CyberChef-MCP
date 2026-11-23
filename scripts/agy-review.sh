@@ -1498,6 +1498,7 @@ async def handle(cr, cw):
         await refuse(cw, b"HTTP/1.1 405 Method Not Allowed")
         return
     host, _, port = parts[1].rpartition(":")
+    host = host.lower()  # DNS names are case-insensitive; the allowlist is lowercase
     if port != "443" or host not in allow:
         log("DENY", host)
         if deniedf is not None:
@@ -1506,6 +1507,12 @@ async def handle(cr, cw):
                 "".join(c if c.isprintable() else "?" for c in parts[1][:300]) + "\n"
             )
         await refuse(cw, b"HTTP/1.1 403 Forbidden")
+        return
+    # Bytes sent behind the CONNECT, before its 200, would sit in the reader's buffer and be read
+    # after start_tls as if they were decrypted application data. No real client does this.
+    if getattr(cr, "_buffer", b""):
+        log("DENY-PIPELINED", host)
+        await refuse(cw, b"HTTP/1.1 400 Bad Request")
         return
     uw = None
     try:
@@ -1644,7 +1651,7 @@ if [ "$AGY_ISOLATION" = bwrap ]; then
   agy_jail_home="$(cd "$agy_jail_home" && pwd -P)"
   xdg-dbus-proxy "$DBUS_SESSION_BUS_ADDRESS" "$agy_jail_rt/bus" --filter "${_rules[@]}" &
   agy_proxy_pid=$!
-  for _ in $(seq 1 100); do [ -S "$agy_jail_rt/bus" ] && break; sleep 0.1; done
+  for _ in $(seq 1 100); do [ -S "$agy_jail_rt/bus" ] && break; kill -0 "$agy_proxy_pid" 2>/dev/null || break; sleep 0.1; done
   [ -S "$agy_jail_rt/bus" ] || { log "xdg-dbus-proxy did not start; refusing to run agy unjailed"; exit 1; }
   _uid="$(id -u)"
   _net=( --share-net --ro-bind-try /run/systemd/resolve /run/systemd/resolve )
@@ -1657,12 +1664,18 @@ if [ "$AGY_ISOLATION" = bwrap ]; then
       _allow="${_allow:+$_allow,}$_h"
     done
     [ -n "$_allow" ] || { log "AGY_EGRESS_ALLOW is empty; refusing to run agy with no reachable host"; exit 1; }
-    _prules=""
+    _prules="" _prhosts=""
     for _r in $AGY_EGRESS_PATH_RULES; do
       [[ "$_r" =~ ^([a-z0-9.-]+)=(/[A-Za-z0-9._~/-]*)$ ]] \
         || { log "invalid AGY_EGRESS_PATH_RULES entry '$_r' (expected host=/exact/path)"; exit 1; }
-      [[ ",$_allow," == *",${BASH_REMATCH[1]},"* ]] \
-        || { log "AGY_EGRESS_PATH_RULES names '${BASH_REMATCH[1]}', which is not in AGY_EGRESS_ALLOW"; exit 1; }
+      _rh="${BASH_REMATCH[1]}"
+      [[ ",$_allow," == *",${_rh},"* ]] \
+        || { log "AGY_EGRESS_PATH_RULES names '${_rh}', which is not in AGY_EGRESS_ALLOW"; exit 1; }
+      # One path per host: the proxy keeps a single path for each, so a second rule would silently
+      # replace the first.
+      [[ ",$_prhosts," != *",${_rh},"* ]] \
+        || { log "AGY_EGRESS_PATH_RULES names '${_rh}' twice (one exact path per host)"; exit 1; }
+      _prhosts="${_prhosts:+$_prhosts,}$_rh"
       _prules="${_prules:+$_prules,}$_r"
     done
     _san="DNS:${_allow//,/,DNS:}"
@@ -1692,7 +1705,7 @@ if [ "$AGY_ISOLATION" = bwrap ]; then
       "$_pki/leaf.pem" "$_pki/leaf.key" "$_prules" \
       2>>"$LOG" &
     agy_egress_pid=$!
-    for _ in $(seq 1 100); do [ -S "$agy_jail_rt/egress.sock" ] && break; sleep 0.1; done
+    for _ in $(seq 1 100); do [ -S "$agy_jail_rt/egress.sock" ] && break; kill -0 "$agy_egress_pid" 2>/dev/null || break; sleep 0.1; done
     [ -S "$agy_jail_rt/egress.sock" ] || { log "egress proxy did not start; refusing to run agy"; exit 1; }
     _net=()   # --unshare-all without --share-net: the jail has only its own loopback
     _egress_binds=( --ro-bind "$agy_jail_rt/egress.sock" /run/agy-egress.sock
@@ -1712,6 +1725,7 @@ if [ "$AGY_ISOLATION" = bwrap ]; then
     elif [ -d "$_d" ]; then _toplevel+=( --ro-bind "$_d" "$_d" )
     fi
   done
+  [ -x "$AGY_BIN" ] || { log "AGY_BIN ($AGY_BIN) is not an executable file on the runner host; refusing to build the jail"; exit 1; }
   agy_jail=( bwrap --unshare-all "${_net[@]}" --die-with-parent --new-session
     --ro-bind /usr /usr "${_toplevel[@]}"
     --ro-bind /etc /etc --proc /proc --dev /dev --tmpfs /tmp
@@ -1725,7 +1739,7 @@ if [ "$AGY_ISOLATION" = bwrap ]; then
   # Inside the jail, D-Bus is the filtered proxy (later env assignments override earlier ones).
   agy_env+=( "XDG_RUNTIME_DIR=/run/user/$_uid" "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$_uid/bus" "TMPDIR=/tmp" "${_egress_env[@]}" )
   log "agy isolation: bwrap jail, empty HOME, D-Bus limited to ${#_items[@]} keyring item(s), egress ${AGY_EGRESS}"
-  unset _t _need _dict _kv _items _rules _it _uid _net _egress_binds _egress_env _inner _allow _h _ca_sys _c _pki _toplevel _d _prules _r _san
+  unset _t _need _dict _kv _items _rules _it _uid _net _egress_binds _egress_env _inner _allow _h _ca_sys _c _pki _toplevel _d _prules _r _san _rh _prhosts
 fi
 [ -n "$AGY_MODEL" ]  && flags+=( --model "$AGY_MODEL" )
 [ -n "$AGY_EFFORT" ] && flags+=( --effort "$AGY_EFFORT" )
@@ -1848,6 +1862,13 @@ for (( attempt=1; attempt<=AGY_RETRIES; attempt++ )); do
     sleep "$delay"
   fi
 done
+# agy is done: stop both proxies now rather than at exit, so nothing outlives the review and the
+# egress log is final before it is summarized (it is line-buffered, so no record is lost).
+for _pp in "${agy_egress_pid:-}" "${agy_proxy_pid:-}"; do
+  if [ -n "$_pp" ]; then kill "$_pp" 2>/dev/null || true; wait "$_pp" 2>/dev/null || true; fi
+done
+agy_egress_pid= agy_proxy_pid=
+unset _pp
 # Egress summary: verdict COUNTS only. A denied host name or path is attacker-chosen and could
 # carry a secret, and this log is public on a public repository, so names are never printed.
 # Denied names go ONLY to a host-private log (mode 600, beside agy's own state), so a new host
@@ -1940,16 +1961,15 @@ body_file="$(mktemp)"
   fi
   printf '\n\n<sub>Automated first-pass review by `agy` on a self-hosted runner -- not a human review.</sub>\n'
 } > "$body_file"
-# Last-resort guard before ANY post path (edit-in-place or new comment), on the BODY that is posted:
-# agy's output was redacted in the capture loop, but the header and the archived earlier rounds
-# were not. Those rounds were posted by an earlier template whose patterns may have been narrower,
-# so a match there is redacted too; anything redaction cannot remove fails closed.
+# Guard on the new round's body (header + review), before ANY post path. agy's output was redacted
+# in the capture loop; this covers the header too. The archived earlier rounds are appended later
+# and are redacted on their own (below), and the assembled body is scanned once more before posting.
 if cred_kind="$(credential_kind_present "$body_file")"; then
   if ! agy_redact_credentials "$body_file" || left="$(credential_kind_present "$body_file")"; then
     log "refusing to post: the comment body contains a credential-shaped string (${left:-$cred_kind}) that could not be redacted. Nothing was posted. Inspect the runner host; the diff may carry a prompt injection."
     exit 1
   fi
-  log "redacted a credential-shaped string (${cred_kind}) from the assembled comment body (header or archived rounds)"
+  log "redacted a credential-shaped string (${cred_kind}) from the comment head"
 fi
 
 # Final hard guard — the last line of defense, and UNCONDITIONAL, run BEFORE anything is
@@ -2024,6 +2044,16 @@ if [ -n "$prior_id" ] && [ -s "$prior_body_file" ]; then
   archived_file="$(mktemp)"
   agy_assemble_archive "$prior_head" "$prior_archive" "$(date -u +'%Y-%m-%d %H:%M UTC')" \
     > "$archived_file"
+  # Earlier rounds were posted by earlier templates, whose patterns may have been narrower (the
+  # OpenAI pattern missed base64url keys until 2a366ac), so they are redacted too -- here, before
+  # the size trimming below, because a marker is longer than what it replaces.
+  if cred_kind="$(credential_kind_present "$archived_file")"; then
+    if ! agy_redact_credentials "$archived_file" || left="$(credential_kind_present "$archived_file")"; then
+      log "refusing to post: an archived earlier round contains a credential-shaped string (${left:-$cred_kind}) that could not be redacted. Nothing was posted."
+      exit 1
+    fi
+    log "redacted a credential-shaped string (${cred_kind}) from the archived earlier rounds"
+  fi
 
   # Drop the oldest rounds until the whole comment fits, and SAY SO. A silent truncation
   # here would look identical to "there were never any earlier rounds", which is the exact
@@ -2070,6 +2100,12 @@ if [ -n "$prior_id" ] && [ -s "$prior_body_file" ]; then
   # and the guard's contract is that it runs on exactly that.
   if oauth_url_present "$body_file"; then
     log "refusing to post: the assembled comment body contains a live OAuth authorization URL."
+    exit 1
+  fi
+  # And the credential scan, on exactly what is published: every part was redacted above, so a
+  # match here means redaction missed one. Fail closed.
+  if cred_kind="$(credential_kind_present "$body_file")"; then
+    log "refusing to post: the assembled comment body contains a credential-shaped string (${cred_kind}). Nothing was posted."
     exit 1
   fi
 

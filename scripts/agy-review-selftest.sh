@@ -879,6 +879,16 @@ PYC
     check "proxy refuses an unlisted host" "403" "$(pc 'secret-token-in-name.evil.example:443' -)"
     check "proxy refuses a suffix of an allowed host" "403" "$(pc 'x.allowed.example:443' -)"
     check "proxy refuses an allowed host on another port" "403" "$(pc 'allowed.example:80' -)"
+    check "proxy matches an allowed host case-insensitively" "200" "$(pc 'ALLOWED.Example:443' -)"
+    pipelined="$(python3 -I - "$sockd/p.sock" <<'PYP' 2>/dev/null || echo error
+import socket, sys
+s = socket.socket(socket.AF_UNIX); s.settimeout(10); s.connect(sys.argv[1])
+s.sendall(b"CONNECT allowed.example:443 HTTP/1.1\r\nHost: allowed.example:443\r\n\r\nGET / HTTP/1.1\r\n\r\n")
+first = s.recv(4096).split(b"\r\n", 1)[0].split(b" ")
+print(first[1].decode() if len(first) > 1 else "closed")
+PYP
+)"
+    check "bytes pipelined behind CONNECT are refused, not fed to TLS" "400" "$pipelined"
     check "fronting refused: foreign Host on an allowed connection" "403" \
       "$(pc "$A" 'GET /storage/v1/b/x HTTP/1.1\r\nHost: storage.googleapis.com\r\n\r\n')"
     check "fronting refused: bucket subdomain Host" "403" \
@@ -911,8 +921,8 @@ PYC
     kill "$px_pid" 2>/dev/null; wait "$px_pid" 2>/dev/null || true   # 143 from the kill is expected
     px_pid=
     check "proxy never logs a denied host name" "0" "$(grep -c 'evil' "$px_log")"
-    # One verdict per refused case above: 3 CONNECT, 12 request-head, 4 path-rule, 1 Expect.
-    check "every denial is logged by verdict, one per refused request" "20" "$(grep -cE '^DENY' "$px_log")"
+    # One verdict per refused case above: 3 CONNECT, 1 pipelined, 12 request-head, 4 path-rule, 1 Expect.
+    check "every denial is logged by verdict, one per refused request" "21" "$(grep -cE '^DENY' "$px_log")"
     # rebuild_request, unit level: Host set by the proxy, hop-by-hop dropped, framing canonical.
     rb="$(python3 -I - "$proxy_py" "$ip/leaf.pem" "$ip/leaf.key" <<'PYR' 2>/dev/null
 import sys
@@ -1006,15 +1016,34 @@ check "the capture loop refuses a jail failure before any retry or post" "1" \
   "$(grep -c '^  if agy_jail_failed "\$out_file"; then' "$SCRIPT")"
 check "cleanup reaps both proxies before removing their runtime dir" "2" \
   "$(grep -cE '^  \[ -n "\$\{agy_(proxy|egress)_pid:-\}" \] && \{ wait "\$agy_(proxy|egress)_pid" 2>/dev/null \|\| true; \}$' "$SCRIPT")"
-lock_line="$(grep -n '^flock -w "\$AGY_LOCK_WAIT" 9 || {$' "$SCRIPT" | head -1 | cut -d: -f1)"
-jail_line="$(grep -n '^  agy_jail_rt="\$(mktemp -d' "$SCRIPT" | head -1 | cut -d: -f1)"
+lock_line="$(grep -n '^flock -w "\$AGY_LOCK_WAIT" 9 || {$' "$SCRIPT" | head -1 | cut -d: -f1 || true)"
+jail_line="$(grep -n '^  agy_jail_rt="\$(mktemp -d' "$SCRIPT" | head -1 | cut -d: -f1 || true)"
 check "the agy lock is taken before the jail and its proxies are started" "yes" \
   "$([ -n "$lock_line" ] && [ -n "$jail_line" ] && [ "$lock_line" -lt "$jail_line" ] && echo yes || echo no)"
 check "each attempt starts with no redactions recorded" "1" \
   "$(grep -c '^  redacted_kinds=   # this attempt' "$SCRIPT")"
-check "the last guard scans the assembled comment body" "1" \
+check "the new round's head is scanned before any post path" "1" \
   "$(grep -c '^if cred_kind="\$(credential_kind_present "\$body_file")"; then$' "$SCRIPT")"
+# Round 11 (agy, wave A): the archive is redacted before trimming, and the assembled body is scanned
+# AFTER the archive is appended -- an ordering check, since a presence check passed with the scan
+# placed before the append.
+arch_red="$(grep -n '^  if cred_kind="\$(credential_kind_present "\$archived_file")"; then$' "$SCRIPT" | head -1 | cut -d: -f1 || true)"
+arch_trim="$(grep -n '^    combined_size=\$(( \$(wc -c < "\$body_file")' "$SCRIPT" | head -1 | cut -d: -f1 || true)"
+arch_app="$(grep -n '^  } >> "\$body_file"$' "$SCRIPT" | head -1 | cut -d: -f1 || true)"
+final_scan="$(grep -n '^  if cred_kind="\$(credential_kind_present "\$body_file")"; then$' "$SCRIPT" | head -1 | cut -d: -f1 || true)"
+check "archived rounds are redacted before the size trimming" "yes" \
+  "$([ -n "$arch_red" ] && [ -n "$arch_trim" ] && [ "$arch_red" -lt "$arch_trim" ] && echo yes || echo no)"
+check "the assembled body is scanned after the archive is appended" "yes" \
+  "$([ -n "$final_scan" ] && [ -n "$arch_app" ] && [ "$final_scan" -gt "$arch_app" ] && echo yes || echo no)"
 check "an empty AGY_EGRESS_ALLOW is refused by name" "1" "$(grep -c 'AGY_EGRESS_ALLOW is empty; refusing' "$SCRIPT")"
+check "a second path rule for the same host is refused" "1" "$(grep -c "names '\${_rh}' twice (one exact path per host)" "$SCRIPT")"
+check "a missing AGY_BIN is refused before the jail is built" "1" "$(grep -c 'is not an executable file on the runner host; refusing to build the jail' "$SCRIPT")"
+check "the proxy startup waits stop as soon as the proxy has exited" "2" \
+  "$(grep -cE 'kill -0 "\$agy_(proxy|egress)_pid" 2>/dev/null \|\| break; sleep 0.1; done$' "$SCRIPT")"
+stop_line="$(grep -n '^for _pp in "\${agy_egress_pid:-}" "\${agy_proxy_pid:-}"; do$' "$SCRIPT" | head -1 | cut -d: -f1 || true)"
+sum_line="$(grep -n '^# Egress summary: verdict COUNTS only' "$SCRIPT" | head -1 | cut -d: -f1 || true)"
+check "both proxies are stopped once agy is done, before the egress summary" "yes" \
+  "$([ -n "$stop_line" ] && [ -n "$sum_line" ] && [ "$stop_line" -lt "$sum_line" ] && echo yes || echo no)"
 check "cleanup ignores a failed kill of either proxy (set -e safe)" "2" \
   "$(grep -cE '^  \[ -n "\$\{agy_(proxy|egress)_pid:-\}" \] && \{ kill "\$agy_(proxy|egress)_pid" 2>/dev/null \|\| true; \}$' "$SCRIPT")"
 # Round-4 review fixes.
