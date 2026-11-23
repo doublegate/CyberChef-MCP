@@ -89,6 +89,10 @@ jobs:
         run: npm run check:versions
 
       - name: Install mcp-publisher
+        env:
+          # Authenticated: the anonymous API quota is 60 requests an hour per IP, shared on
+          # hosted runners, and a 403 there would fail this step with the release available.
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -o pipefail
           # The newest non-draft release whose linux_amd64 asset is fully uploaded. The registry
@@ -97,6 +101,7 @@ jobs:
           # Drafts and prereleases are dropped BEFORE taking the five newest, so a run of
           # prereleases cannot hide the stable release that has the asset.
           url="$(curl -fsSL --retry 5 --retry-all-errors --retry-delay 15 \
+              -H "Authorization: Bearer $GH_TOKEN" \
               'https://api.github.com/repos/modelcontextprotocol/registry/releases?per_page=30' \
             | jq -r '[[.[] | select((.draft or .prerelease) | not)][:5][] | .assets[]
                      | select(.name == "mcp-publisher_linux_amd64.tar.gz" and .state == "uploaded")
