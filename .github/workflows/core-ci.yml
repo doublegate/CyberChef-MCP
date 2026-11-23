@@ -112,10 +112,31 @@ jobs:
     # would reject, which is worth failing a pull request for. A deprecation WARNING does not fail
     # the tool, and is surfaced in the log rather than swallowed.
     - name: server.json against the registry's own validator
+      env:
+        # Authenticated: the anonymous API quota is 60 requests an hour per IP, shared on
+        # hosted runners, and a 403 there would fail this step with the release available.
+        GH_TOKEN: ${{ github.token }}
       run: |
         set -o pipefail
-        curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" \
-          | tar xz mcp-publisher
+        # The newest non-draft release whose linux_amd64 asset is fully uploaded. The registry
+        # publishes several releases a day, and releases/latest/download 404s while the newest
+        # one is still uploading its assets.
+        # Drafts and prereleases are dropped BEFORE taking the five newest, so a run of
+        # prereleases cannot hide the stable release that has the asset.
+        url="$(curl -fsSL --retry 5 --retry-all-errors --retry-delay 15 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            'https://api.github.com/repos/modelcontextprotocol/registry/releases?per_page=30' \
+          | jq -r '[[.[] | select((.draft or .prerelease) | not)][:5][] | .assets[]
+                   | select(.name == "mcp-publisher_linux_amd64.tar.gz" and .state == "uploaded")
+                   | .browser_download_url][0] // empty')"
+        if [ -z "$url" ]; then
+          echo "::error::no recent modelcontextprotocol/registry release has a complete mcp-publisher_linux_amd64 asset"
+          exit 1
+        fi
+        # To a file, then extract: a retry cannot rewind a pipe, so tar could see a partial
+        # first attempt followed by the whole retried archive.
+        curl -fsSL --retry 5 --retry-all-errors --retry-delay 15 -o mcp-publisher.tar.gz "$url"
+        tar xzf mcp-publisher.tar.gz mcp-publisher
         ./mcp-publisher validate 2>&1 | tee validation.txt
         # The tool exits 0 on a deprecated schema. Treat that as a failure here, because shipping a
         # deprecated declaration is exactly what this step exists to catch -- and it is how v3.4.0's

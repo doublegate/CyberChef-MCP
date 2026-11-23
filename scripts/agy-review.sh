@@ -151,17 +151,148 @@ OAUTH_URL_RE='https?://accounts\.google\.com/o/oauth2'
 # URL is always present in a real login flow, so it alone is both necessary and sufficient; a
 # lapse is detected AND a leak is blocked by the same unconditional check.
 oauth_url_present() { [ -s "$1" ] && grep -qiE "$OAUTH_URL_RE" "$1"; }
+
+# Append this run's denied egress targets (deduplicated, tagged, bounded to the newest 500 lines)
+# to a host-private log created mode 600. Never called with a public destination.
+agy_record_denied() {
+  local src="$1" dst="$2" tag="$3" stamp
+  [ -s "$src" ] || return 0
+  stamp="$(date -u +%FT%TZ)"
+  (
+    umask 077
+    mkdir -p -- "$(dirname -- "$dst")" || exit 1
+    {
+      if [ -f "$dst" ]; then cat "$dst"; fi
+      # Control bytes are stripped: a denied target is attacker-chosen, and raw escape sequences
+      # would act on the terminal of whoever later reads this log.
+      LC_ALL=C tr -d '\000-\010\013-\037\177' < "$src" | sort -u | cut -c1-253 \
+        | AGY_DENIED_PREFIX="${stamp} ${tag} " awk '{ print ENVIRON["AGY_DENIED_PREFIX"] $0 }'   # not -v: it would expand backslashes
+    } > "$dst.new" || exit 1
+    tail -n 500 "$dst.new" > "$dst.tmp" && mv -f "$dst.tmp" "$dst" && rm -f -- "$dst.new"
+  )
+}
+
+# True when the captured output is a jail launch diagnostic rather than agy's: its first
+# non-blank line comes from bwrap itself or from the in-jail wrapper (argv0 `agy-jail`).
+agy_jail_failed() {
+  [ -s "$1" ] || return 1
+  grep -m1 -v '^[[:space:]]*$' "$1" | grep -qE '^(bwrap|agy-jail): '
+}
+
+# Credential shapes that must never reach a public PR comment. Every pattern is anchored on a
+# leading non-identifier boundary, so an ordinary identifier (`task-...`, `disk-...`, a word ending
+# in `ghp`) cannot match and wrongly block a review. agy's --sandbox does NOT confine
+# reads (verified 2026-11-22: from the sandbox it read a canary file in $HOME with both its file
+# tool and a shell `cat`), so a prompt-injected diff could make it print a token from the runner
+# host. Fail closed on any match in agy's output. The log names only the KIND that matched, never
+# the value, since Actions logs of a public repository are public too.
+# One table for detection AND redaction (`~`-separated, a non-whitespace IFS so empty fields
+# survive: kind, leading boundary, core, trailing
+# boundary), so the two can never drift apart. The boundaries keep an ordinary identifier
+# (`task-...`, a word ending in `ghp`) from matching.
+agy_credential_patterns() {
+  cat <<'CREDS'
+google-oauth-access-token~(^|[^A-Za-z0-9_-])~ya29\.[0-9A-Za-z_-]{20,}~
+google-oauth-refresh-token~(^|[^A-Za-z0-9_/-])~1//0[0-9A-Za-z_-]{20,}~
+github-token~(^|[^A-Za-z0-9_])~gh[pousr]_[A-Za-z0-9]{30,}~
+github-fine-grained-pat~(^|[^A-Za-z0-9_])~github_pat_[A-Za-z0-9_]{40,}~
+private-key-block~~-----BEGIN [A-Z ]*PRIVATE KEY-----~
+jwt~(^|[^A-Za-z0-9_-])~eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}~
+aws-access-key-id~(^|[^A-Za-z0-9])~(AKIA|ASIA)[0-9A-Z]{16}~([^A-Za-z0-9]|$)
+anthropic-key~(^|[^A-Za-z0-9_-])~sk-ant-[A-Za-z0-9_-]{32,}~
+openai-key~(^|[^A-Za-z0-9_-])~sk-(proj-|svcacct-|admin-)?[A-Za-z0-9_-]{32,}~([^A-Za-z0-9_-]|$)
+slack-token~(^|[^A-Za-z0-9_-])~xox[abprs]-[A-Za-z0-9-]{10,}~
+CREDS
+}
+credential_kind_present() {
+  [ -s "$1" ] || return 1
+  local kind lead core trail
+  while IFS='~' read -r kind lead core trail; do
+    if grep -qE -- "${lead}${core}${trail}" "$1"; then printf '%s' "$kind"; return 0; fi
+  done < <(agy_credential_patterns)
+  return 1
+}
+# Every kind present in $1, comma-separated (empty when none): the note names all of them.
+credential_kinds_present() {
+  [ -s "$1" ] || return 0
+  local kind lead core trail found=""
+  while IFS='~' read -r kind lead core trail; do
+    grep -qE -- "${lead}${core}${trail}" "$1" && found="${found:+$found, }$kind"
+  done < <(agy_credential_patterns)
+  printf '%s' "$found"
+}
+# Replace every credential-shaped string in $1 (in place) with `[REDACTED: <kind>]`, keeping the
+# boundary characters. A private-key block is replaced whole, from its BEGIN line through its END
+# line (or to the end of the text, which fails safe). Several passes, because adjacent matches
+# can share a boundary character. The caller re-scans and fails closed on anything left.
+agy_redact_credentials() {
+  # In memory, not through a scratch file: the capture is bounded (GitHub's comment limit), and a
+  # predictable sibling in a shared TMPDIR would be readable or symlink-raceable. The `x` sentinel
+  # keeps trailing newlines through the command substitution.
+  local f="$1" buf kind lead core trail groups n pass
+  for pass in 1 2 3; do
+    while IFS='~' read -r kind lead core trail; do
+      if [ "$kind" = private-key-block ]; then
+        # awk, not a sed range. Each line is scanned left to right: text before a BEGIN is kept and
+        # the block becomes one marker; inside a block everything up to its END is dropped, and the
+        # scan resumes AFTER the END, so a second BEGIN on that same line (or a second one-line key)
+        # is caught too. A line wholly inside a block prints nothing. A block with NO END line
+        # removes the rest of the text but SAYS so, so the review can never be silently cut short.
+        buf="$(awk -v b="$core" -v e='-----END [A-Z ]*PRIVATE KEY-----' -v m="[REDACTED: ${kind}]" '
+          {
+            line = $0; out = ""; emit = !inblk
+            while (1) {
+              if (inblk) {
+                if (match(line, e)) { line = substr(line, RSTART + RLENGTH); inblk = 0; continue }
+                break
+              }
+              if (match(line, b)) {
+                out = out substr(line, 1, RSTART - 1) m; emit = 1
+                line = substr(line, RSTART + RLENGTH); inblk = 1; continue
+              }
+              if (line != "") { out = out line; emit = 1 }
+              break
+            }
+            if (emit) print out
+          }
+          END { if (inblk) print "[REDACTED: the rest of this review was removed: it quoted the start of a private key with no END line]" }
+        ' "$f" && printf x)" || return 1
+      else
+        groups="${core//[^(]/}"; n=$(( 2 + ${#groups} ))
+        buf="$(sed -E "s#${lead:-()}${core}${trail:-()}#\\1[REDACTED: ${kind}]\\${n}#g" "$f" && printf x)" || return 1
+      fi
+      printf '%s' "${buf%x}" > "$f"
+    done < <(agy_credential_patterns)
+    : "$pass"
+  done
+}
 # <<< SELFTEST-EXTRACT
 
 # --- configuration (all env-overridable from the workflow) ---------------------
 AGY_BIN="${AGY_BIN:-agy}"
 command -v "$AGY_BIN" >/dev/null 2>&1 || AGY_BIN="$HOME/.local/bin/agy"
+# Absolute paths before anything is created or a subshell changes directory: agy runs in a
+# subshell that first changes into the sandbox, so a relative TMPDIR (which every later mktemp honors), a relative
+# RUNNER_TEMP or a relative AGY_BIN would otherwise resolve against the sandbox.
+AGY_BIN="$(command -v "$AGY_BIN" 2>/dev/null || printf '%s' "$AGY_BIN")"
+case "$AGY_BIN" in /*) ;; *) AGY_BIN="$PWD/$AGY_BIN" ;; esac
+for _v in TMPDIR RUNNER_TEMP; do
+  case "${!_v:-}" in
+    ''|/*) ;;
+    *) if _abs="$(cd "${!_v}" 2>/dev/null && pwd -P)"; then export "$_v=$_abs"; else unset "$_v"; fi ;;
+  esac
+done
+unset _v _abs
 AGY_MODEL="${AGY_MODEL:-}"                 # empty = agy's configured default (Gemini 3.x Pro)
 AGY_EFFORT="${AGY_EFFORT:-high}"           # low|medium|high
 # Base timeout for a normal review. Scaled up for a large diff further down -- see
 # `scale_timeout_for_diff`. Set AGY_PRINT_TIMEOUT explicitly to pin it and skip the scaling.
 AGY_PRINT_TIMEOUT_EXPLICIT="${AGY_PRINT_TIMEOUT:+set}"
-AGY_PRINT_TIMEOUT="${AGY_PRINT_TIMEOUT:-5m}"
+# Base 10m (was 5m). Backported from three repositories that each pinned 10-15m after reviews
+# timed out at the old base: Infinity-Context PR #31 saw a 79 KB INLINED diff at high effort time
+# out twice at the scaled 367 s, and GH-ListRollup / RustyNES_MiSTer pinned 10m / 15m for the same
+# reason. The scaling below adds to this base for large diffs; the per-attempt cap still bounds it.
+AGY_PRINT_TIMEOUT="${AGY_PRINT_TIMEOUT:-10m}"
 # Seconds of budget per MiB of diff handed to agy, on top of the base. Reading a 1.6 MB patch and
 # reasoning over it is not work a five-minute budget can absorb, and the failure is indistinguishable
 # from a backend outage: `Error: timeout waiting for response`, three times, with no review.
@@ -175,7 +306,7 @@ AGY_PRINT_TIMEOUT_MAX_SECONDS="${AGY_PRINT_TIMEOUT_MAX_SECONDS:-1800}"
 
 # Both of the above reach `$(( ... ))`, so both are validated before they get there.
 # >>> SELFTEST-EXTRACT: numeric env validation
-# Validate and canonicalise a numeric setting that will reach an arithmetic expansion.
+# Validate and canonicalize a numeric setting that will reach an arithmetic expansion.
 #
 # @param $1 name of the variable to validate, assigned in place.
 # @param $2 default to fall back to when the value is not a non-negative decimal integer.
@@ -188,19 +319,19 @@ AGY_PRINT_TIMEOUT_MAX_SECONDS="${AGY_PRINT_TIMEOUT_MAX_SECONDS:-1800}"
 #     bash 5.3 (measured here): they reach the parser as a literal and are refused with
 #     "arithmetic syntax error: operand expected". This was reported in review as a CWE-78, and an
 #     earlier version of this comment asserted the execution -- WRONGLY, from a nested-quoting
-#     artefact in the test that ran it. It does not reproduce. What is left is still worth
+#     artifact in the test that ran it. It does not reproduce. What is left is still worth
 #     refusing: a value naming another variable silently means something other than what it says.
 #  2. Digits-only is not sufficient on its own. `09` is all digits, and bash reads the leading
 #     zero as OCTAL:
 #         $(( 1000000 * 09 / 1048576 ))   ->  value too great for base
 #     So a *valid* setting takes the script down under `set -e`. That one is demonstrated, not
-#     theoretical, and is the reason this function exists. Canonicalising to base 10 here, once,
+#     theoretical, and is the reason this function exists. Canonicalizing to base 10 here, once,
 #     means no downstream `$(( ))` has to remember `10#`.
 # The locals are `_nne_`-prefixed because this function assigns THROUGH A NAME the caller supplies.
 # Plain `name`/`val` locals shadow a caller variable of the same name, and the failure is silent --
-# `normalise_numeric_env val 240` reads and writes the local, leaving the caller's `val` untouched.
-# Verified: with unprefixed locals, `val=07; normalise_numeric_env val 240` leaves val as `07`.
-normalise_numeric_env() {
+# `normalize_numeric_env val 240` reads and writes the local, leaving the caller's `val` untouched.
+# Verified: with unprefixed locals, `val=07; normalize_numeric_env val 240` leaves val as `07`.
+normalize_numeric_env() {
   local _nne_name="$1" _nne_default="$2" _nne_val="${!1}"
   case "$_nne_val" in
     ""|*[!0-9]*)
@@ -210,8 +341,48 @@ normalise_numeric_env() {
   esac
 }
 # <<< SELFTEST-EXTRACT
-normalise_numeric_env AGY_TIMEOUT_SECONDS_PER_MIB   900
-normalise_numeric_env AGY_PRINT_TIMEOUT_MAX_SECONDS 1800
+normalize_numeric_env AGY_TIMEOUT_SECONDS_PER_MIB   900
+normalize_numeric_env AGY_PRINT_TIMEOUT_MAX_SECONDS 1800
+# >>> SELFTEST-EXTRACT: error cap validation
+# AGY_ERROR_MAX_BYTES is set above, inside the service-error block (which cannot call
+# normalize_numeric_env: it is defined later). A non-numeric value (GH-ListRollup PR #6) or 0
+# (PR #7) made service_error_present's `-le` test always fail, silently disabling the
+# backend-error guard. A function, so the selftest can run it with bad values (PR #7, round 2).
+agy_validate_error_cap() {
+  normalize_numeric_env AGY_ERROR_MAX_BYTES 2000
+  [ "$AGY_ERROR_MAX_BYTES" -gt 0 ] || { log "AGY_ERROR_MAX_BYTES=0 would disable the backend-error guard; using the default (2000)"; AGY_ERROR_MAX_BYTES=2000; }
+}
+# <<< SELFTEST-EXTRACT
+agy_validate_error_cap
+# OS-level isolation of agy (bubblewrap). agy's own --sandbox does NOT confine reads, and agy loads
+# the user's whole config (MCP servers, skills, hooks), so a prompt-injected diff could read host
+# files or drive powerful local tools. With `bwrap` (the default) agy runs in a jail with an empty
+# private HOME, read-only /usr and /etc, the review sandbox, and a D-Bus that is an xdg-dbus-proxy
+# exposing only agy's own Secret Service item. `none` runs agy unjailed (not recommended). A host
+# missing bwrap/xdg-dbus-proxy/gdbus fails closed rather than silently running unjailed.
+AGY_ISOLATION="${AGY_ISOLATION:-bwrap}"
+case "$AGY_ISOLATION" in bwrap|none) ;; *) echo "AGY_ISOLATION must be bwrap or none, got '$AGY_ISOLATION'" >&2; exit 1 ;; esac
+# Attributes agy uses to look up its keyring item (observed on the Secret Service bus).
+AGY_KEYRING_ATTRS="${AGY_KEYRING_ATTRS:-username=antigravity service=gemini}"
+# Network egress from the jail. `filtered` (default) gives the jail NO network namespace access:
+# its only route out is an allowlisting HTTPS CONNECT proxy outside the jail, reached through a
+# bind-mounted Unix socket. Without this, a prompt-injected diff could make agy read its own
+# Google login token (which it must be able to read) and send it anywhere. `open` keeps the host
+# network (not recommended). Hosts are EXACT names, never wildcards: `.googleapis.com` would
+# include Cloud Storage, where anyone can own a writable bucket.
+AGY_EGRESS="${AGY_EGRESS:-filtered}"
+case "$AGY_EGRESS" in filtered|open) ;; *) echo "AGY_EGRESS must be filtered or open, got '$AGY_EGRESS'" >&2; exit 1 ;; esac
+# Observed 2026-11-22: the Gemini backends, the OAuth token endpoint, and www.googleapis.com for the
+# userinfo eligibility check. Telemetry, the avatar host and the auto-updater are left out (agy
+# works without them).
+AGY_EGRESS_ALLOW="${AGY_EGRESS_ALLOW:-daily-cloudcode-pa.googleapis.com aicode.googleapis.com oauth2.googleapis.com www.googleapis.com}"
+# Every allowlisted host is TLS-intercepted and each request is REBUILT with the proxy's own Host
+# header: Google's front end routes by Host on ANY googleapis connection (verified: a request to
+# oauth2, aicode or daily-cloudcode-pa carrying `Host: storage.googleapis.com` reaches Cloud
+# Storage). A host listed here additionally accepts only a body-less GET of exactly this path (no
+# query; matched literally): www.googleapis.com also serves the Cloud Storage JSON API, and agy
+# needs only its userinfo call there. Entries are `host=/path`, space-separated.
+AGY_EGRESS_PATH_RULES="${AGY_EGRESS_PATH_RULES:-www.googleapis.com=/oauth2/v2/userinfo}"
 AGY_DIFF_MODE="${AGY_DIFF_MODE:-auto}"     # auto|inline|file. A diff is passed to agy either inlined
                                            # in the --print prompt, or written to a FILE agy reads with
                                            # its own tools. `auto` inlines a diff that fits under the
@@ -220,6 +391,10 @@ AGY_DIFF_MODE="${AGY_DIFF_MODE:-auto}"     # auto|inline|file. A diff is passed 
 MAX_DIFF_BYTES="${MAX_DIFF_BYTES:-5000000}" # sanity cap on a pathological diff (5 MB). No longer the
                                            # arg-size limit -- a large diff goes to agy as a file, not
                                            # as an argv value -- just a guard against a runaway diff.
+# Same validation as the other numerics (agy review, GH-ListRollup PR #4): a non-numeric value such
+# as `5MB` failed agy_cut_file's `-gt 0` test and SILENTLY disabled the cap, and `0` does the same.
+normalize_numeric_env MAX_DIFF_BYTES 5000000
+[ "$MAX_DIFF_BYTES" -gt 0 ] || { log "MAX_DIFF_BYTES=0 would disable the sanity cap; using the default (5000000)"; MAX_DIFF_BYTES=5000000; }
 MAX_PROMPT_BYTES="${MAX_PROMPT_BYTES:-120000}" # hard ceiling on the INLINED prompt: agy takes it as a
                                            # --print VALUE (not stdin), and a single execve argument
                                            # cannot exceed MAX_ARG_STRLEN (PAGE_SIZE*32 = 128 KiB on
@@ -240,6 +415,12 @@ ARG_SIZE_CEILING=120000                     # hard cap: a configured MAX_PROMPT_
 # so without it the clamp is skipped and the `head -c "$MAX_PROMPT_BYTES"` prompt cap below runs
 # as GNU `head -c -1` (print all-but-last-byte) — silently defeating the E2BIG backstop. A
 # non-numeric value trips the `2>/dev/null` and is clamped too.
+#
+# normalize_numeric_env first (agy review, GH-ListRollup PR #4): `[ ]` reads `080000` as decimal and
+# lets it through, but the `$(( MAX_PROMPT_BYTES - ... ))` arithmetic below parses a leading zero as
+# octal and aborts the run under `set -e` ("value too great for base"). Normalizing strips the
+# leading zero and maps anything non-numeric (including a negative) to the default.
+normalize_numeric_env MAX_PROMPT_BYTES 120000
 if ! { [ "$MAX_PROMPT_BYTES" -gt 0 ] && [ "$MAX_PROMPT_BYTES" -le "$ARG_SIZE_CEILING" ]; } 2>/dev/null; then
   log "MAX_PROMPT_BYTES='${MAX_PROMPT_BYTES}' invalid, non-positive, or above the ${ARG_SIZE_CEILING}-byte ceiling; clamping"
   MAX_PROMPT_BYTES="$ARG_SIZE_CEILING"
@@ -253,13 +434,13 @@ STYLE_GUIDE="${STYLE_GUIDE:-.github/agy-review.md}"  # repo-relative; loaded if 
 LOG="${RUNNER_TEMP:-/tmp}/agy-review-${GITHUB_RUN_ID:-$$}.log"
 AGY_LOCK="${AGY_LOCK:-$HOME/.gemini/antigravity-cli/.agy-review.lock}"
 AGY_LOCK_WAIT="${AGY_LOCK_WAIT:-600}"      # seconds to wait for the agy lock before proceeding
-normalise_numeric_env AGY_LOCK_WAIT 600   # flock -w rejects a non-numeric value and aborts
+normalize_numeric_env AGY_LOCK_WAIT 600   # flock -w rejects a non-numeric value and aborts
 AGY_RETRIES="${AGY_RETRIES:-3}"            # attempts to get a usable agy response
 AGY_RETRY_DELAY="${AGY_RETRY_DELAY:-15}"   # base backoff seconds between retries (grows per attempt)
 # Both reach (( )) arithmetic: `08` would abort on an octal parse and `0` retries would skip every
 # attempt and report "no review output after 0 attempt(s)". Same validation as the other numerics.
-normalise_numeric_env AGY_RETRIES     3
-normalise_numeric_env AGY_RETRY_DELAY 15
+normalize_numeric_env AGY_RETRIES     3
+normalize_numeric_env AGY_RETRY_DELAY 15
 [ "$AGY_RETRIES" -ge 1 ] || AGY_RETRIES=1
 MARKER="<!-- antigravity-pr-review -->"
 
@@ -270,6 +451,10 @@ MARKER="<!-- antigravity-pr-review -->"
 . "$(dirname -- "${BASH_SOURCE[0]}")/_agy_comment_body.sh"
 
 MAX_BODY_BYTES="${MAX_BODY_BYTES:-60000}"
+# Reaches `$(( MAX_BODY_BYTES - 4096 ))`: `60k` or `060000` would abort the run there (agy review,
+# GH-ListRollup PR #4). It must also leave room for that 4096-byte reserve.
+normalize_numeric_env MAX_BODY_BYTES 60000
+[ "$MAX_BODY_BYTES" -gt 8192 ] || { log "MAX_BODY_BYTES=${MAX_BODY_BYTES} leaves no room for a review; using the default (60000)"; MAX_BODY_BYTES=60000; }
 
 # The jq program that finds THIS bot's existing review comment on the PR, so it can be edited
 # rather than replaced. Named, and exercised directly by `scripts/agy-review-selftest.sh`,
@@ -290,7 +475,7 @@ MAX_BODY_BYTES="${MAX_BODY_BYTES:-60000}"
 #
 # Do not "fix" that in advance by dropping the login and matching on `.user.type == "Bot"` plus the
 # marker. Under a PAT the comment's type is `"User"`, not `"Bot"`, so that clause fails in the same
-# scenario; and the marker is an HTML comment, so any bot that quotes or summarises a PR comment
+# scenario; and the marker is an HTML comment, so any bot that quotes or summarizes a PR comment
 # carries it along, which would let this script PATCH over ANOTHER bot's comment. Losing a review
 # that way is worse than posting a duplicate. Change this filter when the auth changes, not before,
 # and match on whatever identity the new credential actually presents.
@@ -305,6 +490,92 @@ readonly SELECT_OURS_JQ
 
 REPO="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY not set}"
 
+# The EXIT trap is installed HERE, before the first mktemp anywhere in the script (the first
+# is in agy_has_write_access, called from the event dispatch below). Installed later, an abort
+# during the permission lookup leaked its temp file, and the pre-declarations then reset
+# _perm_err so cleanup() could never see it (agy review, GH-ListRollup PR #6).
+# Remove every temp file on exit. Pre-declared so the trap is safe under `set -u` even if the
+# script exits before a given file is created.
+diff_file= diff_err= meta_file= prompt_file= out_file= raw= body_file= agy_diff_file= agy_sandbox= agy_jail_home= agy_jail_rt= agy_proxy_pid= agy_egress_pid= jq_err= log_tail= redacted_kinds= cred_kinds= left= prior_body_file= archived_file= api_err=
+# Also created mid-flight (permission lookup, compare-API merge base, archive trimming); a signal
+# or abort while one of those commands runs would otherwise leak the file in /tmp.
+_perm_err='' compare_err='' trimmed=''
+# Set to 1 if agy printed its interactive OAuth login flow instead of a review (lapsed session);
+# gates the no-post abort below. Pre-declared so `${auth_failed:-0}` is set-u-safe on every path.
+auth_failed=0
+# Counts backend-error captures across attempts; see `service_error_present`. Pre-declared so
+# `${service_errors:-0}` is set-u-safe even on paths that never enter the retry loop.
+service_errors=0
+# Set when the large-diff fallback below creates refs/agy/* so the trap can remove them.
+agy_refs_created=
+# Set by the AGY_DRY_RUN block so cleanup KEEPS the two artifacts dry-run exists to expose. The
+# whole point of dry run is "let me look at the assembled prompt", and the EXIT trap fires on the
+# `exit 0` at the end of that block -- so it deleted the prompt on the way out, every time.
+# Everything else is still removed; only these two are spared, and their paths are printed.
+keep_artifacts=
+cleanup() {
+  # Built as an argv ARRAY rather than as `rm -f ${v:+"$v"} ...`.
+  #
+  # The problem being solved is the EMPTY operand: `rm -f ""` is silent and exits 0 on GNU
+  # coreutils -- which is why an unconditional `rm -f "$unset_var"` never surfaced on the Linux
+  # runner -- but BSD/macOS `rm` writes "No such file or directory" to stderr for it.
+  #
+  # A note for the next reader, because this was raised in review and the intuition is wrong:
+  # `rm -f ${v:+"$v"}` does NOT word-split. Bash honors the quotes inside the `:+` alternate
+  # word, so a path with a space or a glob character survives as one operand. Verified:
+  #
+  #     v='a*b';    rm -f ${v:+"$v"}   ->   + rm -f 'a*b'      (siblings axxb, ayb untouched)
+  #     v='a file'; rm -f ${v:+"$v"}   ->   one operand        (siblings a, file untouched)
+  #
+  # The array is used anyway, for a reason the expansion form genuinely does not cover: it lets
+  # `--` terminate option parsing, so a temp path that begins with `-` is treated as a path
+  # rather than as flags. An array element is also one word by construction, which does not
+  # depend on knowing that `:+` quoting rule.
+  local keep_set="${keep_artifacts:-}"
+  local -a doomed=()
+  local f
+  # `${v:-}` on every name, even though all of them are pre-declared at the top of the script and
+  # cannot be unset here. Belt-and-braces on purpose: this is an EXIT trap, so if a future edit
+  # ever moves the trap above the pre-declarations, the failure would be an `unbound variable`
+  # abort DURING cleanup -- temp files left behind, and a confusing error masking the real exit
+  # cause. The pre-declaration stays and is still the actual guarantee; this is the cheap second
+  # line for a function that only ever runs while something else is going wrong.
+  for f in "${diff_file:-}" "${diff_err:-}" "${meta_file:-}" "${out_file:-}" "${raw:-}" "${body_file:-}" \
+           "${jq_err:-}" "${log_tail:-}" "${prior_body_file:-}" "${archived_file:-}" "${api_err:-}" \
+           "${_perm_err:-}" "${compare_err:-}" "${trimmed:-}"; do
+    [ -n "$f" ] && doomed+=("$f")
+  done
+  if [ -z "$keep_set" ]; then
+    for f in "${prompt_file:-}" "${agy_diff_file:-}"; do
+      [ -n "$f" ] && doomed+=("$f")
+    done
+  fi
+  [ ${#doomed[@]} -gt 0 ] && rm -f -- "${doomed[@]}"
+  # agy's private working directory (see `agy_sandbox` below). It is this run's own `mktemp -d`,
+  # outside the checkout, so removing it whole cannot touch anything else. Kept on dry run (it holds
+  # the handed-off diff that dry run exists to expose).
+  if [ -n "${agy_sandbox:-}" ] && [ -d "$agy_sandbox" ] \
+     && { [ -z "$keep_set" ] || [ -z "${agy_diff_file:-}" ]; }; then
+    rm -rf -- "$agy_sandbox"   # an inline dry run has nothing in it to keep
+  fi
+  # `|| true`: under set -e a failed kill (the proxy already exited) would otherwise end this trap
+  # before the jail home and runtime dirs below are removed.
+  [ -n "${agy_proxy_pid:-}" ] && { kill "$agy_proxy_pid" 2>/dev/null || true; }
+  [ -n "${agy_egress_pid:-}" ] && { kill "$agy_egress_pid" 2>/dev/null || true; }
+  # Reap them before their runtime dir goes, so no in-flight log write races the removal.
+  [ -n "${agy_proxy_pid:-}" ] && { wait "$agy_proxy_pid" 2>/dev/null || true; }
+  [ -n "${agy_egress_pid:-}" ] && { wait "$agy_egress_pid" 2>/dev/null || true; }
+  [ -n "${agy_jail_home:-}" ] && [ -d "$agy_jail_home" ] && rm -rf -- "$agy_jail_home"
+  [ -n "${agy_jail_rt:-}" ] && [ -d "$agy_jail_rt" ] && rm -rf -- "$agy_jail_rt"
+  if [ -n "${agy_refs_created:-}" ] && [ -n "${PR:-}" ]; then
+    # Hooks and fsmonitor disabled: these git calls run after agy, with the job token in the
+    # environment, so they must not execute anything a compromised checkout could have planted.
+    git -c core.hooksPath=/dev/null -c core.fsmonitor=false update-ref -d "refs/agy/pr-${PR}" 2>/dev/null || true
+    git -c core.hooksPath=/dev/null -c core.fsmonitor=false update-ref -d "refs/agy/base-${PR}" 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT
+
 # Does $1 actually hold write access to this repository?
 #
 # `author_association` is NOT a permission check, which is the trap this replaces. It is a
@@ -314,7 +585,7 @@ REPO="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY not set}"
 # person schedule execution here" has to be answered by the permissions API, not inferred
 # from a label that was never meant to answer it.
 #
-# Fails CLOSED: any API error, missing token, or unrecognised role denies. A reviewer that
+# Fails CLOSED: any API error, missing token, or unrecognized role denies. A reviewer that
 # stops running is a visible annoyance; one that runs for the wrong person is not.
 #
 # But fail-closed makes the error TEXT load-bearing, which is why stderr is captured and logged
@@ -325,6 +596,9 @@ REPO="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY not set}"
 # an outage wearing a decision's clothes, and it would sit undiagnosed until someone noticed
 # reviews had quietly stopped.
 agy_has_write_access() {
+  # `local` like the other helpers -- except _perm_err, which stays global ON PURPOSE: the EXIT
+  # trap's cleanup() must see it to remove the temp file if the run aborts mid-lookup.
+  local _login _login_enc _perm
   _login="${1:-}"
   [ -n "$_login" ] || { log "no login to check for write access"; return 1; }
   _perm_err="$(mktemp)"
@@ -393,70 +667,6 @@ case "$PR" in
   ''|*[!0-9]*) log "invalid PR number '${PR}'; expected digits only"; exit 1 ;;
 esac
 log "reviewing ${REPO}#${PR}"
-
-# Remove every temp file on exit. Pre-declared so the trap is safe under `set -u` even if the
-# script exits before a given file is created.
-diff_file= diff_err= meta_file= prompt_file= out_file= raw= body_file= agy_diff_file= agy_work_dir= jq_err= prior_body_file= archived_file= api_err=
-# Set to 1 if agy printed its interactive OAuth login flow instead of a review (lapsed session);
-# gates the no-post abort below. Pre-declared so `${auth_failed:-0}` is set-u-safe on every path.
-auth_failed=0
-# Counts backend-error captures across attempts; see `service_error_present`. Pre-declared so
-# `${service_errors:-0}` is set-u-safe even on paths that never enter the retry loop.
-service_errors=0
-# Set when the large-diff fallback below creates refs/agy/* so the trap can remove them.
-agy_refs_created=
-# Set by the AGY_DRY_RUN block so cleanup KEEPS the two artefacts dry-run exists to expose. The
-# whole point of dry run is "let me look at the assembled prompt", and the EXIT trap fires on the
-# `exit 0` at the end of that block -- so it deleted the prompt on the way out, every time.
-# Everything else is still removed; only these two are spared, and their paths are printed.
-keep_artifacts=
-cleanup() {
-  # Built as an argv ARRAY rather than as `rm -f ${v:+"$v"} ...`.
-  #
-  # The problem being solved is the EMPTY operand: `rm -f ""` is silent and exits 0 on GNU
-  # coreutils -- which is why an unconditional `rm -f "$unset_var"` never surfaced on the Linux
-  # runner -- but BSD/macOS `rm` writes "No such file or directory" to stderr for it.
-  #
-  # A note for the next reader, because this was raised in review and the intuition is wrong:
-  # `rm -f ${v:+"$v"}` does NOT word-split. Bash honours the quotes inside the `:+` alternate
-  # word, so a path with a space or a glob character survives as one operand. Verified:
-  #
-  #     v='a*b';    rm -f ${v:+"$v"}   ->   + rm -f 'a*b'      (siblings axxb, ayb untouched)
-  #     v='a file'; rm -f ${v:+"$v"}   ->   one operand        (siblings a, file untouched)
-  #
-  # The array is used anyway, for a reason the expansion form genuinely does not cover: it lets
-  # `--` terminate option parsing, so a temp path that begins with `-` is treated as a path
-  # rather than as flags. An array element is also one word by construction, which does not
-  # depend on knowing that `:+` quoting rule.
-  local keep_set="${keep_artifacts:-}"
-  local -a doomed=()
-  local f
-  # `${v:-}` on every name, even though all of them are pre-declared at the top of the script and
-  # cannot be unset here. Belt-and-braces on purpose: this is an EXIT trap, so if a future edit
-  # ever moves the trap above the pre-declarations, the failure would be an `unbound variable`
-  # abort DURING cleanup -- temp files left behind, and a confusing error masking the real exit
-  # cause. The pre-declaration stays and is still the actual guarantee; this is the cheap second
-  # line for a function that only ever runs while something else is going wrong.
-  for f in "${diff_file:-}" "${diff_err:-}" "${meta_file:-}" "${out_file:-}" "${raw:-}" "${body_file:-}" \
-           "${jq_err:-}" "${prior_body_file:-}" "${archived_file:-}" "${api_err:-}"; do
-    [ -n "$f" ] && doomed+=("$f")
-  done
-  if [ -z "$keep_set" ]; then
-    for f in "${prompt_file:-}" "${agy_diff_file:-}"; do
-      [ -n "$f" ] && doomed+=("$f")
-    done
-  fi
-  [ ${#doomed[@]} -gt 0 ] && rm -f -- "${doomed[@]}"
-  # Remove the gitignored diff-handoff scratch dir once its file is gone. `rmdir` only unlinks an
-  # empty dir, so a concurrent run's file (a different $$) is never clobbered; a non-empty dir is
-  # gitignored and harmless if left behind.
-  [ -n "${agy_work_dir:-}" ] && [ -z "$keep_set" ] && rmdir "${agy_work_dir}" 2>/dev/null || true
-  if [ -n "${agy_refs_created:-}" ] && [ -n "${PR:-}" ]; then
-    git update-ref -d "refs/agy/pr-${PR}" 2>/dev/null || true
-    git update-ref -d "refs/agy/base-${PR}" 2>/dev/null || true
-  fi
-}
-trap cleanup EXIT
 
 # --- fetch metadata first, because the fork gate + the large-diff fallback depend on it ---
 # FAIL-CLOSED. A `{}` fallback was harmless when the only field read was the title,
@@ -648,7 +858,7 @@ truncated=""
 # overlooked: the UTF-8 scrub further down (`iconv -c`, python3 fallback) removes any partial
 # sequence before the prompt reaches agy, so the split never escapes this file.
 #
-# A line-aware cut would avoid creating the split, but cannot honour a byte ceiling — and the
+# A line-aware cut would avoid creating the split, but cannot honor a byte ceiling — and the
 # ceiling is the actual constraint, since this bounds what is handed to a model with a hard context
 # limit. One minified-asset line in a diff can exceed the whole budget by itself, so "cut at a line
 # boundary" degenerates to either overshooting the cap or emitting nothing. Exact where the limit is
@@ -706,9 +916,18 @@ agy_cap_round() {
 # output, otherwise keep the original. A failed mv is fatal under `set -e`; the function returns
 # 0 when no sanitizer succeeded, so a host with neither tool proceeds with the original bytes.
 agy_scrub_utf8() {
-  if command -v iconv >/dev/null 2>&1 \
-      && iconv -c -f UTF-8 -t UTF-8 "$1" > "$1.utf8" 2>/dev/null && [ -s "$1.utf8" ]; then
-    mv "$1.utf8" "$1"; return
+  # iconv's exit status is NOT the success test. With -c, GNU iconv exits 1 precisely when it
+  # dropped invalid bytes -- after writing every valid byte -- so 0 and 1 both mean "usable
+  # output". Treating 1 as failure made python3 a silent hard requirement (it was the only path
+  # that ever succeeded on byte-cut input), although it is documented as a fallback. Any higher
+  # status, or empty output, still falls through to python3.
+  local iconv_rc
+  if command -v iconv >/dev/null 2>&1; then
+    iconv_rc=0
+    iconv -c -f UTF-8 -t UTF-8 "$1" > "$1.utf8" 2>/dev/null || iconv_rc=$?
+    if [ "$iconv_rc" -le 1 ] && [ -s "$1.utf8" ]; then
+      mv "$1.utf8" "$1"; return
+    fi
   fi
   rm -f "$1.utf8"
   if command -v python3 >/dev/null 2>&1 \
@@ -717,6 +936,40 @@ agy_scrub_utf8() {
     mv "$1.utf8" "$1"; return
   fi
   rm -f "$1.utf8"
+}
+# <<< SELFTEST-EXTRACT
+
+# >>> SELFTEST-EXTRACT: script capture filter
+# Filter (stdin -> stdout) for the script(1) fallback capture. util-linux `script` writes a
+# "Script started on ..." record as the first line of the typescript and a "Script done on ..."
+# record as the last, and `-q` does NOT suppress them in the file (measured: util-linux 2.42.4;
+# -q only silences the terminal messages). Left in, they make an EMPTY or failed agy run look
+# like non-empty output, and they push a backend error off the first line where
+# service_error_present looks for it -- so the retry loop could accept, and post, session
+# metadata or a failure as a review. Only those two framing records are removed: the first line
+# if it is a start record, and the last non-blank line if it is a done record. A review that
+# merely mentions such text elsewhere is left intact.
+#
+# Locale-independent (agy review, GH-ListRollup PR #6): util-linux translates the "Script started
+# on" / "Script done on" prose through gettext, but NOT the key=value fields it appends, so a
+# record is recognized by `[COMMAND="` (start; we always run `script -c`) or a trailing
+# `[COMMAND_EXIT_CODE="N"]` (done) as well as by the English prefix. Forcing LC_ALL=C on script
+# was rejected: it would also change agy's own locale, and with it its UTF-8 handling.
+agy_strip_script_records() {
+  awk '
+    NR == 1 && (/^Script started on / || /\[COMMAND="/) { next }
+    { lines[++n] = $0 }
+    END {
+      last = n
+      while (last > 0 && lines[last] ~ /^[[:space:]]*$/) last--
+      if (last > 0 && (lines[last] ~ /^Script done on / || lines[last] ~ /\[COMMAND_EXIT_CODE="[0-9]+"\][[:space:]]*$/)) {
+        last--
+        while (last > 0 && lines[last] ~ /^[[:space:]]*$/) last--
+      } else {
+        last = n
+      }
+      for (i = 1; i <= last; i++) print lines[i]
+    }'
 }
 # <<< SELFTEST-EXTRACT
 
@@ -773,6 +1026,23 @@ head_bytes="$(wc -c < "$prompt_file")"
 diff_bytes="$(wc -c < "$diff_file")"
 inline_budget=$(( MAX_PROMPT_BYTES - head_bytes - 512 ))   # margin covers the diff header + file notice
 [ "$inline_budget" -lt 0 ] && inline_budget=0             # a huge STYLE_GUIDE can exceed it: file the diff
+# agy's private working directory. agy runs under --dangerously-skip-permissions and ingests an
+# untrusted diff (a prompt-injection surface), so it must never have the repository checkout in its
+# workspace: a write to .git/hooks or .git/config there would later execute in a git command that
+# holds the job token. agy is therefore started FROM this empty directory (its workspace root),
+# the large-diff handoff file is written INTO it, and only it is passed to --add-dir. It lives in
+# RUNNER_TEMP (outside the checkout, wiped between jobs) and the EXIT trap removes it.
+agy_sandbox="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/agy-sandbox.XXXXXX")"
+# Stored canonical: a relative RUNNER_TEMP/TMPDIR would otherwise put a relative path in the prompt
+# (agy's file tool needs an absolute one) and make `--add-dir` resolve against the sandbox itself
+# after the `cd "$agy_sandbox"` below.
+agy_sandbox="$(cd "$agy_sandbox" && pwd -P)"
+case "$agy_sandbox/" in
+  "$(pwd -P)"/*)
+    log "agy sandbox ${agy_sandbox} is inside the checkout; refusing to expose the repository to agy"
+    exit 1 ;;
+esac
+
 use_file=0
 case "$AGY_DIFF_MODE" in
   file)   use_file=1 ;;
@@ -781,22 +1051,12 @@ case "$AGY_DIFF_MODE" in
 esac
 
 if [ "$use_file" = "1" ]; then
-  # agy's CWD is the repo checkout, so a file written under it is readable by its file tool. Write it
-  # into a dedicated, gitignored scratch dir (`.agy-review-work/`, listed in .gitignore) rather than
-  # `.git/` (a sandbox may deny tool access to the hidden `.git` dir) or the repo root (an untracked
-  # `.patch` there pollutes `git status` if agy inspects repo state). Being gitignored, the dir never
-  # shows as working-tree pollution; the EXIT trap removes the file and the (now-empty) dir.
-  #
-  # The prompt hands agy an ABSOLUTE path, and the run below adds "$PWD" to agy's workspace via
-  # --add-dir. Both are load-bearing and were proven on the live runner: agy's sandboxed file tool
-  # does NOT resolve a relative path against the shell CWD (it uses its own workspace root), so a
-  # relative `.agy-review-work/...` comes back "does not exist on the filesystem" — the exact
-  # large-diff review failure this fixes. An absolute path resolves on its own, and --add-dir makes
-  # the checkout part of the sandbox workspace; using both is belt-and-suspenders.
-  agy_work_dir="$PWD/.agy-review-work"
-  mkdir -p "$agy_work_dir"
-  diff_name=".agy-review-work/agy-review-diff.$$.patch"
-  agy_diff_file="$PWD/$diff_name"
+  # The diff goes into agy's private sandbox directory (see `agy_sandbox` above), never into the
+  # checkout. The prompt hands agy an ABSOLUTE path, and the run below adds the sandbox (only) to
+  # agy's workspace via --add-dir. Both are load-bearing and were proven on the live runner: agy's
+  # sandboxed file tool does NOT resolve a relative path against the shell CWD (it uses its own
+  # workspace root), so a relative path comes back "does not exist on the filesystem".
+  agy_diff_file="$agy_sandbox/agy-review-diff.patch"
   cp "$diff_file" "$agy_diff_file"
   {
     printf '\n--- UNIFIED DIFF (in a file) ---\n'
@@ -918,7 +1178,7 @@ scale_timeout_for_diff() {
   # against. Then the same guard the settings get, so a non-numeric value falls back rather than
   # becoming a syntax error in the expansion below.
   bytes="${bytes//[[:space:]]/}"
-  normalise_numeric_env bytes 0
+  normalize_numeric_env bytes 0
   [ -z "$AGY_PRINT_TIMEOUT_EXPLICIT" ] || { log "AGY_PRINT_TIMEOUT set explicitly ($AGY_PRINT_TIMEOUT); not scaling"; return 0; }
 
   # Computed from BYTES, not from truncated whole MiB: `mib = bytes / 1048576` in integer
@@ -929,7 +1189,7 @@ scale_timeout_for_diff() {
 
   local base_s
   if ! base_s="$(duration_to_seconds "$AGY_PRINT_TIMEOUT")"; then
-    log "AGY_PRINT_TIMEOUT ('$AGY_PRINT_TIMEOUT') is not a recognised duration; leaving it alone"
+    log "AGY_PRINT_TIMEOUT ('$AGY_PRINT_TIMEOUT') is not a recognized duration; leaving it alone"
     return 0
   fi
 
@@ -947,25 +1207,374 @@ scale_timeout_for_diff "$diff_bytes"
 #     stdout when stdout is not a TTY, e.g. piped/redirected/subprocess) ---------
 flags=( --print-timeout "$AGY_PRINT_TIMEOUT" --sandbox --dangerously-skip-permissions )
 # In file-handoff mode agy must read the on-disk diff, and --sandbox otherwise confines its file
-# tool to its own workspace root (NOT the shell CWD) — so add the checkout to the workspace. Only in
-# file mode: an inline review reads nothing from disk, so it keeps zero filesystem access (narrower
-# prompt-injection surface for the common path). Proven necessary on the live runner: without this
-# (and the absolute path above) the large-diff handoff file reads back as "does not exist".
-[ "${use_file:-0}" = "1" ] && flags+=( --add-dir "$PWD" )
+# tool to its own workspace root (NOT the shell CWD) — so add the sandbox directory that holds it.
+# Never the checkout (see `agy_sandbox`). Proven necessary on the live runner: without this (and the
+# absolute path above) the large-diff handoff file reads back as "does not exist".
+[ "${use_file:-0}" = "1" ] && flags+=( --add-dir "$agy_sandbox" )
 
-# Strip the repo tokens from agy's own environment. agy runs under
-# --dangerously-skip-permissions and ingests an untrusted diff (prompt-injection
-# surface); `gh` and the large-diff fetch run in THIS script, before and after, and
-# agy has no use for GH_TOKEN / GITHUB_TOKEN — so it should not inherit them.
-agy_env=( env -u GH_TOKEN -u GITHUB_TOKEN )
-[ -n "$AGY_MODEL" ]  && flags+=( --model "$AGY_MODEL" )
-[ -n "$AGY_EFFORT" ] && flags+=( --effort "$AGY_EFFORT" )
+# agy gets an ALLOWLISTED environment (`env -i` plus the variables below), never the job's.
+# agy runs under --dangerously-skip-permissions and ingests an untrusted diff (prompt-injection
+# surface); `gh` and the large-diff fetch run in THIS script, before and after, and agy needs none
+# of the job's credentials: not GH_TOKEN/GITHUB_TOKEN, not ACTIONS_RUNTIME_TOKEN (cache/artifact
+# API), not ACTIONS_ID_TOKEN_* (OIDC), and not whatever a workflow puts in `env:` under an
+# ordinary-looking name (a DATABASE_URL with a password in it, say), which a name-pattern denylist
+# would miss. What agy does need is its user session: HOME for its config and conversation store,
+# PATH, the locale, and XDG_RUNTIME_DIR + DBUS_SESSION_BUS_ADDRESS to reach the desktop keyring that
+# holds its Google OAuth session. Verified on the runner host with no other agy running: agy
+# authenticates and answers under exactly this environment. (An earlier test that "hung" had
+# collided with a concurrent review: agy is one singleton per user, which is why the flock below
+# exists.) AGY_ENV_PASSTHROUGH may name extra variables, space-separated, for a host that needs one.
+agy_allowlisted_env_args() {
+  local name
+  local -a extra=()
+  # `read -a` splits on whitespace without pathname expansion, so a glob character in the
+  # passthrough list can never expand against the checkout.
+  # -d '' reads across newlines too, so a multi-line YAML block (`AGY_ENV_PASSTHROUGH: |`) keeps
+  # every entry; read returns 1 at end of input, which is expected.
+  IFS=$' \t\n' read -r -d '' -a extra <<<"${AGY_ENV_PASSTHROUGH:-}" || true
+  printf '%s\0' "-i"
+  for name in HOME PATH USER LOGNAME SHELL LANG LANGUAGE LC_ALL LC_CTYPE LC_MESSAGES TERM TMPDIR TZ \
+              XDG_RUNTIME_DIR XDG_CONFIG_HOME XDG_DATA_HOME XDG_CACHE_HOME XDG_STATE_HOME \
+              DBUS_SESSION_BUS_ADDRESS DISPLAY WAYLAND_DISPLAY XAUTHORITY "${extra[@]}"; do
+    # A valid identifier only: never an assignment, and never a leading digit (`1` would read the
+    # positional parameter $1, and `1FOO` aborts with "bad substitution").
+    [[ "$name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+    [ -n "${!name+x}" ] && printf '%s\0' "${name}=${!name}"
+  done
+  return 0
+}
+agy_env=( env )
+while IFS= read -r -d '' arg; do agy_env+=( "$arg" ); done < <(agy_allowlisted_env_args)
 
-out_file="$(mktemp)"
-here="$(cd "$(dirname "$0")" && pwd)"
-: > "$LOG"
+# The egress proxy, run with the host's python3 OUTSIDE the jail (embedded, so the vendored file
+# set stays the same in every repository). The self-test extracts and exercises it.
+agy_egress_proxy_src() {
+  cat <<'AGYPY'
+"""agy-review egress proxy: the jail's only route to the network (stdlib only, Python >= 3.11).
 
-# Serialize agy across concurrent review jobs on this host. agy runs a SINGLETON
+Serves HTTP CONNECT on a Unix socket that is bind-mounted into the jail. A CONNECT is accepted only
+for port 443 of a host that EXACTLY equals an allowlist entry (no wildcards: `.googleapis.com`
+would include Cloud Storage, where anyone can own a writable bucket).
+
+Every accepted tunnel is TLS-terminated with a per-run leaf certificate the jail trusts (the CA key
+never enters the jail). A raw tunnel is not enough: Google's front end routes by the Host header,
+so a request on a connection to ANY allowed googleapis host that says `Host: storage.googleapis.com`
+reaches Cloud Storage (verified for oauth2, aicode and daily-cloudcode-pa). So each connection
+carries exactly one HTTP/1.1 request, which the proxy validates strictly and REBUILDS:
+  * Host is set by the proxy to the CONNECT host; a missing, duplicate or foreign Host is refused;
+  * only origin-form targets; bare CR/LF, control bytes, DEL, non-ASCII, obs-fold and non-token
+    header names are refused;
+  * the body is forwarded exactly once: one Content-Length (that many bytes), or Transfer-Encoding
+    exactly `chunked` (parsed chunk by chunk); both, or any other coding, is refused. Bytes after
+    the request are never forwarded, so nothing can be smuggled behind it;
+  * hop-by-hop headers are dropped and `Connection: close` is sent, so upstream closes after one
+    response, which is streamed back unchanged (server-sent events keep working).
+A host with a path rule accepts only body-less GETs of exactly that path (no query).
+
+The log records verdicts and allowlisted host names only. A denied host name or any path is
+attacker-chosen and could carry a secret, so neither is written to it. Denied CONNECT targets go
+to the private file named by AGY_EGRESS_DENIED_FILE (outside the jail, never the job log).
+
+argv: SOCKET LOG ALLOW_CSV CERT KEY [PATH_RULES]   PATH_RULES: "host=/exact/path,host2=/p"
+"""
+
+import asyncio
+import contextlib
+import os
+import re
+import ssl
+import sys
+
+sock_path, log_path, allow_csv, cert, key = sys.argv[1:6]
+allow = {h for h in allow_csv.split(",") if h}
+path_rules = {}
+for rule in (sys.argv[6] if len(sys.argv) > 6 else "").split(","):
+    if rule:
+        rule_host, _, rule_path = rule.partition("=")
+        path_rules[rule_host] = rule_path
+server_ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+server_ctx.load_cert_chain(cert, key)
+server_ctx.set_alpn_protocols(
+    ["http/1.1"]
+)  # one HTTP/1.1 request per connection, never h2
+upstream_ctx = ssl.create_default_context()
+logf = open(log_path, "a", buffering=1)  # noqa: SIM115 - lives as long as the process
+denied_path = os.environ.get("AGY_EGRESS_DENIED_FILE", "")
+deniedf = open(denied_path, "a", buffering=1) if denied_path else None  # noqa: SIM115
+
+TOKEN = re.compile(r"[!#$%&'*+.^_`|~0-9A-Za-z-]+")
+HOP_BY_HOP = {
+    "connection",
+    "keep-alive",
+    "proxy-connection",
+    "proxy-authorization",
+    "proxy-authenticate",
+    "te",
+    "trailer",
+    "upgrade",
+    "host",
+    "content-length",
+    "transfer-encoding",
+}
+METHODS = {"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}
+MAX_HEAD = 65536
+MAX_CHUNK_LINE = 4096
+
+
+class Refuse(Exception):
+    """The request is refused (403); the reason is never echoed anywhere."""
+
+
+class ExpectationFailed(Refuse):
+    """`Expect` is not supported: answered 417 so a client can retry without it, instead of
+    waiting for a `100 Continue` the proxy would only relay after the body (a stall)."""
+
+
+def log(verdict, host=""):
+    logf.write(f"{verdict} {host if host in allow else ''}".rstrip() + "\n")
+
+
+def close(w):
+    with contextlib.suppress(OSError, RuntimeError):
+        w.close()
+
+
+async def refuse(cw, status):
+    with contextlib.suppress(OSError, RuntimeError):
+        cw.write(status + b"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+        await cw.drain()
+    close(cw)
+
+
+def clean_head(head):
+    """Validate a request head's bytes; return its lines (request line first)."""
+    if not head.endswith(b"\r\n\r\n"):
+        raise Refuse
+    body = head[:-4]
+    if not body.isascii():
+        raise Refuse
+    stripped = body.replace(b"\r\n", b"")
+    if b"\r" in stripped or b"\n" in stripped:
+        raise Refuse
+    if any(c < 0x20 or c == 0x7F for c in stripped):
+        raise Refuse
+    return body.decode("ascii").split("\r\n")
+
+
+def rebuild_request(head, host):
+    """Return (upstream head bytes, body kind, body length) or raise Refuse.
+
+    Body kind is "none", "length" or "chunked". Nothing the client wrote is forwarded verbatim.
+    """
+    lines = clean_head(head)
+    req = lines[0].split(" ")
+    if len(req) != 3 or req[0] not in METHODS or req[2] != "HTTP/1.1":
+        raise Refuse
+    method, target = req[0], req[1]
+    if not target.startswith("/") or target.startswith("//"):
+        raise Refuse  # origin-form only: no absolute-form or authority-form target
+    hosts, keep, lengths, codings, conn_opts = [], [], [], [], set()
+    for line in lines[1:]:
+        if not line or line[0] in " \t":
+            raise Refuse  # empty line inside the head, or obs-fold continuation
+        name, sep, value = line.partition(":")
+        if not sep or TOKEN.fullmatch(name) is None:
+            raise Refuse
+        lname, value = name.lower(), value.strip(" \t")
+        if lname == "host":
+            hosts.append(value.lower())
+        elif lname == "content-length":
+            lengths.append(value)
+        elif lname == "transfer-encoding":
+            codings.append(value.lower())
+        elif lname == "expect":
+            raise ExpectationFailed
+        elif lname == "connection":
+            conn_opts.update(t.strip(" \t").lower() for t in value.split(","))
+        elif lname not in HOP_BY_HOP:
+            keep.append((lname, f"{name}: {value}"))
+    # RFC 9110 7.6.1: a field named in Connection is connection-local and is not forwarded.
+    keep = [line for lname, line in keep if lname not in conn_opts]
+    if len(hosts) != 1 or hosts[0] not in (host, f"{host}:443"):
+        raise Refuse
+    if lengths and codings:
+        raise Refuse
+    if codings:
+        if codings != ["chunked"]:
+            raise Refuse
+        kind, length = "chunked", 0
+    elif lengths:
+        if len(set(lengths)) != 1 or not lengths[0].isdigit() or len(lengths[0]) > 15:
+            raise Refuse
+        length = int(lengths[0])
+        kind = "length" if length else "none"
+    else:
+        kind, length = "none", 0
+    if host in path_rules and (
+        method != "GET" or target != path_rules[host] or kind != "none"
+    ):
+        raise Refuse
+    framing = []
+    if kind == "length" or (
+        kind == "none" and (lengths or method in ("POST", "PUT", "PATCH"))
+    ):
+        framing = [f"Content-Length: {length}"]
+    elif kind == "chunked":
+        framing = ["Transfer-Encoding: chunked"]
+    out = [
+        f"{method} {target} HTTP/1.1",
+        f"Host: {host}",
+        *keep,
+        *framing,
+        "Connection: close",
+        "",
+        "",
+    ]
+    return "\r\n".join(out).encode("ascii"), kind, length
+
+
+async def copy_exact(cr, uw, n):
+    while n > 0:
+        data = await cr.read(min(65536, n))
+        if not data:
+            raise Refuse
+        uw.write(data)
+        await uw.drain()
+        n -= len(data)
+
+
+async def copy_chunked(cr, uw):
+    while True:
+        line = await cr.readuntil(b"\r\n")
+        if len(line) > MAX_CHUNK_LINE:
+            raise Refuse
+        size_txt = line[:-2].split(b";", 1)[0].strip()
+        if not size_txt or not re.fullmatch(rb"[0-9A-Fa-f]{1,15}", size_txt):
+            raise Refuse
+        size = int(size_txt, 16)
+        uw.write(f"{size:x}\r\n".encode())  # chunk extensions are dropped
+        if size == 0:
+            # Trailers are read (bounded) and DISCARDED: forwarding them would let a client add
+            # headers after validation. Only the terminating CRLF goes upstream.
+            for _ in range(64):
+                t = await cr.readuntil(b"\r\n")
+                if len(t) > MAX_CHUNK_LINE:
+                    raise Refuse
+                if t == b"\r\n":
+                    uw.write(b"\r\n")
+                    await uw.drain()
+                    return
+            raise Refuse
+        await copy_exact(cr, uw, size)
+        if await cr.readexactly(2) != b"\r\n":
+            raise Refuse
+        uw.write(b"\r\n")
+        await uw.drain()
+
+
+async def pipe(r, w):
+    try:
+        while data := await r.read(65536):
+            w.write(data)
+            await w.drain()
+    except (ConnectionError, OSError, asyncio.IncompleteReadError):
+        pass
+
+
+async def handle(cr, cw):
+    try:
+        head = await asyncio.wait_for(cr.readuntil(b"\r\n\r\n"), 30)
+    except (
+        TimeoutError,
+        OSError,
+        asyncio.IncompleteReadError,
+        asyncio.LimitOverrunError,
+    ):
+        close(cw)
+        return
+    parts = head.split(b"\r\n", 1)[0].decode("latin-1", "replace").split()
+    if len(parts) != 3 or parts[0] != "CONNECT":
+        log("REFUSE-NONCONNECT")
+        await refuse(cw, b"HTTP/1.1 405 Method Not Allowed")
+        return
+    host, _, port = parts[1].rpartition(":")
+    host = host.lower()  # DNS names are case-insensitive; the allowlist is lowercase
+    if port != "443" or host not in allow:
+        log("DENY", host)
+        if deniedf is not None:
+            # attacker-chosen: only printable characters reach the host log
+            deniedf.write(
+                "".join(c if c.isprintable() else "?" for c in parts[1][:300]) + "\n"
+            )
+        await refuse(cw, b"HTTP/1.1 403 Forbidden")
+        return
+    # Bytes sent behind the CONNECT, before its 200, would sit in the reader's buffer and be read
+    # after start_tls as if they were decrypted application data. No real client does this.
+    if getattr(cr, "_buffer", b""):
+        log("DENY-PIPELINED", host)
+        await refuse(cw, b"HTTP/1.1 400 Bad Request")
+        return
+    uw = None
+    try:
+        cw.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+        await cw.drain()
+        await cw.start_tls(server_ctx)
+        rhead = await asyncio.wait_for(cr.readuntil(b"\r\n\r\n"), 60)
+        try:
+            out, kind, length = rebuild_request(rhead, host)
+        except ExpectationFailed:
+            log("DENY-EXPECT", host)
+            await refuse(cw, b"HTTP/1.1 417 Expectation Failed")
+            return
+        except Refuse:
+            log("DENY-REQ", host)
+            await refuse(cw, b"HTTP/1.1 403 Forbidden")
+            return
+        ur, uw = await asyncio.wait_for(
+            asyncio.open_connection(host, 443, ssl=upstream_ctx, server_hostname=host),
+            30,
+        )
+        uw.write(out)
+        await uw.drain()
+        if kind == "length":
+            await copy_exact(cr, uw, length)
+        elif kind == "chunked":
+            await copy_chunked(cr, uw)
+        log("ALLOW", host)
+        await pipe(
+            ur, cw
+        )  # Connection: close upstream ends the response; later client bytes are ignored
+    except Refuse:
+        log("DENY-BODY", host)
+    except (
+        TimeoutError,
+        ssl.SSLError,
+        OSError,
+        asyncio.IncompleteReadError,
+        asyncio.LimitOverrunError,
+    ):
+        log("FAIL", host)
+    finally:
+        if uw is not None:
+            close(uw)
+        close(cw)
+
+
+async def main():
+    with contextlib.suppress(FileNotFoundError):
+        os.unlink(sock_path)
+    srv = await asyncio.start_unix_server(handle, path=sock_path, limit=MAX_HEAD)
+    os.chmod(sock_path, 0o600)
+    async with srv:
+        await srv.serve_forever()
+
+
+asyncio.run(main())
+AGYPY
+}
+
+# Serialize agy across concurrent review jobs on this host. Taken BEFORE the jail is built, so
+# its proxies and per-run CA are not left idling for the whole wait. agy runs a SINGLETON
 # local language-server + conversation store per user, so two `--print` calls at
 # once collide (one reports the backend "unavailable"). flock makes jobs queue
 # instead of failing. FAIL CLOSED: if flock is missing, or the lock can't be
@@ -993,15 +1602,174 @@ flock -w "$AGY_LOCK_WAIT" 9 || {
   exit 1
 }
 
+# One resolution of the script directory, shared by the jail bind and the script(1) fallback, so a
+# symlinked checkout path cannot make them name different files.
+here="$(cd "$(dirname "$0")" && pwd)"
+[ "$AGY_ISOLATION" = none ] && log "WARNING: AGY_ISOLATION=none: agy runs unjailed, with the host's files, keyring and network; AGY_EGRESS has no effect"
+# --- the bubblewrap jail (AGY_ISOLATION=bwrap) --------------------------------------------------
+# Verified 2026-11-22: inside this jail agy authenticates and reviews, sees only an empty HOME, has
+# no MCP servers/skills/hooks, cannot read any host file outside the jail, and over D-Bus can fetch
+# only its own keyring item (another item's GetSecret, the bulk Service.GetSecrets and every other
+# session service are AccessDenied by the proxy).
+agy_jail=()
+if [ "$AGY_ISOLATION" = bwrap ]; then
+  _need=( bwrap xdg-dbus-proxy gdbus )
+  [ "$AGY_EGRESS" = filtered ] && _need+=( socat python3 openssl )
+  for _t in "${_need[@]}"; do
+    command -v "$_t" >/dev/null 2>&1 || { log "AGY_ISOLATION=bwrap needs '$_t' on the runner host; refusing to run agy unjailed (set AGY_ISOLATION=none to override, not recommended)"; exit 1; }
+  done
+  # The egress proxy needs asyncio's StreamWriter.start_tls (Python 3.11+).
+  if [ "$AGY_EGRESS" = filtered ] && ! python3 -I -c 'import sys; sys.exit(sys.version_info < (3, 11))'; then
+    log "AGY_EGRESS=filtered needs python3 >= 3.11 on the runner host (found $(python3 -V 2>&1)); refusing to run agy"; exit 1
+  fi
+  [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ] \
+    || { log "AGY_ISOLATION=bwrap needs XDG_RUNTIME_DIR and DBUS_SESSION_BUS_ADDRESS (a user session)"; exit 1; }
+  # agy's own keyring item(s), resolved OUTSIDE the jail: object paths only, never secrets.
+  _dict=""
+  # Split on whitespace with NO pathname expansion (read -a, not an unquoted for): `for x in $VAR`
+  # globs, so a wildcard entry (`*.com`) would expand to file names in the checkout -- which the PR
+  # controls -- and then pass validation as an exact value. `-d ''` reads the WHOLE value: a plain
+  # `read` stops at the first newline, which would silently drop a later path rule (leaving that
+  # host unrestricted) or keyring attribute (widening the item match). It returns 1 at EOF.
+  IFS=$' \t\n' read -r -d '' -a _kvs <<<"$AGY_KEYRING_ATTRS" || true
+  for _kv in "${_kvs[@]}"; do
+    [[ "$_kv" =~ ^[A-Za-z0-9_.-]+=[A-Za-z0-9_.:@-]+$ ]] || { log "invalid AGY_KEYRING_ATTRS entry '$_kv'"; exit 1; }
+    _dict="${_dict:+$_dict, }'${_kv%%=*}': '${_kv#*=}'"
+  done
+  # Secret Service treats an empty attribute set as match-all, which would grant GetSecret on
+  # every item (including the gh token). Refuse it outright.
+  [ -n "$_dict" ] || { log "AGY_KEYRING_ATTRS is empty; refusing to grant agy keyring access"; exit 1; }
+  mapfile -t _items < <(gdbus call --session --dest org.freedesktop.secrets \
+      --object-path /org/freedesktop/secrets/aliases/default \
+      --method org.freedesktop.Secret.Collection.SearchItems "{${_dict}}" 2>/dev/null \
+    | grep -oE '/org/freedesktop/secrets/collection/[A-Za-z0-9_]+/[A-Za-z0-9_]+')
+  [ "${#_items[@]}" -ge 1 ] || { log "no keyring item matches AGY_KEYRING_ATTRS ($AGY_KEYRING_ATTRS); is agy logged in on this host?"; exit 1; }
+  _rules=(
+    "--call=org.freedesktop.secrets=org.freedesktop.Secret.Service.OpenSession@/org/freedesktop/secrets"
+    "--call=org.freedesktop.secrets=org.freedesktop.Secret.Service.Unlock@/org/freedesktop/secrets"
+    "--call=org.freedesktop.secrets=org.freedesktop.DBus.Properties.Get@/org/freedesktop/secrets"
+    "--call=org.freedesktop.secrets=org.freedesktop.Secret.Collection.SearchItems@/org/freedesktop/secrets/aliases/default"
+    "--call=org.freedesktop.secrets=org.freedesktop.Secret.Session.Close@/org/freedesktop/secrets/session/*"
+  )
+  for _it in "${_items[@]}"; do _rules+=( "--call=org.freedesktop.secrets=org.freedesktop.Secret.Item.GetSecret@${_it}" ); done
+  agy_jail_rt="$(mktemp -d "$XDG_RUNTIME_DIR/agy-jail.XXXXXX")"
+  agy_jail_home="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/agy-home.XXXXXX")"
+  agy_jail_home="$(cd "$agy_jail_home" && pwd -P)"
+  xdg-dbus-proxy "$DBUS_SESSION_BUS_ADDRESS" "$agy_jail_rt/bus" --filter "${_rules[@]}" &
+  agy_proxy_pid=$!
+  for _ in $(seq 1 100); do [ -S "$agy_jail_rt/bus" ] && break; kill -0 "$agy_proxy_pid" 2>/dev/null || break; sleep 0.1; done
+  [ -S "$agy_jail_rt/bus" ] || { log "xdg-dbus-proxy did not start; refusing to run agy unjailed"; exit 1; }
+  _uid="$(id -u)"
+  _net=( --share-net --ro-bind-try /run/systemd/resolve /run/systemd/resolve )
+  _egress_binds=() _egress_env=() _inner=()
+  if [ "$AGY_EGRESS" = filtered ]; then
+    _allow=""
+    IFS=$' \t\n' read -r -d '' -a _hs <<<"$AGY_EGRESS_ALLOW" || true
+    for _h in "${_hs[@]}"; do
+      [[ "$_h" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$ ]] \
+        || { log "invalid AGY_EGRESS_ALLOW entry '$_h' (exact lowercase host names only, no wildcards)"; exit 1; }
+      _allow="${_allow:+$_allow,}$_h"
+    done
+    [ -n "$_allow" ] || { log "AGY_EGRESS_ALLOW is empty; refusing to run agy with no reachable host"; exit 1; }
+    _prules="" _prhosts=""
+    IFS=$' \t\n' read -r -d '' -a _rs <<<"$AGY_EGRESS_PATH_RULES" || true
+    for _r in "${_rs[@]}"; do
+      [[ "$_r" =~ ^([a-z0-9.-]+)=(/[A-Za-z0-9._~/-]*)$ ]] \
+        || { log "invalid AGY_EGRESS_PATH_RULES entry '$_r' (expected host=/exact/path)"; exit 1; }
+      _rh="${BASH_REMATCH[1]}"
+      [[ ",$_allow," == *",${_rh},"* ]] \
+        || { log "AGY_EGRESS_PATH_RULES names '${_rh}', which is not in AGY_EGRESS_ALLOW"; exit 1; }
+      # One path per host: the proxy keeps a single path for each, so a second rule would silently
+      # replace the first.
+      [[ ",$_prhosts," != *",${_rh},"* ]] \
+        || { log "AGY_EGRESS_PATH_RULES names '${_rh}' twice (one exact path per host)"; exit 1; }
+      _prhosts="${_prhosts:+$_prhosts,}$_rh"
+      _prules="${_prules:+$_prules,}$_r"
+    done
+    _san="DNS:${_allow//,/,DNS:}"
+    _ca_sys=""
+    for _c in /etc/ssl/certs/ca-certificates.crt /etc/pki/tls/certs/ca-bundle.crt /etc/ssl/cert.pem; do
+      [ -s "$_c" ] && { _ca_sys="$_c"; break; }
+    done
+    [ -n "$_ca_sys" ] || { log "AGY_EGRESS=filtered: no system CA bundle found; refusing to run agy"; exit 1; }
+    # Per-run CA + one leaf covering every allowlisted host. Both keys stay in the private runtime
+    # dir, which is never mounted into the jail; the jail gets only a CA bundle (roots + this CA).
+    _pki="$agy_jail_rt/pki"; mkdir -m 700 "$_pki"
+    if ! { openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 1 \
+             -subj "/CN=agy-review egress CA" -addext "basicConstraints=critical,CA:TRUE" \
+             -addext "keyUsage=critical,keyCertSign" -keyout "$_pki/ca.key" -out "$_pki/ca.pem" \
+         && openssl req -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes \
+             -subj "/CN=agy-review egress" -keyout "$_pki/leaf.key" -out "$_pki/leaf.csr" \
+         && openssl x509 -req -in "$_pki/leaf.csr" -CA "$_pki/ca.pem" -CAkey "$_pki/ca.key" -days 1 \
+             -extfile <(printf 'subjectAltName=%s\nextendedKeyUsage=serverAuth\nbasicConstraints=CA:FALSE\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid\n' "$_san") \
+             -out "$_pki/leaf.pem"; } >/dev/null 2>&1; then
+      log "AGY_EGRESS=filtered: could not create the per-run certificates; refusing to run agy"; exit 1
+    fi
+    cat "$_ca_sys" "$_pki/ca.pem" > "$agy_jail_rt/ca-bundle.pem"
+    agy_egress_proxy_src > "$agy_jail_rt/egress.py"
+    : > "$agy_jail_rt/egress-denied.txt"; chmod 600 "$agy_jail_rt/egress-denied.txt"
+    AGY_EGRESS_DENIED_FILE="$agy_jail_rt/egress-denied.txt" \
+    python3 -I "$agy_jail_rt/egress.py" "$agy_jail_rt/egress.sock" "$agy_jail_rt/egress.log" "$_allow" \
+      "$_pki/leaf.pem" "$_pki/leaf.key" "$_prules" \
+      2>>"$LOG" &
+    agy_egress_pid=$!
+    for _ in $(seq 1 100); do [ -S "$agy_jail_rt/egress.sock" ] && break; kill -0 "$agy_egress_pid" 2>/dev/null || break; sleep 0.1; done
+    [ -S "$agy_jail_rt/egress.sock" ] || { log "egress proxy did not start; refusing to run agy"; exit 1; }
+    _net=()   # --unshare-all without --share-net: the jail has only its own loopback
+    _egress_binds=( --ro-bind "$agy_jail_rt/egress.sock" /run/agy-egress.sock
+                    --ro-bind "$agy_jail_rt/ca-bundle.pem" /run/agy-ca-bundle.pem )
+    _egress_env=( "HTTPS_PROXY=http://127.0.0.1:3128" "https_proxy=http://127.0.0.1:3128"
+                  "HTTP_PROXY=http://127.0.0.1:3128" "http_proxy=http://127.0.0.1:3128"
+                  "NO_PROXY=" "no_proxy=" "SSL_CERT_FILE=/run/agy-ca-bundle.pem" )
+    # Inside the jail: bridge loopback 3128 to the proxy socket and wait for it. If the bridge never
+    # comes up, say so with the `agy-jail:` prefix (agy_jail_failed) instead of launching agy anyway.
+    _inner=( /usr/bin/bash -c 'socat TCP-LISTEN:3128,bind=127.0.0.1,fork,reuseaddr UNIX-CONNECT:/run/agy-egress.sock 2>/dev/null & up=0; for _ in $(seq 1 100); do if (exec 3<>/dev/tcp/127.0.0.1/3128) 2>/dev/null; then up=1; break; fi; sleep 0.1; done; [ "$up" = 1 ] || { echo "agy-jail: the egress bridge did not start" >&2; exit 1; }; exec "$@"' agy-jail )
+  fi
+  # Mirror the host's real top-level layout: merged-/usr distributions differ (Arch links /lib64
+  # to usr/lib, Debian and Ubuntu to usr/lib64), and the ELF interpreter must resolve the same way.
+  _toplevel=()
+  for _d in /bin /sbin /lib /lib32 /lib64 /libx32; do
+    if [ -L "$_d" ]; then _toplevel+=( --symlink "$(readlink "$_d")" "$_d" )
+    elif [ -d "$_d" ]; then _toplevel+=( --ro-bind "$_d" "$_d" )
+    fi
+  done
+  [ -x "$AGY_BIN" ] || { log "AGY_BIN ($AGY_BIN) is not an executable file on the runner host; refusing to build the jail"; exit 1; }
+  agy_jail=( bwrap --unshare-all "${_net[@]}" --die-with-parent --new-session
+    --ro-bind /usr /usr "${_toplevel[@]}"
+    --ro-bind /etc /etc --proc /proc --dev /dev --tmpfs /tmp
+    --tmpfs /home --bind "$agy_jail_home" "$HOME"
+    --ro-bind "$(readlink -f "$AGY_BIN")" "$AGY_BIN"
+    --ro-bind "$here/_agy_print.sh" "$here/_agy_print.sh"
+    --ro-bind "$prompt_file" "$prompt_file"
+    --bind "$agy_sandbox" "$agy_sandbox" --chdir "$agy_sandbox"
+    --dir "/run/user/$_uid" --ro-bind "$agy_jail_rt/bus" "/run/user/$_uid/bus"
+    "${_egress_binds[@]}" "${_inner[@]}" )
+  # Inside the jail, D-Bus is the filtered proxy (later env assignments override earlier ones).
+  agy_env+=( "XDG_RUNTIME_DIR=/run/user/$_uid" "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$_uid/bus" "TMPDIR=/tmp" "${_egress_env[@]}" )
+  log "agy isolation: bwrap jail, empty HOME, D-Bus limited to ${#_items[@]} keyring item(s), egress ${AGY_EGRESS}"
+  unset _t _need _dict _kv _items _rules _it _uid _net _egress_binds _egress_env _inner _allow _h _ca_sys _c _pki _toplevel _d _prules _r _san _rh _prhosts _kvs _hs _rs
+fi
+[ -n "$AGY_MODEL" ]  && flags+=( --model "$AGY_MODEL" )
+[ -n "$AGY_EFFORT" ] && flags+=( --effort "$AGY_EFFORT" )
+
+out_file="$(mktemp)"
+: > "$LOG"
+
+
 # Retry the whole agy attempt on empty/failed output: transient "agy is down"
 # (backend rate-limit / local-server contention) usually clears within seconds.
 # The flock (above) is held across all attempts, released after the loop.
 for (( attempt=1; attempt<=AGY_RETRIES; attempt++ )); do
   : > "$out_file"   # clear any partial output from a prior attempt
+  redacted_kinds=   # this attempt's only: a discarded attempt's redactions must not reach the note
 
   if command -v unbuffer >/dev/null 2>&1; then
     log "running agy via unbuffer (allocates a PTY) [attempt ${attempt}/${AGY_RETRIES}]"
-    "${agy_env[@]}" unbuffer "$AGY_BIN" "${flags[@]}" --print "$(cat "$prompt_file")" > "$out_file" 2>>"$LOG" || true
+    # From the sandbox directory, so agy's workspace root is never the checkout.
+    # `env -i ...` starts unbuffer itself inside the allowlisted environment (verified to work in
+    # the runner's environment). Putting it the other way round made every NAME=VALUE an argv
+    # entry of the long-lived unbuffer process, world-readable in /proc/<pid>/cmdline.
+    ( cd "$agy_sandbox" && "${agy_env[@]}" unbuffer "${agy_jail[@]}" "$AGY_BIN" "${flags[@]}" --print "$(cat "$prompt_file")" ) > "$out_file" 2>>"$LOG" || true
   else
     log "unbuffer not found; falling back to script(1) [attempt ${attempt}/${AGY_RETRIES}]"
     raw="$(mktemp)"
@@ -1010,14 +1778,46 @@ for (( attempt=1; attempt<=AGY_RETRIES; attempt++ )); do
     # (AGY_MODEL / AGY_EFFORT / AGY_PRINT_TIMEOUT) -- is shell-escaped for the inner shell.
     # A raw `${flags[*]}` here would let a shell metacharacter in any of those be evaluated
     # by `sh -c` (command injection); `%q` quotes each token exactly.
-    cmd="$(printf '%q ' "$here/_agy_print.sh" "$prompt_file" "${flags[@]}")"
-    "${agy_env[@]}" AGY_BIN="$AGY_BIN" script -qfec "$cmd" "$raw" >/dev/null 2>>"$LOG" || true
-    col -b < "$raw" > "$out_file"
+    # script(1) is a plain binary, so it (and the _agy_print.sh it runs) can start inside the
+    # allowlisted environment; agy inherits it from there.
+    cmd="$(printf '%q ' "${agy_jail[@]}" "$here/_agy_print.sh" "$prompt_file" "${flags[@]}")"
+    ( cd "$agy_sandbox" && "${agy_env[@]}" AGY_BIN="$AGY_BIN" script -qfec "$cmd" "$raw" ) >/dev/null 2>>"$LOG" || true
+    # Strip script(1)'s own start/done records so they cannot pass as agy output (see
+    # agy_strip_script_records).
+    col -b < "$raw" | agy_strip_script_records > "$out_file"
     rm -f "$raw"   # each retry makes a fresh $raw; the EXIT trap only holds the last one
   fi
 
   # normalize CRs without sed -i (avoid in-place edit footguns)
   tr -d '\r' < "$out_file" > "$out_file.clean" && mv "$out_file.clean" "$out_file"
+
+  # Classify a backend error on the capture exactly as agy produced it, BEFORE redaction: a
+  # marker is longer than what it replaces (a 20-byte AWS key id becomes 29 bytes), so a short
+  # error could otherwise grow past AGY_ERROR_MAX_BYTES, escape the guard and be posted.
+  # Only the decision is taken here; the handler below logs the REDACTED first line.
+  svc_err=no; service_error_present "$out_file" && svc_err=yes
+  # These two run on EVERY capture before any handler below logs or clears it: the backend-error
+  # handler prints a short capture's first line to the public job log, which must never carry a
+  # credential, and a jail diagnostic must never be retried or posted.
+  # A credential-shaped string is REDACTED, not fatal: the scan cannot tell a leaked secret from a
+  # test fixture a PR adds (a sample JWT), and either way the string never reaches the comment.
+  if cred_kind="$(credential_kind_present "$out_file")"; then
+    cred_kinds="$(credential_kinds_present "$out_file")"
+    if ! agy_redact_credentials "$out_file" || left="$(credential_kind_present "$out_file")"; then
+      log "refusing to post: a credential-shaped string (${left:-$cred_kind}) could not be redacted from agy's output. Nothing was posted."
+      : > "$out_file"
+      exit 1
+    fi
+    redacted_kinds="${cred_kinds:-$cred_kind}"
+    log "redacted credential-shaped string(s) (${redacted_kinds}) from agy's output (attempt ${attempt}/${AGY_RETRIES}). If this PR adds sample tokens (test fixtures), that is the likely source; otherwise inspect the runner host, the diff may carry a prompt injection."
+  fi
+  # A jail that never started (no user namespaces, a missing bind source, ...) prints its own
+  # diagnostic, which the PTY capture keeps while `|| true` drops the exit status. Never let that
+  # text be posted as a review, and do not retry: the next attempt would fail the same way.
+  if agy_jail_failed "$out_file"; then
+    log "the agy jail failed to start; nothing was posted. First line: $(grep -m1 -v '^[[:space:]]*$' "$out_file" | cut -c1-200)"
+    exit 1
+  fi
 
   # If the capture carries a live OAuth authorization URL, agy's cached Google session has lapsed
   # on this runner and there is NO review — just its interactive login flow (the OAuth URL + a
@@ -1048,7 +1848,7 @@ for (( attempt=1; attempt<=AGY_RETRIES; attempt++ )); do
   # output" cause, and the reverse would claim the backend was down on every attempt when it was
   # down on one. Both exit non-zero, so nothing unsafe -- but the log line is the only thing
   # telling a human which outage they are looking at.
-  if service_error_present "$out_file"; then
+  if [ "$svc_err" = yes ]; then
     log "agy returned a backend error rather than a review (attempt ${attempt}/${AGY_RETRIES}): $(head -n 1 "$out_file")"
     : > "$out_file"
     service_errors=$(( ${service_errors:-0} + 1 ))
@@ -1070,6 +1870,29 @@ for (( attempt=1; attempt<=AGY_RETRIES; attempt++ )); do
     sleep "$delay"
   fi
 done
+# agy is done: stop both proxies now rather than at exit, so nothing outlives the review and the
+# egress log is final before it is summarized (it is line-buffered, so no record is lost).
+for _pp in "${agy_egress_pid:-}" "${agy_proxy_pid:-}"; do
+  if [ -n "$_pp" ]; then kill "$_pp" 2>/dev/null || true; wait "$_pp" 2>/dev/null || true; fi
+done
+agy_egress_pid= agy_proxy_pid=
+unset _pp
+# Egress summary: verdict COUNTS only. A denied host name or path is attacker-chosen and could
+# carry a secret, and this log is public on a public repository, so names are never printed.
+# Denied names go ONLY to a host-private log (mode 600, beside agy's own state), so a new host
+# that an agy update starts using can be found and added to AGY_EGRESS_ALLOW.
+if [ -s "${agy_jail_rt:-}/egress-denied.txt" ]; then
+  _dl="${AGY_EGRESS_DENIED_LOG:-$HOME/.gemini/antigravity-cli/agy-egress-denied.log}"
+  if agy_record_denied "$agy_jail_rt/egress-denied.txt" "$_dl" "${REPO:-?}#${PR:-?}"; then
+    log "egress: denied host names (if any are needed, add them to AGY_EGRESS_ALLOW) are in $_dl on the runner host"
+  else
+    log "egress: could not write the private denied-host log $_dl"
+  fi
+  unset _dl
+fi
+if [ -s "${agy_jail_rt:-}/egress.log" ]; then
+  log "egress: $(awk '{print $1}' "$agy_jail_rt/egress.log" | sort | uniq -c | awk '{printf "%s %s, ", $2, $1}' | sed 's/, $//')"
+fi
 # Release the agy lock so the next queued job proceeds. NO redirection on this `exec`: a bare
 # `exec` applies its redirections to the rest of the SCRIPT, so the `2>/dev/null` that used to be
 # here sent every later `log` line (they write to stderr) to /dev/null -- "posted", "updated",
@@ -1108,7 +1931,19 @@ if ! have_text "$out_file"; then
     # GITHUB_TOKEN) in logs, and this is agy's own diagnostic stream, but a bounded tail avoids
     # publishing an unbounded volume of stderr (which could echo prompt/diff content) into CI.
     log "----- captured agy stderr ($LOG), last ${AGY_LOG_TAIL_LINES:-60} lines (secrets auto-masked) -----"
-    tail -n "${AGY_LOG_TAIL_LINES:-60}" "$LOG" | sed 's/^/[agy] /' >&2 || true
+    # GitHub masks only REGISTERED secrets; agy's own Google token is not one. Withhold the whole
+    # tail if it carries any credential shape, naming only the kind.
+    # A regular file, not a pipe: the scan tests -s and reads its input once per pattern.
+    log_tail="$(mktemp)"
+    tail -n "${AGY_LOG_TAIL_LINES:-60}" "$LOG" > "$log_tail" || true
+    # Decided on the WHOLE log, not just the tail printed: a private key whose BEGIN line falls
+    # before the tail would leave only its body lines in it, which no pattern recognizes.
+    if log_cred="$(credential_kind_present "$LOG")" || log_cred="$(credential_kind_present "$log_tail")"; then
+      log "(withheld: agy's stderr contains a credential-shaped string (${log_cred}); inspect $LOG on the runner host)"
+    else
+      sed 's/^/[agy] /' "$log_tail" >&2 || true
+    fi
+    rm -f -- "$log_tail"
     log "----- end agy stderr -----"
   else
     log "(agy stderr log is empty -- agy likely failed before writing, e.g. execve E2BIG on an oversized prompt)"
@@ -1131,8 +1966,21 @@ body_file="$(mktemp)"
   printf '## Antigravity review (Gemini via Ultra)\n\n'
   cat "$out_file"
   printf '%s' "$truncated"
+  if [ -n "${redacted_kinds:-}" ]; then
+    printf '\n\n> **Note:** credential-shaped strings were redacted from this review before posting (%s). If this PR adds sample tokens, that is the likely source.\n' "$redacted_kinds"
+  fi
   printf '\n\n<sub>Automated first-pass review by `agy` on a self-hosted runner -- not a human review.</sub>\n'
 } > "$body_file"
+# Guard on the new round's body (header + review), before ANY post path. agy's output was redacted
+# in the capture loop; this covers the header too. The archived earlier rounds are appended later
+# and are redacted on their own (below), and the assembled body is scanned once more before posting.
+if cred_kind="$(credential_kind_present "$body_file")"; then
+  if ! agy_redact_credentials "$body_file" || left="$(credential_kind_present "$body_file")"; then
+    log "refusing to post: the comment body contains a credential-shaped string (${left:-$cred_kind}) that could not be redacted. Nothing was posted. Inspect the runner host; the diff may carry a prompt injection."
+    exit 1
+  fi
+  log "redacted a credential-shaped string (${cred_kind}) from the comment head"
+fi
 
 # Final hard guard — the last line of defense, and UNCONDITIONAL, run BEFORE anything is
 # deleted or posted. Layer 1 (the retry loop) already rejects a lapsed-session capture, but
@@ -1199,10 +2047,23 @@ if [ -n "$prior_id" ] && [ -s "$prior_body_file" ]; then
   # metacharacters, backslashes and HTML.
   prior_head="$(agy_body_head "$MARKER" < "$prior_body_file")"
   prior_archive="$(agy_body_archive < "$prior_body_file")"
+  # Rounds earlier runs already dropped: carried forward so the disclosure is cumulative and a
+  # later run that drops nothing does not erase it (agy review of Rusty2600 #53).
+  prior_dropped="$(agy_body_dropped_count < "$prior_body_file")"
 
   archived_file="$(mktemp)"
   agy_assemble_archive "$prior_head" "$prior_archive" "$(date -u +'%Y-%m-%d %H:%M UTC')" \
     > "$archived_file"
+  # Earlier rounds were posted by earlier templates, whose patterns may have been narrower (the
+  # OpenAI pattern missed base64url keys until 2a366ac), so they are redacted too -- here, before
+  # the size trimming below, because a marker is longer than what it replaces.
+  if cred_kind="$(credential_kind_present "$archived_file")"; then
+    if ! agy_redact_credentials "$archived_file" || left="$(credential_kind_present "$archived_file")"; then
+      log "refusing to post: an archived earlier round contains a credential-shaped string (${left:-$cred_kind}) that could not be redacted. Nothing was posted."
+      exit 1
+    fi
+    log "redacted a credential-shaped string (${cred_kind}) from the archived earlier rounds"
+  fi
 
   # Drop the oldest rounds until the whole comment fits, and SAY SO. A silent truncation
   # here would look identical to "there were never any earlier rounds", which is the exact
@@ -1223,14 +2084,24 @@ if [ -n "$prior_id" ] && [ -s "$prior_body_file" ]; then
     # start/end sentinels, so `agy_body_archive` extracts only the rounds themselves. With
     # the wrapper inside, every run re-captured it and nested another layer around it.
     printf '\n%s\n' "$AGY_ARCHIVE_SECTION"
-    if [ "$dropped" -gt 0 ]; then
-      printf '<sub>%d earlier round(s) dropped to stay under GitHub'"'"'s comment size limit.</sub>\n\n' "$dropped"
+    total_dropped=$(( dropped + prior_dropped ))
+    if [ "$total_dropped" -gt 0 ]; then
+      printf '<sub>%d earlier round(s) dropped to stay under GitHub'"'"'s comment size limit.</sub>\n\n' "$total_dropped"
     fi
-    printf '<details>\n<summary><b>Earlier review rounds</b> (newest first)</summary>\n\n'
+    # The sentinels are always written (later runs locate the archive and its dropped count by
+    # them), but the visible `<details>` wrapper only when a round survived the trimming above --
+    # otherwise it renders as an empty disclosure (agy review, GH-ListRollup PR #4).
+    # `if`, not `[ -s ] && printf`: as the group's last command, a false `&&` list would make the
+    # whole `{ } >> "$body_file"` group return 1 and abort the run under `set -e`.
+    if [ -s "$archived_file" ]; then
+      printf '<details>\n<summary><b>Earlier review rounds</b> (newest first)</summary>\n\n'
+    fi
     printf '%s\n' "$AGY_ARCHIVE_START"
     cat "$archived_file"
     printf '%s\n' "$AGY_ARCHIVE_END"
-    printf '\n</details>\n'
+    if [ -s "$archived_file" ]; then
+      printf '\n</details>\n'
+    fi
   } >> "$body_file"
   rm -f "$archived_file"
 
@@ -1239,6 +2110,12 @@ if [ -n "$prior_id" ] && [ -s "$prior_body_file" ]; then
   # and the guard's contract is that it runs on exactly that.
   if oauth_url_present "$body_file"; then
     log "refusing to post: the assembled comment body contains a live OAuth authorization URL."
+    exit 1
+  fi
+  # And the credential scan, on exactly what is published: every part was redacted above, so a
+  # match here means redaction missed one. Fail closed.
+  if cred_kind="$(credential_kind_present "$body_file")"; then
+    log "refusing to post: the assembled comment body contains a credential-shaped string (${cred_kind}). Nothing was posted."
     exit 1
   fi
 

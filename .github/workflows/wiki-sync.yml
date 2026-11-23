@@ -44,6 +44,8 @@ jobs:
         env:
           WIKI_TOKEN: ${{ secrets.WIKI_TOKEN }}
         run: |
+          # The backticks are literal Markdown in the job summary, not command substitution.
+          # shellcheck disable=SC2016
           if [ -z "$WIKI_TOKEN" ]; then
             echo "ready=false" >> "$GITHUB_OUTPUT"
             {

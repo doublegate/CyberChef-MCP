@@ -4,19 +4,22 @@ A drop-in replacement for the retired **Gemini Code Assist for GitHub** consumer
 app, rebuilt to run on your **Google AI Ultra** subscription with **no paid,
 pay-as-you-go API usage**.
 
-It auto-reviews pull requests (on open, on every push, and on an `/agy-review` comment) using
-the **Antigravity CLI (`agy`)** running on a **self-hosted runner** on your own
-machine. Because `agy` authenticates with your Google OAuth session, every
-review draws on your Ultra rate limits instead of a metered Gemini API key.
+It auto-reviews pull requests (on open, on every push, and on an `/agy-review`
+comment) using the **Antigravity CLI (`agy`)** running on a **self-hosted
+runner** on your own machine. Because `agy` authenticates with your Google OAuth
+session, every review draws on your Ultra rate limits instead of a metered
+Gemini API key.
 
 ---
 
 ## Why this is free under Ultra (the one idea that matters)
 
+<!-- markdownlint-disable MD013 -->
 | Path | Auth | Cost |
-|------|------|------|
+| --- | --- | --- |
 | Gemini **API key** / `run-gemini-cli` / Antigravity **SDK** (`run-agy-sdk`) | API key | **metered, pay-as-you-go** |
 | Antigravity **CLI** (`agy`) | Google **OAuth** | **your Ultra rate limits** |
+<!-- markdownlint-enable MD013 -->
 
 `agy` supports OAuth sign-in with "generous rate limits on Google AI Pro and
 Ultra plans." So the whole trick is to build the reviewer around the **`agy`
@@ -34,17 +37,18 @@ is why this uses a self-hosted runner rather than GitHub's cloud runners.
 
 ## How it works
 
-```
+```text
 GitHub PR event ──▶ self-hosted runner (YOUR machine, systemd --user)
-                      │  gh pr diff ─▶ build adversarial-reviewer prompt (+ style guide)
-                      │  agy --print  (PTY-wrapped, OAuth/Ultra)  ─▶ review text
-                      └─ gh api ─▶ one comment per PR, edited in place (earlier rounds archived)
+  │  gh pr diff ─▶ adversarial-reviewer prompt (+ style guide)
+  │  agy --print in the jail (PTY, OAuth/Ultra) ─▶ review text
+  └─ gh api ─▶ one comment per PR, edited in place (rounds archived)
 ```
 
 Files in this template:
 
+<!-- markdownlint-disable MD013 -->
 | File | Goes where | Purpose |
-|------|-----------|---------|
+| --- | --- | --- |
 | `.github/workflows/antigravity-review.yml` | **copy → target repo** | trigger + job definition |
 | `scripts/agy-review.sh` | **copy → target repo** | the reviewer (diff → prompt → `agy` → comment) |
 | `scripts/_agy_print.sh` | **copy → target repo** | PTY fallback helper (only if `unbuffer` is absent) |
@@ -57,14 +61,15 @@ Files in this template:
 | `systemd/github-agy-runner@.service` | `~/.config/systemd/user/` | runs each runner in your session (template-local) |
 | `gitignore.snippet` | *optional append* | precautionary ignores (see below) — never copied over an existing `.gitignore` |
 | `.gitignore` | template-local | this repo's own hygiene — **do not** copy into target repos |
+<!-- markdownlint-enable MD013 -->
 
-> **Copy into a target repo** (what `install-into-repo.sh` does): the workflow, the four
-> scripts `agy-review.sh`, `_agy_print.sh`, `_agy_comment_body.sh` and
+> **Copy into a target repo** (what `install-into-repo.sh` does): the workflow,
+> the four scripts `agy-review.sh`, `_agy_print.sh`, `_agy_comment_body.sh` and
 > `agy-review-selftest.sh`, this README as `.github/AGY-REVIEWER.md`,
-> `.github/actionlint.yaml` when the target has none, optionally `.github/agy-review.md`,
-> and one appended `.gitignore` line (`/.agy-review-work/`). Everything else
-> (`systemd/`, the provision/deprovision scripts, this repo's `.gitignore`, `*.example`,
-> `gitignore.snippet`) stays here.
+> `.github/actionlint.yaml` when the target has none, and optionally
+> `.github/agy-review.md`. The target's `.gitignore` is not touched. Everything
+> else (`systemd/`, the provision/deprovision scripts, this repo's `.gitignore`,
+> `*.example`, `gitignore.snippet`) stays here.
 
 ---
 
@@ -77,9 +82,18 @@ Files in this template:
 agy -p "reply with the single word: ok"     # should print: ok
 
 # Tools the reviewer uses (all already present here):
-#   gh jq sqlite3 col script  + unbuffer (from `expect`)
-pacman -Q github-cli jq sqlite expect util-linux >/dev/null   # verify; install any missing with paru/pacman
+#   gh jq sqlite3 col script, plus unbuffer (from `expect`)
+#   bwrap xdg-dbus-proxy gdbus  the agy jail (AGY_ISOLATION=bwrap)
+#   socat python3>=3.11 openssl its egress filter (AGY_EGRESS=filtered)
+#   iconv (glibc) scrubs UTF-8; python3 is the fallback without iconv
+# Verify; install any missing with paru/pacman:
+pacman -Q github-cli jq sqlite expect util-linux bubblewrap \
+    xdg-dbus-proxy glib2 socat python openssl >/dev/null
 ```
+
+`unbuffer` is preferred. Without it, the reviewer falls back to `script(1)` and
+strips the `Script started on` and `Script done on` records that util-linux
+writes into the capture even with `-q`.
 
 If `agy -p` prints nothing, fix auth first (run `agy` interactively once to
 complete the Google sign-in) — the reviewer can't work until that one-liner does.
@@ -100,7 +114,8 @@ for pair in "RustySNES:rustysnes" "RustyN64:rustyn64"
     set repo (string split ":" $pair)[1]; set name (string split ":" $pair)[2]
     mkdir -p ~/actions-runner/$name
     tar xzf ~/Downloads/actions-runner-linux-x64-$VER.tar.gz -C ~/actions-runner/$name
-    set token (gh api -X POST repos/doublegate/$repo/actions/runners/registration-token --jq .token)
+    set token (gh api -X POST \
+        repos/doublegate/$repo/actions/runners/registration-token --jq .token)
     cd ~/actions-runner/$name
     ./config.sh --url https://github.com/doublegate/$repo --token $token \
         --labels agy --name (hostname)-$name --work _work --unattended --replace
@@ -153,36 +168,29 @@ the `git add/commit/push` to finish. Then jump to **Triggering it** below.
 That's it — no repository secrets. The job uses the built-in `GITHUB_TOKEN` to
 post comments and your local `agy` session for the model.
 
-### About `.gitignore` (append, don't overwrite)
+### About `.gitignore`
 
-The reviewer works in temporary directories (`mktemp` / `$RUNNER_TEMP`) for
-everything **except** one case: when a PR's diff is too large to inline in the
-argv prompt, it writes the diff to a gitignored working-tree scratch dir,
-`.agy-review-work/`, so agy can read it in full with its file tools instead of
-the review being truncated to the execve arg-size ceiling. The file and the
-(now-empty) dir are removed by the script's `EXIT` trap. Because that path is in
-the working tree, a target repo **does** need `/.agy-review-work/` in its
-`.gitignore` — otherwise the transient `.patch` shows as untracked pollution on
-large-diff PRs. Still **never** copy this template's own `.gitignore` over a
-project's.
-
-**Append** the ignore entries idempotently:
-
-```fish
-# from the target repo root
-grep -qxF '/.agy-review-work/' .gitignore 2>/dev/null
-  or cat $TPL/gitignore.snippet >> .gitignore   # TPL: your checkout of this template
-```
+The reviewer writes nothing into the working tree. All its files, including the
+large-diff handoff file agy reads when a diff is too large to inline, live in a
+private `mktemp -d` sandbox under `$RUNNER_TEMP` that the `EXIT` trap removes,
+so a target repo needs no ignore entry. (Earlier versions wrote the handoff file
+to `.agy-review-work/` in the checkout and required `/.agy-review-work/` in
+`.gitignore`; that line is now unused and harmless where it already exists.)
+**Never** copy this template's own `.gitignore` over a project's.
 
 ---
 
 ## Triggering it
 
 - **Automatic:** open, reopen, or **push to** a PR → a review is posted within a
-  minute or two. This fires from the workflow on the **PR branch**, so the very PR
-  that adds the workflow is itself a live test, and every follow-up push re-reviews
-  (`synchronize`). Auto-runs only for PRs authored by a trusted user (see the
-  security model) so a fork's code never auto-executes on the runner.
+  minute or two. This fires from the workflow on the **PR branch**, so the very
+  PR that adds the workflow is itself a live test, and every follow-up push
+  re-reviews (`synchronize`). Auto-runs only for PRs authored by a trusted user
+  (see the security model) so a fork's code never auto-executes on the runner.
+  The PR that adds the reviewer is reviewed only while the workflow keeps its
+  first-install bootstrap steps. Most repositories remove them (see the security
+  model), and there reviews start once the reviewer is on the default branch;
+  until then the review step is skipped with a warning.
 - **On demand:** comment **`/agy-review`** on any PR to (re)run it.
 
 ### One comment per PR, appended to — never replaced
@@ -200,7 +208,7 @@ consecutive rounds each raised a blocking issue and only the second survived —
 clean comment list is not evidence that nothing was raised.
 
 The script no longer issues a `DELETE` at all; `agy-review-selftest.sh` asserts
-that, so the behaviour cannot come back unnoticed. The archive is bounded by
+that, so the behavior cannot come back unnoticed. The archive is bounded by
 `MAX_BODY_BYTES` (default 60000, under GitHub's 65536 limit); when rounds must be
 dropped to fit, the oldest go first **and the body says how many were dropped**,
 because a silent truncation would look exactly like a PR reviewed only once.
@@ -210,9 +218,10 @@ because a silent truncation would look exactly like a PR reviewed only once.
 > the workflow is merged to `main`. The `opened` trigger works from the PR branch
 > immediately.
 >
-> The same rule governs the **scripts**: the workflow checks out the default branch
-> to run them, so a change to `agy-review.sh` (the archive behaviour above included)
-> has **no effect on any PR until it is merged**, not even on the PR that makes it.
+> The same rule governs the **scripts**: the workflow checks out the default
+> branch to run them, so a change to `agy-review.sh` (the archive behavior above
+> included) has **no effect on any PR until it is merged**, not even on the PR
+> that makes it.
 
 ---
 
@@ -225,15 +234,17 @@ non-ephemeral, so untrusted code from a fork PR can persistently compromise the
 host. This template applies the standard mitigations, but the residual risk is
 yours to accept:
 
-- **Required: approval for every outside contributor.** For a `pull_request` event
-  GitHub runs the workflow file **from the PR's own branch**, so a fork can edit or
-  delete any `if:` in it and point a job at your runner. Only GitHub's approval gate
-  stops that. Set **Settings → Actions → General → Fork pull request workflows →
-  Require approval for all outside collaborators** (API:
-  `gh api -X PUT repos/OWNER/REPO/actions/permissions/fork-pr-contributor-approval
-  -f approval_policy=all_external_contributors`). The default,
-  `first_time_contributors`, runs a returning contributor's fork PR without asking.
-  Never approve a fork PR's workflows unless you have read its `.github/` changes.
+- **Required: approval for every outside contributor.** For a `pull_request`
+  event GitHub runs the workflow file **from the PR's own branch**, so a fork
+  can edit or delete any `if:` in it and point a job at your runner. Only
+  GitHub's approval gate stops that. Set **Settings → Actions → General → Fork
+  pull request workflows → Require approval for all outside collaborators**
+  (API: `gh api -X PUT
+  repos/OWNER/REPO/actions/permissions/fork-pr-contributor-approval -f
+  approval_policy=all_external_contributors`). The default,
+  `first_time_contributors`, runs a returning contributor's fork PR without
+  asking. Never approve a fork PR's workflows unless you have read its
+  `.github/` changes.
 - **Same-repository gate on auto-runs:** the `pull_request` job (open/reopen/push,
   i.e. `synchronize`) is written to run only when the PR head is a branch **in this
   repository** (`github.event.pull_request.head.repo.full_name == github.repository`).
@@ -246,41 +257,151 @@ yours to accept:
   `scripts/agy-review.sh`, which asks the permissions API for the commenter and
   fails closed; the script also re-checks that the PR is not from a fork, because
   the `issue_comment` payload has no head-repo field for the `if:` to gate on.
-- **First-install bootstrap:** the checked-in workflow has no bootstrap steps. On a
-  repository whose default branch has no reviewer yet, add the guarded bootstrap
-  steps first. They run the PR head's scripts once, only for a same-repo branch
-  whose author has write access *at run time*. Remove them once the reviewer is on
-  the default branch (they also trip CodeQL's `actions/untrusted-checkout`).
+- **First-install bootstrap:** as shipped, on a repository whose default branch
+  has no reviewer yet, the workflow runs the PR head's scripts once, only for a
+  same-repo branch whose author has write access *at run time*. Remove the
+  bootstrap steps once the reviewer is on the default branch (they also trip
+  CodeQL's `actions/untrusted-checkout`); most repositories carrying this
+  reviewer have done so. Without them, a PR opened while the default branch has
+  no reviewer gets a `::warning::` and a skipped review step (the "Check the
+  reviewer is present" step), not a red check.
 - **Least surface in the job:** review-only prompt, `--sandbox`, no repo secrets
   (built-in `GITHUB_TOKEN` only), temp files cleaned via an `EXIT` trap.
+- **agy runs in a bubblewrap jail (`AGY_ISOLATION=bwrap`, the default):** agy's
+  own `--sandbox` does **not** confine reads (verified: it read a canary file in
+  `$HOME`), and agy loads the user's whole configuration, including MCP servers
+  (REA, Blender, ...), skills and hooks. So the script starts it in a `bwrap` jail
+  with an empty private `HOME`, read-only `/usr` and `/etc`, the review sandbox,
+  and no other part of the host filesystem. Its D-Bus is an `xdg-dbus-proxy` with
+  `--filter` that allows only the Secret Service calls agy makes, and `GetSecret`
+  only on agy's own keyring item. The script resolves that item outside the jail
+  from `AGY_KEYRING_ATTRS`. Verified: inside the jail agy logs in and reviews, has
+  no MCP tools, cannot read `~/.config/gh` or any repository, and fetching another
+  keyring item (the `gh` token), the bulk `GetSecrets` call or any other session
+  service is `AccessDenied`. A host without `bwrap`, `xdg-dbus-proxy` or `gdbus`
+  fails closed. `AGY_ISOLATION=none` opts out, which is not recommended.
+- **The jail has no network of its own (`AGY_EGRESS=filtered`, the default):**
+  agy must be able to read its own Google login token, so the network is the
+  remaining way to leak it. The jail gets only its own loopback. Its single
+  route out is an HTTPS `CONNECT` proxy outside the jail, reached through a
+  bind-mounted Unix socket, which accepts only port 443 of hosts that
+  **exactly** match `AGY_EGRESS_ALLOW`. Wildcards are rejected, because
+  `.googleapis.com` would include Cloud Storage, where anyone can own a writable
+  bucket.
 
-To reduce the remaining exposure, run each job on a **clean, disposable host** (a VM or
-container image recreated per job). Re-registering a runner on the same host is not enough,
-because the host's state survives. Making the repository private does not remove the risk either:
-if fork workflows are enabled for a private repository, anyone who can fork it can still reach the
-runner, so disable fork workflows there or gate them the same way.
+  An exact host list is not enough on its own: Google's front end routes by the
+  `Host` header on any googleapis connection, so a request to an allowed host
+  carrying `Host: storage.googleapis.com` reaches Cloud Storage (verified
+  through `oauth2`, `aicode` and `daily-cloudcode-pa`). So the proxy terminates
+  TLS for **every** allowed host, with a per-run CA whose private key never
+  enters the jail, and carries exactly one HTTP/1.1 request per connection,
+  which it validates strictly and rebuilds. It sets its own `Host` header and
+  refuses a missing, duplicate or foreign one, an absolute-form target, bare CR
+  or LF, control bytes and obs-fold. It forwards the body exactly once (one
+  `Content-Length`, or `chunked` parsed chunk by chunk; both, or any other
+  coding, is refused) and never forwards bytes after it, so nothing can be
+  smuggled behind the request. It sends `Connection: close` and streams the
+  response back unchanged, so server-sent events keep working.
+
+  A host in `AGY_EGRESS_PATH_RULES` accepts only a body-less GET of exactly that
+  path, with no query, matched literally. The default keeps
+  `www.googleapis.com`, which also serves the Cloud Storage JSON API, to the
+  `/oauth2/v2/userinfo` call agy makes at startup. Verified from inside the
+  jail: fronting through all four allowed hosts, Cloud Storage uploads and
+  reads, `storage.googleapis.com`, any other host or port, direct connections,
+  raw TCP and DNS are all refused, while a full review completes. The job log
+  reports egress verdict **counts** only, because a denied host name or path is
+  attacker-chosen and could itself carry a secret into a public log. Residual
+  risk: the allowed Gemini backends and the token endpoint can still be reached,
+  but data sent there goes to Google under the reviewer's own account, not to an
+  attacker. The proxy needs Python 3.11 or later.
+
+  **If reviews start failing after an agy update**, the new version probably
+  needs a host that is not on the list. The job log shows the egress counts.
+  Denied host names never appear there; they go to
+  `~/.gemini/antigravity-cli/agy-egress-denied.log` on the runner host (mode
+  600, beside agy's own state). Add a needed host to `AGY_EGRESS_ALLOW`, which
+  takes exact names only, and add a path rule for it too if it also serves
+  storage or another API.
+- **Credential-shaped output is redacted:** before posting, agy's output is
+  scanned for Google OAuth tokens, GitHub tokens, private keys, JWTs, and AWS,
+  Anthropic, OpenAI and Slack keys. Each match is replaced with `[REDACTED:
+  <kind>]` and the comment says that something was redacted; the review is still
+  posted. The scan cannot tell a leaked secret from a sample a PR adds (a
+  test-fixture JWT), so a redaction note on a PR that adds sample tokens is
+  expected. If redaction cannot remove every match, nothing is posted. A
+  credential-shaped tail of agy's stderr is withheld from the job log entirely.
+  The scan is a backstop: an injected prompt could encode a token so it does not
+  match, which is why the jail and the egress filter are the real boundary.
+- **agy never sees the checkout:** agy runs with `--dangerously-skip-permissions`
+  and reads an untrusted diff, so a prompt injection could try to write files.
+  It is started from a private, empty `mktemp -d` sandbox under `$RUNNER_TEMP`
+  (the script refuses to run if that path is inside the checkout), the large-diff
+  handoff file is written there, and only that directory is passed to
+  `--add-dir`. A planted `.git/hooks` or `.git/config` in the checkout, which a
+  later token-bearing `git` call would execute, is therefore out of reach; the
+  script's own post-agy `git` calls also run with `core.hooksPath=/dev/null` and
+  `core.fsmonitor=false`.
+- **agy gets no credentials:** agy is started with an **allowlisted**
+  environment (`env -i` plus `HOME`, `PATH`, `USER`, `LOGNAME`, `SHELL`, the
+  locale, `TERM`, `TMPDIR`, `TZ`, the `XDG_*` directories,
+  `DBUS_SESSION_BUS_ADDRESS`, `DISPLAY`, `WAYLAND_DISPLAY`, `XAUTHORITY`).
+  Nothing else from the job reaches it: no `GH_TOKEN`/`GITHUB_TOKEN`, no
+  `ACTIONS_RUNTIME_TOKEN` or OIDC request token, and no workflow `env:` value,
+  including secrets under ordinary names that a name-pattern denylist would
+  miss. The session variables are what agy needs to reach the desktop keyring
+  holding its Google OAuth session, which was verified on the runner host.
+  `AGY_ENV_PASSTHROUGH` (space-separated names) adds a variable if a host needs
+  one. `env -i` starts `unbuffer` itself, so no allowlisted value appears in the
+  argv of the long-lived `unbuffer` process, which is readable by every local
+  user in `/proc`. `agy-review-selftest.sh` asserts all of the above.
+
+To reduce the remaining exposure, run each job on a **clean, disposable host**
+(a VM or container image recreated per job). Re-registering a runner on the same
+host is not enough, because the host's state survives. Making the repository
+private does not remove the risk either: if fork workflows are enabled for a
+private repository, anyone who can fork it can still reach the runner, so
+disable fork workflows there or gate them the same way.
 
 ---
 
 ## Configuration (workflow `env:`)
 
+<!-- markdownlint-disable MD013 -->
 | Variable | Default | Meaning |
-|----------|---------|---------|
+| --- | --- | --- |
 | `AGY_MODEL` | *(agy default)* | e.g. `gemini-3-pro`; run `agy models` to see IDs |
 | `AGY_EFFORT` | `high` | reasoning effort: `low` / `medium` / `high` |
-| `AGY_PRINT_TIMEOUT` | `5m` | base wait for a single `agy --print`; raised for a large diff (next row). Setting it pins it and turns the raise off |
+| `AGY_PRINT_TIMEOUT` | `10m` | base wait for a single `agy --print`; raised for a large diff (next row). Setting it pins it and turns the raise off. Was `5m`: mid-size inlined diffs at `high` effort timed out at that base |
 | `AGY_TIMEOUT_SECONDS_PER_MIB` | `900` | extra seconds per MiB of diff. A diff handed over as a file costs agy 6-8 minutes almost whatever its size, so this is deliberately steep (240 left a 426 KB diff at 397 s, too little) |
 | `AGY_PRINT_TIMEOUT_MAX_SECONDS` | `1800` (workflow: `900`) | ceiling on one attempt after the raise |
 | `AGY_RETRIES` | `3` (workflow: `2`) | attempts; a retry is for a transient backend error, so more of them at the same budget only repeat a timeout |
+| `AGY_LOCK_WAIT` | `600` (workflow: `1860`) | seconds to wait for the host-wide agy lock before giving up. Every repository's review on the host shares it (agy is one singleton per user), and a review holds it across all its attempts and the pauses between them, so the wait must outlast another review's whole hold: 1860 s covers one review at two 900 s attempts plus the 15 s pause, so it is sized for ONE review ahead in the queue: with two or more large reviews already waiting from other repositories, a third can still time out (re-run it). It counts toward the job's worst case, so raising it means raising `timeout-minutes` (the selftest checks the sum) |
 | `AGY_DIFF_MODE` | `auto` | how the diff reaches agy: `inline` (in the `--print` prompt), `file` (written to a file agy reads with its tools), or `auto` (inline if it fits the arg-size budget, else file — so **large PRs are never truncated**) |
 | `MAX_DIFF_BYTES` | `5000000` | sanity cap on a pathological diff (5 MB). Not the arg-size limit — a large diff goes to agy as a file, not an argv value |
 | `MAX_PROMPT_BYTES` | `120000` | the inline/file threshold in `auto` mode, and a hard backstop on the **inlined** prompt. agy takes an inlined prompt as a `--print` argv value, and a single `execve` argument cannot exceed `MAX_ARG_STRLEN` (128 KiB); over it `execve` fails with E2BIG before agy starts. Clamped below 128 KiB |
 | `STYLE_GUIDE` | `.github/agy-review.md` | repo-relative style guide, loaded if present |
+| `AGY_ISOLATION` | `bwrap` | `bwrap` runs agy in the jail described under the security model; `none` runs it unjailed (not recommended) |
+| `AGY_EGRESS` | `filtered` | `filtered` gives the jail no network except the allowlisting proxy; `open` keeps the host network (not recommended) |
+| `AGY_EGRESS_ALLOW` | the 4 hosts agy needs | space-separated EXACT host names the proxy will tunnel to on port 443; wildcards and suffixes are rejected |
+| `AGY_EGRESS_PATH_RULES` | `www.googleapis.com=/oauth2/v2/userinfo` | space-separated `host=/exact/path` entries; such a host accepts only a body-less GET of exactly that path (no query, matched literally). Every allowed host is TLS-intercepted and gets its `Host` header rebuilt, whether or not it has a rule |
+| `AGY_EGRESS_DENIED_LOG` | `~/.gemini/antigravity-cli/agy-egress-denied.log` | host-private (mode 600) log of denied egress host names, for diagnosing an agy update; never printed to the job log |
+| `AGY_KEYRING_ATTRS` | `username=antigravity service=gemini` | Secret Service attributes of agy's own login item; the jail's D-Bus proxy allows `GetSecret` on the matching item(s) only |
+| `AGY_ENV_PASSTHROUGH` | *(empty)* | extra environment variable NAMES (space-separated) to pass to agy on top of the session allowlist; everything else is withheld |
+<!-- markdownlint-enable MD013 -->
 
 ---
 
 ## Troubleshooting
 
+- **"agy lock timed out after Ns" and a red job with no review:** another
+  review on the same host held the agy lock longer than `AGY_LOCK_WAIT`. The
+  lock is shared by every repository's review there, so two PRs opened at once
+  in different repositories queue behind each other; with a wait shorter than
+  one review (the old 300 s), the second gives up. Re-run the job once the other
+  review finishes, and keep `AGY_LOCK_WAIT` above another review's worst-case
+  hold (`AGY_RETRIES` x the per-attempt cap, plus the pauses). The lock fails
+  closed: a timeout exits rather than running two agy processes at once.
 - **Review comment never appears / job succeeds but empty:** the classic
   Antigravity **issue #76** — `agy -p` drops stdout when it isn't attached to a
   TTY. This template runs `agy` under a PTY (`unbuffer`, or `scripts/_agy_print.sh`
@@ -303,20 +424,20 @@ runner, so disable fork workflows there or gate them the same way.
   script change only after it reaches the default branch.
 - **Job never starts:** no runner is online/idle with the `agy` label, or the
   machine is asleep. Check `systemctl --user status github-agy-runner`.
-- **Review fails on a very large PR (`gh pr diff failed`):** GitHub's API refuses
-  any diff over **20,000 lines** with HTTP 406, so `gh pr diff` cannot fetch it at
-  all. This is separate from — and upstream of — the arg-size handling
-  (`AGY_DIFF_MODE`): that decides how a diff *already in hand* reaches agy, but a
-  406 means there is no diff in hand. The script now detects the 406 specifically
-  (a genuine auth/network/bad-PR failure is still fatal) and falls back to
-  computing the diff locally: it fetches `refs/pull/<n>/head` and the base branch
-  into private `refs/agy/*`, takes `git merge-base`, and `git diff`s them. It
-  fetches objects but **never checks them out** — the working tree is untouched and
-  the PR content is never executed — and the refs are removed on exit. The
-  recovered diff then flows through the normal inline/file path, so a 67k-line PR
-  reviews the same as a 50-line one. The fetch authenticates via `http.extraheader`
-  (Actions `GITHUB_TOKEN`), falling back to git's ambient credentials for a hand
-  run, so it does not depend on `persist-credentials`.
+- **Review fails on a very large PR (`gh pr diff failed`):** GitHub's API
+  refuses any diff over **20,000 lines** with HTTP 406, so `gh pr diff` cannot
+  fetch it at all. This is separate from — and upstream of — the arg-size
+  handling (`AGY_DIFF_MODE`): that decides how a diff *already in hand* reaches
+  agy, but a 406 means there is no diff in hand. The script now detects the 406
+  specifically (a genuine auth/network/bad-PR failure is still fatal) and falls
+  back to computing the diff locally: it fetches `refs/pull/<n>/head` and the
+  base branch into private `refs/agy/*`, takes `git merge-base`, and `git diff`s
+  them. It fetches objects but **never checks them out** — the working tree is
+  untouched and the PR content is never executed — and the refs are removed on
+  exit. The recovered diff then flows through the normal inline/file path, so a
+  67k-line PR reviews the same as a 50-line one. The fetch authenticates via
+  `http.extraheader` (Actions `GITHUB_TOKEN`), falling back to git's ambient
+  credentials for a hand run, so it does not depend on `persist-credentials`.
 
 ---
 

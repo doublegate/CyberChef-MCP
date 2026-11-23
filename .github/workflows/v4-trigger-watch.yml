@@ -76,6 +76,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TITLE="Next-major trigger fired — run the RE-MEASURE ritual"
+          # The backticks are literal Markdown in the issue body, not command substitution.
+          # shellcheck disable=SC2016
           BODY="$(printf '%s\n\n```text\n%s\n```\n\n%s\n' \
             'At least one next-major trigger fired. This is not an instruction to cut a major version.' \
             "$(cat /tmp/triggers.txt)" \
