@@ -126,7 +126,10 @@ jobs:
           echo "::error::no recent modelcontextprotocol/registry release has a complete mcp-publisher_linux_amd64 asset"
           exit 1
         fi
-        curl -fsSL --retry 5 --retry-all-errors --retry-delay 15 "$url" | tar xz mcp-publisher
+        # To a file, then extract: a retry cannot rewind a pipe, so tar could see a partial
+        # first attempt followed by the whole retried archive.
+        curl -fsSL --retry 5 --retry-all-errors --retry-delay 15 -o mcp-publisher.tar.gz "$url"
+        tar xzf mcp-publisher.tar.gz mcp-publisher
         ./mcp-publisher validate 2>&1 | tee validation.txt
         # The tool exits 0 on a deprecated schema. Treat that as a failure here, because shipping a
         # deprecated declaration is exactly what this step exists to catch -- and it is how v3.4.0's
