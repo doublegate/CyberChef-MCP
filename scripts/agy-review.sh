@@ -1628,8 +1628,10 @@ if [ "$AGY_ISOLATION" = bwrap ]; then
   _dict=""
   # Split on whitespace with NO pathname expansion (read -a, not an unquoted for): `for x in $VAR`
   # globs, so a wildcard entry (`*.com`) would expand to file names in the checkout -- which the PR
-  # controls -- and then pass validation as an exact value.
-  read -r -a _kvs <<<"$AGY_KEYRING_ATTRS"
+  # controls -- and then pass validation as an exact value. `-d ''` reads the WHOLE value: a plain
+  # `read` stops at the first newline, which would silently drop a later path rule (leaving that
+  # host unrestricted) or keyring attribute (widening the item match). It returns 1 at EOF.
+  IFS=$' \t\n' read -r -d '' -a _kvs <<<"$AGY_KEYRING_ATTRS" || true
   for _kv in "${_kvs[@]}"; do
     [[ "$_kv" =~ ^[A-Za-z0-9_.-]+=[A-Za-z0-9_.:@-]+$ ]] || { log "invalid AGY_KEYRING_ATTRS entry '$_kv'"; exit 1; }
     _dict="${_dict:+$_dict, }'${_kv%%=*}': '${_kv#*=}'"
@@ -1662,7 +1664,7 @@ if [ "$AGY_ISOLATION" = bwrap ]; then
   _egress_binds=() _egress_env=() _inner=()
   if [ "$AGY_EGRESS" = filtered ]; then
     _allow=""
-    read -r -a _hs <<<"$AGY_EGRESS_ALLOW"
+    IFS=$' \t\n' read -r -d '' -a _hs <<<"$AGY_EGRESS_ALLOW" || true
     for _h in "${_hs[@]}"; do
       [[ "$_h" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$ ]] \
         || { log "invalid AGY_EGRESS_ALLOW entry '$_h' (exact lowercase host names only, no wildcards)"; exit 1; }
@@ -1670,7 +1672,7 @@ if [ "$AGY_ISOLATION" = bwrap ]; then
     done
     [ -n "$_allow" ] || { log "AGY_EGRESS_ALLOW is empty; refusing to run agy with no reachable host"; exit 1; }
     _prules="" _prhosts=""
-    read -r -a _rs <<<"$AGY_EGRESS_PATH_RULES"
+    IFS=$' \t\n' read -r -d '' -a _rs <<<"$AGY_EGRESS_PATH_RULES" || true
     for _r in "${_rs[@]}"; do
       [[ "$_r" =~ ^([a-z0-9.-]+)=(/[A-Za-z0-9._~/-]*)$ ]] \
         || { log "invalid AGY_EGRESS_PATH_RULES entry '$_r' (expected host=/exact/path)"; exit 1; }

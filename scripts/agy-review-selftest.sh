@@ -1039,8 +1039,13 @@ check "an empty AGY_EGRESS_ALLOW is refused by name" "1" "$(grep -c 'AGY_EGRESS_
 check "a second path rule for the same host is refused" "1" "$(grep -c "names '\${_rh}' twice (one exact path per host)" "$SCRIPT")"
 check "list settings are split without pathname expansion" "0" \
   "$(grep -cE '^ *for _(kv|h|r) in \$AGY_' "$SCRIPT")"
-check "list settings are read with read -a" "3" \
-  "$(grep -cE '^ *read -r -a _(kvs|hs|rs) <<<"\$AGY_(KEYRING_ATTRS|EGRESS_ALLOW|EGRESS_PATH_RULES)"$' "$SCRIPT")"
+check "list settings are read whole with read -d '' -a" "3" \
+  "$(grep -cE "^ *IFS=\\\$' \\\\t\\\\n' read -r -d '' -a _(kvs|hs|rs) <<<\"\\\$AGY_(KEYRING_ATTRS|EGRESS_ALLOW|EGRESS_PATH_RULES)\" \|\| true$" "$SCRIPT")"
+# The idiom itself, run on a newline-separated value with a wildcard: every entry survives (a plain
+# `read -a` keeps only the first line) and nothing is globbed.
+list_demo="$(cd "$TMPD" && touch evil.com && v=$'a=1 b=2\nwww.googleapis.com=/x\n*.com' \
+  && IFS=$' \t\n' read -r -d '' -a parts <<<"$v" || true; printf '%s|' "${parts[@]}")"
+check "a multi-line list keeps every entry and globs nothing" "a=1|b=2|www.googleapis.com=/x|*.com|" "$list_demo"
 check "the stderr tail is withheld when the WHOLE log carries a credential shape" "1" \
   "$(grep -c '^    if log_cred="\$(credential_kind_present "\$LOG")" || ' "$SCRIPT")"
 check "a missing AGY_BIN is refused before the jail is built" "1" "$(grep -c 'is not an executable file on the runner host; refusing to build the jail' "$SCRIPT")"
