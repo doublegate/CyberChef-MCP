@@ -66,10 +66,18 @@ at startup, so a running v4.2.1 server reports `4.2.1` in `serverInfo`, the star
   description's "reaches 505/505 and describes 505/505" was re-verified by walking all 16 categories
   through an SDK client. Historical records (release notes, ADRs, `docs/reference/`) are unchanged.
 
+### Added
+
+- **`Parse PGP Key` operation** (`cyberchef_parse_pgp_key`, upstream gchq/CyberChef#2734 via the
+  v11.5.0 sync, #153): 504 -> 505 operations; `all` 545 -> 546 tools; `index` and `curated`
+  unchanged.
+- **`PEM to JWK` opt-in `kid`** (RFC 7638 thumbprint, upstream #2771): a new boolean argument, off
+  by default.
+
 ### Changed
 
-- **Upstream CyberChef v11.4.0 -> v11.5.0** (#153, first released here). New operation `Parse PGP
-  Key` (504 -> 505 operations; `all` 545 -> 546 tools; `index` and `curated` unchanged). Fixes to
+- **Upstream CyberChef v11.4.0 -> v11.5.0** (#153, first released here; additions listed above).
+  Fixes to
   `LM Hash`, `Render Markdown`, `MOD`, `Luhn Checksum`, `Parse IP range` and `Disassemble x86`.
   `PEM to JWK` gains an opt-in `kid` argument, and its default output was measured identical. Blank
   `number` arguments take their default, and numeric `0` input is no longer treated as empty in the

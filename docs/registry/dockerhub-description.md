@@ -60,9 +60,9 @@ Works with Claude Desktop, Claude Code, Cursor, and any client that speaks MCP o
 
 ## What you get
 
-`tools/list` returns about **24 tools**, not 505 — deliberately. Sending 505 tool schemas on every
-request costs roughly 86,000 tokens before the user types anything, so the default surface is an
-**index**:
+`tools/list` returns **23 tools**, not 546 — deliberately. Sending all 546 tool schemas on every
+request costs 427,123 bytes before the user types anything (15,620 for the index, measured with
+`npm run measure:surfaces`), so the default surface is an **index**:
 
 | Tool | Purpose |
 |---|---|
