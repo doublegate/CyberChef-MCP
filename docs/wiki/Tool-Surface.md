@@ -1,6 +1,6 @@
 # The Tool Surface
 
-**Why you see 23 tools and not 545.** This is the most common question about the server, and the
+**Why you see 23 tools and not 546.** This is the most common question about the server, and the
 answer is a deliberate design decision rather than a limitation.
 
 ## The problem
@@ -20,7 +20,7 @@ bytes of the `tools/list` payload, rather than estimated:
 |---|---|---|---|
 | **`index`** *(default)* | 23 | 15 KB | **15,620** |
 | `curated` | 120 | 107 KB | 109,548 |
-| `all` | 545 | 416 KB | 426,706 |
+| `all` | 546 | 417 KB | 427,123 |
 
 The 23 in the default index are 22 meta-tools plus `cyberchef_magic`. The nineteen
 [analysis tools](Analysis-Tools) are **not** among them since v4.1.0 — they are reached through
@@ -38,7 +38,7 @@ analysis tool leaves the index unchanged.
 
 ## Nothing becomes unreachable
 
-This is the claim the whole design rests on. Every one of the 504 operations is callable at every
+This is the claim the whole design rests on. Every one of the 505 operations is callable at every
 surface:
 
 ```
