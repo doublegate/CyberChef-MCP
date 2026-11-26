@@ -77,7 +77,7 @@ authentication is a deliberate act, not an upgrade side effect.
 
 **Without authorization configured, the server trusts its client.** There is no authentication on
 any transport by default. Anything that can
-reach the server can run any of the 504 operations. That is appropriate for the default deployment
+reach the server can run any of the 505 operations. That is appropriate for the default deployment
 — a subprocess launched by your own editor — and is why:
 
 - HTTP binds `127.0.0.1` by default,

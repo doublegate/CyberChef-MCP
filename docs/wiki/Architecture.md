@@ -14,7 +14,7 @@ flowchart LR
         R -->|"bake capability"| O
     end
     O --> API["CyberChef Node API<br/>src/node/index.mjs"]
-    API --> CORE["CyberChef core<br/>src/core/ — 504 operations"]
+    API --> CORE["CyberChef core<br/>src/core/ — 505 operations"]
 ```
 
 Two things in that diagram carry most of the design:

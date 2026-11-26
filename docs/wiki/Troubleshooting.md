@@ -32,7 +32,7 @@ rather than 546 tools and 427,123 bytes. Nothing is unreachable — `cyberchef_b
 operations by name, and `cyberchef_categories` → `cyberchef_list_operations` →
 `cyberchef_describe_operation` walks down to any of them with its full argument schema.
 
-Pre-load more if you want to: `CYBERCHEF_TOOL_SURFACE=curated` (120 tools) or `=all` (all 545).
+Pre-load more if you want to: `CYBERCHEF_TOOL_SURFACE=curated` (120 tools) or `=all` (all 546).
 Full detail: **[The Tool Surface](Tool-Surface)**.
 Be careful with `all` on a local model — published measurement puts tool-selection quality falling
 off past roughly 50 tool definitions.

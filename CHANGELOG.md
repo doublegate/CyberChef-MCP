@@ -11,8 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Mostly a security dependency release: every advisory below lives in a dependency or the container
 base image, and the fix is the resolved version in `package-lock.json` or the base-image digest in
-`Dockerfile.mcp`. Two source changes ride along: `RSA Verify` is restored now that its node-forge
-flaw is fixed, and upstream CyberChef v11.5.0 reaches a release for the first time. The version string is read
+`Dockerfile.mcp`. Relative to v4.2.0 the one source change is upstream CyberChef v11.5.0, released
+here for the first time. `RSA Verify`, disabled on `master` after v4.2.0 for its node-forge flaw, is
+restored unchanged from v4.2.0 and now runs on the fixed node-forge 1.4.4. The version string is read
 at startup, so a running v4.2.1 server reports `4.2.1` in `serverInfo`, the startup log and the
 `cyberchef_mcp_build_info` metric.
 
@@ -52,13 +53,18 @@ at startup, so a running v4.2.1 server reports `4.2.1` in `serverInfo`, the star
   elements in the nested `DigestAlgorithm`, a low-exponent signature-forgery flaw). node-forge 1.4.4
   fixes it, so `src/core/operations/RSAVerify.mjs` is restored byte-for-byte from upstream v11.5.0.
   The hand edit to an upstream-owned file would have been silently reverted by the next sync. Pinned
-  by seven new tests in `tests/mcp/cve-regressions.test.mjs`: two genuine-signature checks, two
-  well-formed `DigestAlgorithm` controls, and three malformed shapes (the CVE's extra element, and
-  non-NULL INTEGER or OCTET STRING parameters). Against node-forge 1.4.0 each malformed shape returns
+  by nine new tests in `tests/mcp/cve-regressions.test.mjs`: two genuine-signature checks, two
+  well-formed `DigestAlgorithm` controls, four malformed shapes (the CVE's extra element; non-NULL
+  INTEGER or OCTET STRING parameters; a NULL carrying value bytes), and a guard for the outer-
+  `DigestInfo` half (CVE-2026-33894). Against node-forge 1.4.0 each malformed shape returns
   "Verified OK" and fails its test; against 1.4.4 each is rejected as an `OperationError`.
-- **Tool counts in the user guide and wiki** (#188): `all` is 546 tools and 427,123 bytes, and
-  there are 505 operations. Both docs still said 545 / 426,706 / 504 after the v11.5.0 sync added
-  `Parse PGP Key`. Re-measured with `npm run measure:surfaces`.
+- **Operation and tool counts across the live documentation** (#188): there are 505 operations,
+  and `all` is 546 tools and 427,123 bytes, re-measured with `npm run measure:surfaces`. The user
+  guide, the tutorial, the edge-deployment and upstream-sync guides, eleven wiki pages, the README,
+  `THIRD-PARTY-NOTICES.md` and the Docker Hub description still gave the pre-v11.5.0 figures (504 /
+  545 / 426,706), and the sync guide still called `RSA Verify` disabled. The Docker Hub
+  description's "reaches 505/505 and describes 505/505" was re-verified by walking all 16 categories
+  through an SDK client. Historical records (release notes, ADRs, `docs/reference/`) are unchanged.
 
 ### Changed
 

@@ -146,7 +146,7 @@ MCP **resources** at `recipe://<id>`, so a client can attach one without spendin
 ## Finding an operation you do not know the name of
 
 ```
-cyberchef_search        keyword search across all 504
+cyberchef_search        keyword search across all 505
 cyberchef_categories    the 16 categories
 cyberchef_list_operations  everything in one category
 cyberchef_describe_operation  full argument schema for one

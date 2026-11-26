@@ -1,6 +1,6 @@
 # Prompts & Resources
 
-Two MCP surfaces besides tools. Both exist for the same reason: **504 operations is not a usable
+Two MCP surfaces besides tools. Both exist for the same reason: **505 operations is not a usable
 starting point** when you do not yet know what you are looking at.
 
 ## Prompts

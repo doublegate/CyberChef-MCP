@@ -74,7 +74,7 @@ but the first `cyberchef_search` will.
 
 ## Offline and air-gapped
 
-**Most of this already worked.** 502 of the 504 operations are pure functions over bytes and have
+**Most of this already worked.** 503 of the 505 operations are pure functions over bytes and have
 never touched a network. Exactly two reach outside the process:
 
 - `HTTP request`

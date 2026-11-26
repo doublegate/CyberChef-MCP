@@ -23,7 +23,7 @@
 
 
 A **Model Context Protocol (MCP)** server wrapping [GCHQ CyberChef](https://github.com/gchq/CyberChef),
-the "Cyber Swiss Army Knife". It exposes **504 data-manipulation operations** — encryption, encoding,
+the "Cyber Swiss Army Knife". It exposes **505 data-manipulation operations** — encryption, encoding,
 compression, hashing, forensics — as tools an AI assistant can call directly.
 
 **Source & docs:** https://github.com/doublegate/CyberChef-MCP ·
@@ -60,13 +60,13 @@ Works with Claude Desktop, Claude Code, Cursor, and any client that speaks MCP o
 
 ## What you get
 
-`tools/list` returns about **24 tools**, not 504 — deliberately. Sending 504 tool schemas on every
+`tools/list` returns about **24 tools**, not 505 — deliberately. Sending 505 tool schemas on every
 request costs roughly 86,000 tokens before the user types anything, so the default surface is an
 **index**:
 
 | Tool | Purpose |
 |---|---|
-| `cyberchef_bake` | Run a recipe. Reaches **any** of the 504 operations by name. |
+| `cyberchef_bake` | Run a recipe. Reaches **any** of the 505 operations by name. |
 | `cyberchef_search` | Find an operation by keyword. |
 | `cyberchef_categories` | Browse the 16 operation categories. |
 | `cyberchef_list_operations` | List the operations in one category. |
@@ -75,8 +75,8 @@ request costs roughly 86,000 tokens before the user types anything, so the defau
 
 Plus recipe management, batching, and cache/quota tools.
 
-**Nothing is unreachable.** Every one of the 504 operations is reachable through this index —
-verified, not asserted: walking every category reaches 504/504 and describes 504/504.
+**Nothing is unreachable.** Every one of the 505 operations is reachable through this index —
+verified, not asserted: walking every category reaches 505/505 and describes 505/505.
 
 Prefer the old behaviour? One variable:
 

@@ -26,7 +26,7 @@ From the release benchmark suite, median latency:
 | SHA2 | 0.10 ms | 0.54 ms | 5.7 ms |
 | Gzip | 0.40 ms | 3.3 ms | 305 ms |
 
-Start-up is about **1.3 seconds**, nearly all of it building 504 operation schemas. Restricting the
+Start-up is about **1.3 seconds**, nearly all of it building 505 operation schemas. Restricting the
 [tool surface](Tool-Surface) does not change that — the schemas are built either way; it changes
 what is *sent*.
 

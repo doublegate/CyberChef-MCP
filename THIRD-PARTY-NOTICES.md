@@ -73,7 +73,7 @@ has. They are listed because the plan says they were ported, and they were not:
 |---|---|---|
 | **katana** | GPL-3.0-or-later | Its useful core is auto-decode plus a flag regex. `Magic` already does the first, and the second is one recipe. It remains the reason the project is GPLv**3** rather than v2: the relicense was decided before this was measured, and is not being reversed. |
 | **Ciphey** / **Ares** | MIT | Auto-decode search. CyberChef's `Magic` operation is the same idea, already exposed. Re-read as code for v3.3.0, and the finding is that their published intelligence does not run: Ciphey's A* searcher is never imported, and both of Ares' production call sites pass `&None` for the decoder heuristic. What they *do* contribute is a negative result — the boring pruning carries them — and that shaped `plaintext_check`. Still nothing taken. |
-| **cryptii** | MIT | Its encodings have 26 equivalents among the 504 operations. |
+| **cryptii** | MIT | Its encodings have 26 equivalents among the 505 operations. |
 
 ### cyberchef-recipes — a note on scope
 
