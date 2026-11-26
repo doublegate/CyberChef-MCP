@@ -172,7 +172,7 @@ window, which is what you want under Docker Compose or anywhere without a load b
 |---|---|---|
 | `CYBERCHEF_OFFLINE` | `false` | Refuse the two operations that leave this process |
 
-**Most of this already worked.** 502 of the 504 operations are pure functions over bytes. Exactly
+**Most of this already worked.** 503 of the 505 operations are pure functions over bytes. Exactly
 two reach outside: `HTTP request` and `DNS over HTTPS`. The server makes no other outbound calls —
 there is no plugin loader, it exports no telemetry of its own, and JWKS discovery has been bounded
 by a deadline and a circuit breaker since v2.6.0.

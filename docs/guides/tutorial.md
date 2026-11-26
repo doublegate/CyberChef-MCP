@@ -12,7 +12,7 @@ guaranteed to work against the version you have.
 1. [What this thing actually is](#1-what-this-thing-actually-is)
 2. [Install it](#2-install-it)
 3. [Your first call](#3-your-first-call)
-4. [Finding an operation among 504](#4-finding-an-operation-among-504)
+4. [Finding an operation among 505](#4-finding-an-operation-among-505)
 5. [Chaining operations: recipes](#5-chaining-operations-recipes)
 6. [Arguments, and how to get them right](#6-arguments-and-how-to-get-them-right)
 7. [A real task, start to finish](#7-a-real-task-start-to-finish)
@@ -23,7 +23,7 @@ guaranteed to work against the version you have.
 
 ## 1. What this thing actually is
 
-[CyberChef](https://github.com/gchq/CyberChef) is GCHQ's "cyber swiss army knife" — 504 operations
+[CyberChef](https://github.com/gchq/CyberChef) is GCHQ's "cyber swiss army knife" — 505 operations
 for encoding, encryption, compression, parsing and forensics, normally used through a web page
 where you drag operations into a recipe.
 
@@ -35,12 +35,12 @@ Three ideas carry the whole design, and knowing them will save you time:
 
 | Idea | What it means |
 |---|---|
-| **Operations** | The 504 units of work: `To Base64`, `AES Decrypt`, `Gunzip`, `Extract IP addresses`. |
+| **Operations** | The 505 units of work: `To Base64`, `AES Decrypt`, `Gunzip`, `Extract IP addresses`. |
 | **Recipes** | An ordered list of operations. The output of each feeds the next. |
-| **`cyberchef_bake`** | The tool that runs a recipe. It can run **any** of the 504 operations by name. |
+| **`cyberchef_bake`** | The tool that runs a recipe. It can run **any** of the 505 operations by name. |
 
 That last row matters more than it looks. Because `bake` reaches everything, the server does not
-need to advertise 504 separate tools — and by default it does not. More on that in step 4.
+need to advertise 505 separate tools — and by default it does not. More on that in step 4.
 
 ---
 
@@ -132,9 +132,9 @@ The equivalent runnable script is [`examples/01-quickstart.mjs`](../../examples/
 
 ---
 
-## 4. Finding an operation among 504
+## 4. Finding an operation among 505
 
-Ask for the tool list and you will get about two dozen tools, not 504. That is deliberate, and it
+Ask for the tool list and you will get about two dozen tools, not 505. That is deliberate, and it
 is the thing most worth understanding about this server.
 
 **Why.** `tools/list` is sent to the model on *every* request. With all 505 operations exposed it

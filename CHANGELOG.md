@@ -9,9 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [4.2.1] - 2026-11-26
 
-A security dependency release. **No source code changed**: every advisory below lives in a
-dependency or the container base image, and the fix is the resolved version in
-`package-lock.json` or the base-image digest in `Dockerfile.mcp`. The version string is read
+Mostly a security dependency release: every advisory below lives in a dependency or the container
+base image, and the fix is the resolved version in `package-lock.json` or the base-image digest in
+`Dockerfile.mcp`. Relative to v4.2.0 the one source change is upstream CyberChef v11.5.0, released
+here for the first time. `RSA Verify`, disabled on `master` after v4.2.0 for its node-forge flaw, is
+restored unchanged from v4.2.0 and now runs on the fixed node-forge 1.4.4. The version string is read
 at startup, so a running v4.2.1 server reports `4.2.1` in `serverInfo`, the startup log and the
 `cyberchef_mcp_build_info` metric.
 
@@ -44,12 +46,48 @@ at startup, so a running v4.2.1 server reports `4.2.1` in `serverInfo`, the star
   (GHSA-g3hv-75wg-m249) are development-only and fixed only in the next majors (`glob` 14,
   `minimatch` 11); they are not in the image, which runs `npm prune --omit=dev`.
 
+### Fixed
+
+- **`RSA Verify` works again** (#188). After v4.2.0, commit 89cc60b9 replaced the operation's body
+  with a "temporarily disabled" error because of CVE-2026-85393 (node-forge <= 1.4.0 accepted extra
+  elements in the nested `DigestAlgorithm`, a low-exponent signature-forgery flaw). node-forge 1.4.4
+  fixes it, so `src/core/operations/RSAVerify.mjs` is restored byte-for-byte from upstream v11.5.0.
+  The hand edit to an upstream-owned file would have been silently reverted by the next sync. Pinned
+  by nine new tests in `tests/mcp/cve-regressions.test.mjs`: two genuine-signature checks, two
+  well-formed `DigestAlgorithm` controls, four malformed shapes (the CVE's extra element; non-NULL
+  INTEGER or OCTET STRING parameters; a NULL carrying value bytes), and a guard for the outer-
+  `DigestInfo` half (CVE-2026-33894). Against node-forge 1.4.0 each malformed shape returns
+  "Verified OK" and fails its test; against 1.4.4 each is rejected as an `OperationError`.
+- **Operation and tool counts across the live documentation** (#188): there are 505 operations,
+  and `all` is 546 tools and 427,123 bytes, re-measured with `npm run measure:surfaces`. The user
+  guide, the tutorial, the edge-deployment and upstream-sync guides, eleven wiki pages, the README,
+  `THIRD-PARTY-NOTICES.md` and the Docker Hub description still gave the pre-v11.5.0 figures (504 /
+  545 / 426,706), and the sync guide still called `RSA Verify` disabled. The Docker Hub
+  description's "reaches 505/505 and describes 505/505" was re-verified by walking all 16 categories
+  through an SDK client. Historical records (release notes, ADRs, `docs/reference/`) are unchanged.
+
+### Added
+
+- **`Parse PGP Key` operation** (`cyberchef_parse_pgp_key`, upstream gchq/CyberChef#2734 via the
+  v11.5.0 sync, #153): 504 -> 505 operations; `all` 545 -> 546 tools; `index` and `curated`
+  unchanged.
+- **`PEM to JWK` opt-in `kid`** (RFC 7638 thumbprint, upstream #2771): a new boolean argument, off
+  by default.
+
 ### Changed
 
-- **Consolidated Dependabot updates** (#176, #181, #182, #177): runtime `bootstrap` 5.3.9, `bson`
-  7.3.4, `cbor2` 2.4.2, `d3` 7.9.2, `dompurify` 3.5.0, `js-sha3` 0.14.0, `jsonpath-plus` 11.3.0,
-  `kbpgp` 2.1.21, `moment-timezone` 0.6.6, `otpauth` 9.6.0, `sql-formatter` 15.10.0, `xpath`
-  0.0.36; development `@babel/core` and `@babel/runtime` 8.1.3, `@babel/eslint-parser` and
+- **Upstream CyberChef v11.4.0 -> v11.5.0** (#153, first released here; additions listed above).
+  Fixes to
+  `LM Hash`, `Render Markdown`, `MOD`, `Luhn Checksum`, `Parse IP range` and `Disassemble x86`.
+  `PEM to JWK` gains an opt-in `kid` argument, and its default output was measured identical. Blank
+  `number` arguments take their default, and numeric `0` input is no longer treated as empty in the
+  Node API. The duplicate `RandomPrime.mjs` is removed without losing an operation.
+- **Consolidated Dependabot updates** (#176, #181, #182, #177 via #185; #186, #187 via #188):
+  runtime `bootstrap` 5.3.9, `bson` 7.3.4, `cbor2` 2.4.2, `d3` 7.9.2, `dompurify` 3.5.0, `jquery`
+  4.1.0, `js-sha3` 0.16.0, `jsonpath-plus` 11.3.0, `kbpgp` 2.1.21, `moment-timezone` 0.6.6,
+  `openpgp` 6.3.3 (new dependency `eckey-utils` 0.7.14, traced to openpgpjs/openpgpjs#2078),
+  `otpauth` 9.6.0, `sql-formatter` 15.10.0, `terser` 5.51.4, `xpath` 0.0.36; development
+  `postcss-loader` 8.2.2, `@babel/core` and `@babel/runtime` 8.1.3, `@babel/eslint-parser` and
   `@babel/plugin-transform-runtime` 8.1.2, `vitest` and `@vitest/coverage-v8` 5.1.2, `eslint`
   10.15.0, `eslint-plugin-jsdoc` 65.5.5, `cspell` 10.5.2, `globals` 17.14.0, `autoprefixer` 10.7.0,
   `postcss` 8.5.33, `tinybench` 6.2.5, `webpack-bundle-analyzer` 5.4.3; documentation site `astro`

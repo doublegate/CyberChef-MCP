@@ -154,7 +154,7 @@ So the default is an **index**, not a catalogue. Measured on the serialised `too
 |---|---|---|
 | **`index`** *(default)* | 23 | **15,620 bytes** |
 | `curated` | 120 | 109,548 bytes |
-| `all` | 545 | 426,706 bytes |
+| `all` | 546 | 427,123 bytes |
 
 Bytes, measured on the serialised `tools/list` payload with `npm run measure:surfaces`, not
 estimated. Earlier versions of this table gave token figures; this repository has never contained a
@@ -222,7 +222,7 @@ CYBERCHEF_TOOL_SURFACE=all                                      # everything, th
 
 | Tool | For |
 |---|---|
-| `cyberchef_bake` | Running a recipe — one operation or twenty. Reaches all 504. |
+| `cyberchef_bake` | Running a recipe — one operation or twenty. Reaches all 505. |
 | `cyberchef_search` | Finding an operation by keyword. |
 | `cyberchef_describe_operation` | Getting an operation's exact argument names, types and defaults. |
 
@@ -311,7 +311,7 @@ Two things are worth knowing before you configure auto-approval:
 
 ## Prompts: where to start when you do not know
 
-The tool list tells you what the server can do. It does not tell you what to do first, and with 504
+The tool list tells you what the server can do. It does not tell you what to do first, and with 505
 operations that gap is wide. Prompts are five named workflows your client shows as slash commands or
 menu entries:
 
@@ -499,7 +499,7 @@ no client could speak. See `docs/planning/ROADMAP.md`.
 
 ## Performance and tuning
 
-**Start-up** is about 1.3 seconds — building 504 operation schemas. With `CYBERCHEF_TOOL_SURFACE`
+**Start-up** is about 1.3 seconds — building 505 operation schemas. With `CYBERCHEF_TOOL_SURFACE`
 at its default the schema build is far smaller, so start-up and the per-request payload are both
 cheaper than exposing everything.
 

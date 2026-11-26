@@ -34,7 +34,7 @@ docker run -i --rm -p 127.0.0.1:3000:3000 \
 
 **Bind to `127.0.0.1`, not `0.0.0.0`.** The published port above is deliberately written
 `127.0.0.1:3000:3000` rather than `-p 3000:3000`: the latter publishes on every interface, and this
-server has **no authentication**. Anything that can reach the port can run any of 504 operations.
+server has **no authentication**. Anything that can reach the port can run any of 505 operations.
 
 Each session gets its own `Server` and transport instance. Sharing them across clients leaks data
 between them — that is the substance of the SDK's own GHSA-345p-7cg4-v4c7 advisory, and the bug
