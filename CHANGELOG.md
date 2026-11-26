@@ -52,8 +52,10 @@ at startup, so a running v4.2.1 server reports `4.2.1` in `serverInfo`, the star
   elements in the nested `DigestAlgorithm`, a low-exponent signature-forgery flaw). node-forge 1.4.4
   fixes it, so `src/core/operations/RSAVerify.mjs` is restored byte-for-byte from upstream v11.5.0.
   The hand edit to an upstream-owned file would have been silently reverted by the next sync. Pinned
-  by four new tests in `tests/mcp/cve-regressions.test.mjs`. Against node-forge 1.4.0 the malformed
-  `DigestInfo` returns "Verified OK" and the test fails; against 1.4.4 it is rejected.
+  by seven new tests in `tests/mcp/cve-regressions.test.mjs`: two genuine-signature checks, two
+  well-formed `DigestAlgorithm` controls, and three malformed shapes (the CVE's extra element, and
+  non-NULL INTEGER or OCTET STRING parameters). Against node-forge 1.4.0 each malformed shape returns
+  "Verified OK" and fails its test; against 1.4.4 each is rejected as an `OperationError`.
 - **Tool counts in the user guide and wiki** (#188): `all` is 546 tools and 427,123 bytes, and
   there are 505 operations. Both docs still said 545 / 426,706 / 504 after the v11.5.0 sync added
   `Parse PGP Key`. Re-measured with `npm run measure:surfaces`.
