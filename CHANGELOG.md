@@ -10,7 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [4.2.1] - 2026-11-26
 
 A security dependency release. **No source code changed**: every advisory below lives in a
-dependency, and the fix is the resolved version in `package-lock.json`. The version string is read
+dependency or the container base image, and the fix is the resolved version in
+`package-lock.json` or the base-image digest in `Dockerfile.mcp`. The version string is read
 at startup, so a running v4.2.1 server reports `4.2.1` in `serverInfo`, the startup log and the
 `cyberchef_mcp_build_info` metric.
 
@@ -23,6 +24,12 @@ at startup, so a running v4.2.1 server reports `4.2.1` in `serverInfo`, the star
   `@modelcontextprotocol/node`, the Streamable HTTP transport): GHSA-3gg2-335m-rxc6,
   GHSA-46wx-v44x-9hh2, GHSA-4h7h-rv7c-7m2v, GHSA-4m76-xfj5-7975, GHSA-h7mg-cq63-vhpq,
   GHSA-jpvv-r467-5p4w, GHSA-qv5m-9pm6-hqp3. Lifted within the existing ranges; no override needed.
+- **Container base image re-pinned to Node v26.13.1** (`Dockerfile.mcp`, both stages, Chainguard
+  digests resolved 2026-11-26): the v26.12.1 base carries CVE-2026-123863 (HIGH, Node.js HTTP/2
+  denial of service), fixed in `nodejs-26` 26.13.1-r0. The image now runs `nodejs-26-26.13.1-r1`.
+- **`.trivyignore`: the CVE-2026-85393 (node-forge) entry is removed.** Its own "removable when a
+  fixed release exists" condition is met by node-forge 1.4.4, so a scan that reports it again now
+  fails instead of passing silently.
 - **`astro` 7.4.2 -> 7.4.13** (documentation site only, not shipped): GHSA-mh32-jxcr-mh9f,
   GHSA-r3h5-4585-7x3w.
 - Already fixed on `master` by #170 and released here for the first time: `handlebars` 4.7.10,
