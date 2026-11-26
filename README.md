@@ -4,7 +4,7 @@ This project provides a **Model Context Protocol (MCP)** server interface for **
 
 By running this server, you enable AI assistants (like Claude, Cursor AI, and others) to natively utilize CyberChef's extensive library of **504 data manipulation operations**—including encryption, encoding, compression, and forensic analysis—as executable tools.
 
-**Latest Release:** v4.2.0 | [Release Notes](docs/releases/v4.2.0.md) | [Tutorial](docs/guides/tutorial.md) | [Examples](examples/) | [Breaking Changes](docs/v2.0.0-breaking-changes.md) | [Security Policy](SECURITY.md)
+**Latest Release:** v4.2.1 | [Release Notes](docs/releases/v4.2.1.md) | [Tutorial](docs/guides/tutorial.md) | [Examples](examples/) | [Breaking Changes](docs/v2.0.0-breaking-changes.md) | [Security Policy](SECURITY.md)
 
 **Upstream base:** GCHQ CyberChef **v11.5.0** | **Licence:** GPL-3.0-or-later (from v2.0.0; v1.9.x and earlier remain Apache-2.0)
 
@@ -158,13 +158,13 @@ For environments without direct GHCR access, download the pre-built Docker image
 1.  **Download the tarball** (**141 MB** compressed; measured against the published v3.1.0 asset, not estimated):
     ```bash
     # Download from GitHub Releases
-    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v4.2.0/cyberchef-mcp-v4.2.0-docker-image.tar.gz
+    wget https://github.com/doublegate/CyberChef-MCP/releases/download/v4.2.1/cyberchef-mcp-v4.2.1-docker-image.tar.gz
     ```
 
 2.  **Load the image into Docker:**
 
     ```bash
-    docker load < cyberchef-mcp-v4.2.0-docker-image.tar.gz
+    docker load < cyberchef-mcp-v4.2.1-docker-image.tar.gz
     ```
 
 3.  **Tag for easier usage:**
@@ -691,6 +691,7 @@ Detailed documentation is organized in the [`docs/`](docs/) directory:
 *   [**Security Fixes Report**](docs/security/SECURITY_FIX_REPORT.md): Detailed report of 11 vulnerability fixes (ReDoS and cryptographic weaknesses)
 *   [**Security Fixes Summary**](docs/security/SECURITY_FIXES_SUMMARY.md): Quick reference for recent security improvements
 *   [**v2.0.0 Breaking Changes**](docs/v2.0.0-breaking-changes.md): Comprehensive migration guide for v2.0.0 with deprecation codes, examples, and FAQ
+*   [**Release Notes v4.2.1**](docs/releases/v4.2.1.md): Security dependency refresh with no source change: `node-forge` 1.4.4 (21 advisories, including RSA signature forgery), `hono` 4.13.22 and `@hono/node-server` 2.1.11 under the HTTP transport, plus the first release of #170's fixes (`handlebars`, `@modelcontextprotocol/server`/`node`, `markdown-it`, `zod` and others). `elliptic` has no fix
 *   [**Release Notes v4.2.0**](docs/releases/v4.2.0.md): One place to add a meta-tool for the eight of ten that are uniform — 24 dispatch branches down to 16 — and a release whose two central claims were both wrong: the gate it set out to build had existed since v3.7.0, and the two "identical" recipe branches that were not (`recipe_execute` guards input size, `recipe_export` was double-encoded by the table) kept theirs. Behaviour preservation proven byte-for-byte through a real client rather than asserted
 *   [**Release Notes v4.1.0**](docs/releases/v4.1.0.md): Registry tools get a navigation path and leave the default surface — the index falls from 41 tools / 44,968 bytes to 23 / 15,620 with nothing made unreachable, and the charter's headline claim turns out to be arithmetically impossible
 *   [**Release Notes v4.0.0**](docs/releases/v4.0.0.md): Retiring the v2 migration surface — the deprecation system, both migration tools and the `cyberchef-migrate` bin, advertised on every surface for a migration nine minors old
