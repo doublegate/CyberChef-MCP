@@ -7,8 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.2.1] - 2026-11-26
+
+A security dependency release. **No source code changed**: every advisory below lives in a
+dependency, and the fix is the resolved version in `package-lock.json`. The version string is read
+at startup, so a running v4.2.1 server reports `4.2.1` in `serverInfo`, the startup log and the
+`cyberchef_mcp_build_info` metric.
+
+### Security
+
+- **`node-forge` 1.4.0 -> 1.4.4** (direct dependency, `^1.4.3`): 21 advisories, including RSA
+  PKCS#1 v1.5 signature forgery (GHSA-86w9-cpqp-85rv, GHSA-5x38-2vff-x55p and others), X.509
+  `basicConstraints`/`pathLenConstraint` handling and AES-GCM tag verification. Seven HIGH.
+- **`hono` 4.13.14 -> 4.13.22** and **`@hono/node-server` 2.1.5 -> 2.1.11** (transitive, through
+  `@modelcontextprotocol/node`, the Streamable HTTP transport): GHSA-3gg2-335m-rxc6,
+  GHSA-46wx-v44x-9hh2, GHSA-4h7h-rv7c-7m2v, GHSA-4m76-xfj5-7975, GHSA-h7mg-cq63-vhpq,
+  GHSA-jpvv-r467-5p4w, GHSA-qv5m-9pm6-hqp3. Lifted within the existing ranges; no override needed.
+- **`astro` 7.4.2 -> 7.4.13** (documentation site only, not shipped): GHSA-mh32-jxcr-mh9f,
+  GHSA-r3h5-4585-7x3w.
+- Already fixed on `master` by #170 and released here for the first time: `handlebars` 4.7.10,
+  `@modelcontextprotocol/server` 2.4.0, `@modelcontextprotocol/node` 2.1.2, `markdown-it` 15.0.3,
+  `dompurify` 3.4.17+, `zod` 4.6.7, `moment` 2.31.0, `pbkdf2` 3.1.7, `qs` 6.16.1.
+- **Not fixed:** `elliptic` 6.6.1 (GHSA-848j-6mx2-7j84, LOW) has no fixed release; every version is
+  affected. `glob` 13.0.6 (GHSA-3g3m-2fjr-6pw4) and the `minimatch` 10.2.6 it pulls in
+  (GHSA-g3hv-75wg-m249) are development-only and fixed only in the next majors (`glob` 14,
+  `minimatch` 11); they are not in the image, which runs `npm prune --omit=dev`.
+
 ### Changed
 
+- **Consolidated Dependabot updates** (#176, #181, #182, #177): runtime `bootstrap` 5.3.9, `bson`
+  7.3.4, `cbor2` 2.4.2, `d3` 7.9.2, `dompurify` 3.5.0, `js-sha3` 0.14.0, `jsonpath-plus` 11.3.0,
+  `kbpgp` 2.1.21, `moment-timezone` 0.6.6, `otpauth` 9.6.0, `sql-formatter` 15.10.0, `xpath`
+  0.0.36; development `@babel/core` and `@babel/runtime` 8.1.3, `@babel/eslint-parser` and
+  `@babel/plugin-transform-runtime` 8.1.2, `vitest` and `@vitest/coverage-v8` 5.1.2, `eslint`
+  10.15.0, `eslint-plugin-jsdoc` 65.5.5, `cspell` 10.5.2, `globals` 17.14.0, `autoprefixer` 10.7.0,
+  `postcss` 8.5.33, `tinybench` 6.2.5, `webpack-bundle-analyzer` 5.4.3; documentation site `astro`
+  7.4.13. Specifiers follow the Dependabot pull requests; npm resolved the newest release in each
+  range.
 - **Dependencies & container base image**: Updated runtime dependencies (`@modelcontextprotocol/node` 2.1.2, `@modelcontextprotocol/server` 2.4.0, `@opentelemetry/api` 1.10.0, `dompurify` 3.4.17, `js-yaml` 5.5.0, `jsonpath-plus` 11.2.1, `markdown-it` 15.0.3, `protobufjs` 8.8.1, `zod` 4.6.7), deduplicated transitive `@jimp/*` `zod` dependencies onto `zod` 4.6.7 via `overrides` (remediating CVE-2023-54404), updated development and documentation-site dependencies, and re-pinned `Dockerfile.mcp` Chainguard Node.js base images to Node v26.12.1.
 
 ## [4.2.0] - 2026-09-12
